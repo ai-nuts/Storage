@@ -1,0 +1,59 @@
+---
+title: VectorMapNet: End-to-end Vectorized HD Map Learning
+authors: Yicheng Liu¹², Tianyuan Yuan², Yue Wang³, Yilun Wang⁴, Hang Zhao²¹
+institutes: ¹Shanghai Qi Zhi Institute; ²Tsinghua University; ³MIT; ⁴Li Auto
+venue: ICML 2023
+paper_url: https://arxiv.org/abs/2206.08920
+code_url: https://github.com/Mrmoore98/VectorMapNet_code
+title_audio_script: Autonomous vehicles need high-definition semantic maps to drive, but building them by hand does not scale, and existing learning methods only produce dense pixel-level segmentations that must be cleaned up with fragile post-processing. This paper introduces VectorMapNet, the first end-to-end pipeline that reads onboard camera and LiDAR data and directly predicts a sparse set of polylines, the vectorized map primitive that downstream planning and forecasting modules actually consume. By posing mapping as detection followed by autoregressive polyline generation, VectorMapNet skips rasterization entirely and sets a new state of the art on both the nuScenes and Argoverse2 benchmarks.
+---
+
+## Problem
+**Necessary:** Autonomous driving needs vectorized HD semantic maps, but offline manual annotation does not scale and existing learning-based methods only output dense rasterized segmentations that require heuristic post-processing to vectorize.
+**Additional:** Rasterized maps lack per-instance information, cannot enforce spatial consistency, and are incompatible with downstream modules that consume instance-level 2D/3D vectorized maps.
+**Audio script:** Self-driving cars rely on high-definition semantic maps that mark lanes, road boundaries, and pedestrian crossings. Today those maps are mostly annotated by hand, which is expensive and does not scale across cities. Recent learning methods instead predict a dense pixel grid in bird's-eye view, labeling every pixel with a class. But a grid of pixels is not what a planner wants: it carries no notion of individual map elements, it is hard to keep spatially consistent, and it must be converted into vectors by a brittle, hand-designed post-processing step before any downstream module can use it.
+
+## Motivation
+**Necessary:** Online map learning from onboard sensors avoids the localization errors and labor of offline HD maps, and a truly end-to-end system should output the vectorized primitives downstream tasks use directly, without a rasterize-then-vectorize detour.
+**Additional:** HDMapNet, the prior state of the art, still predicts rasterized semantic/instance/direction maps and stitches them with a hand-crafted post-processing algorithm, which caps its scalability and accuracy.
+**Audio script:** The authors argue that mapping should happen online, from the car's own cameras and LiDAR, which sidesteps both the annotation burden and the meter-level localization errors of offline maps. More importantly, they argue the model should output the final representation directly. Prior methods like HDMapNet still generate rasterized maps and then run a hand-designed algorithm to turn those pixels into vectors, and that extra step limits both accuracy and scalability. The motivation is to remove the detour entirely and predict vectorized geometry end to end.
+
+## Contribution
+**Necessary:** VectorMapNet is the first end-to-end vectorized HD map learner: it predicts map elements as a sparse set of polylines directly from sensor data, eliminating rasterization and post-processing, and adapts a DETR-style detector to localize deformable map elements in BEV space.
+**Additional:** It introduces polylines as a unified, direction-encoding primitive for heterogeneous map elements (boundaries, dividers, crossings) and reformulates map construction as a detection-then-generation problem.
+**Audio script:** The paper makes three main contributions. First, it presents VectorMapNet, an end-to-end mapping approach that predicts vectorized outputs directly from sensor observations, with no rasterization and no post-processing. Second, it adopts the polyline as a single flexible primitive that can represent points, lines, curves, and polygons, while its vertex order naturally encodes direction. Third, it adapts detection transformers to locate deformable map elements of varying sizes and shapes in a bird's-eye-view space, which lets the whole system be trained end to end.
+
+## Method
+**Necessary:** VectorMapNet has three stages: a BEV feature extractor lifts camera (ResNet + IPM) and LiDAR (PointPillars) features into a shared bird's-eye-view space; a DETR-style map element detector uses learnable element queries and deformable attention to predict element keypoints and class labels; and an autoregressive Transformer polyline generator decodes each detected element into an ordered sequence of vertices.
+**Additional:** Vertex coordinates are quantized into discrete tokens and modeled with a categorical distribution (following PolyGen); polylines are generated in parallel, and a two-stage strategy fine-tunes the generator on predicted keypoints to reduce exposure bias.
+**Key equation:** `$p(V_i^{poly}\mid A_i, l_i, \mathcal{F}_{BEV}; \theta) = \prod_{n=1}^{2N_v} p(v_{i,n}^{f}\mid v_{i,<n}^{f}, A_i, l_i, \mathcal{F}_{BEV})$` ; `$\mathcal{L} = \mathcal{L}_{det} + \mathcal{L}_{gen}$` ; `$\mathcal{L}_{gen} = -\frac{1}{2N_v}\sum_{n=1}^{2N_v} \log \hat{p}(v_{i,n}^{f}\mid v_{i,<n}^{f}, A_i, l_i, \mathcal{F}_{BEV})$`
+**Audio script:** VectorMapNet works in three stages. First, a bird's-eye-view feature extractor converts each sensor modality into a shared top-down feature space: camera images go through a ResNet and an inverse perspective mapping module, while LiDAR points go through a PointPillars network, and the two are fused by concatenation. Second, a detection transformer with learnable element queries and deformable attention locates and classifies every map element, representing each by a small set of keypoints. Third, a polyline generator, an autoregressive Transformer, takes each detected element and produces its ordered polyline vertices one coordinate at a time, modeling each quantized coordinate with a categorical distribution. The whole model is trained by summing a bipartite-matching detection loss and a negative-log-likelihood generation loss.
+
+## Dataset / Benchmark
+**Necessary:** Experiments run on nuScenes and Argoverse2, evaluating predicted polylines against ground truth with Chamfer-distance AP and a newly introduced Fréchet-distance AP (which accounts for vertex order) at thresholds of 0.5, 1.0, and 1.5 m.
+**Additional:** Map elements are pedestrian crossings, lane dividers, and road boundaries; Argoverse2 provides z-axis annotations, enabling 2D and 3D evaluation.
+**Audio script:** The method is evaluated on two public autonomous-driving datasets, nuScenes and Argoverse2. Following HDMapNet, quality is measured by comparing predicted polylines against ground-truth ones for three element types: pedestrian crossings, lane dividers, and road boundaries. The paper reports average precision using Chamfer distance for matching, and also introduces a Fréchet-distance average precision, which better respects the order of vertices along a polyline. Because Argoverse2 includes height annotations, VectorMapNet is additionally evaluated in three dimensions.
+
+## Key Result
+**Necessary:** VectorMapNet sets a new state of the art, surpassing HDMapNet by 14.2 mAP on nuScenes and 14.6 mAP on Argoverse2; on nuScenes it improves camera-only by +17.9 mAP, LiDAR-only by +9.9 mAP, and fusion by +14.2 mAP over HDMapNet.
+**Additional:** With the two-stage fine-tuning strategy, the fusion model reaches 53.7 mAP on nuScenes (vs. HDMapNet's 31.0), and sensor fusion adds +4.3 mAP over camera-only and +11.2 mAP over LiDAR-only.
+**Audio script:** VectorMapNet establishes a new state of the art on both benchmarks. On nuScenes it beats the prior best method, HDMapNet, by 14.2 mean average precision, and on Argoverse2 by 14.6. The gains hold across every sensor setting: camera-only improves by nearly eighteen points, LiDAR-only by about ten, and sensor fusion by over fourteen. Adding the two-stage fine-tuning strategy pushes the fusion model to 53.7 mAP, compared with 31.0 for HDMapNet under the same fusion setting, a large and consistent margin.
+
+## Ablation Study
+**Necessary:** Among three keypoint representations, the Bounding Box (k=2) design is best, outperforming SME and Extreme Points by 2.0 Fréchet mAP and 7.3 Chamfer mAP; the two-stage teacher-forcing-then-fine-tune training adds +6.9 mAP (camera) and +8.5 mAP (fusion).
+**Additional:** Feeding VectorMapNet's predicted maps into a downstream motion-forecasting baseline lowers minADE from 0.909 (trajectory only) to 0.826, nearly matching the ground-truth map (0.779) and within 0.2% MR of it.
+**Audio script:** Two ablations stand out. First, the choice of keypoint representation matters: representing each element by a bounding box with two keypoints beats the start-middle-end and extreme-point alternatives by two Fréchet points and over seven Chamfer points, so the bounding box is used by default. Second, the two-stage training, first with teacher forcing and then fine-tuning on the model's own predicted keypoints, adds roughly seven mAP for camera and over eight for fusion. The authors also show the predicted maps are useful downstream: feeding them into a motion-forecasting model improves prediction accuracy almost to the level achieved with human-annotated maps.
+
+## Headline Numbers
+**Necessary:**
+- +14.2 mAP over HDMapNet on nuScenes; +14.6 mAP on Argoverse2
+- 53.7 mAP best (Fusion + fine-tune) on nuScenes vs. 31.0 for HDMapNet (Fusion)
+- +17.9 mAP (Camera), +9.9 mAP (LiDAR), +14.2 mAP (Fusion) gains on nuScenes
+- Bounding-box keypoints: +7.3 Chamfer mAP over alternatives; two-stage fine-tune: +8.5 mAP (Fusion)
+**Additional:** Downstream motion forecasting minADE improves 0.909 → 0.826 with predicted maps.
+**Audio script:** To summarize the numbers: VectorMapNet exceeds the previous state of the art by 14.2 mean average precision on nuScenes and 14.6 on Argoverse2. Its best configuration, sensor fusion with fine-tuning, reaches 53.7 mAP where HDMapNet reaches 31. The improvements span sensors, adding roughly eighteen points for camera, ten for LiDAR, and fourteen for fusion. The bounding-box keypoint design contributes over seven Chamfer points, and two-stage fine-tuning adds more than eight mAP for the fusion model.
+
+## Takeaway
+**Necessary:** Framing HD map construction as detection-then-polyline-generation lets a single end-to-end network predict clean, directional vector maps straight from onboard sensors, beating rasterize-and-post-process pipelines by double-digit mAP.
+**Additional:** Polylines are a versatile primitive: the same model extends to centerline prediction with no structural changes, and its outputs measurably help downstream motion forecasting.
+**Audio script:** The lasting takeaway is that HD mapping does not need a rasterize-then-vectorize detour. By treating map construction as detection followed by autoregressive polyline generation, VectorMapNet produces clean, directional vector maps directly from cameras and LiDAR, and it outperforms the best rasterized pipelines by double-digit margins. Because polylines are such a flexible primitive, the same model even extends to predicting centerlines with no architectural change, and its predicted maps already improve a downstream motion-forecasting system.

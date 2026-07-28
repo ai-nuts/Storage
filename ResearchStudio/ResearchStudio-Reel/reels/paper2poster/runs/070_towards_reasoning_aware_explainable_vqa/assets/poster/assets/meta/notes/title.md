@@ -1,0 +1,3 @@
+# Title
+
+Most visual question answering models are black boxes: they output an answer, but not the reasoning that produced it. This paper, Towards Reasoning-Aware Explainable VQA from the University of Illinois and Amazon Alexa AI, augments a state-of-the-art coarse-to-fine VQA backbone with an end-to-end explanation generation module, so the model produces a human-readable textual explanation alongside every answer while keeping accuracy essentially unchanged. It compares LSTM and Transformer decoders as the explanation generator, and, crucially, shows through a large human study that the standard string-matching metrics like BLEU and ROUGE are unreliable for judging explanations, motivating better evaluation.

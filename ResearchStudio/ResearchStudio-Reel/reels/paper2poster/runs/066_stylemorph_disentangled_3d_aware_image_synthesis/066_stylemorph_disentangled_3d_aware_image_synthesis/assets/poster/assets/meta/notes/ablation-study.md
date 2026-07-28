@@ -1,0 +1,7 @@
+# Ablation Study
+
+Core claim: Under equal 96-hour training, replacing TOCS with NOCS worsens FID (8.31 → 8.90) and disentanglement, confirming template-space conditioning gives sharper, better-disentangled synthesis; removing the deformable module (direct occupancy MLP) drastically hurts shape/appearance consistency; and early fusion instead of late fusion improves FID slightly but wrecks alpha consistency (88.65% → 85.87%).
+
+Supporting detail: Directly optimizing a differentiable view-consistency loss (row 5a) improves view consistency (15.84 → 8.12) but trades away image quality, raising FID to 12.31 — a quality-versus-consistency trade-off.
+
+Narration: The ablations, all run under a fair ninety-six-hour training budget, isolate each design choice. Swapping TOCS for plain NOCS raises FID from about eight point three to eight point nine and blurs the conditioning signal, showing template-space coordinates matter. Removing the deformable module and using a direct occupancy network instead keeps FID similar but drastically worsens the consistency scores, proving the value of modelling shape through deformation. Switching from late fusion to early fusion nudges FID down slightly but badly hurts alpha consistency, letting foreground and background bleed together. Finally, directly optimizing view consistency as a differentiable loss does improve that metric, from nearly sixteen down to eight, but it trades away image quality, pushing FID up to twelve point three.

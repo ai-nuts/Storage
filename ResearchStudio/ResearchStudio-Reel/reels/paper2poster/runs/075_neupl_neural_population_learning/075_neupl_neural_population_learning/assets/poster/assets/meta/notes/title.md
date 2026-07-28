@@ -1,0 +1,3 @@
+# Title
+
+"This is NeuPL, or Neural Population Learning, published at ICLR 2022 by researchers at University College London and DeepMind. Learning to play strategy games like StarCraft or poker requires discovering a whole population of diverse policies, not just one. The usual recipe grows this population by iteratively training a fresh policy to beat the previous ones, but in real games that approach wastes compute relearning basic skills at every step and produces under-trained policies when budgets run out. NeuPL solves both problems by representing the entire population inside a single conditional neural network, so skills transfer freely across policies while still enjoying convergence guarantees."

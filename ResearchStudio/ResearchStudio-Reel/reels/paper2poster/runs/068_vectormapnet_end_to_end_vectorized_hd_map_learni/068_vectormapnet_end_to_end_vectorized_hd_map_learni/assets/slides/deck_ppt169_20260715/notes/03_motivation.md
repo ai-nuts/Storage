@@ -1,0 +1,1 @@
+The authors argue mapping should happen online, from the car's own sensors, avoiding the annotation burden and localization errors, and the model should output the final representation directly. Prior methods rasterize then vectorize with a hand-designed step; VectorMapNet removes that detour and predicts geometry end to end.

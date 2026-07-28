@@ -1,0 +1,3 @@
+# Title
+
+The ocean absorbs a large share of humanity's carbon emissions, yet our official picture of how much it takes up always lags reality by about a year. This work introduces Carbon Monitor Ocean, or CMO-NRT, a near-real-time, monthly, gridded dataset of global surface ocean fugacity of CO2 and air-sea CO2 flux. By using convolutional neural networks and semi-supervised learning to update the estimates from ten ocean biogeochemical models and eight data products, the authors extend the global carbon budget to the present month, giving scientists and policymakers a far more timely view of the ocean carbon sink.

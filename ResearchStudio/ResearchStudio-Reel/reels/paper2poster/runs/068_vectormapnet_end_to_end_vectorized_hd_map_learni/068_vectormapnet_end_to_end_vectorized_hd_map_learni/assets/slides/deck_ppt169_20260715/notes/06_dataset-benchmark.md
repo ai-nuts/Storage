@@ -1,0 +1,1 @@
+VectorMapNet is evaluated on nuScenes and Argoverse2. Following HDMapNet, predicted polylines are compared to ground truth for crosswalks, lane dividers, and road boundaries. It reports Chamfer-distance average precision and a new Fréchet-distance AP that respects vertex order, plus 3D evaluation on Argoverse2.

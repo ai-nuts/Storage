@@ -1,0 +1,1 @@
+The takeaway: HD mapping needs no rasterize-then-vectorize detour. Treating mapping as detection plus autoregressive polyline generation, VectorMapNet produces directional vector maps directly from sensors, beats rasterized pipelines by double digits, and even extends to centerlines with no architectural change.

@@ -1,0 +1,55 @@
+---
+title: Near-real-time monitoring of global ocean carbon sink
+authors: Piyu Ke¹²³, Xiaofan Gui³, Wei Cao³, Dezhi Wang⁴, Ce Hou⁵⁶, Lixing Wang¹, Xuanren Song¹, Yun Li⁷, Biqing Zhu⁸, Jiang Bian³, Stephen Sitch², Philippe Ciais⁹¹⁰, Pierre Friedlingstein², Zhu Liu¹¹¹
+institutes: ¹Tsinghua University; ²University of Exeter; ³Microsoft Research; ⁴Lanzhou University; ⁵Hong Kong University of Science and Technology; ⁶Peking University; ⁷KU Leuven; ⁸International Institute for Applied Systems Analysis (IIASA); ⁹Laboratoire des Sciences du Climat et de l'Environnement (LSCE); ¹⁰The Cyprus Institute; ¹¹The University of Hong Kong
+venue: ICLR 2024
+paper_url: https://arxiv.org/abs/2312.01637
+code_url: https://github.com/kepiyu/CMO-NRT
+title_audio_script: The ocean absorbs a large share of humanity's carbon emissions, yet our official picture of how much it takes up always lags reality by about a year. This work introduces Carbon Monitor Ocean, or CMO-NRT, a near-real-time, monthly, gridded dataset of global surface ocean fugacity of CO2 and air-sea CO2 flux. By using convolutional neural networks and semi-supervised learning to update the estimates from ten ocean biogeochemical models and eight data products, the authors extend the global carbon budget to the present month, giving scientists and policymakers a far more timely view of the ocean carbon sink.
+---
+
+## Problem
+**Necessary:** Official estimates of the global ocean carbon sink from the annual Global Carbon Budget lag actual conditions by roughly one year, so recent changes in ocean CO2 uptake cannot be monitored in time.
+**Additional:** The delay stems from the computational cost of ocean biogeochemical models and from the roughly one-year lag of the underlying SOCAT surface-ocean CO2 observations that data products depend on.
+**Audio script:** The ocean is one of the largest buffers against climate change, soaking up a big fraction of the carbon dioxide we emit. But our best official accounting of how much it absorbs, the annual Global Carbon Budget, always trails reality by about a year. That means when the ocean's uptake shifts, we simply cannot see it until long after the fact. This lag is baked in: the biogeochemical models are computationally heavy, and the surface-ocean observations they rely on are themselves delayed by roughly a year.
+
+## Motivation
+**Necessary:** The global stocktake under the Paris Agreement and intensifying climate mitigation efforts demand accurate ocean carbon-sink data with much lower latency than a one-year delay allows.
+**Additional:** Existing fCO2 and air-sea flux databases (GOBMs, data products) are geographically detailed but always historical, leaving a gap for timely, near-present monitoring of the sink.
+**Audio script:** As countries move through the global stocktake under the Paris Agreement, they need to know where the carbon is going right now, not a year ago. The existing databases of ocean carbon fluxes are detailed and trustworthy, but they are always looking backward in time. What is missing is a way to bring that same rigor up to the present month, so that policymakers and scientists can respond to changes in the ocean sink as they happen.
+
+## Contribution
+**Necessary:** The paper presents Carbon Monitor Ocean (CMO-NRT), a near-real-time, monthly grid-based dataset of global surface ocean fCO2 and air-sea CO2 flux, and the deep-learning framework that produces it.
+**Additional:** It updates the 10 GOBMs and 8 data products of the Global Carbon Budget 2022 to a near-real-time framework, releases the data publicly on Figshare and at carbonsink.microsoft.com, and provides open code.
+**Audio script:** The core contribution is Carbon Monitor Ocean, or CMO-NRT: a near-real-time, monthly, gridded dataset of global surface ocean carbon dioxide fugacity and air-sea flux, together with the machine-learning framework that generates it. Rather than replace the trusted community models, it updates all ten ocean biogeochemical models and eight data products from the Global Carbon Budget 2022 into a near-real-time framework. The dataset and the code are released openly, on Figshare and on the project website.
+
+## Method
+**Necessary:** A CNN-plus-linear model is trained with semi-supervised learning to learn the non-linear relationship between GOBM/data-product estimates and observed predictors (year, month, latitude, longitude, and nine environmental factors such as SST, ICE, CHL, MLD, CO2, SSS, SSH, SLP, wind). Global 180×360 grids are cut into 18×18 patches; a supervised RMSE loss on labeled data is combined with an unsupervised consistency loss between weakly (10% features masked) and strongly (30% masked) augmented predictions.
+**Additional:** Predictions are ensembled via K-fold cross-validation; near-real-time xCO2 is extended by a separate model achieving a test RMSE of 1.74 (~0.5% error). The CNN stacks hidden dimensions 9→64→64 and linear layers 64→64→1 with GELU activation and dropout p=0.25.
+**Key equation:** `$L = w\,L_u + L_s,\quad L_s = \mathrm{RMSE}(y,\hat{y}),\quad L_u = \mathrm{RMSE}(\hat{y}_{\text{weak}},\hat{y}_{\text{strong}})$`
+**Audio script:** The method treats each biogeochemical model or data product as a target that a neural network learns to reproduce from observable predictors: year, month, latitude, longitude, and nine environmental variables like sea-surface temperature, salinity, chlorophyll and wind. Global grids are cut into small eighteen-by-eighteen patches and fed through stacked convolutional and linear layers. The clever part is semi-supervised learning: alongside a standard supervised error on labeled points, the model adds an unsupervised consistency loss that forces its predictions to agree when ten percent versus thirty percent of the input features are masked. Combining the two losses makes the model markedly more stable.
+
+## Dataset / Benchmark
+**Necessary:** CMO-NRT provides monthly gridded global surface-ocean fCO2 and air-sea CO2 flux from January 2022 to July 2023, derived from the 10 GOBMs and 8 data products of the Global Carbon Budget 2022.
+**Additional:** Inputs include ESA GlobColour chlorophyll-a, sea-surface temperature, sea ice, mixed-layer depth, salinity, sea-surface height, sea-level pressure and wind; the dataset is released on Figshare (doi:10.6084/m9.figshare.24658494) and updated on the project website.
+**Audio script:** The resulting dataset delivers monthly, gridded maps of global surface-ocean carbon dioxide fugacity and air-sea flux, spanning January 2022 through July 2023, built by updating the ten ocean biogeochemical models and eight data products of the Global Carbon Budget 2022. Its inputs draw on satellite and reanalysis products for chlorophyll, temperature, sea ice, mixed-layer depth, salinity, sea-surface height, pressure and wind, and the whole dataset is published openly on Figshare and refreshed on the project website.
+
+## Key Result
+**Necessary:** Validating on held-out 2020-2021 data, CMO-NRT predictions match the original GOBM and data-product outputs closely, with most per-model correlations exceeding R²=0.9 and global-aggregate monthly fCO2 correlations mostly above R²=0.85.
+**Additional:** For global monthly averages, predicted values were only slightly higher than originals, with most differences under 3 µatm, and GOBMs showed more stable, tightly clustered agreement than data products.
+**Audio script:** To test the approach, the authors held out the most recent two years of every model and product, trained only on earlier data, and then predicted the withheld period. The predictions track the originals remarkably well: for most of the ten models and eight products, the correlation exceeds an R-squared of point nine, and even the global monthly aggregates mostly stay above point eight five. On global averages the predictions run just slightly high, with most differences smaller than three microatmospheres.
+
+## Ablation Study
+**Necessary:** Per-model evaluation shows GOBMs achieve higher and more consistent skill (e.g., MRI-ESM2-1 R²=0.97, CESM2 R²=0.96) than several data products, where occasional points deviate strongly from the fit line (e.g., UOEX-Watson R²=0.80, MPI-SOMFFN R²=0.53 in global-average comparison).
+**Additional:** Spatial-difference maps confirm agreement is largely uniform, with the largest prediction-original discrepancies concentrated in the Arctic Ocean and the equatorial Pacific.
+**Audio script:** Looking model by model reveals a clear pattern: the biogeochemical models are reproduced most faithfully and consistently, with several exceeding an R-squared of point nine five, while a few data products are noisier and occasionally scatter away from the fit line. Spatial maps of the differences confirm that agreement is broadly uniform across the globe, with the largest residual gaps concentrated in the Arctic Ocean and the equatorial Pacific.
+
+## Headline Numbers
+**Necessary:** Reduces the ~1-year reporting latency of the ocean carbon sink to near-real-time (monthly), covering January 2022-July 2023; correlation R² > 0.9 for most of the 10 GOBMs and 8 data products; global-aggregate R² > 0.85; global monthly fCO2 differences mostly < 3 µatm; near-real-time xCO2 model RMSE 1.74 (~0.5%).
+**Additional:** 18 source estimates (10 GOBMs + 8 data products) updated; 180×360 global grid processed as 18×18 patches; 9 environmental predictors.
+**Audio script:** A few numbers capture the impact. The method collapses the roughly one-year reporting delay down to monthly, near-real-time coverage, here spanning January 2022 through July 2023. Validation correlations exceed an R-squared of point nine for most of the eighteen source estimates, global aggregates stay above point eight five, and global monthly differences are mostly under three microatmospheres. Even the auxiliary near-real-time atmospheric carbon dioxide model achieves a root-mean-square error of just one point seven four, about a half-percent error.
+
+## Takeaway
+**Necessary:** By using CNNs and semi-supervised learning to update biogeochemical models and data products, CMO-NRT turns the once year-delayed global ocean carbon sink into a near-real-time, monthly, gridded monitor.
+**Additional:** This gives scientists and policymakers a timelier, spatially detailed constraint on ocean CO2 uptake for the global carbon budget and climate-response decisions.
+**Audio script:** The takeaway is simple: by pairing convolutional networks with semi-supervised learning to update trusted models and data products, Carbon Monitor Ocean turns a once year-delayed picture of the global ocean carbon sink into a near-real-time, monthly, gridded monitor. That gives scientists and policymakers a far timelier and spatially detailed constraint on how much carbon the ocean is taking up, right when they need it for the carbon budget and climate decisions.

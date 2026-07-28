@@ -1,0 +1,3 @@
+# Title
+
+How robust can any classifier possibly be against an adversary that perturbs inputs at test time? This paper answers that question for the multi-class setting. The authors derive achievable information-theoretic lower bounds on the 0-1 loss of the best possible classifier under a test-time attacker, for any discrete dataset. Their framework builds a conflict hypergraph from the data and the attacker's constraints, then solves a linear program whose optimum is the lowest loss any classifier can attain. Because the exact problem is often too large to solve, they introduce efficient bounds that pin down the range of the optimal loss, and use them to reveal a striking gap between today's adversarially trained models and what is theoretically achievable.

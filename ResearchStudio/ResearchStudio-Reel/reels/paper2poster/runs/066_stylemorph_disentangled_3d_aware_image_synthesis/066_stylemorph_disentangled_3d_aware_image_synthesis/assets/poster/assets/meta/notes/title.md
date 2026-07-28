@@ -1,0 +1,3 @@
+# Title
+
+StyleMorph is a 3D-aware generative model that pulls apart the four things that make an image what it is: the object's 3D shape, the camera pose, the object's appearance, and the background. It does this by learning a 3D morphable model from nothing but ordinary 2D photos, with no 3D scans, no pose labels, and no template supplied by hand. The trick is to morph a single canonical 3D template and render its coordinates into a purely geometric 2D map, which then conditions a StyleGAN renderer for photorealistic synthesis. On faces, cats, dogs, and wild animals, StyleMorph matches state-of-the-art image quality while giving you independent, fine-grained control over every factor of variation.

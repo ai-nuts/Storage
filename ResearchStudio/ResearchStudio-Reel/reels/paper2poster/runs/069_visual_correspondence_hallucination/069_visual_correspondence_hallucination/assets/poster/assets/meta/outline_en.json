@@ -1,0 +1,161 @@
+{
+  "title": "ICLR 2022: A Network That Hallucinates the Matches It Cannot See",
+  "subtitle": "Germain, Lepetit, and Bourmaud introduce NeurHal, which turns occluded and out-of-frame correspondents from noise to be discarded into signal to be predicted",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Establishing correspondences between two overlapping images is a foundational step in computer vision, underpinning everything from visual localization to 3D reconstruction. Yet both classical and deep local-feature matchers share an unspoken assumption: a keypoint can only be “matched” if it is visible in both images. The moment it is hidden behind foreground clutter, or simply falls outside the field of view of the second image, these methods have nothing to say and quietly discard those regions as noise."
+    },
+    {
+      "type": "paragraph",
+      "text": "That assumption is exactly where things break down. Modern localization leans on keypoint matches, and when two images share little overlap, most points are either occluded or out of frame, so matching collapses. Humans do not give up so easily. Faced with a point they cannot see, people reason about the geometry of the scene and infer where the match ought to be. Classical vision uses geometric reasoning too, but almost always after the fact, wielding models like epipolar geometry to reject bad matches. No prior method actually predicts correspondences at locations that are not covisible across the two views."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICLR 2022 paper goes straight at that gap. The authors introduce the task of visual correspondence hallucination, along with a network called NeurHal. Given a pair of overlapping source and target images and a set of keypoints in the source, NeurHal outputs, for every keypoint, a probability distribution over its correspondent’s location in the target image — whether that location is visible, occluded, or entirely beyond the target frame."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. Three flavors of correspondence hallucination. The top row shows source images with a small set of keypoints; the bottom row shows the probability distributions NeurHal predicts in the target image. A red circle marks a visible correspondent that can simply be identified, a red plus marks an occluded point that must be inpainted, and a red cross marks a point beyond the target’s borders that must be outpainted. All three pairs come from scenes unseen during training.",
+      "width_inches": 4.9
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2106.09711 (arXiv:2106.09711, ICLR 2022). Authors: Hugo Germain, Vincent Lepetit, and Guillaume Bourmaud."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "When matching runs out of pixels"
+    },
+    {
+      "type": "paragraph",
+      "text": "It helps to break the problem into three sub-tasks, which the authors name explicitly: identifying (the correspondent is visible in the target), inpainting (the correspondent is occluded by foreground), and outpainting (the correspondent lies outside the target’s field of view). Conventional matchers can only ever handle the first, because they search for the most similar descriptor within the target’s pixel grid: an occluded point has no matching appearance, and an out-of-frame point is not even inside the search region."
+    },
+    {
+      "type": "paragraph",
+      "text": "NeurHal aims to solve all three with a single network. It is trained on the indoor dataset ScanNet and also tested on NYU Depth; outdoors, it is trained on MegaDepth and tested on ETH-3D. Crucially, every evaluation uses scenes never seen during training, so the numbers measure genuine generalization rather than memorization of the training environments."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "How NeurHal hallucinates"
+    },
+    {
+      "type": "paragraph",
+      "text": "The architecture reads left to right in Figure 2, from the two input images to a set of per-keypoint correspondence maps."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Overview of NeurHal. On the left, a siamese backbone turns the source and target images into dense descriptor maps (the target map is padded outward with a learnable vector λ). A cross-attention backbone in the middle lets the two communicate, and on the right each keypoint feature is convolved over the target features and passed through a 2D softmax to yield a correspondence map.",
+      "width_inches": 6.0
+    },
+    {
+      "type": "paragraph",
+      "text": "In detail, a siamese convolutional backbone first encodes both images into dense descriptor maps. To give locations beyond the frame something to match against, the target descriptor map is padded outward with a learnable vector λ, effectively initializing descriptors past the image borders. A cross-attention backbone with positional encoding then lets the source and target descriptors exchange information — and this is precisely what allows the network to produce peaked distributions for occluded and out-of-frame points. Finally, each keypoint’s feature is convolved over the target features with a 1×1 convolution and passed through a 2D softmax to produce one correspondence map."
+    },
+    {
+      "type": "paragraph",
+      "text": "Training simply minimizes a sum of Neural Reprojection Error (NRE) terms — the negative log-likelihood of the true reprojected location — optimized with SGD and early stopping. The procedure assumes nothing about visibility and needs no labels marking points as visible, occluded, or out of frame; the network only ever emits correspondence maps. To emphasize geometry over texture detail, the maps are kept deliberately low-resolution: with an effective stride of 8 and an output ratio γ=50%, a 640×480 target yields a 160×120 map."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Can it really imagine the match?"
+    },
+    {
+      "type": "paragraph",
+      "text": "The paper’s first research question is whether NeurHal can genuinely hallucinate unseen correspondents on scenes it never trained on. The capability table below gives a qualitative answer — the paper quantifies this with precision curves; here we only ask what each method can and cannot do."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. What NeurHal and mainstream local-feature matchers can do on the three correspondence tasks.",
+      "headers": [
+        "Correspondence task",
+        "Mainstream matchers (LoFTR, DRC-Net, S2DNet)",
+        "NeurHal"
+      ],
+      "rows": [
+        [
+          "Identify (visible)",
+          "Yes",
+          "Yes"
+        ],
+        [
+          "Inpaint (occluded)",
+          "Weak",
+          "Yes"
+        ],
+        [
+          "Outpaint (out of frame)",
+          "No",
+          "Yes"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "The pattern is clear. Everyone can identify visible points; on inpainting, methods like LoFTR, DRC-Net, and S2DNet are weak; and on outpainting they fail almost entirely — because they only ever search inside the target’s borders and never place a correspondent beyond the frame. NeurHal, by contrast, produces predictions concentrated near the true location in all three cases. Figure 5 shows this ability directly on image pairs from scenes held out at training time."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "caption": "Figure 5. Qualitative inpainting and outpainting results. The top row shows outpainting examples, the bottom row inpainting examples. Each group runs, left to right: the source image with a keypoint (red dot), the target image, and the (negative-log) correspondence map predicted by NeurHal; the dashed blue rectangle marks the target’s true borders and the red circle marks the ground-truth correspondent. Even when the answer lies outside the frame, the probability mass concentrates on the correct side of the border.",
+      "width_inches": 4.9
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Hallucinating matches makes camera pose more robust"
+    },
+    {
+      "type": "paragraph",
+      "text": "What is this ability good for? The authors wire it into absolute camera pose estimation, a linchpin of visual localization. On 2500 held-out ScanNet source/target pairs, they measure how often the pose is estimated correctly (rotation error < 20°, translation error < 1.5 m) as a function of the image pair’s visual overlap."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure7.png",
+      "caption": "Figure 7. Absolute camera pose experiment on ScanNet. The horizontal axis is the maximum visual overlap of an image pair; the vertical axis is the fraction of poses estimated correctly. The green curve is NeurHal, sitting well above every competing local-feature matcher — especially in the hard, low-overlap regime where most correspondents are not visible.",
+      "width_inches": 3.9
+    },
+    {
+      "type": "paragraph",
+      "text": "The gap is widest exactly where the two images barely overlap and most correspondents fall outside the field of view — and NeurHal is the only method able to outpaint those points. In other words, the ability to imagine correspondents beyond the frame is what decides success on low-overlap pairs."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Which task actually does the work"
+    },
+    {
+      "type": "paragraph",
+      "text": "So which of the three tasks buys this robustness? An ablation on ScanNet isolates the contribution of identifying, inpainting, and outpainting one at a time."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure6.png",
+      "caption": "Figure 6. Ablation on ScanNet. The dark curve is the full NeurHal trained on all three tasks — identifying, inpainting, and outpainting. Dropping the outpainting task (the lighter curves) clearly lowers pose accuracy in the low-overlap regime, whereas adding inpainting contributes far less.",
+      "width_inches": 4.6
+    },
+    {
+      "type": "paragraph",
+      "text": "The verdict: training on all three tasks together works best, and the outpainting task is what actually opens the gap — in low-overlap scenes, where most correspondents fall outside the frame, it very nearly decides the outcome. Adding inpainting, by contrast, brings only a modest extra benefit to pose estimation. That squares with intuition: the harder the low-overlap case, the more you need to place correspondents beyond the visible image."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "The message is simple but powerful: a single network can learn to hallucinate keypoint correspondences — visible, occluded, or entirely out of frame — and that ability makes absolute camera pose estimation markedly more robust on low-overlap image pairs. Put differently, NeurHal reframes non-covisible regions not as noise to be thrown away but as signal to be predicted through learned geometric reasoning."
+    },
+    {
+      "type": "paragraph",
+      "text": "It is worth being honest about the limits. NeurHal outputs deliberately low-resolution distributions that favor geometrically plausible location over pixel-level precision, and outpainted points still carry substantial uncertainty — often the model can only push the probability mass to the correct region. But as a first step toward turning correspondence hallucination into a learnable task in its own right, it makes the case cleanly: teaching a network to imagine what it cannot see is worth doing."
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Title
+
+Given two partially overlapping images and a keypoint in the first, where does its match land in the second? Local feature matching only answers when the point is visible. But humans can also guess, or hallucinate, where an occluded or out of frame point should be, using geometric reasoning. This paper, Visual Correspondence Hallucination from ICLR 2022, trains a single network called NeurHal to output a peaked probability distribution over the correspondent's location whether it is visible, occluded, or outside the field of view, and shows this makes absolute camera pose estimation far more robust.

@@ -1,0 +1,1 @@
+Two ablations stand out. Representing each element by a bounding box with two keypoints beats start-middle-end and extreme-point alternatives by two Fréchet and over seven Chamfer points. Two-stage training, teacher forcing then fine-tuning on predicted keypoints, adds about seven mAP for camera and over eight for fusion.

@@ -1,0 +1,1 @@
+Self-driving cars need HD maps marking lanes, boundaries, and crosswalks. Today these are annotated by hand, which is costly and does not scale. Learning methods instead predict a dense pixel grid, but a grid carries no individual elements and needs brittle post-processing before a planner can use it.

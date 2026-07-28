@@ -1,0 +1,3 @@
+# Title
+
+What is actually essential for offline reinforcement learning done via supervised learning? This ICLR 2022 paper by Scott Emmons, Benjamin Eysenbach, Ilya Kostrikov, and Sergey Levine strips reinforcement learning via supervised learning, or RvS, down to its bare essentials. Their surprising finding is that a plain two-layer feedforward network, trained simply to maximize likelihood, matches state-of-the-art results from far more complex methods built on temporal-difference learning or on Transformer sequence models. The two things that really matter, they show, are choosing the model's capacity carefully and choosing what to condition on, goals or rewards. Everything else turns out to be optional.

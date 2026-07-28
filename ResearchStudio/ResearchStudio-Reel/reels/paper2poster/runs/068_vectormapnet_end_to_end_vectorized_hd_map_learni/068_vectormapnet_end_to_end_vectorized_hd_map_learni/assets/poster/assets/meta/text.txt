@@ -1,0 +1,1137 @@
+                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+                       Yicheng Liu 1 2 Tianyuan Yuan 2 Yue Wang 3 Yilun Wang 4 Hang Zhao 2 1
+
+
+                           Abstract                                        et al., 2020). However, these methods face scalability issues
+                                                                           due to their heavy reliance on human labor for annotating
+     Autonomous driving systems require High-                              HD maps. Additionally, they necessitate precise localization
+     Definition (HD) semantic maps to navigate                             of the ego-vehicle to derive local maps from the global one,
+     around urban roads. Existing solutions approach                       a process that could introduce meter-level errors.
+     the semantic mapping problem by offline manual
+     annotation, which suffers from serious scalability                    In contrast, our focus lies in developing a learning-based
+     issues. Recent learning-based methods produce                         approach for online HD semantic map learning. The aim is
+     dense rasterized segmentation predictions to con-                     to use onboard sensors, including LiDARs and cameras, to
+     struct maps. However, these predictions do not                        estimate map elements on-the-fly. This methodology avoids
+     include instance information of individual map                        the need for localization, allowing for prompt updates. Fur-
+     elements and require heuristic post-processing                        thermore, learning-based methods can generate uncertainty
+     to obtain vectorized maps. To tackle these chal-                      or confidence indicators that downstream modules, such as
+     lenges, we introduce an end-to-end vectorized                         motion forecasting and planning, can utilize to offset im-
+     HD map learning pipeline, termed VectorMap-                           perfect perception. These methods can leverage increasing
+     Net. VectorMapNet takes onboard sensor obser-                         data and model size, promptly reflect current conditions,
+     vations and predicts a sparse set of polylines in                     and generalize from annotated maps to under-annotated or
+     the bird’s-eye view. This pipeline can explic-                        even non-annotated areas (please refer to Figure 6).
+     itly model the spatial relation between map el-                       Most of HD semantic map learning methods (Li et al., 2021;
+     ements and generate vectorized maps that are                          Philion & Fidler, 2020; Roddick & Cipolla, 2020; Zhou &
+     friendly to downstream autonomous driving tasks.                      Krähenbühl, 2022) consider the task as a semantic segmen-
+     Extensive experiments show that VectorMapNet                          tation problem in bird’s-eye view (BEV), which rasterizes
+     achieve strong map learning performance on both                       map elements into pixels and assigns each pixel with a
+     nuScenes and Argoverse2 dataset, surpassing pre-                      class label. This formulation makes it straightforward to
+     vious state-of-the-art methods by 14.2 mAP and                        leverage fully convolutional networks. However, rasterized
+     14.6mAP. Qualitatively, VectorMapNet is capable                       maps are not an ideal map representation for autonomous
+     of generating comprehensive maps and captur-                          driving, for three reasons. First, rasterized maps lack in-
+     ing fine-grained details of road geometry. To the                     stance information necessary to distinguish map elements
+     best of our knowledge, VectorMapNet is the first                      with the same class label but different semantics, e.g. left
+     work designed towards end-to-end vectorized map                       boundary and right boundary. Second, it is hard to enforce
+     learning from onboard observations.                                   spatial consistency within the predicted rasterized maps,
+                                                                           e.g. nearby pixels might have contradicted semantics or ge-
+                                                                           ometries. Third, 2D rasterized maps are incompatible with
+1. Introduction                                                            most autonomous driving systems which consume instance-
+                                                                           level 2D/3D vectorized maps for motion forecasting and
+Autonomous driving systems require an understanding of
+                                                                           planning.
+map elements on the road, including lanes, pedestrian cross-
+ing, and traffic signs, to navigate around the world. Such                 To alleviate these issues and produce vectorized outputs,
+map elements are typically provided by pre-annotated High-                 HDMapNet (Li et al., 2021) generates semantic, instance,
+Definition (HD) semantic maps in existing pipelines (Rong                  and directional maps and vectorizes these three maps
+  1
+                                                                           with a hand-designed post-processing algorithm. However,
+    Shanghai Qi Zhi Institute 2 Tsinghua University 3 MIT 4 Li Auto.       HDMapNet still relies on the rasterized map predictions,
+Correspondence to: Hang Zhao <ZhaoHang0124@gmail.com>.
+                                                                           and its heuristic post-processing step restricts the model’s
+Proceedings of the 40 th International Conference on Machine               scalability and performance.
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright
+2023 by the author(s).                                                     In this paper, we propose an end-to-end vectorized HD
+
+                                                                       1
+                                      VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+
+
+                                                                    VectorMapNet
+
+                                                   Project                   Detect         Generate
+
+
+
+                                                                                                                                    Drivable Area
+                                                                                                                                    Boundary
+                                                                                                                                    Ped Crossing
+                                                             BEV Features      Element Keypoints       Polylines                    Divider
+
+
+             Onboard Sensor Data                                                                                   Vectorized Map
+
+
+Figure 1: An overview of VectorMapNet. Sensor data is encoded to BEV features in the same coordinate as map elements. VectorMapNet
+detects the locations of map elements from BEV features by leveraging element queries. The vectorized HD map is built upon a sparse set
+of polylines that are generated from the detection results. Since our polylines are directional, we can infer drivable and walkable area of a
+map.
+
+map learning model named VectorMapNet, an end-to-end                        • We adapt detection transformer (DETR) models to locate
+framework that does not involve dense semantic pixels or so-                  deformable elements within a 3D space. Recognizing that
+phisticated post-processing steps. Instead, it represents map                 prevalent centerpoint-based feature extraction methods
+elements as a set of polylines closely related to downstream                  fall short when dealing with map elements of varying sizes
+tasks, e.g. motion forecasting (Gao et al., 2020). Therefore,                 and shapes, we propose an innovative solution. Our novel
+the mapping problem boils down to predicting a sparse set                     method overcomes these limitations, delivering state-of-
+of polylines from sensor observations. Specifically, we pose                  the-art performance in online semantic HD map learning
+it as a detection problem and leverage recent set detection                   tasks.
+and sequence generation methods. First, VectorMapNet ag-
+gregates features generated from different modalities (e.g.
+camera images and LiDAR) into a common BEV feature
+                                                                            2. Related Works
+space. Then, it detects map element locations based on
+learnable element queries and BEV features. Finally, we                     Semantic map learning. Annotating semantic maps attracts
+decode each element query into a polyline. An overview of                   plenty of interests thanks to autonomous driving. Recently,
+VectorMapNet is shown in Figure 1.                                          semantic map learning is formulated as a semantic segmen-
+Our experiments show that VectorMapNet achieves state-of-                   tation problem (Mattyus et al., 2015) and is solved by using
+the-art performance on the public nuScenes dataset (Caesar                  aerial images (Máttyus et al., 2016), LiDAR points (Yang
+et al., 2020) and Argoverse2 (Wilson et al., 2021), outper-                 et al., 2018), and HD panorama (Wang et al., 2016). The
+forming HDMapNet and another baseline by at least 14.2                      crowdsourcing tags (Wang et al., 2015) are used to improve
+mAP. Qualitatively, VectorMapNet builds a more compre-                      the performance of fine-grained segmentation. Instead of
+hensive map than previous works and can capture fine de-                    using offline data, recent works focus on understanding
+tails, e.g. jagged boundaries. Furthermore, we feed our                     BEV semantics from onboard camera images (Lu et al.,
+predicted vectorized HD map into a downstream motion                        2019; Yang et al., 2021), and videos (Can et al., 2020).
+forecasting module, demonstrating the predicted map’s com-                  Only using onboard sensors as model input is particularly
+patibility and effectiveness. To summarize, the contributions               challenging as the inputs and target map lie in different
+of the paper are as follows:                                                coordinate systems. Recently, several cross-view learning
+                                                                            approaches (Philion & Fidler, 2020; Pan et al., 2020; Li
+• We present VectorMapNet, an end-to-end mapping ap-                        et al., 2021; Zhou & Krähenbühl, 2022; Wang et al., 2022;
+  proach that eliminates the need for map rasterization and                 Chen et al., 2022) leverage the geometric structure of scenes
+  post-processing by predicting vectorized outputs directly                 to mitigate the mismatch between sensor inputs and BEV
+  from sensor observations.                                                 representations. Some methods (Casas et al., 2021; Sadat
+• We utilize polyline, a flexible primitive with variable                   et al., 2020) use pixel-level semantic maps to solve down-
+  lengths and encoded order, to accommodate the heteroge-                   stream tasks, but the entire downstream pipeline needs to
+  neous nature of map elements. This approach effectively                   be redesigned to accommodate these rasterized map inputs.
+  formulates the construction of a polyline map as a de-                    Beyond pixel-level semantic maps, our work extracts a con-
+  tection issue, thereby introducing a new strategy to the                  sistent vectorized map around ego-vehicle from surrounding
+  mapping paradigm.                                                         cameras or LiDARs, which suits for existing downstream
+
+                                                                      2
+                                               VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+                                                     Map Element                                                                  Polyline
+                                                      Detector                                                                   Generator
+                                                                                                Element                                                                                         Polyline
+          BEV Features ℱ!"# Element  Query
+                                                                                                                                                                                                  ()&*
+                                𝑞$%&%'                                                         Keypoints 𝐴!                                                                                      V$                              Drivable Area
+                                                                                                                                                                                                                                 Boundary
+                                                                                                                                                                                                                                 Ped. Crossing
+                                                                                                          Boundary
+                                                                                                                                                                                                                                 Divider
+                                                                                                                   y)
+               IPM                                                                                             (x,
+
+
+
+
+                                                                                                                                    Transformer Decoder Layer
+
+
+
+                                                                                                                                                                Transformer Decoder Layer
+                                                                                                               (x, y)
+
+
+
+
+                                                      Transformer
+                                                                                                                                                                                                                 Legend of Detector
+
+
+
+
+                                                        Decoder
+                                                                                                                                                                                                          $%&'
+                                                                                                                                                                                            (x, y)
+                                                                                                                                                                                                         𝜈!,#         Keypoint 𝑎$,,
+                                                                                                                                                                                                                                        -(
+        CNNs                PointPillars
+                                                                                                                                                                                            1                     Keypoint Embedding 𝑞$,,
+                                                                                                                                                                                                    y)
+
+
+
+
+                                                                                Prediction
+                                                                                                         Tokenize & Lookup   1                                                              1
+                                                                                                                                                                                                (x,                     Element Query 𝑞!"#"$
+
+
+
+
+                                                                                  Head
+                                                                                                                             1                                                              2
+                     Voxelization                                                                                            2                                                              2
+                                                                                                                             2                                                              3                    Legend of Generator
+                                                                                                                             3                                                              3
+                                                                                                                                                                                            v
+                                                                                              Element
+                                                                                                                             3                                                              4                         Label Embedding
+                                                                                             Keypoints                       4
+                                                                                                                                                                                            4
+                                                                                                                                                                                            4
+                                                                     Keypoint                                                                                                                                        Element Keypoint
+                                           Element Query            Embedding                                                4                                                                       EOS                Embedding
+    Multi-camera                                   BEV Features                                                                                                                                                      Polyline Embedding
+                         LiDAR Points                                                                                              BEV Features
+      Images
+        (a). BEV Feature Extractor                  (b). Map Element Detector                                                (c). Polyline Generator
+
+
+Figure 2: The network architecture of VectorMapNet. The top row is the pipeline of VectorMapNet generating polylines from raw sensor
+inputs. The bottom row illustrates detailed structures and inference procedures of three primary components of VectorMapNet: BEV
+feature extractor, map element detector, and polyline generator. Numbers in polyline embeddings indicate predicted vertex indexes.
+
+tasks like motion forecasting (Gao et al., 2020; Zhao et al.,                                            lenging for long-range centerline maps, HDMapGen (Mi
+2020; Liu et al., 2021) without further post-processing.                                                 et al., 2021) views the map as a two-level hierarchy. It pro-
+                                                                                                         duces a global and local graph separately with a hierarchical
+Lane detection. Lane detection aims to separate lane seg-
+                                                                                                         graph RNN. Instead of treating geometric elements as a
+ments from road scenes precisely. Most lane detection al-
+                                                                                                         sequence generation problem, LETR (Xu et al., 2021) mod-
+gorithms (Pan et al., 2018; Neven et al., 2018) use a pixel-
+                                                                                                         els line segment as a detection problem and tackle it with
+level segmentation technique combined with sophisticated
+                                                                                                         a query-based detector. Unlike the above approaches that
+post-processing. Another line of work leverages the prede-
+                                                                                                         focus on single-level geometric modelings, such as scene
+fined proposal to achieve high accuracy and fast inference
+                                                                                                         level (e.g. line segments in an image) or object-level (e.g.
+speed. These methods typically involve handcrafted ele-
+                                                                                                         furniture), VectorMapNet is designed to address both the
+ments such as vanishing points (Lee et al., 2017), polyno-
+                                                                                                         scene level and object level geometric modeling. Specif-
+mial curves (Van Gansbeke et al., 2019), line segments (Li
+                                                                                                         ically, VectorMapNet constructs a map by modeling the
+et al., 2019), and Bézier curves (Feng et al., 2022) to model
+                                                                                                         global relationship between map elements in the scene and
+proposals. In addition to using perspective view cameras as
+                                                                                                         the local geometric details inside each element.
+inputs, (Homayounfar et al., 2018) and (Liang et al., 2019)
+extract lane segments from overhead highway cameras and                                                  Learning vector representations from images. Vec-
+LiDAR imagery with a recurrent neural network. Instead                                                   torMapNet bears some similarities with predicting vector
+of discovering the road’s topology via boundaries detection,                                             graphics from raster images. Several recent works (Car-
+STSU (Can et al., 2021) and LaneGraphNet (Zürn et al.,                                                  lier et al., 2020; Reddy et al., 2021) use different vector
+2021) construct lane graphs from centerline segments that                                                representations to generate vector images. (Ganin et al.,
+are encoded by Bézier curves and line segments, respec-                                                 2021) converts images to CAD, CanvasVAE (Yamaguchi,
+tively. To model complex geometries in the urban envi-                                                   2021) learns vectorized canvas layouts from images, and
+ronment, we leverage polylines to represent all the map                                                  (Liu et al., 2022) generates vectorized stroke primitives from
+elements in perceptual scopes.                                                                           a raster line drawing. The instance segmentation commu-
+                                                                                                         nity has also been concerned with a similar task of detecting
+Geometric data modeling. Another line of work closely re-
+                                                                                                         object contours in a vector form from an image. These meth-
+lated to VectorMapNet is geometric data generation. These
+                                                                                                         ods (Acuna et al., 2018; Liang et al., 2020; Castrejon et al.,
+methods typically treat geometric elements as a sequence,
+                                                                                                         2017; Zorzi et al., 2022; Zhang & Wang, 2019) initialize
+such as primitive parts of furniture (Li et al., 2017; Mo et al.,
+                                                                                                         a contour for every object instance and then refine the ver-
+2019), states of sketch strokes (Ha & Eck, 2017), vertices
+                                                                                                         tex positions of the contour. However, The above methods
+of n-gon mesh (Nash et al., 2020), and parameters of SVG
+                                                                                                         are highly domain-dependent, and it is non-trivial to adapt
+primitives (Carlier et al., 2020). These methods generate
+                                                                                                         them for our task that requires detecting and generating map
+these sequences by leveraging autoregressive models (e.g.
+                                                                                                         elements with different semantics and geometry in the 3D
+Transformer). Since the directly modeling sequence is chal-
+                                                                                                         world.
+
+                                                                                                    3
+                                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+3. VectorMapNet                                                      tonomous driving modules, such as motion forecasting (Gao
+                                                                     et al., 2020).
+Problem Formulation and Challenges. Similar to
+HDMapNet (Li et al., 2021), our task is to vectorize map             VectorMapNet. We introduce VectorMapNet, an end-to-
+elements using data from onboard sensors of autonomous               end model designed to represent a map M with a sparse
+vehicle, such as RGB cameras and/or LiDARs. These map                set of polylines V poly , thus formulating the task as a sparse
+elements include but are not limited to: Road boundaries             set detection problem. In our approach, we convert sensor
+(boundaries of roads separating roads and sidewalks, typi-           data into a canonical Bird’s Eye View (BEV) representa-
+cally irregularly-shaped curves of arbitrary lengths), Lane          tion, F BEV , and model polylines based on this BEV. Given
+dividers (boundaries dividing lanes on the road, usually             the complexity and diversity of map elements’ structural
+straight lines), and Pedestrian crossings (regions with white        and location patterns and relationships, we divide the task
+markings indicating legal pedestrian crossing points, typi-          into three distinct components: (1) A BEV feature extrac-
+cally represented as polygons). While the task is clearly de-        tor (§ 3.2) that lifts various sensor modality inputs into a
+fined, it is fraught with complexities and unique challenges         canonical feature space. (2) A map element detector (§ 3.3)
+when tackling it. (1) The diverse geometric structures of            that locates and classifies all map elements by predicting
+map elements make it difficult to establish a unified geo-           element keypoints A = {Ai ∈ Rk×2 |i = 1, . . . , N } and
+metric representation. (2) The inputs and outputs of the             their class labels L = {li ∈ Z|i = 1, . . . , N }. The def-
+mapping problem are not perfectly aligned. They exist in             inition of element keypoint representation A is described
+different view spaces (e.g. camera data is in perspective            in § 3.3. (3) A polyline generator (§ 3.4) that produces a
+view and map elements are in BEV), and not all map ele-              sequence of ordered polyline vertices which describes the
+ments are fully visible from input sensors. In some extreme          local geometry of each detected map element (Ai , li ). An
+cases, map elements may be completely occluded by vehi-              overview of three components is demonstrated in Figure 2.
+cles. (3) The task requires more than simple vectorization;
+it also necessitates scene understanding because of the com-         3.2. BEV Feature Extractor
+plex geometrical and topological relationships between map
+                                                                     The objective of BEV feature extractor is to lift various
+elements. For instance, map elements may overlap, or two
+                                                                     modality inputs into a canonical feature space and aggre-
+traffic cones connected with a wire might indicate a road
+                                                                     gates and align features these features into a canonical repre-
+boundary.
+                                                                     sentation termed BEV features F BEV ∈ RW ×H×(C1 +C2 )
+                                                                     based on their coordinates, where W and H represent the
+3.1. Method Overview
+                                                                     width and height of the BEV feature, respectively; C1 and
+The challenges above underline the need for a primitive that         C2 represent the output channels of the BEV feature ex-
+effectively represents a variety of geometric structures and         tracted from the two common modalities: surrounding cam-
+a model that is capable of capturing the geometrical and             era images I and LiDAR points P.
+topological relationships from various sensor inputs.                Camera branch. We use ResNet to extract features from
+Polyline representation. The heterogeneous geometry of               images, followed by a feature transformation module from
+map elements calls for a unified vectorized representation.          image space to BEV space. VectorMapNet does not rely on
+We opt to use N polylines V poly = {V1poly , . . . , VNpoly }        certain feature transformation approaches and we opt to use
+as primitives to represent these map elements in a map M.            a simple but popular variant of IPM, which produces BEV
+Each polyline Vipoly = {vi,n ∈ R2 |n = 1, . . . , Nv } is a          features of F IBEV ∈ RW ×H×C1 . The detailed structure of
+collection of Nv ordered vertices vi,n . In practice, we pre-        the image extractor can be found in Appendix C.3.
+process public autonomous driving semantic maps to obtain            LiDAR branch. For LiDAR data P, we use a variant
+a unified polyline representation of map elements: polygons          of PointPillars (Lang et al., 2019) with dynamic voxeliza-
+are represented as closed polylines; curves are converted            tion (Zhou et al., 2020), which divides the 3D space into
+into polylines by applying the Ramer–Douglas–Peucker                 multiple pillars and uses pillar-wise point clouds to learn
+algorithm (Ramer, 1972).                                             pillar-wise feature maps. We denote this feature map in
+Using polylines to represent map elements has three main             BEV as F P BEV ∈ R
+                                                                                         W ×H×C2
+                                                                                                    .
+advantages: (1) HD maps are typically composed of a mix-             For sensor fusion, we obtain the BEV features F BEV ∈
+ture of different geometries, such as points, lines, curves,         RW ×H×(C1 +C2 ) by concatenating F IBEV and F P    BEV , and
+and polygons. Polylines are a flexible primitive that can rep-       then process the concatenated result with a two-layer convo-
+resent these geometric elements effectively. (2) The order           lutional network. An overview of the BEV feature extractor
+of polyline vertices is a natural way to encode the direction        is shown at the bottom-left of Figure 2.
+of map elements, which is vital to driving. (3) The polyline
+representation has been widely used by downstream au-
+
+                                                                 4
+                                     VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+                                                            Top-right                                              Top-most
+                                                                                                  Start
+                                                                        Middle
+                                                                                                                                                  Right-most
+                                                                                                   End          Left-most
+                                   Bottom-left                                                                              Bottom-most
+
+         Polyline                                Bounding Box                          SME                                  Extreme Points
+
+
+Figure 3: Three different keypoint representations are proposed here: Bounding Box (k=2), SME (k=3), and Extreme Points (k=4), where
+k has the same definition in § 3: the number of key points of each keypoint representation. The arrow line indicates the direction of the
+example polyline, and the arrow dash lines indicate the vertices order of keypoint representations.
+
+3.3. Map Element Detector                                                   of Figure 2. The decoder transforms the element queries
+                                                                            using multi-head self-/cross-attention mechanisms. In par-
+After extracting the bird’s-eye view (BEV) features, Vec-
+                                                                            ticular, we use the deformable attention module (Zhu et al.,
+torMapNet have to identify and abstractly represent map
+                                                                            2020) as the decoder’s cross attention module, where each
+elements using these features. We employ a hierarchical
+                                                                            element query has a 2D location grounding. It improves in-
+representation for this purpose, specifically through element
+         Polyline                           Bounding Box                    terpretability
+                                                                                    SME and accelerates training  convergence (Li et al.,
+                                                                                                         Extreme Points
+queries and keypoint queries, enabling us to model the non-
+                                                                            2022).
+local shape of map elements effectively. We leverage a
+variant of transformer set prediction detector (Carion et al.,              The prediction head has two MLPs, which decodes ele-
+                                                                                                                                             kp
+2020) to achieve this goal, as it is a robust detector that elim-           ment queries into element keypoints ai,j = MLPkp (qi,j              )
+inates the need for extra post-processing. Specifically, the                                                         kp           kp
+                                                                            and their class labels li = MLPcls ([qi,1 , . . . , qi,k ]), respec-
+detector represents map elements’ locations and categories                  tively. [·] is a concatenation operator. Each keypoint em-
+by predicting their element keypoints A and class labels L                  bedding qi,jkp
+                                                                                            in the map element detector consists of two
+from the BEV features F BEV .                                               learnable parts. The first parts is a keypoint position embed-
+Element queries. The detector uses learnable element                        ding {ekp         d
+                                                                                     j ∈ R |j = 1, . . . , k}, indicating which position
+queries qielem ∈ Rk×d |i = 1, . . . , Nmax as its inputs, where             in an element keypoint the point belongs to. The second em-
+d represents the hidden embedding size and Nmax is a pre-                   bedding {ep          d
+                                                                                          i ∈ R |i = 1, . . . , Nmax } encodes which map
+set constant, which is much greater than the number of                      element the keypoint belongs to. The keypoint embedding
+                                                                              kp
+map elements N in the scene. The i-th element query                         qi,j is the addition of these two embeddings ep      i + ej .
+                                                                                                                                         kp
+
+                                                            kp
+qielem is composed of k element keypoint embeddings qi,j       :
+             kp
+qielem = {qi,j ∈ Rd |j = 1, . . . , k}. Element queries are                 3.4. Polyline Generator
+similar to object queries used in Detection Transformer                     Upon the approximate position, shape, and category of map
+(DETR) (Carion et al., 2020), where a query represents an                   elements identified by map element detector, the polyline
+object. In our case, an element query represents a map                      generator focuses on the detailed geometry of HD map,
+element.                                                                    which entails calculating variable-length polyline vertices
+Keypoint representations. In object detection problems,                     and their order. Accurate modeling of vertex relationships is
+people use bounding box to abstract object shape. Here we                   crucial - for instance, a white line between two vertices
+use k element keypoints locations Ai = {ai,j ∈ R2 |j =                      often signifies a line connection in the vectorized map.
+1, ..., k} (please refer to Figure 3), to represent the outline             The polyline generator operates as a discrete distribution
+of a map element. However, defining keypoints for map                       p(Vipoly |Ai , li , F fBEV ) over the vertices of each polyline,
+elements is not straightforward due to their diversity. We                  conditioned on the initial layout (i.e., element keypoints
+conduct an ablation study to investigate the performance                    Ai and class label li ) and BEV features. To estimate this
+of different choices in § 4.3. Note that element keypoints                  distribution, we decompose the joint distribution over each
+are different from polyline vertices and the element key-                   polyline Vipoly as a product of a series of conditional ver-
+points are intermediate representations of VectorMapNet                     tex coordinate distributions. In particular, we transform
+that are passed to the polyline generator (§ 3.4) for con-                  each polyline Vipoly = {vi,n ∈ R2 |n = 1, . . . , Nv } into a
+                                                                                                     f
+ditional prediction, and the number of keypoints for each                   flattened sequence {vi,n     ∈ R|n = 1, . . . , 2Nv } by concate-
+type of polyline is fixed and determined by its definition.                 nating coordinates values of polyline vertices and add an
+Polylines are our output representations.                                   additional End of Sequence token (EOS) at the end of each
+                                                                            sequence, and the target distribution turns into:
+Architecture. The overall architecture of the map element
+detector consists of a transformer decoder (Vaswani et al.,
+2017) and a prediction head, as shown at the bottom-middle                                                      Q2Nv
+                                                                             p(Vipoly |Ai , li , F BEV ; θ) =            f     f
+                                                                                                                  n=1 p(vi,n |vi,<n , Ai , li , F BEV ).   (1)
+
+                                                                        5
+                                    VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+
+
+                Camera Image                      Ground Truth              HDMapNet              STSU             VectorMapNet
+
+                                              Boundary       Pedestrian Crossing   Divider       Drivable Area
+
+
+
+Figure 4: Qualitative results generated by VectorMapNet and baselines. We use camera images as inputs for comparisons. The areas
+enclosed by red and blue ellipses show that VectorMapNet can preserve sharp corners, and polyline representations prevent VectorMapNet
+from generating ambiguous self-looping results. The drivable area is inferred from disjoint boundaries.
+
+Following PolyGen (Nash et al., 2020), we use a categorical            dependencies present in map data. Each polyline’s keypoint
+distribution to model the probability of each vertex position          coordinates and class label are tokenized and fed in as the
+given the preceding vertex position. This allows us to model           query inputs of the transformer decoder. Then a sequence
+the complex and irregular shapes of map elements while                 of vertex tokens are fed into the transformer iteratively, inte-
+maintaining the efficiency of discrete distributions. And we           grating BEV features with cross-attention, and decoded as
+model this distribution using an autoregressive network that           polyline vertices. Note that the generator can generate all
+outputs the parameters of a predictive distribution at each            polylines in parallel.
+step for the next vertex coordinate. This predictive distribu-
+                                                                       Vertex embeddings. Following PolyGen (Nash et al., 2020),
+tion is defined over all possible discrete vertex coordinate
+                                                                       we use an addition of three learned embeddings as the em-
+values and EOS.
+                                                                       bedding of each vertex token: Coordinate Embedding, in-
+Vertices as discrete variables. Using discrete distributions           dicating whether the token represents x or y coordinate;
+to model polyline vertices has the advantage of representing           Position Embedding, representing which vertex the token
+arbitrary shapes, i.e., categorical distributions can easily           belongs to; Value Embedding, expressing the token’s quan-
+represent various polylines, such as multi-modal, skewed,              tized coordinate value.
+peaked, or long-tailed, that are commonly seen in our task.
+Thus, we quantize the coordinate values into discrete to-              3.5. Learning
+kens and model each token with a categorical distribution.
+We also conduct an ablation study in Appendix § D.2 to                 We train our model by minimizing the sum of map element
+investigate other choices.                                             detector loss and polyline generator loss:
+
+Architecture. To model these local geometric structures of                                   L = Ldet + Lgen .                     (2)
+polylines, the autoregressive network we choose is Trans-
+former (Vaswani et al., 2017) (see the bottom-right of Fig-            Map element detector loss. Following (Wang et al., 2022;
+ure 2). Transformer architecture has consistently demon-               Zhu et al., 2020), the detector is trained with bipartite
+strated superior performance in conditional sequence gener-            matching loss, thus avoiding post-processing steps like non-
+ation tasks and are highly effective at capturing the vertex           maximum suppression (NMS). We describe the detail of the
+                                                                       map element detector loss Ldet function in Appendix § C.4.
+
+                                                                   6
+                                     VectorMapNet: End-to-end Vectorized HD Map Learning
+
+Polyline generator loss. Polyline generator is trained to
+maximize the log-probability of the polyline vertices. We
+use negative log-likelihood as its loss function:
+                  2N
+               1 Xv           f     f
+  Lgen = −            log p̂(vi,n |vi,<n , Ai , li , F fBEV ), (3)
+              2Nv n=1
+
+           f
+where p̂(vi,n | . . . ) is the conditional probability of discrete
+                        f          f
+coordinate value vi,n       , and vi,<n are ground truth discrete
+coordinate values with index less than n. The default train-                       Ground Truth                    VectorMapNet
+
+ing strategy is teacher forcing, meaning that we use ground
+truth keypoints as generator input. To avoid the exposure                Figure 5: The centerline predictions by VectorMapNet, where the
+                                                                         gray lines are the predicted centerlines.
+bias (Bengio et al., 2015), we further experiment with first
+training with teacher forcing, and then fine-tuning with pre-
+dicted keypoints.                                                        Results on nuScenes. As shown in Table 1, VectorMapNet
+                                                                         outperforms HDMapNet by a large margin under all set-
+4. Experiments                                                           tings (+17.9 mAP in Camera, +9.9 mAP in LiDAR, and
+                                                                         +14.2 mAP in Fusion). Compared to camera-only and
+Experiments protocol. We conduct experiments on the                      LiDAR-only, sensor fusion introduces +4.3 mAP improve-
+nuScenes (Caesar et al., 2020) and Argoverse2 (Wilson                    ment and +11.2 mAP improvement, respectively. As de-
+et al., 2021) dataset. Following HDMapNet (Li et al.,                    scribed in § 3.5, our two stage training strategy further
+2021), we assess the quality of a predicted HD map by com-               boosts the performance of both camera-only and sensor fu-
+paring its components (i.e., polylines) with ground truth.               sion methods by +6.9 mAP and +8.5 mAP, respectively.
+Both HDMapNet and our paper use Chamfer distance for                     STSU is -29.2 mAP lower than VectorMapNet. Since STSU
+polyline matching (Chamfer AP). Additionally, we also in-                treats all map elements as a set of fixed-size segments, we
+troduced another distance metric termed Fréchet distance                hypothesize that ignoring the fine geometry of map elements
+(Fréchet AP), which better measures the distance between                hurts the performance.
+polylines by considering the order of vertices. The defini-
+tions and calculation processes of Chamfer AP and Fréchet               Results on Argoverse2. We further compare HDMapNet
+AP are in § A.2. Additionally, the details of dataset set-               and VectorMapNet on Argoverse2 dataset, shown in Ta-
+tings (§ A.1), implementations (§ C), and additional qualita-            ble 2. Since Argoverse2 provides z-axis annotations, we
+tive results (§ B) are presented in the Appendix as well.                give VectorMapNet results both in 2D and 3D. In many
+                                                                         cases of Argoverse2, the annotated boundaries and divider
+4.1. Comparison with Baselines                                           lines overlap with each other, making it difficult for models
+                                                                         to separate them. It results in a drop in performance of
+The HD semantic map construction is a new problem, and                   both methods, especially in APdivider of HDMapNet (21.7
+there are no established methods to compare with. There-                 APdivider to 5.7 APdivider ) because its rasterized represen-
+fore, we carefully chose two baselines HDMapNet and                      tation fails to handle these cases. In contrast, VectorMapNet
+STSU (Can et al., 2021) that are representative and can effec-           remains competent, showing the advantage of using vector-
+tively compare with VectorMapNet. Specifically: HDMap-                   ized representation to represent overlapping elements.
+Net can provide valuable insights into the effectiveness of
+                                                                         4.2. Qualitative Analysis
+commonly used map segmentation methods for HD seman-
+tic map construction. STSU, a direct map structure learning              Benefits of using polylines as primitives. From visualiza-
+method, can provide valuable insights into its effective-                tions, we find that using polylines as primitives has brought
+ness for HD semantic map construction. Moreover, our                     us two benefits compared with baselines: First, polylines
+baseline comparison also includes the results of HDMap-                  effectively encode the detailed geometries of map elements,
+Net and VectorMapNet using different modalities as inputs,               e.g. the corners of boundaries (see the red ellipses in Fig-
+which demonstrate the impact of different feature extraction             ure 4). Second, polyline representations prevent VectorMap-
+methods on HD semantic map construction. The details                     Net from generating ambiguous results, as it consistently
+of baselines model are described in Appendix § C.5. We                   encodes direction information. In contrast, Rasterized meth-
+report the average precision that uses Chamfer distance as               ods are prone to falsely generating loopy curves (see the
+the threshold to determine the positive matches with ground              blue ellipses in Figure 4). These ambiguities hinder safe
+truth. {0.5, 1.0, 1.5} are the predefined thresholds of Cham-            autonomous driving. Therefore, the polyline is a desired
+fer distance AP.                                                         primitive for map learning, as it can reflect real-world road
+
+                                                                     7
+                                               VectorMapNet: End-to-end Vectorized HD Map Learning
+
+Table 1: Results on nuScenes dataset. Fusion denotes the model using both images and LiDAR points as inputs. Methods with fine-tune
+means the model is applied two stage training strategy introduced in § 3.5
+                                                    Methods                            APped      APdivider     APboundary     mAP
+                                   STSU (Can et al., 2021)                             7.0        11.6          16.5           11.7
+                                   HDMapNet (Camera) (Li et al., 2021)                 14.4       21.7          33.0           23.0
+                                   HDMapNet (LiDAR) (Li et al., 2021)                  10.4       24.1          37.9           24.1
+                                   HDMapNet (Fusion) (Li et al., 2021)                 16.3       29.6          46.7           31.0
+                                   VectorMapNet (Camera)                               36.1       47.3          39.3           40.9
+                                   VectorMapNet (Camera) + fine-tune                   42.5       51.4          44.1           46.0
+                                   VectorMapNet (LiDAR)                                25.7       37.6          38.6           34.0
+                                   VectorMapNet (Fusion)                               37.6       50.5          47.5           45.2
+                                   VectorMapNet (Fusion) + fine-tune                   48.2       60.1          53.0           53.7
+
+                                                          Table 2: Results on Argoverse2 dataset.
+                                                                              Fréchet Distance                              Chamfer Distance
+              Keypoint Representaion                #dim        APped      APdivider       APboundary    mAP      APped   APdivider   APboundary   mAP
+              HDMapNet (Camera) (Li et al., 2021)    2          -          -               -             -        13.1    5.7         37.6         18.8
+              VectorMapNet (Camera)                  2          43.2       45.5            52.0          46.9     38.3    36.1        39.2         37.9
+              VectorMapNet (Camera)                  3          41.7       42.3            49.9          44.6     36.5    35.0        36.2         35.8
+
+
+ Front Left                Front                    Front Right                             original Transformer paper. This showcases the model’s
+                                                                                            proficient scene understanding.
+                                                                                            Centerline prediction by VectorMapNet. As discussed in
+ Back Right                Back                     Back Left                               § 3.1 and above, the polyline is a versatile primitive, capable
+                                                                                            of representing map element classes that extend beyond
+                                                                                            the elements in the HD semantic map setting. To further
+                                                                                            demonstrate this flexibility, we expand VectorMapNet to
+                                                                                            predict the centerline, an imaginary line commonly used
+                                                                                            as a reference for driving direction, vehicle positioning,
+                                                                                            and navigation. The adaptation is quite straightforward:
+         Ground Truth               HDMapNet                VectorMapNet
+                                                                                            VectorMapNet treats centerlines as a set of polylines and
+Figure 6: An example of VectorMapNet detecting unlabeled map
+                                                                                            implicitly encodes their topological relations. This process
+elements. The red ellipses indicate two pedestrian crossings that                           involves no modifications to the model structure. Figure 5
+are missing in ground truth annotations, while VectorMapNet                                 displays the results of VectorMapNet’s centerline prediction.
+detects it correctly. All the predictions are generated from camera
+images.
+                                                                                            4.3. Ablation Studies
+
+layouts
+   Ground and
+          Truth explicitly encode directions.
+                     HDMapNet        STSU                  VectorMapNet
+                                                                                            We provide ablation studies for keypoint representation in
+                                                                                            this section. For other ablation studies (i.e., curve sampling
+Benefits of posing map learning as a detection problem.                                     strategies, vertex modeling methods, and extrinsic robust-
+VectorMapNet operates in a top-down detection manner: it                                    ness), please refer to Appendix § D.
+first models the map’s topology and the locations of map
+elements, then generates the details of these elements. Visu-                               Keypoint representations. Since there is no straightfor-
+alizations demonstrate that VectorMapNet captures all map                                   ward keypoint design to represent map elements with few
+elements comprehensively, even the smaller ones near edges.                                 fixed number of points, we propose three simple representa-
+The high mAP of VectorMapNet, when compared to other                                        tions as shown in Figure 3: Bounding Box (Bbox), which is
+baselines, validates this observation. We attribute these im-                               the smallest box enclosing a polyline, and its keypoints are
+pressive results to the model’s ability to model topological                                defined as the top-right and bottom-left points of the box;
+relationships between map elements, thus implicitly captur-                                 Start-Middle-End (SME), which samples the start, middle,
+ing complex scene interrelationships. This is evidenced by                                  and end point from a polyline; Extreme Points, which are
+Figure 6, where the model identifies pedestrian crossings                                   the left-most, right-most, top-most, and bottom-most points
+at intersections that are missed in the annotations of the                                  of a polyline. We experiment with these representations
+HD map provided by the dataset. Although these relation-                                    and list the results in Table 3. Our results show that the
+ships are not explicitly taught, the model learns them via                                  bounding box representation leads to the best mean average
+controlled information propagation between query embed-                                     performance in both metrics, outperforming others by 2.0
+dings, using self-attention modules — a technique from the                                  Fréchet mAP and 7.3 Chamfer mAP.
+
+                                                                                       8
+                                      VectorMapNet: End-to-end Vectorized HD Map Learning
+
+             Table 3: Ablation study of keypoint representaions. k is the keypoint number of each keypoint representation.
+
+                                                      Fréchet Distance                            Chamfer Distance
+
+          Keypoint Representaion     k    APped    APdivider   APboundary      mAP       APped   APdivider   APboundary   mAP
+                   Bbox              2    47.4     46.9        62.8            52.4      36.1    47.3        39.3         40.9
+                    SME              3    47.0     47.4        56.9            50.4      27.6    34.4        35.4         32.5
+                  Extreme            4    41.7     47.3        59.0            49.4      30.4    33.1        37.3         33.6
+
+
+Table 4: The benefits of predicted maps in improving the motion            compared with the model that only takes past trajectories
+forecasting baseline. There are three input settings: past trajecto-
+ries (denoted as Traj.), past trajectories with the human-annotated
+                                                                           as inputs. The gap between the ground-truth map and the
+HD map from the nuScenes (denoted as Traj. + G.T. Map), and                predicted map is not big either, especially in terms of MR
+past trajectories with the predicted map from VectorMapNet (de-            (-0.2%). We think future research could further close the
+noted as Traj. + Pred. Map). The predicted map greatly improves            performance gap.
+the prediction performance compared with the model that only use
+past trajectories.
+                                                                           5. Discussions
+    Model Inputs        minADE ↓         minFDE↓      MR@2m↓               Limitations. It is worth noting that the model has some lim-
+ Traj.                  0.909            1.577        19.6                 itations, and we leave it for future works. Lacking Temporal
+ Traj. + G.T. Map       0.779            1.390        18.0                 Information: The model generates coherent geometries in
+ Traj. + Pred. Map      0.826            1.477        18.2                 a single frame but doesn’t guarantee temporally consistent
+                                                                           predictions. Mismatch Problem of a Two-stage Model: A
+                                                                           feature space mismatch exists between the map element de-
+4.4. Motion Forecasting with Vectorized HD Maps from                       tector and the polyline generator due to the teacher-forcing
+     VectorMapNet                                                          training strategy. Although fine-tuning is necessary for op-
+                                                                           timal performance, it results in tricky training schedules.
+To evaluate the capacity of our method to understand scene                 Hallucination Ability: The model can make predictions at
+relationships and to investigate its usefulness in subsequent              locations that are occluded and not visible to cameras, show-
+tasks, we put our predicted HD map to the test within a                    casing its scene understanding capabilities. However, this
+motion forecasting task. This task heavily relies on precise               reduces the model’s interpretability.
+map information for accurate prediction of future motion.
+                                                                           For further discussions, such as the potential societal impact
+Task Settings. The motion forecasting requires that the                    of our method, please refer to Appendix § E.
+model have to predict 6 possible future trajectories (3 sec-
+onds) from past agents’ trajectories (1 second) and an HD
+semantic map spanning 60m×30m. Data is generated from                      6. Conclusions
+the nuScenes tracking dataset, selecting agents with com-                  We present VectorMapNet, an end-to-end model to tackle
+plete 3-second future observations. This results in 25,645                 the HD semantic map learning problem. Unlike existing
+training and 5,460 test samples. We examine three input                    works, VectorMapNet uses polylines as the primitives to
+scenarios: past trajectories alone, past trajectories with the             represent vectorized HD map elements. To predict polylines
+true HD map, and past trajectories with the VectorMapNet                   from sensor data, we decompose the problem into a detec-
+predicted map. We utilize mmTransformer (Liu et al., 2021)                 tion step and a generation step. Our experiments show that
+for motion forecasting due to its versatility in using map                 VectorMapNet can generate coherent and complex geome-
+data or relying solely on past trajectories. This assists in               tries for urban map elements, benefiting from the polyline
+assessing the quality of our learned maps.                                 primitives. We believe that this novel way to learn HD
+Results. To evaluate the performance of motion forecasting                 maps provides a new perspective on the HD semantic map
+under different input settings, we report results on three                 learning problem.
+commonly used metrics (Chang et al., 2019): minimum
+average displacement error (minADE), minimum final dis-                    Acknowledgements
+placement error (minFDE) and miss rate (MR). To get the
+results, these metrics only account for the best trajectory                This work is supported by the National Key R&D Program
+out of 6 predicted trajectories. Results in Table 4 show that              of China (2022ZD0161700). We would like to thank Qi Li
+the map predicted by VectorMapNet has encoded environ-                     and Tianyuan Zhang for their help on various baselines, and
+ment information that greatly helps the motion forecaster,                 thank Ziyuan Huang and Bowen Li for paper proofreading.
+
+                                                                       9
+                                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+References                                                           Chen, X., Zhang, T., Wang, Y., Wang, Y., and Zhao, H.
+                                                                       Futr3d: A unified sensor fusion framework for 3d detec-
+Acuna, D., Ling, H., Kar, A., and Fidler, S. Efficient inter-
+                                                                       tion. arXiv preprint arXiv:2203.10642, 2022.
+  active annotation of segmentation datasets with polygon-
+  rnn++. 2018.                                                       Eiter, T. and Mannila, H. Computing discrete fréchet dis-
+                                                                       tance. 1994.
+Agarwal, P. K., Avraham, R. B., Kaplan, H., and Sharir, M.
+  Computing the discrete fréchet distance in subquadratic           Feng, Z., Guo, S., Tan, X., Xu, K., Wang, M., and Ma, L.
+  time. SIAM Journal on Computing, 43(2):429–449, 2014.                Rethinking efficient lane detection via curve modeling.
+                                                                       arXiv preprint arXiv:2203.02431, 2022.
+Bengio, S., Vinyals, O., Jaitly, N., and Shazeer, N. Sched-
+  uled sampling for sequence prediction with recurrent neu-          Ganin, Y., Bartunov, S., Li, Y., Keller, E., and Saliceti, S.
+  ral networks. Advances in neural information processing              Computer-aided design as language. Advances in Neural
+  systems, 28, 2015.                                                   Information Processing Systems, 34:5885–5897, 2021.
+Caesar, H., Bankiti, V., Lang, A. H., Vora, S., Liong, V. E.,        Gao, J., Sun, C., Zhao, H., Shen, Y., Anguelov, D., Li, C.,
+  Xu, Q., Krishnan, A., Pan, Y., Baldan, G., and Beijbom, O.           and Schmid, C. Vectornet: Encoding hd maps and agent
+  nuscenes: A multimodal dataset for autonomous driving.               dynamics from vectorized representation. In Proceedings
+  In Proceedings of the IEEE/CVF conference on computer                of the IEEE/CVF Conference on Computer Vision and
+  vision and pattern recognition, pp. 11621–11631, 2020.               Pattern Recognition, pp. 11525–11533, 2020.
+Can, Y. B., Liniger, A., Unal, O., Paudel, D., and Van Gool,         Ha, D. and Eck, D. A neural representation of sketch draw-
+  L. Understanding bird’s-eye view semantic hd-maps                    ings. arXiv preprint arXiv:1704.03477, 2017.
+  using an onboard monocular camera. arXiv preprint
+  arXiv:2012.03040, 2020.                                            He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learn-
+                                                                       ing for image recognition. In Proceedings of the IEEE
+Can, Y. B., Liniger, A., Paudel, D. P., and Van Gool, L.               conference on computer vision and pattern recognition,
+  Structured bird’s-eye-view traffic scene understanding               pp. 770–778, 2016.
+  from onboard images. In Proceedings of the IEEE/CVF
+  International Conference on Computer Vision, pp. 15661–            Homayounfar, N., Ma, W.-C., Lakshmikanth, S. K., and
+  15670, 2021.                                                         Urtasun, R. Hierarchical recurrent attention networks
+                                                                       for structured online maps. In Proceedings of the IEEE
+Carion, N., Massa, F., Synnaeve, G., Usunier, N., Kirillov,           Conference on Computer Vision and Pattern Recognition,
+  A., and Zagoruyko, S. End-to-end object detection with               pp. 3417–3426, 2018.
+  transformers. In European conference on computer vision,
+  pp. 213–229. Springer, 2020.                                       Kuhn, H. W. The hungarian method for the assignment
+                                                                       problem. Naval research logistics quarterly, 2(1-2):83–
+Carlier, A., Danelljan, M., Alahi, A., and Timofte, R.                 97, 1955.
+  Deepsvg: A hierarchical generative network for vector
+  graphics animation. Advances in Neural Information                 Lang, A. H., Vora, S., Caesar, H., Zhou, L., Yang, J., and
+  Processing Systems, 33:16351–16361, 2020.                            Beijbom, O. Pointpillars: Fast encoders for object detec-
+                                                                       tion from point clouds. In Proceedings of the IEEE/CVF
+Casas, S., Sadat, A., and Urtasun, R. Mp3: A unified model             Conference on Computer Vision and Pattern Recognition,
+  to map, perceive, predict and plan. In Proceedings of the            pp. 12697–12705, 2019.
+  IEEE/CVF Conference on Computer Vision and Pattern
+  Recognition, pp. 14403–14412, 2021.                                Lee, S., Kim, J., Shin Yoon, J., Shin, S., Bailo, O., Kim, N.,
+                                                                       Lee, T.-H., Seok Hong, H., Han, S.-H., and So Kweon,
+Castrejon, L., Kundu, K., Urtasun, R., and Fidler, S. An-              I. Vpgnet: Vanishing point guided network for lane and
+  notating object instances with a polygon-rnn. In Pro-                road marking detection and recognition. In Proceedings
+  ceedings of the IEEE conference on computer vision and               of the IEEE international conference on computer vision,
+  pattern recognition, pp. 5230–5238, 2017.                            pp. 1947–1955, 2017.
+Chang, M.-F., Lambert, J., Sangkloy, P., Singh, J., Bak, S.,         Li, F., Zhang, H., Liu, S., Guo, J., Ni, L. M., and Zhang, L.
+  Hartnett, A., Wang, D., Carr, P., Lucey, S., Ramanan,                Dn-detr: Accelerate detr training by introducing query
+  D., et al. Argoverse: 3d tracking and forecasting with               denoising. arXiv preprint arXiv:2203.01305, 2022.
+  rich maps. In Proceedings of the IEEE/CVF Conference
+  on Computer Vision and Pattern Recognition, pp. 8748–              Li, J., Xu, K., Chaudhuri, S., Yumer, E., Zhang, H., and
+  8757, 2019.                                                          Guibas, L. Grass: Generative recursive autoencoders for
+
+                                                                10
+                                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+  shape structures. ACM Transactions on Graphics (TOG),                 A hierarchical graph generative model of high defini-
+  36(4):1–14, 2017.                                                     tion maps. In Proceedings of the IEEE/CVF Conference
+                                                                        on Computer Vision and Pattern Recognition, pp. 4227–
+Li, Q., Wang, Y., Wang, Y., and Zhao, H. Hdmapnet: A                    4236, 2021.
+  local semantic map learning and evaluation framework.
+  arXiv preprint arXiv:2107.06307, 2021.                              Mo, K., Guerrero, P., Yi, L., Su, H., Wonka, P., Mi-
+                                                                       tra, N., and Guibas, L. J. Structurenet: Hierarchical
+Li, X., Li, J., Hu, X., and Yang, J. Line-cnn: End-to-
+                                                                       graph networks for 3d shape generation. arXiv preprint
+  end traffic line detection with line proposal unit. IEEE
+                                                                       arXiv:1908.00575, 2019.
+  Transactions on Intelligent Transportation Systems, 21
+  (1):248–258, 2019.                                                  Nash, C., Ganin, Y., Eslami, S. A., and Battaglia, P. Polygen:
+                                                                        An autoregressive generative model of 3d meshes. In
+Liang, J., Homayounfar, N., Ma, W.-C., Wang, S., and
+                                                                        International Conference on Machine Learning, pp. 7220–
+  Urtasun, R. Convolutional recurrent network for road
+                                                                        7229. PMLR, 2020.
+  boundary extraction. In Proceedings of the IEEE/CVF
+  Conference on Computer Vision and Pattern Recognition,
+                                                                      Neven, D., De Brabandere, B., Georgoulis, S., Proesmans,
+  pp. 9512–9521, 2019.
+                                                                        M., and Van Gool, L. Towards end-to-end lane detec-
+Liang, J., Homayounfar, N., Ma, W.-C., Xiong, Y., Hu, R.,               tion: an instance segmentation approach. In 2018 IEEE
+  and Urtasun, R. Polytransform: Deep polygon trans-                    intelligent vehicles symposium (IV), pp. 286–291. IEEE,
+  former for instance segmentation. In Proceedings of the               2018.
+  IEEE/CVF Conference on Computer Vision and Pattern
+                                                                      Pan, B., Sun, J., Leung, H. Y. T., Andonian, A., and Zhou,
+  Recognition, pp. 9131–9140, 2020.
+                                                                        B. Cross-view semantic segmentation for sensing sur-
+Liu, H., Li, C., Liu, X., and Wong, T.-T. End-to-end line               roundings. IEEE Robotics and Automation Letters, 5(3):
+  drawing vectorization. 2022.                                          4867–4873, 2020.
+
+Liu, Y., Zhang, J., Fang, L., Jiang, Q., and Zhou, B. Multi-          Pan, X., Shi, J., Luo, P., Wang, X., and Tang, X. Spatial
+  modal motion prediction with stacked transformers. In                 as deep: Spatial cnn for traffic scene understanding. In
+  Proceedings of the IEEE/CVF Conference on Computer                    Proceedings of the AAAI Conference on Artificial Intelli-
+  Vision and Pattern Recognition, pp. 7577–7586, 2021.                  gence, volume 32, 2018.
+
+Loshchilov, I. and Hutter, F. Fixing weight decay regular-            Philion, J. and Fidler, S. Lift, splat, shoot: Encoding images
+  ization in adam. 2018.                                                from arbitrary camera rigs by implicitly unprojecting to
+                                                                        3d. In European Conference on Computer Vision, pp.
+Lu, C., van de Molengraft, M. J. G., and Dubbelman, G.
+                                                                        194–210. Springer, 2020.
+  Monocular semantic occupancy grid mapping with con-
+  volutional variational encoder–decoder networks. IEEE               Qi, C. R., Su, H., Mo, K., and Guibas, L. J. Pointnet: Deep
+  Robotics and Automation Letters, 4(2):445–452, 2019.                  learning on point sets for 3d classification and segmenta-
+                                                                        tion. In Proceedings of the IEEE conference on computer
+Mallot, H. A., Bülthoff, H. H., Little, J., and Bohrer, S.
+                                                                        vision and pattern recognition, pp. 652–660, 2017.
+ Inverse perspective mapping simplifies optical flow com-
+ putation and obstacle detection. Biological cybernetics,
+                                                                      Ramer, U. An iterative procedure for the polygonal approxi-
+ 64(3):177–185, 1991.
+                                                                        mation of plane curves. Comput. Graph. Image Process.,
+Mattyus, G., Wang, S., Fidler, S., and Urtasun, R. Enhancing            1:244–256, 1972.
+ road maps by parsing aerial images around the world.
+                                                                      Reddy, P., Gharbi, M., Lukac, M., and Mitra, N. J. Im2vec:
+ In Proceedings of the IEEE international conference on
+                                                                        Synthesizing vector graphics without vector supervision.
+ computer vision, pp. 1689–1697, 2015.
+                                                                        In Proceedings of the IEEE/CVF Conference on Com-
+Máttyus, G., Wang, S., Fidler, S., and Urtasun, R. Hd maps:            puter Vision and Pattern Recognition, pp. 7342–7351,
+  Fine-grained road segmentation by parsing ground and                  2021.
+  aerial images. In Proceedings of the IEEE Conference
+  on Computer Vision and Pattern Recognition, pp. 3611–               Roddick, T. and Cipolla, R. Predicting semantic map rep-
+  3619, 2016.                                                           resentations from images using pyramid occupancy net-
+                                                                        works. In Proceedings of the IEEE/CVF Conference on
+Mi, L., Zhao, H., Nash, C., Jin, X., Gao, J., Sun, C., Schmid,          Computer Vision and Pattern Recognition, pp. 11138–
+ C., Shavit, N., Chai, Y., and Anguelov, D. Hdmapgen:                  11147, 2020.
+
+                                                                 11
+                                 VectorMapNet: End-to-end Vectorized HD Map Learning
+
+Rong, G., Shin, B. H., Tabatabaee, H., Lu, Q., Lemke, S.,          Yang, W., Li, Q., Liu, W., Yu, Y., Ma, Y., He, S., and
+  Možeiko, M., Boise, E., Uhm, G., Gerow, M., Mehta,                Pan, J. Projecting your view attentively: Monocular road
+  S., et al. Lgsvl simulator: A high fidelity simulator for          scene layout estimation via cross-view transformation. In
+  autonomous driving. arXiv preprint arXiv:2005.03778,               Proceedings of the IEEE/CVF Conference on Computer
+  2020.                                                              Vision and Pattern Recognition, pp. 15536–15545, 2021.
+Sadat, A., Casas, S., Ren, M., Wu, X., Dhawan, P., and             Zhang, Z. and Wang, Y. Jointnet: A common neural network
+  Urtasun, R. Perceive, predict, and plan: Safe motion               for road and building extraction. Remote Sensing, 11(6):
+  planning through interpretable semantic representations.           696, 2019.
+  In European Conference on Computer Vision, pp. 414–
+  430. Springer, 2020.                                             Zhao, H., Gao, J., Lan, T., Sun, C., Sapp, B., Varadara-
+                                                                     jan, B., Shen, Y., Shen, Y., Chai, Y., Schmid, C., et al.
+Van Gansbeke, W., De Brabandere, B., Neven, D., Proes-               Tnt: Target-driven trajectory prediction. arXiv preprint
+  mans, M., and Van Gool, L. End-to-end lane detection               arXiv:2008.08294, 2020.
+  through differentiable least-squares fitting. In Proceed-
+  ings of the IEEE/CVF International Conference on Com-            Zhou, B. and Krähenbühl, P. Cross-view transformers
+  puter Vision Workshops, pp. 0–0, 2019.                             for real-time map-view semantic segmentation. arXiv
+                                                                     preprint arXiv:2205.02833, 2022.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+  L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. At-             Zhou, Y., Sun, P., Zhang, Y., Anguelov, D., Gao, J., Ouyang,
+  tention is all you need. Advances in neural information            T., Guo, J., Ngiam, J., and Vasudevan, V. End-to-end
+  processing systems, 30, 2017.                                      multi-view fusion for 3d object detection in lidar point
+                                                                     clouds. In Conference on Robot Learning, pp. 923–932.
+Wang, S., Fidler, S., and Urtasun, R. Holistic 3d scene
+                                                                     PMLR, 2020.
+ understanding from a single geo-tagged image. In Pro-
+ ceedings of the IEEE Conference on Computer Vision                Zhu, X., Su, W., Lu, L., Li, B., Wang, X., and Dai, J. De-
+ and Pattern Recognition, pp. 3964–3972, 2015.                       formable detr: Deformable transformers for end-to-end
+Wang, S., Bai, M., Mattyus, G., Chu, H., Luo, W., Yang,              object detection. arXiv preprint arXiv:2010.04159, 2020.
+ B., Liang, J., Cheverie, J., Fidler, S., and Urtasun, R.          Zorzi, S., Bazrafkan, S., Habenschuss, S., and Fraundorfer,
+ Torontocity: Seeing the world with a million eyes. arXiv            F. Polyworld: Polygonal building extraction with graph
+ preprint arXiv:1612.00423, 2016.                                    neural networks in satellite images. In Proceedings of the
+Wang, Y., Guizilini, V. C., Zhang, T., Wang, Y., Zhao, H.,           IEEE/CVF Conference on Computer Vision and Pattern
+ and Solomon, J. Detr3d: 3d object detection from multi-             Recognition, pp. 1848–1857, 2022.
+ view images via 3d-to-2d queries. In Conference on Robot
+                                                                   Zürn, J., Vertens, J., and Burgard, W. Lane graph estimation
+ Learning, pp. 180–191. PMLR, 2022.
+                                                                      for scene understanding in urban driving. IEEE Robotics
+Wilson, B., Qi, W., Agarwal, T., Lambert, J., Singh, J.,              and Automation Letters, 6(4):8615–8622, 2021.
+ Khandelwal, S., Pan, B., Kumar, R., Hartnett, A., Pontes,
+ J. K., Ramanan, D., Carr, P., and Hays, J. Argoverse 2:
+ Next generation datasets for self-driving perception and
+ forecasting. In Proceedings of the Neural Information
+ Processing Systems Track on Datasets and Benchmarks
+ (NeurIPS Datasets and Benchmarks 2021), 2021.
+Xu, Y., Xu, W., Cheung, D., and Tu, Z. Line segment de-
+  tection using transformers without edges. In Proceedings
+  of the IEEE/CVF Conference on Computer Vision and
+ Pattern Recognition, pp. 4257–4266, 2021.
+Yamaguchi, K. Canvasvae: Learning to generate vector
+  graphic documents. In Proceedings of the IEEE/CVF
+  International Conference on Computer Vision, pp. 5481–
+  5489, 2021.
+Yang, B., Liang, M., and Urtasun, R. Hdnet: Exploiting hd
+  maps for 3d object detection. In Conference on Robot
+  Learning, pp. 146–155. PMLR, 2018.
+
+                                                              12
+                                   VectorMapNet: End-to-end Vectorized HD Map Learning
+
+A. Experiment Setup
+A.1. Dataset
+nuScenes We experiment on nuScenes (Caesar et al., 2020) dataset, which contains 1000 sequences of recordings collected
+by autonomous driving cars. Each episode is annotated at 2Hz and contains 6 camera images and LiDAR sweeps. Our
+dataset setup and pre-processing steps are identical to that of HDMapNet (Li et al., 2021), which includes three categories of
+map elements – pedestrian crossing, divider, and road boundary – from the nuScenes dataset.
+Argoverse2 We further conduct experiments on Argoverse2 (Wilson et al., 2021) dataset. Like nuScenes, it contains 1000
+logs (700, 150, 150 for training, validation and test set). Each episode provides 15s of 20Hz camera images, 10Hz LiDAR
+sweeps and a vectorized map. We use the same pre-processing settings as on nuScenes dataset.
+
+A.2. Metrics
+In contrast to existing methods which generate rasterized results, our method does not require rasterizing curves on grids.
+Therefore, we opt not to use Intersection-Over-Union (IoU) as a metric. We use a distance-based metric to evaluate the
+similarity between predicted curves and ground-truth curves. We follow the instance-level evaluation metric proposed
+by HDMapNet (Li et al., 2021) to compare the instance-level detection performance of our model to baseline methods.
+The metric is average precision (AP), where positive/negative samples are based on geometric similarity, more concretely,
+Chamfer distance and Fréchet distance. For clarity, we call the AP based on Chamfer distance and Fréchet distance as
+Chamfer AP and Fréchet AP, respectively.
+Chamfer distance. Chamfer distance is a distance measure that quantifies the similarity between two unordered sets. The
+Chamfer distance is an evaluation metric that quantifies the similarity between two unordered sets by taking into account the
+distance of each permutation of the elements of set as follows:
+                                               1 1 X                          1 X
+                        Dchamf er (S1 , S2 ) = (             min ∥p, q∥2 +            min ∥q, p∥2 ).                      (4)
+                                               2 |S1 |       q∈S2            |S2 |    p∈S1
+                                                          p∈S1                          q∈S2
+
+
+In our experiments, we use chamfer distance to calculate the distance between a prediction and a ground truth polyline
+set, and each polyline set is represented by uniformly sampling a polyline to Npts vertices, where Npts is set to 100 in our
+experiments.
+Fréchet distance. The order of polyline vertices is not measured by Chamfer distance. Therefore, we introduce Fréchet
+distance as an additional measure. Fréchet distance is a measure of similarity of curves that takes both the positions and the
+order of the points along the curves into consideration. Our implementation is based on discrete Fréchet distance (Eiter &
+Mannila, 1994; Agarwal et al., 2014).
+We use the discrete version of Fréchet distance (Eiter & Mannila, 1994; Agarwal et al., 2014) to evaluate the geometric
+similarity between two polyline P and Q. We denote σ(P ) as a sequence of endpoints of the line segments of P . In particular,
+σ(P ) = (p1 , . . . , pm ) is a sequence with m vertices that uniformly sampled from the original input polyline P , where each
+position of P between pi and pi+1 can be approximated by using an affine transformation that is pi+λ = (1 − λ)pi + λpi+1
+and the m in our experiment is set as 100.
+Let P and Q be polyline and σ(P ) = (u1 , . . . , up ) and σ(Q) = (v1 , . . . , vq ) the corresponding sequences. A coupling L is
+a sequence of distinct pairs between σ(P ) and σ(Q):
+                                                  (ua1 , vb1 ), . . . , (uam , vbm ).                                        (5)
+These indexes {a1 , . . . , am } and {b1 , . . . , bm } are nondecreasing surjection such that a1 = 1, am = p, b1 = 1, bm = q and
+for all i < j ∈ {1, . . . , q}, ai ≤ aj and bi ≤ bj .
+We define the norm ∥L∥ of the L is the length of the longest pair in L, that is,
+                                                  ∥L∥ = max d(uai , vbi ).                                                   (6)
+                                                           i=1,...,m
+
+
+The discrete Fréchet distance between polyline P and Q is defined to be
+                                δdF (P, Q) = min{∥L∥, L is a coupling between P and Q}.                                      (7)
+
+                                                                 13
+                                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+This equation indicates that the distance of discrete Fréchet distance is the minimum norm of all possible couplings. To Find
+the coupling plausible L that has the minimum norm, we use a Dynamic programming-based algorithm that is described in
+Algorithm 1.
+
+Algorithm 1 The Algorithm of Discrete Fréchet Distance
+Input: polyline P = (u1 , . . . , up ) and Q = (v1 , . . . , vq ).
+Output: δdF (P, Q)
+ca : an 2d array of real with size of (p × q) Function c(i, j)
+    if ca(i, j) > −1 then
+        return ca(i, j)
+    else if i = 1 and j = 1 then
+        ca(i, j) := d(u1, v1)
+    else if i > 1 and j = 1 then
+        ca(i, j) := max{c(i − 1, 1), d(ui , v1 )}
+    else if i = 1 and j > 1 then
+        ca(i, j) := max{c(1, j − 1), d(u1 , vj )}
+    else if i > 1 and j > 1 then
+        ca(i, j) := max{min(c(i − 1, j), c(i − 1, j − 1), c(i, j − 1)), d(ui , vj )}
+    else
+        ca(i, j) := ∞
+    end
+    return ca(i, j)
+end
+begin
+    for i = 1 to p do
+        for j = 1 to q do
+             ca(i, j) := -1.0;
+        end
+    end
+    return c(p, q)
+end
+
+
+
+B. More Qualitative results of VectorMapNet
+B.1. Visualization results of VectorMapNet(Fusion)
+We visualized three cases of VectorMapNet (Fusion) and VectorMapNet (Camera) to demonstrate that LiDAR information
+can complement visual information to generate more robust map predictions. In the first case, the camera view is constrained
+by the nearby vehicles, so it can not provide helpful surrounding information. LiDAR sensor bypasses the nearby vehicle
+and provides some cue for VectorMapNet to generate a better result than its camera-only counterpart (see Figure 7). For the
+second case (see Figure 8), the model cannot detect the nearby parking gate because it locates in the blind zone of cameras.
+In contrast, the LiDAR provides depth information and helps the VectorMapNet(Fusion) detect the missing lane boundary.
+LiDAR points can prevent the model from falsely detecting map elements in bad weather conditions as well. As shown in
+Figure 9, some puddles are near the intersection. With the light reflection, these puddles visually look like a lane boundary.
+However, the LiDAR data shows that there does not have any bump in there. Unlike the camera-only model, this depth
+information from LiDAR helps our fusion model not generate a non existed lane boundary.
+
+C. Implementation details
+C.1. Overall Architectures.
+BEV feature extractor outputs a feature map with a size of (200, 100, 128). It uses ResNet50 (He et al., 2016) for shared
+CNN backbone. We use a single layer PointNet (Qi et al., 2017) whose outputs have 64 dimensions as the LiDAR backbone
+to aggregate LiDAR points into a pillar. We set the number of element queries Nmax in map element detector as 100.
+
+                                                              14
+                                   VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+
+
+                                            Camera                                                          LiDAR
+
+
+
+
+               Ground Truth                        VectorMapNet(Camera)                       VectorMapNet(Fusion)
+
+
+
+Figure 7: When the ego car cameras are occluded by the nearby vehicles, VectorMapNet(Camera) can not precept the surrounding map.
+With the depth cue from LiDAR, VectorMapNet(Fusion) can generate a more plausible result than its camera counterpart.
+
+
+
+The transformer decoders we used in map element detector and polyline generator both have 6 decoder layers, and their
+hidden embeddings’ size is 256. For the output space of polyline generator, we divide the map space (see § 3.4) evenly into
+200 × 100 rectangular grids, and each grid has a size of 0.3m × 0.3m.
+
+C.2. Training settings.
+We train all our models on 8 GTX3090 GPUs for 110 epochs with a total batch size of 32. We use AdamW (Loshchilov &
+Hutter, 2018) optimizer with a gradient clipping norm of 5.0. For the learning rate schedule, we use a step schedule that
+multiplies a learning rate by 0.1 at epoch 100 and has a linear warm-up period at the first 5000 steps. The dropout rate for
+all modules is 0.2, following the transformer’s settings (Vaswani et al., 2017). Data augmentation is only deployed during
+polyline generator’s training; specifically, two I.I.D. Gaussian noises are added to each input vertex’s x and y coordinates
+with a probability of 0.3.
+
+C.3. Model Details
+Camera Branch of Map Feature Extractor. For image data I, we use a shared CNN backbone to obtain each camera’s
+image features in the camera space, then use the Inverse Perspective Mapping (IPM) (Mallot et al., 1991) technique to
+transform these features into BEV space. Since the depth information is missing in camera images, we follow one common
+approach that assumes the ground is mostly planar and transforms the images to BEV via homography. Without knowing the
+exact height of the ground plane, this homography is not an accurate transformation. To alleviate this issue, we transform
+the image features into four BEV planes with different heights ( we use (−1m, 0m, 1m, 2m) in practice). The camera BEV
+features F IBEV ∈ RW ×H×C1 are the concatenation of these feature maps.
+
+C.4. Loss
+Loss settings. The loss function of map element detector is a linear combination of three parts: a negative log-likelihood for
+element keypoint classification, a smooth L1 loss, and an IoU loss for keypoints regression. The coefficients of these loss
+components are 2, 0.1, 1. The matching cost of map element detector is the same as the loss combination. The loss function
+
+                                                              15
+                                    VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+
+
+                                              Camera                                                                LiDAR
+
+
+
+
+               Ground Truth                            VectorMapNet(Camera)                              VectorMapNet(Fusion)
+
+
+
+Figure 8: The blind area of onboard cameras may cause our model to miss the map elements closed ego vehicle. In contrast, we can easily
+find that LiDAR data has sensed some obstacles near the ego vehicle in the right-most column. With these cues, our fusion model detects
+the missed lane boundary by our camera-only model.
+
+
+
+
+of polyline generator is a negative log-likelihood. We train VectorMapNet by simply summing up these losses.
+map element detector loss. To get the loss, we first establish a correspondence between the ground-truth (A, L) and the
+prediction (Â, L̂). Assuming the number of ground-truth map element keypoints N is smaller than the number of predictions
+Nmax , and we pad the set of ground-truth (A, L) with ∅s (no object)
+                                                              PNmaxup to Nmax . The correspondence σ is a permutation
+of Nmax elements σ ∈ P with the lowest cost: σ ∗ = argmin j=1          −1(lj ̸=∅) p̂σ(j) (lj ) + −1(lj ̸=∅) Lkeypoint (aj , âσ(j) ),
+                                                               σ∈P
+where p̂σ(j) (lj ) is the probability of class label lj for the prediction with index σ(j), and the loss of keypoints parameters
+Lkeypoint is an addition of a smooth L1 loss and an IoU loss. With these notations we define the loss of detector as:
+
+
+                                          NX
+                                           max
+
+                                Ldet =           − log p̂σ∗ (j) (lj ) + 1(lj ̸=∅) Lkeypoint (aj , âσ∗ (j) ),
+                                          j=1
+
+
+
+
+where σ ∗ is the optimal assignment computed by Hungarian algorithm (Kuhn, 1955).
+
+C.5. Baseline model
+HDMapNet For all experiments in our paper, we employed the official HDMapNet model from the provided codebase and
+directly take its vectorized results. As the Argoverse dataset was not included in the original HDMapNet paper, we adapted
+the NuScenes data processing steps from their codebase to create an Argoverse2 dataloader for our experiments.
+STSU For STSU, It uses a transformer module to detect the moving objects and centerline segments. It uses an association
+head to piece the segments together as the road graph. In order to adapt STSU to our task, we use a two-layer MLP to
+predict lane segments and only keep its object branch and polyline branch.
+
+                                                                     16
+                                    VectorMapNet: End-to-end Vectorized HD Map Learning
+
+
+
+
+                                              Camera                                                            LiDAR
+
+
+
+
+               Ground Truth                           VectorMapNet(Camera)                          VectorMapNet(Fusion)
+
+
+
+Figure 9: The qualitative results of VectorMapNet in bad weather conditions. VectorMapNet(Camera) falsely detects these puddles
+near the intersection as a lane boundary. The fusion result shows that the miss detection issue can be resolved by combining the depth
+information.
+
+                                         Table 5: Ablation study of curves sampling strategies.
+
+
+                                               Fréchet Distance                                    Chamfer Distance
+
+  Vertex Sampling Method         APped      APdivider     APboundary      mAP         APped       APdivider   APboundary      mAP
+       curvature-based           47.0       47.4          56.9            50.4        27.6        34.4        35.4            32.5
+        fixed interval           26.0       23.6          37.1            28.9        14.6        17.6        18.7            17.0
+
+
+
+D. More Ablation Studies
+D.1. Curve sampling strategies
+We use two approaches to sample polylines. The first is based on the original nuScenes setting (Caesar et al., 2020), which
+samples vertices at the position where the curvature changes are beyond a certain threshold. The second is to sample the
+vertices at fixed intervals (1m). We compare our methods under these two sampling strategies and the results are shown in
+Table 5. The curvature-based sampling outperforms its fixed-sampling counterpart by a large margin and achieves a leading
+21.5 Fréchet mAP and 15.5 Chamfer mAP. We hypothesize that the fixed-sampling method involves a large set of redundant
+vertices that have negligible contributions to the geometry, thus under-weighs the essential vertices (e.g. the vertices at the
+corner of a polyline) in the learning process.
+
+D.2. Vertex modeling methods.
+We investigate both discrete and continuous ways to model polyline vertices. The discrete version of polyline generator is
+described in § 3.4. With the same model structure, we follow SketchRNN (Ha & Eck, 2017) and use mixture of Gaussian
+distributions to model the vertices of polylines as continuous variables. The comparison is shown in Table 6. We find that
+using discrete embeddings vertex coordinates results in a considerable gain in performance, with Chamfer mAP increasing
+
+                                                                   17
+                                  VectorMapNet: End-to-end Vectorized HD Map Learning
+
+                                      Table 6: Ablation study of vertex modeling methods.
+
+
+                                       Fréchet Distance                                      Chamfer Distance
+
+  Modeling Method       APped      APdivider      APboundary       mAP         APped        APdivider   APboundary   mAP
+       discrete         47.0       47.4           56.9             50.4        27.6         34.4        35.4         32.5
+      continuous        38.0       41.6           46.1             41.9        26.5         28.1        30.1         26.5
+
+
+from 18.2 to 32.5 and the Fréchet mAP increasing from 26.8 to 50.4. These improvements suggest that the non-local
+characteristic of categorical distribution helps our model to capture complex vertex coordinate distributions.
+
+D.3. Extrinsic Robustness
+Thanks for this suggestion. To probe the robustness of VectorMapNet, we follow lift-splat-shoot(Philion & Fidler, 2020),
+which tests the model under the noise that occurs in self-driving, such as camera extrinsic being biased. The table 7 shows
+that training the model with noisy extrinsic can lead to better test-time performance. And our model maintains its good
+performance for high amounts of extrinsic noise. The results show our model’s robustness against extrinsic noise.
+
+                               Table 7: VectorMapNet performance under different extrinsic noise.
+
+                                           mAP                   Test time extrinsic noise
+                                 Train time extrinsic noise     0       0.1      0.3    0.6
+                                             0                  42.2 42.6        42.4 42.5
+                                            0.1                 43.8 43.6        43.5 43.6
+                                            0.3                 43.0 43.0        43.1 43.1
+                                            0.6                 42.6 42.72 42.8 42.9
+
+
+E. Additional Discussions
+The potential negative societal impact. While there are legitimate concerns regarding privacy issues in autonomous
+driving systems that use generated maps, we’d like to reassure that our method is designed with such concerns in mind.
+Our proposed VectorMapNet model relies solely on onboard sensor observations and doesn’t track any global locations
+or individual movements. Consequently, it poses no risk of leaking personal information, such as patterns in individuals’
+movements, thus upholding the highest standards of privacy.
+Confidence indicator. Learning-based models can certainly provide confidence indicators to describe prediction uncertainty.
+Our model can generate two types of confidence scores: (1) The DETR-like Map Element Detector generates a confidence
+score for each detected map element. It is an instance-level score. (2) The auto-regressive Polyline Generator generates a
+score for each point on a polyline. It is a point-level score. Both of them can indicate the confidence or likelihood of the
+model’s prediction. However, how to better use this uncertainty for downstream tasks still remains an open question. We
+leave it for future research.
+
+
+
+
+                                                              18
+

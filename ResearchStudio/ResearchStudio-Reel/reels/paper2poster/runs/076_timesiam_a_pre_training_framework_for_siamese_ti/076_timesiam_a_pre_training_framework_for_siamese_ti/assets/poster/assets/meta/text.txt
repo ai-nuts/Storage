@@ -1,0 +1,1877 @@
+                                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+                                        Jiaxiang Dong * 1 Haixu Wu * 1 Yuxuan Wang 1 Yunzhong Qiu 1 Li Zhang 1 Jianmin Wang 1 Mingsheng Long 1
+
+
+                                                                Abstract                                      Reconstruction loss        Contrastive loss                    Reconstruction loss
+
+
+                                             Time series pre-training has recently garnered                           x̂                      similarity             key              ̂
+                                                                                                                                                                                    x curr         query
+                                                                                                                                                                     value
+                                             wide attention for its potential to reduce labeling
+                                                                                                                   Encoder          Encoder                Encoder     Encoder               Encoder
+arXiv:2402.02475v2 [cs.LG] 7 Jun 2024
+
+
+
+
+                                             expenses and benefit various downstream tasks.
+                                                                                                                          mask      x1                          x2                                 mask
+                                             Prior methods are mainly based on pre-training
+                                                                                                                      x                           x                     x past               x curr
+                                             techniques well-acknowledged in vision or lan-                  (a) Masked Modeling     (b) Contrastive Learning                    (c) TimeSiam
+                                             guage, such as masked modeling and contrastive
+                                             learning. However, randomly masking time se-                    Figure 1. Comparison on time series pre-training frameworks. (a)
+                                                                                                             Masked modeling: reconstruct the masked series. (b) Contrastive
+                                             ries or calculating series-wise similarity will dis-
+                                                                                                             learning: Repulse different series (negative pairs) while attract-
+                                             tort or neglect inherent temporal correlations cru-
+                                                                                                             ing two augmentations from the same series (positive pairs). (c)
+                                             cial in time series data. To emphasize temporal                 TimeSiam: reconstruct masked current series xcurr from randomly
+                                             correlation modeling, this paper proposes Time-                 sampled past observation xpast .
+                                             Siam as a simple but effective self-supervised
+                                             pre-training framework for Time series based on                 et al., 2022; Wu et al., 2023b). In the real world, an enor-
+                                             Siamese networks. Concretely, TimeSiam pre-                     mous volume of time series data is incrementally collected
+                                             trains Siamese encoders to capture intrinsic tem-               through the Internet of Things (IoT) from industrial sensors
+                                             poral correlations between randomly sampled past                and wearable devices. To utilize these large amounts of data,
+                                             and current subseries. With a simple data augmen-               time series self-supervised pre-training has recently gained
+                                             tation method (e.g. masking), TimeSiam can ben-                 significant attention, which can extract valuable knowledge
+                                             efit from diverse augmented subseries and learn                 from unlabeled data and further boost the performance of
+                                             internal time-dependent representations through                 various downstream tasks (Dong et al., 2023). This paper
+                                             a past-to-current reconstruction. Moreover, learn-              focuses on this promising area and proposes a novel and
+                                             able lineage embeddings are also introduced to                  practical self-supervised pre-training method for time series.
+                                             distinguish temporal distance between sampled se-
+                                             ries and further foster the learning of diverse tem-            Previous pre-training methods can be roughly categorized
+                                             poral correlations. TimeSiam consistently outper-               into the following two paradigms. As presented in Figure
+                                             forms extensive advanced pre-training baselines,                1, the first one, named masked modeling, enables represen-
+                                             demonstrating superior forecasting and classifica-              tation learning by optimizing the model to reconstruct the
+                                             tion capabilities across 13 standard benchmarks                 masked part using the visible context, which has been com-
+                                             in both intra- and cross-domain scenarios. Code is              monly used in natural language processing (Devlin et al.,
+                                             available at https://github.com/thuml/TimeSiam.                 2018; Raffel et al., 2020) and computer vision (He et al.,
+                                                                                                             2022; Xie et al., 2022; Li et al., 2023a). However, Dong et al.
+                                                                                                             (2023) found that randomly masking a portion of time points
+                                        1. Introduction                                                      will seriously distort vital temporal correlations of time se-
+                                                                                                             ries, making the reconstruction task too difficult to guide
+                                        Time series, a critical form of real-world data, finds wide
+                                                                                                             representation learning. The other paradigm, contrastive
+                                        applications in various domains, including energy, traffic,
+                                                                                                             learning, excels in instance-level representation learning,
+                                        economics, weather, medicine, etc (Wu et al., 2021; Zhang
+                                                                                                             which optimizes the model to identify positive samples from
+                                           *
+                                             Equal contribution 1 School of Software, BNRist, Tsinghua       negative ones (Tang et al., 2020). A significant criticism
+                                        University. Jiaxiang Dong <djx20@mails.tsinghua.edu.cn>.             of these contrastive approaches is their reliance on careful
+                                        Haixu Wu <wuhx23@mails.tsinghua.edu.cn>. Correspondence              augmentations selection to learn useful invariances (Xiao
+                                        to: Mingsheng Long <mingsheng@tsinghua.edu.cn>.                      et al., 2021), which is even harder in time series due to the
+                                        Proceedings of the 41 st International Conference on Machine         scarcity of widely accepted and effective data augmenta-
+                                        Learning, Vienna, Austria. PMLR 235, 2024. Copyright 2024 by         tion methods (Wen et al., 2020). Also, the instance-level
+                                        the author(s).                                                       modeling design may fail in capturing fine-grained temporal
+
+                                                                                                         1
+                           TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+variations, limiting their practicality to downstream tasks.          2. Related Work
+We note a crucial distinction of time series from images or           2.1. Time Series Self-supervised Pre-training
+languages, as each time step consists of only a finite number
+of scalar values. This implies that the most vital information        Self-supervised pre-training has demonstrated its ability to
+in time series is preserved in the temporal correlations, high-       learn valuable and generalizable representations from large-
+lighting the importance of temporal modeling (Nie et al.,             scale unlabeled datasets in various domains, such as natural
+2023; Wu et al., 2023a). Therefore, the critical point of time        language processing (NLP) (Devlin et al., 2018; Radford
+series pre-training is optimizing encoders to accurately cap-         et al., 2019; Raffel et al., 2020; Brown et al., 2020; Gao
+ture temporal correlations, which has not been adequately             et al., 2020) and computer vision (CV) (He et al., 2020; Liu
+addressed in previous masking or contrastive methods.                 et al., 2021; Xie et al., 2022; He et al., 2022), which can
+                                                                      significantly reduce labeling expenses and benefit diverse
+To address the insufficiency in temporal modeling, we                 downstream tasks. Recently, self-supervised pre-training
+present TimeSiam, a simple yet effective self-supervised              has empowered many breakthroughs in time series analysis
+pre-training framework. Unlike prior, as shown in Figure              by introducing well-established techniques into time series,
+1, TimeSiam proposes to sample pairs of subseries across              such as masked modeling and contrastive learning.
+different timestamps from the same time series, termed
+“Siamese subseries”. Then, it leverages Siamese networks              Masked Modeling As a fundamental technique in self-
+as encoders to capture correlations between temporally dis-           supervised pre-training methods, masked modeling enables
+tanced subseries. With simple data augmentation such as               deep models to learn essential representations by recon-
+masking, TimeSiam further improves the diversity and dis-             structing masked parts from the visible context. Drawing
+tinctiveness of Siamese subseries, which natively derives             inspiration from notable advances in NLP and CV, exten-
+a past-to-current reconstruction task, thereby enforcing the          sive time series pre-training approaches focus on time series
+encoder to learn temporally related information and cap-              masked modeling, which helps the model learn effective
+ture correlations among past and current series. Besides,             time series representations to facilitate various downstream
+to cover different distanced Siamese subseries, we propose            analysis tasks. For instance, TST (Zerveas et al., 2021) and
+learnable lineage embeddings to enhance the encoder ca-               Ti-MAE (Li et al., 2023b) propose to randomly mask seg-
+pacity for learning diverse time-dependent representations.           ments and points in time series and pre-train the model with
+Eventually, a decoder that integrates cross-attention and             the reconstruction task. PatchTST (Nie et al., 2023) divides
+self-attention mechanisms is applied to ensure a precise              the temporal dimension into multiple patches and treats time
+reconstruction of the (masked) Siamese subseries.                     series as independent variates. Additionally, it incorporates
+Importantly, TimeSiam is not constrained by proximity in-             a non-overlapping patch-level masked self-supervised strat-
+formation in the time series. Instead, benefiting from our            egy for temporal representation learning. HiMTM (Zhao
+Siamese subseries sampling procedure, it can effectively              et al., 2024) proposes a novel hierarchical masked time se-
+model the correlation among distanced subseries, which                ries pre-training method to capture the multi-scale nature
+empowers the model with a more thorough understanding                 of time series. Additionally, SimMTM (Dong et al., 2023)
+of the whole time series. With the above designs, Time-               introduces a multi-masking modeling paradigm, which re-
+Siam remains simple but achieves consistent state-of-the-art          constructs original time series through the weighted aggrega-
+against prior time series pre-training methods across vari-           tion of multiple masked time series, thus being able to learn
+ous downstream tasks, including time series forecasting and           both points-wise and series-wise temporal representations.
+classification, covering both in- and cross-domain settings.          Despite these advances, all of these approaches solely focus
+Overall, our contributions are summarized as follows:                 on the modeling of one individual time series, disregarding
+                                                                      the intrinsic temporal correlations and dynamical variations
+   • In the spirit of learning temporal correlations, we pro-         of the whole time series. In contrast, TimeSiam proposes
+     pose TimeSiam, a simple but effective pre-training               to reconstruct the current sub-series based on past obser-
+     framework that leverages Siamese networks to capture             vations, which can naturally integrate the time-dependent
+     correlations among temporally distanced subseries.               information during reconstruction pre-training.
+   • With Siamese encoders to reconstruct current masked
+                                                                      Contrastive Learning Unlike masked modeling, this ap-
+     subseries based on past observation and lineage em-
+                                                                      proach enables model pre-training by optimizing the sim-
+     beddings to capture subseries disparity, TimeSiam can
+                                                                      ilarity among instance-level representations. It leverages
+     learn diverse time-dependent representations.
+                                                                      different data augmentations to construct positive and neg-
+   • TimeSiam achieves consistent state-of-the-art fine-              ative pairs from data, where positive pairs are optimized
+     tuning performance across thirteen standard bench-               to be close to each other and negative pairs are encour-
+     marks, excelling in various time series analysis tasks.          aged to be distant from each other during pre-training (Tang
+
+                                                                  2
+                          TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+et al., 2020; He et al., 2020; Chen & He, 2021; Gao et al.,          explore using shared-weight Siamese autoencoders to estab-
+2021). Current time series contrastive learning methods              lish correlations between past and current subseries. This
+are mainly based on diverse data augmentations tailored              methodology enables a more efficient understanding of tem-
+to the domain-specific characteristics of time series. CPC           poral relations in time series and enforces the model to learn
+(Oord et al., 2018) introduced contrastive predictive coding,        time-dependent representations.
+which uses model-predicted timesteps as positive samples
+and randomly-sampled timesteps as negative samples to                3. TimeSiam
+obtain advantageous time series representations for down-
+stream tasks. Franceschi et al. (2019) combined a causal             To enhance the time-dependent representation learning,
+dilated convolutions-based encoder with a novel triplet loss         TimeSiam is designed to capture correlations between tem-
+that employs time-based negative sampling. TNC (Tonek-               porally distant subseries based on Siamese networks. This
+aboni et al., 2021) learns the representations by ensuring           framework can natively derive a past-to-current reconstruc-
+that signals from within a neighborhood are distinguish-             tion task with simple masked augmentation. In addition,
+able from the distribution of non-neighboring signals in             learnable lineage embeddings are incorporated to dynami-
+the latent space using a debiased contrastive loss. TS2Vec           cally capture the disparity among different distanced sub-
+(Yue et al., 2022) divides time series into patches, defin-          series pairs, which can enhance the model’s capacity to
+ing contrastive tasks at both the individual instance and            cover different temporal correlations. Hereafter, we will
+patch levels. Mixing-up (Wickstrøm et al., 2022) exploits a          detail the pre-training and fine-tuning stages in TimeSiam.
+data augmentation scheme in which new samples are gen-
+erated by mixing two data samples. LaST (Wang et al.,                3.1. Pre-training
+2022) aims to separate seasonal and trend components in              TimeSiam pre-training involves the following two modules:
+time series data within the latent space. Additionally, CoST         Siamese subseries sampling and Siamese modeling.
+(Woo et al., 2022) utilizes contrastive losses in both time
+and frequency domains to learn distinct seasonal and trend           Siamese Subseries Sampling Typically, previous time
+representations. Furthermore, TF-C (Zhang et al., 2022)              series pre-training approaches focus solely on modeling the
+introduces a novel time-frequency consistency architecture,          individual series itself, neglecting the inherent correlations
+optimizing for proximity between time-based and frequency-           among temporally related time series. This deficiency in the
+based representations of the same data sample. However,              pre-training phase will lead to insufficient extraction of gen-
+existing contrastive learning methods for time series heavily        eralizable time-dependent representations. In contrast, our
+rely on intricate data augmentation techniques to generate           TimeSiam is designed to focus on modeling temporal corre-
+diverse views of the original data for self-supervision. Also,       lations of subseries across different timestamps, capturing
+the instance-level representation learning may fall short in         the intrinsic time-correlated information of time series.
+downstream low-level tasks. In TimeSiam, we utilize the na-
+tive temporally distanced subseries to build reconstruction          As shown in Figure 2, we construct Siamese subseries pairs
+tasks, thereby freeing from complex augmentation tech-               by randomly sampling a past sample xpast preceding the
+niques and also considering the low-level representation.            current sample xcurr in the same time series. Each sample
+                                                                     in a Siamese pair, termed “Siamese subseries” each other,
+2.2. Siamese Networks                                                contains T timestamps and C observed variables. Notably,
+                                                                     one xcurr can correspond to multiple xpast subseries due
+Siamese networks (Bromley et al., 1993) are particular neu-          to the random sampling process. We focus on construct-
+ral network architectures with shared model parameters.              ing correlations and capturing temporal variations between
+This design makes Siamese networks well-suited for com-              these Siamese subseries, which benefits intrinsically time-
+paring and distinguishing two input samples based on a               dependent representation learning during pre-training. The
+single neural network. They have been widely used in con-            relative distance between the past and current subseries, de-
+trastive learning to model the relationship between paired           noted as d, is crucial in representing the correlation and dis-
+samples (Chen & He, 2021). The combination of Siamese                parities between Siamese subseries. Furthermore, we adopt
+networks and contrastive learning has been widely used in            a simple masking augmentation to generate augmented cur-
+many applications, particularly in tasks requiring instance-         rent subseries xecurr that further improves the diversity and
+level representations (Chen et al., 2020; He et al., 2020;           the disparity of Siamese subseries pairs, ensuring a more
+Wang et al., 2023). However, in the field of time series             robust and sufficient pre-training phase. The above process
+pre-training, this combination generally focuses on recog-           can be formalized as follows:
+nizing subtle differences between various augmented views
+of the series itself, overlooking the essence of time series,
+                                                                          (xpast , x
+                                                                                   ecurr ) = Mask-Augment (xpast , xcurr ) .
+                                                                                                                          
+                                                                                                                                (1)
+that is temporal correlation modeling. In this paper, we
+
+
+                                                                 3
+                                                      TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+      (a) Siamese Pre-training                                                                                                   (b) Fine-tuning
+                                                                                          ̂
+                                                                                        x curr
+                            Lineage Matching                                                                                      Fixed-Input-Multiple-Lineages    Extended-Input-Multiple-Lineages
+                                                                                         …
+                                                           Key                                                                                 y                                    y
+ Lineage embeddings (e)
+
+
+
+
+                                                                                        Decoder                   Query
+                                             …         Value
+                                    e2                                                                                                      Average                              Concat
+                                                                  …                                           …
+
+                               e1                            Encoder                                       Encoder                    Pre-trained Encoder                 Pre-trained Encoder
+                                                                                   Shared Weights
+                                                      e1          +                                   e0      +
+                          e0                                                                                                         e0   e1    e2 … en              ek      …          e1      e0
+                                                                 xpast                                      x̃ curr
+                          Relative distance (d)             Sampling                                       Masking                             x                     xk                 x1      x0
+                                          …                                                       …                                                                          …
+
+
+                                                                                    d                                 Time                     T
+                                                                                                                                                            Time                 (k + 1)T
+                                                                                                                                                                                                      Time
+
+
+Figure 2. The overall design of TimeSiam, which establishes correlations between subseries randomly sampled from different timestamps
+using Siamese encoders. It integrates learnable lineage embeddings to enhance the capacity for temporal-related representation learning.
+
+Siamese Modeling After constructing mask-augmented                                                                       and masked current subseries as follows:
+Siamese pairs, as shown in Figure 2, we further integrate
+learnable lineage embeddings during pre-training to effec-                                                                   hpast
+                                                                                                                              e    = Encoder(zpast ), h
+                                                                                                                                                      e curr = Encoder(e
+                                                                                                                                                        e              zcurr ),                        (3)
+tively capture the disparity among different Siamese pairs.
+This design can enhance the model’s capacity to extract                                                                  where hpast e curr ∈ RT ×D are from the Siamese encoder.
+                                                                                                                                e , he
+diverse temporal-related representations. Given N learn-                                                                 Note that our Siamese sampling strategy natively derives a
+able lineage embeddings {elineage
+                              i     }N      lineage
+                                     i=1 , ei       ∈ R1×D and                                                           past-to-current reconstruction task. As shown in Figure 2,
+D represents the dimension of lineage embeddings. For                                                                    we use a decoder that integrates cross-attention and self-
+the past sample xpast , we apply the LineageMatching(·)                                                                  attention mechanisms (Vaswani et al., 2017) to incorporate
+function to dynamically match a certain lineage embedding                                                                past information into the current subseries for reconstruc-
+based on its temporal distance d to the current series. As for                                                           tion, which can inherently capture the temporal correlations.
+                   ecurr , we use a special lineage embedding
+the current sample x                                                                                                     Besides, this design can also enrich the limited context of
+to represent a degeneration situation as d = 0:                                                                          masked current series to ensure accurate reconstruction for
+                                                                                                                                                              e curr serves as the query,
+                                                                                                                         representation learning. Concretely, h
+                                     elineage
+                                      i       = LineageMatching(d)                                                               past
+                                                                                                                                                                e
+                                                                                                                         and he acts as both the key and value, generating the de-
+                                         zpast = Embed(xpast ) ⊕ elineage
+                                                                  i                                        (2)           coder representation of the current time subseries, denotes
+                                         zcurr
+                                                  = Embed(e
+                                                          x           curr
+                                                                             ) ⊕ elineage ,                              as hb d . This representation undergoes further refinement
+                                         e                                        0
+                                                                                                                         through a self-attention layer and a Feed-Forward Network
+where elineage  ∈ R1×D is the specific embedding for cur-                                                                (FFN). We formalize the decoder process as follows:
+          0
+                           zcurr ∈ RT ×D denote the embed-
+rent subseries and zpast , e                                                                                                                 
+                                                                                                                                               e curr + Cross-Attn h  e curr , hpast , hpast
+                                                                                                                                                                                              
+                                                                                                                         h
+                                                                                                                         b d = LayerNorm h
+                                                                                                                                                 e                      e       e        e
+ded Siamese features. Different base models correspond
+to different Embed(·). Regarding PatchTST (Nie et al.,
+                                                                                                                                                                               
+                                                                                                                         h′d = LayerNorm h     b d + Self-Attn h bd, hbd, hbd
+2023), the patch-wise embedding function PatchEmbed(·)                                                                                                       
+is used to divide each variable into several patches and                                                                 hd = LayerNorm h′d + FFN h′d .
+each patch is mapped to a patch token. As for iTrans-
+                                                                                                                                                                                           (4)
+former (Liu et al., 2024), it uses the variable-wise embed-                                                                                                                    e curr , hpast
+                                                                                                                                                                                              
+                                                                                                                         We summarize this process as hd = Decoder(h             e       e      .
+ding VariateEmbed(·) and maps the entire variable into a
+                                                                                                                         Finally, the output of the decoder hd ∈ RT ×D is used to
+temporal token. Note that lineage embeddings are used to
+                                                                                                                         reconstruct the masked current subseries through a linear
+identify the temporal distance between Siamese subseries.
+                                                                                                                         projection layer, which can be formalized as:
+It is shared along the time dimension when being added to
+Siamese subseries features. Here, ⊕ represents the addition                                                                                        bcurr = Projector(hd ).
+                                                                                                                                                   x                                                   (5)
+operation with the temporal dimension broadcast.
+                                                                                                                         Benefiting from our design, TimeSiam can be supervised by
+Next, TimeSiam utilizes Siamese encoders to process pairs                                                                a simple reconstruction loss function and inherently learn
+of Siamese pair features, which can be instantiated as ad-                                                               time-dependent representations by past-to-current temporal
+vanced time series models, e.g. PatchTST (Nie et al., 2023)                                                              correlation modeling. The loss for each Siamese pair is
+or iTransformer (Liu et al., 2024). After the Siamese en-
+coder layer, we can obtain pairs of representations of past                                                                                                           bcurr ∥22 .
+                                                                                                                                           Lreconstruction = ∥xcurr − x                                (6)
+
+                                                                                                                  4
+                             TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+3.2. Fine-tuning                                                            4. Experiments
+Under the cooperation of lineage embeddings, the pre-                       We perform extensive experiments across two mainstream
+trained Siamese encoder can capture diverse temporal-                       time series analysis tasks: forecasting and classification,
+related representations under different lineage embeddings.                 covering both in- and cross-domain settings.
+As demonstrated in Figure 2(b), this advantage can further
+derive two types of fine-tuning paradigms, covering both                    4.1. Experimental Setup
+fixed and extended input series settings.
+                                                                            Datasets We summarize the experimental benchmarks in
+                                                                            Table 1, encompassing eleven well-established datasets and
+Fixed-Input-Multiple-Lineages In a standard fine-tuning                     two newly constructed datasets, which cover two primary
+scenario, a sample typically generates only one type of                     tasks in time series analysis: forecasting and classification.
+representation, which seriously limits the capacity of the                  It is worth noting that to further demonstrate the pre-training
+pre-trained encoder. In contrast, TimeSiam innovatively pre-                benefits under large and diverse data, we employ the TSLD
+trains Siamese encoders with diverse lineage embeddings                     dataset, which is constructed by merging time series datasets
+to capture different distanced temporal correlations, which                 from multiple domains that are nonoverlapping with the
+allows TimeSiam to derive diverse representations with dif-                 other datasets. This allows us to explore cross-domain trans-
+ferent lineages for the same input series. This procedure                   fer scenarios with large-scale pre-training data. Please refer
+subtly releases the capacity of the pre-trained model and                   to Appendix B for a more comprehensive description.
+enhances the diversity of extracted representations. Given
+an input series x ∈ RT ×C , this process can be written as                  Table 1. Summary of experiment benchmarks, where TSLD-500M
+                                                                            and TSLD-1G are newly constructed from diverse domains.
+           he = Average (he,0 , he,1 , ...he,n ) ,
+                                                               (7)            TASKS       DATASETS            D OMAIN       E XAMPLES
+    where he,i = Encoder Embed(x) ⊕ elineage i       .
+                                                                                            ETT (4 subsets)   Electricity        14.3K
+                                                                                            Weather            Weather           52.7K
+The final output he ∈ RT ×D is an ensemble of a set of                                      Electricity       Electricity        26.3K
+temporal representations derived from the same input series                   Forecasting   Traffic         Transportation       17.5K
+x but with different lineage embeddings elineage
+                                          i      , which can                                Exchange           Finance            7.6K
+cover diverse temporal-related information of input series.                                 TSLD-500M            Multiple       412.6K
+                                                                                            TSLD-1G              Multiple       13.9M
+Extended-Input-Multiple-Lineages Note that in the fine-
+tuning stage, the model may receive longer records than                                     AD                    EEG            5.97K
+the pre-training series. Given a (k + 1)T -length input                      Classification TDBrain               EEG            11.9K
+(xk , · · · , x1 , x0 ), xi ∈ RT ×C , previous time series pre-                             PTB                   ECG            62.4K
+training methods have to adopt the same encoder to different
+segments, which clearly overlooks the chronological order                   Backbone We use the advanced time series models across
+of extended series. Desirably, in TimeSiam, we can leverage                 various tasks as Siamese encoders to evaluate the efficacy of
+multiple lineage embeddings trained under different tempo-                  our pre-training methods. In particular, we utilized iTrans-
+ral distanced pairs to different segments, which can natively               former (Liu et al., 2024) and PatchTST (Nie et al., 2023)
+conserve the temporal order of different segments. This                     as the encoder for time series forecasting following their
+advantage is achieved by associating each segment with its                  original configurations. The patch length and stride were
+respective lineage embedding:                                               both set to 12 without any overlap. TCN (Bai et al., 2018) is
+                                                                            used as the backbone for the classification task (Wang et al.,
+       he = Concat (he,0 , he,1 , . . . , he,k ) ,                          2023). Note that to ensure a fair comparison, we unify the
+                                                                          encoder backbone of our model and all the baselines. The
+where he,i = Encoder Embed(xi ) ⊕ elineage   LineageMatching(iT )
+                                                                    .
+                                                                            results with a unified encoder generally surpass the results
+                                                                 (8)        reported by themselves across all baselines.
+                                                                            Baselines We compare our TimeSiam with eight advanced
+Here he ∈ R(k+1)T ×D denotes the extracted representation
+                                                                            self-supervised time series pre-training baselines under the
+for extended input series.
+                                                                            in-domain setting, including contrastive learning methods:
+To align the experiment setting with previous work (Dong                    COMET (2023), TF-C (2022), LaST (2022), CoST (2022),
+et al., 2023), our experiments are based on the Fixed-Input-                TS2Vec (2022), TNC (2021), CPC (2018) and masked mod-
+Multiple-Lineages setting except for special clarification.                 eling methods: SimMTM (2023), Ti-MAE (2023b), TST
+
+                                                                        5
+                           TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+Table 2. In-domain fine-tuning for time series forecasting. Siamese encoders are both pre-trained and fine-tuned on the same dataset.
+Results are the average Mean Squared Error (MSE), calculated from forecasts made for four future lengths O ∈ {96, 192, 336, 720},
+based on the past 96 time points. A smaller MSE indicates a better prediction. Full results are presented in Appendix G.
+
+    E NCODER         M ETHOD                ETT H 1   ETT H 2     ETT M 1                                 ETT M 2           W EATHER       E XCHANGE                                               ECL            T RAFFIC
+                     R ANDOM INIT.           0.473     0.385      0.390                                   0.285                 0.259                                              0.367          0.216             0.490
+                     CPC (2018)              0.440     0.401      0.389                                   0.290                 0.272                                              0.368          0.220             0.504
+                     TNC (2021)              0.445     0.379      0.386                                   0.287                 0.270                                              0.362          0.212             0.501
+                     TS2V EC (2022)          0.456     0.376      0.393                                   0.289                 0.256                                              0.363          0.199             0.472
+                     C O ST (2022)           0.457     0.374      0.395                                   0.286                 0.253                                              0.364          0.203             0.480
+    PATCH TST        L A ST (2022)           0.479     0.385      0.398                                   0.285                 0.252                                              0.433          0.207             0.520
+                     TF-C (2022)             0.453     0.378      0.389                                   0.281                 0.257                                              0.362          0.202             0.487
+                     TST (2021)              0.452     0.383      0.380                                   0.288                 0.259                                              0.385          0.197             0.486
+                     T I -MAE (2023 B )      0.448     0.379      0.384                                   0.279                 0.257                                              0.370          0.196             0.481
+                     PATCH TST† (2023)       0.442     0.381      0.379                                   0.285                 0.267                                              0.358          0.200             0.484
+                     S IM MTM (2023)         0.440     0.382      0.377                                   0.285                 0.256                                              0.361          0.192             0.466
+                     T IME S IAM             0.429     0.373      0.374                                   0.279                 0.252                                              0.353          0.189             0.453
+                     R ANDOM INIT.           0.454     0.383      0.407                                   0.288                 0.258                                              0.365          0.178             0.428
+                     TS2V EC (2022)          0.474     0.379      0.411                                   0.290                 0.264                                              0.364          0.246             0.485
+                     C O ST (2022)           0.472     0.386      0.411                                   0.294                 0.269                                              0.366          0.252             0.529
+                     L A ST (2022)           0.465     0.386      0.400                                   0.302                 0.262                                              0.386          0.237             0.477
+ I T RANSFORMER      TF-C (2022)             0.450     0.379      0.403                                   0.292                 0.265                                              0.372          0.222             0.432
+                     TST (2021)              0.447     0.376      0.399                                   0.291                 0.261                                              0.363          0.228             0.438
+                     T I -MAE (2023 B )      0.448     0.378      0.399                                   0.289                 0.257                                              0.366          0.217             0.430
+                     S IM MTM (2023)         0.445     0.376      0.397                                   0.286                 0.259                                              0.358          0.179             0.426
+                     T IME S IAM             0.440     0.371      0.390                                   0.284                 0.256                                              0.355          0.175             0.420
+
+
+                                                                                                                    In-Domain              Classification (TSLD-1G → PTB / Acc.)                 Cross-Domain
+(2021), and a patch-wise self-surpervised masked modeling
+                                                                      Classification (PTB → PTB / Acc.)
+
+
+
+
+method, PatchTST, proposed by (Nie et al., 2023).
+It should be noted that some baselines such as CPC (Oord
+et al., 2018), TNC (Tonekaboni et al., 2021), etc. are not val-
+idated in the iTransformer backbone because their specific
+design based on internal modeling of series is not applica-                                                Forecasting (ECL → ECL / MSE)                                               Forecasting (TSLD-1G → ECL / MSE)
+
+ble to iTransformer (Liu et al., 2024), which models the
+entire sequence as a whole temporal token and focuses on                  Figure 3. Comparison of time series pre-training baselines for fore-
+                                                                          casting (MSE ↓) and classification (Accuracy ↑) tasks. This com-
+modeling relationships between different variables. In the
+                                                                          parison included both contrastive-based and masking-based meth-
+cross-domain setting, due to the large-scale dataset TSLD
+                                                                          ods, covering both in- (left) and cross-domain (right) settings.
+will bring huge experiment costs, we only select part of
+the baselines (the efficient ones) for comparisons. Besides,
+                                                                             4.3. Forecasting
+COMET (2023) is specifically designed for medical time
+series and we also exclude it from cross-domain evaluation.                  In-domain We investigate the effectiveness of TimeSiam
+More implementation details can be found in Appendix A.                      by integrating it with state-of-the-art time series forecasting
+                                                                             models: PatchTST (Nie et al., 2023) and iTransformer (Liu
+4.2. Main Results                                                            et al., 2024). As shown in Table 2, TimeSiam can further
+                                                                             enhance model performance, achieving an average MSE
+As shown in Figure 3,we summarize the performance of our                     reduction of 5.7% and 2.5% across all forecasting bench-
+TimeSiam in both in- and cross-domain scenarios for two                      marks, even though these advanced models already exhibit
+mainstream time series analysis tasks: time series forecast-                 excellent forecasting capabilities from random initializa-
+ing (x-axis) and classification (y-axis). For each scenario,                 tion. Significantly, it is evident that the masked modeling-
+TimeSiam exhibits significant improvement over other es-                     based approach overall outperforms the contrastive-based
+tablished strong self-supervised baselines for time series.                  approach in the forecasting task. This can be attributed
+
+                                                                  6
+                           TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+Table 3. Cross-domain fine-tuning for time series forecasting. Siamese encoders are pre-trained on the TSLD-1G dataset and fine-tuned
+on various target datasets. Results are the average Mean Squared Error (MSE) for four future lengths O ∈ {96, 192, 336, 720}, based on
+the past 96 time points. A smaller MSE indicates a better prediction. Full results are detailed in Appendix G.
+
+  E NCODER       M ETHOD               ETT H 1    ETT H 2    ETT M 1      ETT M 2     W EATHER      E XCHANGE       ECL      T RAFFIC
+                 R ANDOM INIT.         0.473       0.385      0.390        0.285        0.259          0.367       0.216       0.490
+                 TS2V EC (2022)        0.441       0.375      0.380        0.291        0.256          0.365       0.217       0.528
+                 TF-C (2022)           0.437       0.378      0.386        0.282        0.264          0.360       0.218       0.543
+  PATCH TST
+                 TST (2021)            0.434       0.384      0.387        0.303        0.263          0.365       0.220       0.514
+                 T I -MAE (2023 B )    0.435       0.374      0.380        0.294        0.256          0.362       0.218       0.515
+                 S IM MTM (2023)       0.429       0.380      0.375        0.287        0.252          0.365       0.213       0.459
+                 T IME S IAM           0.425       0.374      0.371        0.286        0.251          0.360       0.188       0.454
+
+
+to the advantages gained through series reconstruction to
+                                                                       Table 4. In-domain fine-tuning for time series classification. The
+learn low-level temporal representation. However, our Time-
+                                                                       model is pre-trained on two EEG datasets: AD and TDBrain, and
+Siam still performs the best forecasting capability among all          an ECG dataset: PTB, and then fine-tuned on the same dataset.
+existing state-of-the-art self-supervised baseline methods.            Accuracy (%) is recorded. See Appendix G for more details.
+Cross-domain As shown in Table 3, we use the TSLD-1G
+                                                                          M ETHOD                   AD         TDB RAIN        PTB
+dataset, which contains larger scale time series samples from
+diverse domains, to validate the effectiveness of TimeSiam                R ANDOM INIT.           80.62          79.08         84.19
+in a cross-domain transfer setting. Note that this setting                CPC (2018)              77.40          85.19         88.30
+not only requires pre-training learning from large-scale data             TNC (2021)              78.58          85.21         90.53
+but also poses thorny challenges in handling mismatched                   TS2 VEC (2022)          81.26          80.21         85.14
+data distribution. The results consistently demonstrate that              C O ST (2022)           73.87          83.86         88.61
+our TimeSiam significantly enhances the performance over                  L A ST (2022)           72.63          85.13         89.22
+training from random initialization covering all forecasting              TF-C (2022)             75.31          66.62         87.50
+benchmarks, achieves comparable results in the in-domain                  COMET (2023)            84.50          85.47         87.84
+setting, and consistently outperforms other baseline meth-                TST (2021)              81.50          83.22         84.25
+ods. It is worth noting that the transfer results even show               T I -MAE (2023 B )      80.70          88.16         88.39
+superior performance compared to the in-domain scenario                   S IM MTM (2023)         86.19          84.81         90.04
+in some datasets, such as TSLD-1G → {ETTh1, ETTm1}.
+This confirms the essential significance of using more large-             T IME S IAM             89.93          90.67         91.32
+scale and varied data for time series pre-training.
+                                                                       Table 5. Cross-domain fine-tuning for time series classification.
+4.4. Classification                                                    The model is pre-trained on TSLD-1G dataset and fine-tuned on
+                                                                       EEG dataset AD, TDBrain and ECG dataset PTB. Accuracy (%)
+In-domain To further investigate the generalizability of
+                                                                       is recorded and further details can be found in Appendix G.
+the representations learned by TimeSiam, we examined
+the impact of in-domain pre-training on classification tasks              M ETHOD                   AD         TDB RAIN         PTB
+within the medical domain, following the setup in (Wang
+et al., 2023). Results in Table 4 demonstrate competitive                 R ANDOM INIT.           80.62          79.08         84.19
+outcomes achieved by both COMET (Wang et al., 2023)                       TS2 VEC (2022)          80.59          85.58         89.23
+and SimMTM (Dong et al., 2023). This can be attributed to                 TF-C (2022)             87.98          82.84         89.18
+the elaborative designs of their approaches, where COMET                  TST (2021)              82.60          83.65         85.81
+incorporates domain-specific knowledge into its design and                T I -MAE (2023 B )      80.40          85.22         86.67
+SimMTM models both high-level and low-level temporal                      S IM MTM (2023)         87.74          85.29         85.64
+representations. Compared with these competitive baselines,
+                                                                          T IME S IAM             90.47          86.26         90.45
+our TimeSiam, characterized by its simplicity and generality,
+consistently achieves remarkable results. In all classification
+benchmarks, our proposed TimeSiam consistently enhances                Cross-domain Furtherly, we investigated the impact of us-
+the average classification accuracy by 11.5% compared to               ing larger and more diverse pre-training datasets on time se-
+random initialization, surpassing other baseline methods.              ries classification tasks: TSLD-1G → {AD, TDBrain, PTB}.
+
+                                                                  7
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+Table 6. Ablations on the Traffic benchmark, which are conducted under the in-domain forecasting setting. The length of the input
+series was fixed at 96 time points. The default setting is indicated by a grey bold marking. MSE averaged from 4 forecasting horizons
+{96, 192, 336, 720} is reported. The (c) notation in masking rules refers to channel-wise masking. More results can be found in Table 20.
+
+                  (a) S IAMESE S AMPLING                                          (b) S UBSERIES R ECONSTRUCTION
+     Sampling range (max d)          Lineage types N                           Masking rules                 Masked ratio
+     w/o           0.462                w/o           0.457               binomial              0.459             w/o             0.460
+     1             0.454                 2            0.456              continuous             0.459             15%             0.459
+     3             0.454                 3            0.453               mask last             0.461             25%             0.453
+     6             0.453                 6            0.455             binomial (c)            0.457             50%             0.455
+     12            0.455                                               continuous (c)           0.453             75%             0.457
+
+
+Generally, as shown in Table 5, pre-training will bring con-           Table 7. Fine-tuning performance of TimeSiam under different pre-
+sistent promotion w.r.t. random initialization. However, it            training data and model sizes. Relative improvement over random
+is also observed that employing larger datasets from more              initialization (%) is marked in green. See Appendix A.3 for details.
+diverse domains does not definitively show an advantage
+                                                                         P RE - TRAIN                   T RAFFIC          ECL
+over the in-domain pre-trained models. This result may
+come from the inherent differences between the domains of                Random initiation              0.490             0.216
+pre-training and fine-tuning under the cross-domain setting.             TimeSiam in-domain             0.453             0.189
+Notably, even in this tough cross-domain setting, TimeSiam
+                                                                         TimeSiamBase TSLD500M          0.462 (+5.7)      0.189 (+12.5)
+still surpasses the other baselines, demonstrating its capabil-
+                                                                         TimeSiamBase TSLD1G            0.454 (+7.4)      0.188 (+12.5)
+ity to handle shifted data distributions.
+                                                                         TimeSiamLarge TSLD1G           0.433 (+11.6)     0.185 (+14.4)
+
+4.5. Ablation Studies
+                                                                       Lineage embeddings As shown in Table 8, we can ob-
+We conduct extensive ablation studies to evaluate the effec-           serve that lineage embeddings play a vital role in enhancing
+tiveness of various designs in TimeSiam, including Siamese             forecasting performance. This comes from the inherent abil-
+sampling and subseries reconstruction.                                 ity of lineage embeddings to distinguish temporal distances
+                                                                       between subseries during the pre-training phase. As a result,
+Siamese Sampling We explore the key hyper-parameters                   they facilitate the learning of diverse temporal correlations.
+of Siamese modeling: the maximum sampling distance be-                 Consequently, the inclusion of lineage embeddings has been
+tween the past and current Siamese subseries (Sampling                 shown to be effective in improving performance when fine-
+range max d) and the size of the lineage embedding set                 tuning models for a variety of downstream tasks.
+(Lineage types N ). The maximum sampling range is de-
+termined by the length of the subseries (T ) and a hyperpa-            Table 8. Ablations on lineage embeddings. The MSE averaged
+rameter (r), resulting in max d = T × r. Table 6(a) demon-             from 4 forecasting horizons {96, 192, 336, 720} is reported here.
+strates that integrating past-to-current Siamese modeling
+                                                                         DATASETS       R ANDOM INIT.     T IME S IAM    W / O L INEAGE
+outperforms self-reconstruction modeling in time series pre-
+training. Furthermore, expanding the sampling range of                   ETTh1              0.473               0.429        0.433 ↓
+Siamese subseries reasonably significantly enhances perfor-              ETTm1              0.390               0.374        0.378 ↓
+mance, underscoring the critical role of Siamese modeling                Weather            0.259               0.252        0.256 ↓
+in achieving optimal fine-tuning results.                                Traffic            0.490               0.453        0.457 ↓
+                                                                         Exchange            0.36               0.353        0.365 ↓
+Subseries Reconstruction For subseries reconstruction,
+results in Table 6(b) indicate that channel-wise masking
+                                                                       4.6. Analysis Experiment
+significantly benefits Siamese modeling, especially when
+comparing the continuous to channel-wise continuous (c).               Data Scale and Model Capacity One of the bottlenecks
+Both random and continuous masking work well, achieving                that block the development of time series pre-training is the
+lower mean squared error in the process. As for the masking            lack of large-scale and diverse data for pre-training (Zhou
+ratio, we find that a high masking ratio of 75% will sig-              et al., 2023). To investigate the influence of data scale on
+nificantly distort temporal variations, whereas a low mask             TimeSiam, we employed TimeSiam for pre-training on a
+ratio of 15% overly simplifies the task, hindering effective           larger dataset TSLD-{0.5G, 1G} along with different model
+temporal representation learning. Therefore, we adopt a                sizes, followed by applying it to downstream time-series pre-
+default masking ratio of 25%, same as (Devlin et al., 2018).           diction tasks to assess fine-tuning effects. Results, illustrated
+
+                                                                   8
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+                   ETTh1                              Weather                                    ECL                                                                   Traffic
+
+                                              0.256
+                                                                                                                                               0.420
+MSE（Avg）
+
+
+
+
+                                   MSE（Avg）
+
+
+
+
+                                                                     MSE（Avg）
+
+
+
+
+                                                                                                                                    MSE（Avg）
+                                                                                0.175
+           0.440
+
+
+
+
+           0.428                              0.238                             0.159                                                          0.369
+
+
+
+Figure 4. Fine-tuning the pre-trained model to the inputs with extended length {96, 192, 288, 384, 576} based on iTransformer (Liu et al.,
+2024). The MSE averaged from all predicted horizons {96, 192, 336, 720} is reported. Additional results are in the Appendix F.
+                                                                                                                    0.365    ETT
+in Table 7, reveal that the model performance is promoted
+significantly, empowering by TimeSiam pre-training (Time-                                         r
+                                                                                               the
+                                                                                                                     0.396
+Siam vs. random init.). Furthermore, although TSLD500M                                      W
+                                                                                             ea                                                          0.502
+
+
+
+
+                                                                                                                                                         Traffi
+                                                                                         0.263
+does not exhibit a significant advantage over TimeSiam un-                                                 0.271
+                                                                                                                            0.757
+
+
+
+
+                                                                                                                                                                c
+der the in-domain setting initially, we observed a marked                                                                   0.257
+                                                                                                                                                                    TS2Vec
+                                                                                                               0.391
+enhancement in performance as the dataset size increased                                                                                                            TF-C
+                                                                                                                                                                    TST
+(TSLD1G vs. TSLD500M ), and TimeSiamLarge significantly                                                                                                             Ti-MAE
+                                                                                                                                                                    SimMTM
+outperforms TimeSiamBase in the TSLD1G finetuning scenar-                                        0.357
+                                                                                                         Exchange                        ECL
+                                                                                                                                                 0.199              TimeSiam
+
+
+ios, especially in the Traffic benchmark. This observation
+                                                                            Figure 5. Linear probing on in-domain forecasting setting. Aver-
+highlights the efficacy of TimeSiam and the positive corre-                 age results (MSE) are reported. Full results are shown in Table 17.
+lation between data-model size and the final performance.
+                                                                            diverse temporal semantic information, enabling discrimina-
+Adapt to Extended-Length Input As illustrated in                            tion between different temporally distanced Siamese series,
+Eq. (8), TimeSiam can natively adapt to longer inputs. Fig-                 thereby boosting long-term prediction outcomes.
+ure 4 shows that the standard prediction framework may
+degenerate under extended input length, which may be be-                                              ECL                                                                Traffic
+cause of the noises in longer series. Contrarily, benefiting
+from an ingenious integration of Siamese modeling and
+                                                                          MSE
+
+
+
+
+lineage embeddings, TimeSiam achieves more accurate pre-
+dictions, even when predicting from extended input series.
+
+Linear Probing As an important finetuning setting, we
+also experiment with the linear probing, where we fix the
+pre-trained encoder and only finetune the newly added pro-                  Figure 6. Increasing number of lineage embeddings on the ECL
+jector at the end of the model. Figure 5 illustrates that Time-             and Traffic. All results are under the “input-96” in-domain setting.
+Siam demonstrates superior performance compared to other
+baselines in terms of overall linear probing performance.
+Interestingly, by only fine-tuning the model head, the aver-                5. Conclusion
+age forecasting performance across the four ETT subsets is
+already comparable with the results obtained through full                   This paper proposes a simple, effective self-supervised pre-
+fine-tuning, and significantly outperforms training from ran-               training framework named TimeSiam, uniquely focusing on
+dom initialization (MSE: 0.365 vs. 0.383). This finding                     temporal correlation modeling. TimeSiam employs Siamese
+further validates the effectiveness of TimeSiam in learning                 networks as share encoders for randomly sampled past and
+generalizable representations for various downstream tasks.                 current Siamese subseries. It further enhances data diversity
+                                                                            through masking augmentation, which can also foster time-
+Embedding Effectiveness To elucidate the advantages of                      dependent representation learning by reconstructing current
+employing varying numbers of lineage embeddings within a                    subseries from past observations. Additionally, we imple-
+fixed sampling range for prediction, as illustrated in Figure 6,            ment learnable lineage embeddings that efficiently capture
+our findings consistently demonstrate that the incorporation                disparities among Siamese subseries under different dis-
+of lineage embeddings enhances prediction performance.                      tances, enhancing the model’s ability to cover diverse tem-
+Furthermore, augmenting the number of embeddings to en-                     poral correlations. Experimentally, TimeSiam demonstrated
+compass a greater extent of lineage within reasonable limits                remarkable performance on various time series analysis
+reinforces the efficacy of long-term prediction. Experimen-                 tasks, consistently outperforming existing state-of-the-art
+tal results validate that lineage embeddings introduce more                 baselines in both in- and cross-domain scenarios.
+
+                                                                    9
+                           TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+Acknowledgments                                                           Long, M. Simmtm: A simple pre-training framework for
+                                                                          masked time-series modeling. In NeurIPS, 2023.
+This work was supported by the National Key Research and
+Development Plan (2021YFB1715200), the National Natu-                   Escudero, J., Abásolo, D., Hornero, R., Espino, P., and
+ral Science Foundation of China (62022050 and U2342217),                  López, M. Analysis of electroencephalograms in
+the BNRist Innovation Fund (BNR2024RC01010), and the                      alzheimer’s disease patients with multiscale entropy.
+National Engineering Research Center for Big Data Soft-                   Physiological measurement, 27(11):1091, 2006.
+ware. We are grateful to our colleagues Yipeng Huang and
+                                                                        Franceschi, J.-Y., Dieuleveut, A., and Jaggi, M. Unsuper-
+Zhiyao Cen for their support in the experimental efficiency.
+                                                                          vised scalable representation learning for multivariate
+                                                                          time series. In NeurIPS, 2019.
+Impact Statement
+                                                                        Gao, T., Fisch, A., and Chen, D. Making pre-trained lan-
+This paper focus on developing practical time series pre-                 guage models better few-shot learners. In IJCNLP, 2020.
+training methods. We presents a novel approach based on
+Siamese networks, which could provide some inspiration for              Gao, T., Yao, X., and Chen, D. Simcse: Simple contrastive
+future research. The experimental results demonstrate the                 learning of sentence embeddings. In EMNLP, 2021.
+effectiveness of our approach across various domains and                Goldberger, A. L., Amaral, L. A., Glass, L., Hausdorff, J. M.,
+its potential value for real-world applications. It is essential          Ivanov, P. C., Mark, R. G., Mietus, J. E., Moody, G. B.,
+to note that our work focuses solely on scientific issues, and            Peng, C.-K., and Stanley, H. E. Physiobank, physiotoolkit,
+we also ensure that ethical considerations are carefully taken            and physionet: components of a new research resource
+into account. All the medical-related datasets are publicly               for complex physiologic signals. circulation, 101(23):
+available for scientific research. Thus, we believe that there            e215–e220, 2000.
+is no ethical risk associated with our research.
+                                                                        He, K., Fan, H., Wu, Y., Xie, S., and Girshick, R. Mo-
+                                                                          mentum contrast for unsupervised visual representation
+References
+                                                                          learning. In CVPR, 2020.
+Bai, S., Kolter, J. Z., and Koltun, V. An empirical evalua-
+  tion of generic convolutional and recurrent networks for              He, K., Chen, X., Xie, S., Li, Y., Dollár, P., and Girshick,
+  sequence modeling. arXiv preprint arXiv:1803.01271,                     R. Masked autoencoders are scalable vision learners. In
+  2018.                                                                   CVPR, 2022.
+                                                                        Lai, G., Chang, W.-C., Yang, Y., and Liu, H. Modeling
+Bromley, J., Guyon, I., LeCun, Y., Säckinger, E., and Shah,
+                                                                          long-and short-term temporal patterns with deep neural
+  R. Signature verification using a” siamese” time delay
+                                                                          networks. In SIGIR, 2018.
+  neural network. In NeurIPS, 1993.
+                                                                        Li, Y., Fan, H., Hu, R., Feichtenhofer, C., and He, K. Scal-
+Brown, T. B., Mann, B., Ryder, N., Subbiah, M., Kaplan,                   ing language-image pre-training via masking. In CVPR,
+  J., Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G.,               2023a.
+  Askell, A., Agarwal, S., Herbert-Voss, A., Krueger, G.,
+  Henighan, T., Child, R., Ramesh, A., Ziegler, D. M., Wu,              Li, Z., Rao, Z., Pan, L., Wang, P., and Xu, Z. Ti-mae:
+  J., Winter, C., Hesse, C., Chen, M., Sigler, E., Litwin, M.,            Self-supervised masked time series autoencoders. arXiv
+  Gray, S., Chess, B., Clark, J., Berner, C., McCandlish,                 preprint arXiv:2301.08871, 2023b.
+  S., Radford, A., Sutskever, I., and Amodei, D. Language
+                                                                        Liu, X., Zhang, F., Hou, Z., Mian, L., Wang, Z., Zhang,
+  Models are Few-Shot Learners. NeurIPS, 2020.
+                                                                          J., and Tang, J. Self-supervised learning: Generative or
+Chen, T., Kornblith, S., Norouzi, M., and Hinton, G. A                    contrastive. TKDE, 2021.
+  simple framework for contrastive learning of visual rep-              Liu, Y., Hu, T., Zhang, H., Wu, H., Wang, S., Ma, L.,
+  resentations. In ICML, 2020.                                            and Long, M. itransformer: Inverted transformers are
+                                                                          effective for time series forecasting. In ICLR, 2024.
+Chen, X. and He, K. Exploring simple siamese representa-
+  tion learning. In CVPR, 2021.                                         Nie, Y., Nguyen, N. H., Sinthong, P., and Kalagnanam, J.
+                                                                          A time series is worth 64 words: Long-term forecasting
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. BERT:                with transformers. In ICLR, 2023.
+  Pre-training of Deep Bidirectional Transformers for Lan-
+  guage Understanding. In NAACL, 2018.                                  Oord, A. v. d., Li, Y., and Vinyals, O. Representation learn-
+                                                                          ing with contrastive predictive coding. arXiv preprint
+Dong, J., Wu, H., Zhang, H., Zhang, L., Wang, J., and                     arXiv:1807.03748, 2018.
+
+                                                                   10
+                          TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J.,           Woo, G., Liu, C., Sahoo, D., Kumar, A., and Hoi, S. Cost:
+  Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,           Contrastive learning of disentangled seasonal-trend rep-
+  L., Desmaison, A., Köpf, A., Yang, E., DeVito, Z., Rai-            resentations for time series forecasting. In ICLR, 2022.
+  son, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang,
+  L., Bai, J., and Chintala, S. Pytorch: An imperative               Wu, H., Xu, J., Wang, J., and Long, M. Autoformer: Decom-
+  style, high-performance deep learning library. In NeurIPS,          position transformers with auto-correlation for long-term
+  2019.                                                               series forecasting. In NeurIPS, 2021.
+
+PeMS. Traffic Dataset. http://pems.dot.ca.gov/.                      Wu, H., Hu, T., Liu, Y., Zhou, H., Wang, J., and Long, M.
+                                                                      Timesnet: Temporal 2d-variation modeling for general
+Radford, A., Wu, J., Child, R., Luan, D., Amodei, D.,                 time series analysis. In ICLR, 2023a.
+  Sutskever, I., et al. Language models are unsupervised
+  multitask learners. In OpenAI blog, 2019.                          Wu, H., Zhou, H., Long, M., and Wang, J. Interpretable
+                                                                      weather forecasting for worldwide stations with a unified
+Raffel, C., Shazeer, N., Roberts, A., Lee, K., Narang, S.,            deep model. Nature Machine Intelligence, 2023b.
+  Matena, M., Zhou, Y., Li, W., and Liu, P. J. Exploring
+  the limits of transfer learning with a unified text-to-text        Xiao, T., Wang, X., Efros, A. A., and Darrell, T. What
+  transformer. JMLR, 21(1):5485–5551, 2020.                            should not be contrastive in contrastive learning. In ICLR,
+                                                                       2021.
+Tang, C. I., Perez-Pozuelo, I., Spathis, D., and Mascolo, C.
+  Exploring contrastive learning in human activity recogni-          Xie, Z., Zhang, Z., Cao, Y., Lin, Y., Bao, J., Yao, Z., Dai, Q.,
+  tion for healthcare. In NeurIPS, 2020.                               and Hu, H. Simmim: A simple framework for masked
+                                                                       image modeling. In CVPR, 2022.
+Tonekaboni, S., Eytan, D., and Goldenberg, A. Unsuper-
+  vised representation learning for time series with temporal        Yue, Z., Wang, Y., Duan, J., Yang, T., Huang, C., Tong, Y.,
+  neighborhood coding. arXiv preprint arXiv:2106.00750,                and Xu, B. TS2Vec: Towards Universal Representation
+  2021.                                                                of Time Series. In AAAI, 2022.
+UCI. UCI Electricity Load Time Series Dataset. https:                Zerveas, G., Jayaraman, S., Patel, D., Bhamidipaty, A., and
+ //archive.ics.uci.edu/ml/datasets/                                    Eickhoff, C. A transformer-based framework for multi-
+ ElectricityLoadDiagrams20112014.                                      variate time series representation learning. In SIGKDD,
+Van Dijk, H., Van Wingen, G., Denys, D., Olbrich, S.,                  2021.
+  Van Ruth, R., and Arns, M. The two decades brainclinics            Zhang, X., Zhao, Z., Tsiligkaridis, T., and Zitnik, M. Self-
+  research archive for insights in neurophysiology (tdbrain)           supervised contrastive pre-training for time series via
+  database. Scientific data, 9(1):333, 2022.                           time-frequency consistency. In NeurIPS, 2022.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+                                                                     Zhao, S., Jin, M., Hou, Z., Yang, C., Li, Z., Wen, Q., and
+  L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Attention
+                                                                       Wang, Y. Himtm: Hierarchical multi-scale masked time
+  is all you need. In NeurIPS, 2017.
+                                                                       series modeling for long-term forecasting. arXiv preprint
+Wang, Y., Han, Y., Wang, H., and Zhang, X. Contrast every-             arXiv:2401.05012, 2024.
+ thing: A hierarchical contrastive framework for medical
+                                                                     Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H.,
+ time-series. In NeurIPS, 2023.
+                                                                       and Zhang, W. Informer: Beyond efficient transformer
+Wang, Z., Xu, X., Zhang, W., Trajcevski, G., Zhong, T., and            for long sequence time-series forecasting. In AAAI, 2021.
+ Zhou, F. Learning latent seasonal-trend representations
+ for time series forecasting. In NeurIPS, 2022.                      Zhou, T., Niu, P., Wang, X., Sun, L., and Jin, R. One fits all:
+                                                                       Power general time series analysis by pretrained lm. In
+Wen, Q., Sun, L., Yang, F., Song, X., Gao, J., Wang, X., and           NeurIPS, 2023.
+ Xu, H. Time series data augmentation for deep learning:
+ A survey. arXiv preprint arXiv:2002.12478, 2020.
+Wetterstation. Weather Dataset.            https://www.
+ bgc-jena.mpg.de/wetter/.
+Wickstrøm, K., Kampffmeyer, M., Mikalsen, K. Ø., and
+ Jenssen, R. Mixing up contrastive learning: Self-
+ supervised representation learning for time series. PRL,
+ 2022.
+
+                                                                11
+                             TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+A. Implementation Details
+In this paper, all experiments were conducted on a single NVIDIA A100 SXM4 80GB GPU and implemented using the
+PyTorch framework (Paszke et al., 2019) for five repetitions. We evaluated performance using Mean Square Error (MSE)
+and Mean Absolute Error (MAE) for time series forecasting. For classification tasks, we comprehensively assessed model
+performance by measuring accuracy, precision, recall, F1 score, AUROC, and AUPRC.
+
+A.1. Baseline Implementation
+We have followed and compared the official implementations of all baselines to our approach. We have maintained the
+original configurations outlined in these papers to ensure a fair comparison. Note that we utilized an unofficial coding
+version of Ti-MAE (Li et al., 2023b) due to the unavailability of its official open-source implementation.
+
+
+                                 Table 9. Categories and open-source implementations of all baselines.
+
+          C ATEGORIES                 M ETHODS                                  O FFICIAL C ODE L INK
+
+                                      TS2V EC (Yue et al., 2022)                https://github.com/yuezhihan/ts2vec
+
+                                      C O ST (Woo et al., 2022)                 https://github.com/salesforce/CoST
+
+      Contrastive Learning            L A ST (Wang et al., 2022)                https://github.com/zhycs/LaST
+
+                                      TF-C (Zhang et al., 2022)                 https://github.com/ mims-harvard/TFC-pretraining
+
+                                      COMET (Wang et al., 2023)                 https://github.com/DL4mHealth/COMET
+
+                                      TST (Zerveas et al., 2021)                https://github.com/gzerveas/mvts transformer
+
+                                      T I -MAE (Li et al., 2023b)               https://github.com/asmodaay/ti-mae
+       Masked Modeling
+                                      PATCH TST (Nie et al., 2023)              https://github.com/yuqinie98/PatchTST
+
+                                      S IM MTM (Xie et al., 2022)               https://github.com/thuml/simmtm
+
+
+
+A.2. Training Configuration
+We construct two types of pre-training and fine-tuning scenarios, in-domain and cross-domain, based on benchmarks for
+prediction and classification tasks to compare the effectiveness of our method with other time series pre-training methods.
+In the pre-training phase, we pre-train the model with different learning rates and batch sizes based on the pre-trained
+dataset. We then fine-tune it for downstream prediction and classification tasks supervised by L2 and Cross-Entropy loss,
+respectively. The configuration details are in Table A.3. Also, considering the size of the fine-tuned dataset and consistency
+with existing works, we fine-tune the model for 10 epochs for the prediction task and 50 epochs for the classification task.
+
+
+                     Table 10. Pre-training and fine-tuning configurations in forecasting and classification tasks.
+
+                                   P RE - TRAINING                                           F INE - TUNING
+       TASKS
+                      learning rate     batch size     epochs        learning rate      loss function         batch size       epochs
+
+     Forecasting          1e-4              32           50              1e-4                L2            {8, 16, 32}          10
+
+    Classification        1e-4             256           100             1e-4          Cross-Entropy      {32, 64, 128}         50
+
+
+
+                                                                    12
+                          TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+A.3. Model Configuration
+We compare TimeSiam against eight state-of-the-art baselines for an unbiased and comprehensive comparison. To ensure the
+fairness of the evaluation, we choose state-of-the-art time series analysis models as a unified backbone for these pre-trained
+methods. Specifically, PatchTST (Nie et al., 2023) and iTransformer (Liu et al., 2024) are adopted for forecasting and
+employ Temporal Convolution Network (TCN) (Bai et al., 2018) for classification following the setup in (Wang et al., 2023).
+In addition, we performed a hyperparameter search for all baselines, adhering to their official configuration in the in-domain
+setting. For Siamese encoders, we explored various configurations by adjusting the number of encoder layers (elayers )
+and decoder layers (dlayers ) from {1, 2, 3, 4}, selecting hidden dimensions (dmodel ) from {16, 32, 64, 128, 256, 512} and
+attention heads (nheads ) from {8, 16, 32}. In the case of TCN models, we investigated different numbers of residual blocks,
+considering configurations of {5, 8, 10}. During the fine-tuning stage, we carefully consider the learning rate (lr) from
+{1e-3, 5e-4, 1e-4, 1e-5}, and head dropout (dropout) from {0, 0.1, 0.2, 0.3} in order to enhance the adaptability of our
+pretrained model to diverse datasets.
+Primarily, two model configurations with different sizes are explored in the cross-domain forecasting setting, that is
+TimeSiam-Base and TimeSiam-Large. These two models are used to evaluate the impact of model capacity on forecasting
+performance, specifically in the context of cross-domain pre-training and fine-tuning on large-scale data.
+
+                        Table 11. Two experimental configurations of TimeSiam with different model sizes.
+
+                                                       C ONFIGURATION
+         T YPES                                                                                             PARAMETERS
+                             elayers         dlayers         dmodel           dff           nheads
+
+      TimeSiamBase             3               1              128            256              8                709,344
+
+     TimeSiamLarge             5               2              128            1024             16              2,554,720
+
+
+
+
+B. Dataset Description
+We conduct experiments on eleven well-established datasets and two newly constructed datasets covering two primary tasks
+in time series analysis: forecasting and classification. These datasets cover a variety of application scenarios, different types
+of signals, multivariate channel dimensions, varying time series lengths, large-span sampling frequencies, and different data
+sizes. The detailed descriptions of these datasets are summarized in Table 12.
+
+B.1. Forecasting Datasets
+(1) ETT (4 subsets) (Zhou et al., 2021) contains a group of four subsets oil temperature and power load collected by
+electricity transformers from July 2016 to July 2018 with minutes or hourly recorded frequence.
+(2) Weather (Wetterstation) includes meteorological time series with 21 weather indicators collected every 10 minutes
+from the Weather Station of the Max Planck Biogeochemistry Institute in 2020.
+(3) Electricity (UCI) records the hourly electricity consumption of 321 clients from 2012 to 2014.
+(4) Traffic (PeMS) encompasses the hourly measures of road occupancy rates obtained from 862 sensors situated in the San
+Francisco Bay area freeways between January 2015 and December 2016.
+(5) Exchange (Lai et al., 2018) records the daily exchange rates of eight different countries ranging from 1990 to 2016.
+
+B.2. Classification Datasets
+(1) AD (Escudero et al., 2006) has electroencephalography (EEG) recordings from 12 Alzheimer’s patients and 11 healthy
+controls. Each patient has around 30 trials, each lasting for 5 seconds with 1280 timestamps (sampled at 256Hz) and
+includes 16 channels.
+
+                                                               13
+                                     TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+                                     Table 12. Dataset descriptions. Samples are organized in (Train/Validation/Test).
+
+  TASKS                DATASETS        C HANNELS      S ERIES L ENGTH            S AMPLES          C LASSES I NFORMATION F REQUENCY
+
+                      ETTh1,ETTh2           7        {96,192,336,720}       8,545/2,881/2,881           -        Electricity    Hourly
+
+                      ETTm1,ETTm2           7        {96,192,336,720}     34,465/11,521/11,521          -        Electricity    15 Mins
+
+                        Weather             21       {96,192,336,720}      36,792/5,271/10,540          -         Weather       10 Mins
+    Forecasting
+
+
+
+
+                        Exchange            8        {96,192,336,720}        5,120/665/1,422            -      Exchange rate     Daily
+
+                       Electricity         321       {96,192,336,720}       18,317/2,633/5261           -        Electricity    Hourly
+
+                         Traffic           862       {96,192,336,720}      12,185/1,757/3,509           -      Transportation   Hourly
+
+                       TSLD-500M            1        {96,192,336,720}        369,030/31,872/-           -       Multi-domain    Mixing
+
+                        TSLD-1G             1        {96,192,336,720} 13,984,175/1,061,806/-            -       Multi-domain    Mixing
+     Classification
+
+
+
+
+                          AD                16              256               4,329/891/747            3            EEG         256 Hz
+
+                        TDBrain             33              256             8,208/1,824/1,824          3            EEG         500 Hz
+
+                          PTB               15              300            53,950/3,400/5,020          3            ECG         1000 Hz
+
+
+
+
+(2) PTB (Goldberger et al., 2000) has electrocardiogram (ECG) recordings from 290 patients with 15 channels sampled at
+1000 Hz. This paper focuses on a subset of the dataset that includes 198 patients with heart diseases: Myocardial infarction
+and healthy controls.
+(3) TDBrain (Van Dijk et al., 2022) monitors brain signals of 1274 patients with 33 channels during EC (Eye closed) and
+EO (Eye open) tasks. It includes 60 types of diseases, but this paper focuses on a subset of 25 Parkinson’s disease patients
+and 25 healthy controls. Only the EC task trials are used for representation learning.
+
+B.3. Merged Large Scale Datasets
+To further substantiate the significance of time series pre-training on large-scale data and showcase its benefits in diverse and
+extensive datasets, we have amalgamated multiple non-overlapping time series datasets from various domains to construct
+the Time Series Large Datasets (TSLD). In this paper, we present two versions of TSLD to valid our approach.
+
+(1) TSLD-500M is a composite dataset comprising 400,902 samples from 12 time series datasets across the domains of
+Electricity, Transport, Energy, Climate, and others.
+
+(2) TSLD-1G, building upon the TSLD-500M dataset, incorporates additional diverse datasets from domains such as
+Society, IoT, and Web. With an impressive sample count of 15,045,981 observations, TSLD-1G surpasses the size of datasets
+commonly used in time series analysis and provides greater diversity.
+
+C. Masking Strategy
+In this paper, we explored five different mask rules: binomial, channel binomial, continuous, channel continuous, and only
+masking the last to assess their impact on TimeSiam, illustrated in Figure 7.
+(1) Binomial masking: Generate a mask by employing a binomial distribution across all channels within a given sample.
+(2) Channel binomial masking: Generate a mask based on a binomial distribution that selectively masks individual
+channels at different timestamps within the sample.
+
+                                                                            14
+                                      TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+                  Channels                           Channels                                Channels                                Channels                                     Channels
+Sequence Length
+
+
+
+
+                                Sequence Length
+
+
+
+
+                                                                          Sequence Length
+
+
+
+
+                                                                                                         Sequence Length
+
+
+
+
+                                                                                                                                                      Sequence Length
+                  Binomial                        Channel binomial                          Continuous                           Channel continuous                               Mask last
+
+Figure 7. Showcases of various masking rules (75% masked ratio). The x-axis shows the channels and the y-axis represents the sequence
+length of the time series. Blue blocks indicate unmasked time stamps while white blocks represent masked ones.
+
+
+(3) Continuous masking: Generate a mask by employing a geometric distribution across all channels within a given sample.
+(4) Channel continuous masking: Generate a mask based on a geometric distribution that selectively masks individual
+channels at different timestamps within the sample.
+(5) Masking last: Only mask the tail of time series in all channels.
+
+D. Linear Probing and Full Fine-tuning
+The results depicted in Figure 8 unequivocally demonstrate that both fine-tuning and linear probing methodologies utilizing
+TimeSiam outperform fully supervised learning from random initiation. Moreover, the findings suggest that full fine-tuning
+consistently yields superior results compared to linear probing across most datasets, with ETTh2 being a notable exception,
+where both approaches exhibit comparable performance.
+
+                       ETTh1                                          ETTh2                                          ETTm1                                              ETTm2
+
+
+
+
+                      Weather                                        Exchange                                              ECL                                          Traffic
+
+
+
+
+Figure 8. Comparison is made between the performance of linear probing pre-trained from TSLD-1G on various datasets and pre-training
+followed by fine-tuning on the same dataset. The mean squared error (MSE) is computed across all prediction lengths and serves as a
+measure of performance. A lower averaged MSE indicates superior predictive capability.
+
+
+
+
+                                                                                            15
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+E. Multiple Lineages Representation Visualization
+We employ Principal Components Analysis (PCA) to elucidate the distribution of temporal representations on the ECL
+dataset. We will only train the learned lineage embeddings during the pre-training phase. However, during downstream
+fine-tuning or linear probing, we will keep them fixed and not update them. It is worth noting that the embedded feature will
+be the same without different lineage embeddings. However, when time series is fed into a pre-trained Siamese network
+with different lineage embeddings, the model generates divergent temporal representations that representations derived from
+the same lineage embeddings tend to be closely clustered together, while representations from different lineage embeddings
+exhibit significant dissimilarity. Upon visual analysis, we have observed that the representations generated based on the
+same data but with different lineage embeddings exhibit a high level of diversity. This observation effectively validates
+the effectiveness of combining a pre-trained Siamese network with different lineage embeddings, which can enlarge the
+representation diversity.
+
+
+
+
+Figure 9. Visualizing the effect of temporal shift representations. (a) Visualization of test distribution under three types of lineage
+embeddings for ECL. (b) Visualization of test distribution under six types of lineage embeddings for ECL.
+
+
+F. Adapt Extended Input Length
+To facilitate the performance of Timesiam on fine-tuning scenarios with extended input lengths, we choose the input length
+to be an integral multiple of the pre-training length. In practice, the series length is not restricted to be an integral multiple
+of the pre-training length. TimeSiam can handle flexible input lengths, as different lineage embeddings can be shared across
+different time segments.
+
+                                       ETTh1               ETTh2              ETTm1               ETTm2
+                            MSE（Avg）
+
+
+
+
+                                       Weather            Exchange              ECL               Traffic
+
+
+
+
+Figure 10. Full results for fine-tuning the pre-trained model with extended input length, where the input length is selected from {96, 192,
+288, 384, 576}. The MSE averaged from four future lengths O ∈ {96, 192, 336, 720} is reported.
+
+
+
+
+                                                                     16
+                                         TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+G. Full Results
+Due to the limited length of the text, we summarize the main experiments as follows:
+
+                                          Table 13. The main results for time series forecasting and classification tasks.
+
+              E XPERIMENTS C ATEGORIES                                            TASKS                                   E VALUATION                                   TABELS NAME
+
+                                                                                                                             In-domain                                   Table 14, 15
+                                                                              Forecasting
+                                                                                                                          Cross-domain                                    Table 16
+                    The main experiment
+                                                                                                                             In-domain                                    Table 18
+                                                                             Classification
+                                                                                                                          Cross-domain                                    Table 19
+
+
+
+
+H. ShowCases
+H.1. Different Masked Ratios
+To investigate the reconstruction process of TimeSiam, we visually represent past time series, masked current time series,
+and reconstructed current time series with varying mask ratios using validation data from diverse datasets. Figure 11
+demonstrates the reconstruction effects of TimeSiam at different mask ratios applied to the current time series. The context
+information is obtained by random sampling based on the current series, and the reconstruction becomes more challenging as
+the mask ratio increases due to the limited available information. Nevertheless, our TimeSiam model consistently achieves
+accurate reconstruction of masked current time series despite the scarcity of data and significant variation in temporal
+dimension between past and present. This accomplishment highlights the effectiveness of our approach in learning internal
+time-dependent representations through a past-to-current reconstruction.
+
+                                         Masked ratio = 15%                                                                              Masked ratio = 25%
+
+         Context Information               Reconstruction              Mask Reconstruction             Context Information                 Reconstruction                Mask Reconstruction
+Values
+
+
+
+
+                                Values
+
+
+
+
+                                                              Values
+
+
+
+
+                                                                                              Values
+
+
+
+
+                                                                                                                               Values
+
+
+
+
+                                                                                                                                                              Values
+
+
+
+
+                 Time                           Time                           Time                            Time                             Time                             Time
+
+
+
+
+                                         Masked ratio = 50%                                                                              Masked ratio = 75%
+
+         Context Information               Reconstruction              Mask Reconstruction             Context Information                 Reconstruction                Mask Reconstruction
+Values
+
+
+
+
+                               Values
+
+
+
+
+                                                              Values
+
+
+
+
+                                                                                              Values
+
+
+
+
+                                                                                                                                Values
+
+
+
+
+                                                                                                                                                               Values
+
+
+
+
+                 Time                           Time                           Time                            Time                             Time                             Time
+
+
+
+                                                 Context      Ground Truth        Masked Timestamps          Prediction       Ground Truth at Mask
+
+
+                        Figure 11. Showcases of TimeSiam in reconstructing time series with different masked ratios from Traffic.
+
+
+
+
+H.2. Different Datasets
+We further demonstrate the reconstruction effect across various datasets with different data distributions, as detailed below.
+
+                                                                                             17
+                                               TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+                                                    ETTh1                                                                                              ETTh2
+            Context Information                 Reconstruction               Mask Reconstruction                 Context Information                Reconstruction               Mask Reconstruction
+Values
+
+
+
+
+                                      Values
+
+
+
+
+                                                                 Values
+
+
+
+
+                                                                                                    Values
+
+
+
+
+                                                                                                                                          Values
+
+
+
+
+                                                                                                                                                                      Values
+                    Time                             Time                            Time                                Time                             Time                           Time
+
+
+
+
+                                                   ETTm1                                                                                               ETTm2
+            Context Information                 Reconstruction               Mask Reconstruction                 Context Information                Reconstruction               Mask Reconstruction
+   Values
+
+
+
+
+                                      Values
+
+
+
+
+                                                                    Values
+
+
+
+
+                                                                                                    Values
+
+
+
+
+                                                                                                                                         Values
+
+
+
+
+                                                                                                                                                                     Values
+                    Time                             Time                            Time                                Time                             Time                           Time
+
+
+
+
+                                                   Weather                                                                                            Exchange
+            Context Information                 Reconstruction               Mask Reconstruction                 Context Information                Reconstruction               Mask Reconstruction
+Values
+
+
+
+
+                                  Values
+
+
+
+
+                                                                 Values
+
+
+
+
+                                                                                                        Values
+
+
+
+
+                                                                                                                                           Values
+
+
+
+
+                                                                                                                                                                        Values
+                    Time                             Time                            Time                                Time                             Time                           Time
+
+
+
+
+                                                     ECL                                                                                                Traffic
+
+            Context Information                 Reconstruction               Mask Reconstruction                 Context Information                Reconstruction               Mask Reconstruction
+  Values
+
+
+
+
+                                      Values
+
+
+
+
+                                                                   Values
+
+
+
+
+                                                                                                        Values
+
+
+
+
+                                                                                                                                          Values
+
+
+
+
+                                                                                                                                                                      Values
+
+
+
+
+                    Time                             Time                            Time                                Time                             Time                           Time
+
+
+
+                                                      Context    Ground Truth          Masked Timestamps              Prediction       Ground Truth at Mask
+
+                     Figure 12. Showcases of TimeSiam in reconstructing time series from different datasets with 25% masked raito.
+
+
+
+
+                                                                                                   18
+                                       TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+Table 14. Full results for the in-domain setting of forecasting using PatchTST. Pre-training and fine-tuning are performed on the same
+datasets. The standard deviations are within 0.005 for MSE and within 0.004 for MAE.
+   M ETHODS R ANDOM INIT.               CPC         TNC       TS2V EC     C O ST       L A ST       TFC         TST       T I -MAE   S IM MTM   T IME S IAME
+    M ETRIC MSE MAE                  MSE   MAE   MSE   MAE   MSE   MAE   MSE MAE     MSE MAE     MSE   MAE   MSE   MAE   MSE MAE     MSE MAE     MSE   MAE
+               96    0.420   0.423   0.380 0.401 0.377 0.397 0.381 0.400 0.383 0.405 0.396 0.413 0.399 0.420 0.377 0.401 0.396 0.415 0.367 0.389 0.378 0.401
+   ETT H 1
+
+
+
+
+               192   0.465   0.449   0.426 0.429 0.423 0.427 0.421 0.427 0.434 0.437 0.457 0.451 0.444 0.449 0.432 0.436 0.440 0.443 0.424 0.423 0.422 0.430
+               336   0.504   0.470   0.465 0.451 0.471 0.453 0.468 0.452 0.474 0.460 0.507 0.478 0.479 0.467 0.475 0.461 0.481 0.462 0.473 0.456 0.459 0.452
+               720   0.502   0.492   0.488 0.479 0.508 0.485 0.553 0.507 0.535 0.509 0.516 0.508 0.491 0.490 0.525 0.500 0.475 0.481 0.494 0.493 0.459 0.466
+               AVG   0.473 0.458 0.440 0.440 0.445 0.441 0.456 0.447 0.457 0.453 0.469 0.463 0.453 0.457 0.452 0.450 0.448 0.450 0.440 0.440 0.429 0.437
+               96    0.297   0.345   0.313 0.364 0.291 0.343 0.297 0.343 0.288 0.342 0.294 0.345 0.302 0.345 0.304 0.358 0.300 0.353 0.299 0.352 0.293 0.345
+   ETT H 2
+
+
+
+
+               192   0.388   0.400   0.392 0.412 0.366 0.393 0.366 0.392 0.367 0.392 0.379 0.395 0.369 0.392 0.379 0.403 0.372 0.396 0.380 0.398 0.370 0.392
+               336   0.426   0.434   0.438 0.449 0.427 0.438 0.416 0.430 0.413 0.429 0.423 0.436 0.412 0.428 0.412 0.432 0.418 0.431 0.422 0.432 0.410 0.424
+               720   0.431   0.446   0.460 0.470 0.433 0.451 0.424 0.447 0.428 0.446 0.445 0.460 0.428 0.446 0.438 0.457 0.427 0.447 0.428 0.449 0.418 0.440
+               AVG   0.385 0.406 0.401 0.424 0.379 0.406 0.376 0.403 0.374 0.402 0.385 0.409 0.378 0.403 0.383 0.413 0.379 0.407 0.382 0.408 0.373 0.400
+               96    0.330   0.368   0.324 0.361 0.323 0.361 0.325 0.364 0.348 0.377 0.345 0.381 0.353 0.378 0.319 0.360 0.325 0.363 0.317 0.356 0.319 0.360
+   ETT M 1
+
+
+
+
+               192   0.369   0.385   0.368 0.382 0.366 0.383 0.370 0.389 0.367 0.387 0.372 0.391 0.361 0.384 0.360 0.387 0.363 0.385 0.362 0.387 0.353 0.379
+               336   0.400   0.407   0.403 0.405 0.399 0.405 0.405 0.415 0.404 0.414 0.412 0.420 0.392 0.406 0.391 0.408 0.396 0.409 0.387 0.405 0.383 0.402
+               720   0.460   0.439   0.461 0.439 0.457 0.439 0.471 0.452 0.460 0.447 0.462 0.448 0.448 0.440 0.449 0.445 0.452 0.438 0.443 0.438 0.440 0.436
+               AVG   0.390 0.400 0.389 0.397 0.386 0.397 0.393 0.405 0.395 0.406 0.398 0.410 0.389 0.402 0.380 0.400 0.384 0.399 0.377 0.397 0.374 0.394
+               96    0.175   0.258   0.196 0.281 0.187 0.261 0.174 0.261 0.181 0.269 0.177 0.258 0.281 0.327 0.181 0.265 0.175 0.261 0.175 0.262 0.175 0.261
+   ETT M 2
+
+
+
+
+               192   0.247   0.307   0.261 0.323 0.241 0.302 0.247 0.306 0.247 0.312 0.252 0.309 0.241 0.302 0.247 0.309 0.241 0.303 0.244 0.307 0.241 0.303
+               336   0.309   0.345   0.302 0.343 0.313 0.363 0.306 0.345 0.309 0.348 0.307 0.344 0.304 0.343 0.314 0.354 0.301 0.341 0.312 0.351 0.300 0.341
+               720   0.408   0.403   0.399 0.397 0.408 0.407 0.427 0.415 0.408 0.406 0.404 0.402 0.404 0.403 0.408 0.407 0.398 0.397 0.410 0.408 0.399 0.398
+               AVG   0.285 0.328 0.290 0.336 0.287 0.333 0.289 0.332 0.286 0.334 0.285 0.328 0.281 0.327 0.288 0.334 0.279 0.326 0.285 0.332 0.279 0.326
+               96    0.177   0.218   0.193 0.230 0.191 0.231 0.174 0.216 0.171 0.214 0.170 0.212 0.177 0.218 0.177 0.221 0.175 0.218 0.184 0.220 0.171 0.213
+   W EATHER
+
+
+
+
+               192   0.225   0.259   0.238 0.267 0.237 0.267 0.220 0.257 0.218 0.255 0.215 0.253 0.222 0.257 0.223 0.260 0.222 0.256 0.217 0.255 0.217 0.253
+               336   0.278   0.297   0.292 0.306 0.292 0.305 0.276 0.297 0.273 0.295 0.272 0.295 0.277 0.296 0.279 0.301 0.278 0.299 0.273 0.296 0.272 0.293
+               720   0.354   0.348   0.364 0.352 0.361 0.349 0.352 0.346 0.350 0.344 0.349 0.344 0.353 0.346 0.355 0.350 0.353 0.346 0.348 0.344 0.348 0.343
+               AVG   0.259 0.281 0.272 0.289 0.270 0.288 0.256 0.279 0.253 0.277 0.252 0.276 0.257 0.279 0.259 0.283 0.257 0.280 0.256 0.279 0.252 0.276
+               96    0.084   0.201   0.085 0.197 0.086 0.203 0.084 0.201 0.090 0.208 0.096 0.220 0.083 0.201 0.098 0.218 0.083 0.200 0.083 0.202 0.084 0.203
+   E XCHANGE
+
+
+
+
+               192   0.187   0.307   0.187 0.308 0.180 0.301 0.185 0.306 0.179 0.301 0.190 0.313 0.173 0.296 0.187 0.308 0.186 0.307 0.182 0.303 0.176 0.300
+               336   0.337   0.422   0.332 0.422 0.329 0.416 0.328 0.415 0.332 0.416 0.409 0.455 0.332 0.418 0.330 0.418 0.327 0.415 0.346 0.427 0.310 0.404
+               720   0.858   0.695   0.867 0.694 0.851 0.694 0.856 0.696 0.854 0.698 1.035 0.749 0.860 0.698 0.925 0.731 0.882 0.708 0.831 0.689 0.842 0.690
+               AVG   0.367 0.406 0.368 0.405 0.362 0.404 0.363 0.405 0.364 0.406 0.433 0.434 0.362 0.403 0.385 0.419 0.370 0.408 0.361 0.405 0.353 0.399
+               96    0.193   0.291   0.190 0.287 0.190 0.277 0.175 0.268 0.178 0.269 0.183 0.275 0.171 0.263 0.171 0.267 0.181 0.271 0.164 0.255 0.164 0.245
+               192   0.199   0.297   0.204 0.290 0.194 0.283 0.183 0.275 0.185 0.275 0.190 0.281 0.188 0.277 0.181 0.276 0.197 0.277 0.178 0.268 0.173 0.256
+   ECL
+
+
+
+
+               336   0.216   0.312   0.227 0.300 0.211 0.299 0.199 0.292 0.202 0.292 0.205 0.296 0.205 0.291 0.197 0.291 0.200 0.293 0.190 0.280 0.189 0.275
+               720   0.257   0.345   0.257 0.347 0.254 0.334 0.240 0.324 0.245 0.326 0.248 0.330 0.244 0.322 0.237 0.325 0.205 0.326 0.235 0.318 0.229 0.310
+               AVG   0.216 0.311 0.220 0.306 0.212 0.298 0.199 0.290 0.203 0.291 0.207 0.296 0.202 0.288 0.197 0.290 0.196 0.292 0.192 0.280 0.189 0.272
+               96    0.472   0.305   0.449 0.487 0.483 0.309 0.309 0.291 0.458 0.294 0.506 0.330 0.465 0.301 0.478 0.292 0.463 0.295 0.442 0.285 0.429 0.279
+   T RAFFIC
+
+
+
+
+               192   0.474   0.304   0.505 0.315 0.495 0.311 0.457 0.293 0.465 0.297 0.503 0.326 0.470 0.311 0.469 0.316 0.470 0.299 0.452 0.305 0.442 0.282
+               336   0.491   0.331   0.514 0.343 0.504 0.333 0.474 0.301 0.480 0.304 0.517 0.332 0.498 0.320 0.482 0.323 0.486 0.321 0.473 0.322 0.456 0.288
+               720   0.523   0.327   0.511 0.351 0.521 0.341 0.509 0.319 0.515 0.321 0.552 0.349 0.514 0.326 0.516 0.327 0.504 0.337 0.497 0.331 0.486 0.307
+               AVG   0.490 0.317 0.504 0.330 0.501 0.324 0.472 0.301 0.480 0.304 0.520 0.334 0.487 0.315 0.486 0.315 0.481 0.313 0.466 0.311 0.453 0.289
+
+
+
+
+                                                                               19
+                                      TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 15. Full results for the in-domain setting of forecasting using iTransformer. Pre-training and fine-tuning are performed on the same
+datasets. The standard deviations are within 0.005 for MSE and within 0.004 for MAE.
+    M ETHODS R ANDOM INIT.               TS2V EC     C O ST      L A ST          TFC         TST          T I -MAE   S IM MTM    T IME S IAME
+     M ETRIC MSE    MAE                 MSE   MAE   MSE   MAE   MSE   MAE      MSE   MAE   MSE   MAE     MSE MAE     MSE MAE     MSE    MAE
+                 96   0.386   0.405    0.404 0.417 0.404 0.416 0.397 0.414 0.384 0.402 0.383     0.402   0.384 0.400 0.382 0.397 0.378 0.399
+    ETT H 1
+
+
+
+
+                192   0.441   0.436    0.459 0.448 0.457 0.447 0.449 0.444 0.439 0.432 0.436     0.433   0.436 0.430 0.435 0.427 0.429 0.428
+                336   0.487   0.458    0.502 0.427 0.503 0.472 0.493 0.468 0.482 0.454 0.478     0.456   0.481 0.456 0.477 0.450 0.471 0.451
+                720   0.503   0.491    0.531 0.509 0.523 0.502 0.520 0.501 0.496 0.484 0.492     0.489   0.492 0.486 0.485 0.476 0.483 0.481
+                AVG   0.454 0.447 0.474 0.462 0.472 0.459 0.465 0.457 0.450 0.443 0.447 0.445 0.448 0.443 0.445 0.438 0.440 0.440
+                 96   0.297   0.349    0.299 0.350 0.298 0.348 0.303 0.354 0.301 0.351 0.293     0.347   0.298 0.349 0.295 0.348 0.289 0.342
+    ETT H 2
+
+
+
+
+                192   0.380   0.400    0.384 0.403 0.382 0.400 0.381 0.402 0.377 0.396 0.375     0.398   0.378 0.397 0.374 0.397 0.367 0.390
+                336   0.428   0.432    0.415 0.428 0.425 0.436 0.423 0.434 0.418 0.430 0.413     0.430   0.414 0.429 0.413 0.430 0.408 0.422
+                720   0.427   0.445    0.419 0.442 0.440 0.454 0.438 0.451 0.420 0.441 0.421     0.443   0.420 0.441 0.420 0.443 0.418 0.440
+                AVG   0.383 0.407 0.379 0.406 0.386 0.410 0.386 0.410 0.379 0.405 0.376 0.405 0.378 0.404 0.376 0.405 0.371 0.398
+                 96   0.334   0.368    0.349 0.379 0.348 0.378 0.333 0.369 0.335 0.368 0.334 0.373 0.339 0.374 0.327 0.364 0.329 0.366
+    ETT M 1
+
+
+
+
+                192   0.377   0.391    0.387 0.396 0.388 0.397 0.377 0.392 0.378 0.390 0.377 00.396 0.375 0.391 0.372 0.386 0.368 0.386
+                336   0.426   0.420    0.422 0.418 0.422 0.418 0.413 0.414 0.413 0.412 0.410 0.417 0.410 0.412 0.410 0.410 0.403 0.408
+                720   0.491   0.459    0.485 0.454 0.487 0.455 0.477 0.451 0.485 0.452 0.475 0.455 0.471 0.446 0.478 0.450 0.466 0.445
+                AVG   0.407 0.410 0.411 0.412 0.411 0.412 0.400 0.407 0.403 0.406 0.399 0.410 0.399 0.406 0.397 0.403 0.392 0.401
+                 96   0.180   0.264    0.186 0.272 0.191 0.273 0.184 0.268 0.180 0.264 0.186     0.270   0.182 0.265 0.180 0.264 0.179 0.263
+    ETT M 2
+
+
+
+
+                192   0.250   0.309    0.251 0.312 0.254 0.312 0.268 0.317 0.251 0.308 0.252     0.312   0.248 0.308 0.246 0.307 0.245 0.306
+                336   0.311   0.348    0.313 0.351 0.315 0.350 0.327 0.359 0.320 0.352 0.313     0.350   0.310 0.348 0.307 0.347 0.306 0.345
+                720   0.412   0.407    0.409 0.403 0.416 0.407 0.427 0.414 0.416 0.407 0.411     0.407   0.415 0.407 0.409 0.405 0.405 0.401
+                AVG   0.288 0.332 0.290 0.335 0.294 0.336 0.302 0.340 0.292 0.333 0.291 0.335 0.289 0.332 0.286 0.331 0.284 0.329
+                 96   0.174   0.214    0.183 0.226 0.189 0.231 0.180 0.223 0.173 0.213 0.179     0.221   0.173 0.212 0.173 0.212 0.174 0.217
+    W EATHER
+
+
+
+
+                192   0.221   0.254    0.231 0.266 0.236 0.269 0.228 0.262 0.222 0.257 0.225     0.261   0.221 0.256 0.225 0.258 0.222 0.256
+                336   0.278   0.296    0.284 0.303 0.288 0.306 0.282 0.301 0.289 0.298 0.282     0.303   0.278 0.297 0.278 0.298 0.275 0.295
+                720   0.358   0.349    0.359 0.351 0.363 0.354 0.358 0.350 0.377 0.350 0.358     0.352   0.357 0.349 0.359 0.349 0.350 0.346
+                AVG   0.258 0.278 0.264 0.287 0.269 0.290 0.262 0.284 0.265 0.280 0.261 0.284 0.257 0.279 0.259 0.279 0.255 0.279
+                 96   0.086   0.206    0.088 0.208 0.090 0.213 0.091 0.212 0.087 0.208 0.090     0.211   0.087 0.208 0.087 0.211 0.092 0.215
+    E XCHANGE
+
+
+
+
+                192   0.177   0.299    0.180 0.302 0.183 0.306 0.187 0.310 0.176 0.300 0.182     0.305   0.180 0.303 0.182 0.304 0.182 0.306
+                336   0.331   0.417    0.332 0.418 0.335 0.420 0.333 0.421 0.347 0.428 0.332     0.419   0.333 0.418 0.330 0.411 0.341 0.426
+                720   0.847   0.691    0.854 0.697 0.856 0.699 0.933 0.736 0.877 0.709 0.849     0.699   0.865 0.703 0.833 0.669 0.805 0.679
+                AVG   0.360 0.403 0.364 0.406 0.366 0.410 0.386 0.420 0.372 0.411 0.363 0.409 0.366 0.408 0.358 0.399 0.355 0.407
+                 96   0.148   0.240    0.214 0.310 0.225 0.318 0.202 0.296 0.191 0.278 0.196     0.292   0.185 0.281 0.145 0.236 0.147 0.239
+                192   0.162   0.253    0.228 0.324 0.234 0.328 0.217 0.312 0.202 0.291 0.208     0.304   0.197 0.293 0.169 0.259 0.162 0.253
+    ECL
+
+
+
+
+                336   0.178   0.269    0.247 0.340 0.253 0.344 0.239 0.331 0.222 0.310 0.230     0.323   0.219 0.312 0.176 0.267 0.175 0.269
+                720   0.225   0.317    0.294 0.375 0.297 0.376 0.288 0.368 0.267 0.346 0.276     0.358   0.265 0.347 0.225 0.310 0.215 0.304
+                AVG   0.178 0.270 0.246 0.337 0.252 0.342 0.237 0.327 0.222 0.306 0.228 0.319 0.217 0.308 0.179 0.268 0.175 0.266
+                 96   0.395   0.268    0.450 0.313 0.504 0.352 0.439 0.304 0.389 0.286 0.394     0.282   0.398 0.280 0.400 0.273 0.386 0.262
+    T RAFFIC
+
+
+
+
+                192   0.417   0.276    0.469 0.321 0.509 0.352 0.462 0.315 0.398 0.297 0.403     0.301   0.405 0.294 0.412 0.280 0.411 0.272
+                336   0.433   0.283    0.491 0.331 0.529 0.362 0.484 0.325 0.435 0.314 0.440     0.310   0.433 0.304 0.426 0.288 0.425 0.278
+                720   0.467   0.302    0.531 0.352 0.572 0.383 0.523 0.347 0.504 0.344 0.514     0.343   0.483 0.333 0.466 0.307 0.458 0.297
+                AVG   0.428 0.282 0.485 0.329 0.529 0.362 0.477 0.323 0.432 0.310 0.438 0.309 0.430 0.303 0.426 0.287 0.420 0.277
+
+
+
+
+                                                                          20
+                              TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 16. Full results for the cross-domain setting of forecasting using PatchTST. Pre-training on the TSLD-1G dataset and fine-tune it on
+various target dataset. The standard deviations are within 0.005 for MSE and within 0.004 for MAE.
+
+ M ETHODS          R ANDOM INIT.     TS2V EC            TFC               TST           T I -MAE           S IM MTM         T IME S IAME
+  M ETRIC          MSE     MAE     MSE     MAE      MSE      MAE      MSE     MAE      MSE    MAE         MSE    MAE        MSE      MAE
+             96    0.420   0.423   0.384   0.407   0.384    0.405    0.391    0.412    0.384    0.405    0.376    0.402    0.371    0.398
+ ETT H 1
+
+
+
+
+             192   0.465   0.449   0.436   0.439   0.426    0.432    0.433    0.436    0.437    0.437    0.421    0.432    0.417    0.427
+             336   0.504   0.470   0.462   0.456   0.463    0.453    0.458    0.450    0.462    0.454    0.454    0.455    0.448    0.447
+             720   0.502   0.492   0.481   0.483   0.473    0.476    0.455    0.469    0.458    0.469    0.466    0.479    0.463    0.473
+             AVG   0.473   0.458   0.441   0.446   0.437    0.442    0.434    0.442    0.435    0.441    0.429    0.442    0.425    0.436
+             96    0.297   0.345   0.295   0.347   0.296    0.347    0.298    0.346    0.287   0..342    0.293    0.347    0.292    0.345
+ ETT H 2
+
+
+
+
+             192   0.388   0.400   0.366   0.392   0.368    0.392    0.383    0.401    0.367   0.391     0.387    0.409    0.370    0.394
+             336   0.426   0.434   0.413   0.426   0.421    0.433    0.428    0.435    0.409   0.425     0.421    0.428    0.410    0.427
+             720   0.431   0.446   0.427   0.450   0.426    0.445    0.427    0.446    0.424   0.444     0.418    0.443    0.423    0.444
+             AVG   0.385   0.406   0.375   0.404   0.378    0.404    0.384    0.407    0.374    0.403    0.380    0.407    0.374    0.403
+             96    0.330   0.368   0.320   0.360   0.325    0.363    0.326    0.364    0.319    0.360    0.316    0.357    0.309    0.352
+ ETT M 1
+
+
+
+
+             192   0.369   0.385   0.359   0.382   0.366    0.385    0.369    0.385    0.358    0.383    0.355    0.380    0.350    0.378
+             336   0.400   0.407   0.395   0.407   0.398    0.408    0.399    0.407    0.398    0.411    0.386    0.400    0.383    0.402
+             720   0.460   0.439   0.446   0.435   0.455    0.440    0.454    0.438    0.398    0.411    0.443    0.436    0.442    0.437
+             AVG   0.390   0.400   0.380   0.396   0.386    0.399    0.387    0.399    0.380    0.398    0.375    0.393    0.371    0.392
+             96    0.175   0.258   0.176   0.261   0.176    0.259    0.188    0.271    0.179    0.265    0.177    0.264    0.182    0.268
+ ETT M 2
+
+
+
+
+             192   0.247   0.307   0.245   0.306   0.243    0.303    0.258    0.318    0.256    0.316    0.247    0.308    0.243    0.311
+             336   0.309   0.345   0.310   0.347   0.303    0.342    0.334    0.361    0.325    0.359    0.309    0.348    0.314    0.351
+             720   0.408   0.403   0.432   0.419   0.407    0.403    0.431    0.417    0.415    0.406    0.416    0.412    0.406    0.405
+             AVG   0.285   0.328   0.291   0.333   0.282    0.327    0.303    0.342    0.294    0.337    0.287    0.333    0.286    0.334
+             96    0.177   0.218   0.174   0.216   0.184    0.222    0.188    0.231    0.175    0.216    0.170    0.214    0.170    0.214
+ W EATHER
+
+
+
+
+             192   0.225   0.259   0.220   0.256   0.229    0.261    0.229    0.266    0.220    0.256    0.217    0.254    0.217    0.255
+             336   0.278   0.297   0.277   0.297   0.284    0.300    0.281    0.303    0.276    0.296    0.273    0.295    0.270    0.295
+             720   0.354   0.348   0.352   0.346   0.360    0.348    0.355    0.350    0.351    0.345    0.349    0.344    0.348    0.345
+             AVG   0.259   0.281   0.256   0.279   0.264    0.283    0.263    0.288    0.256    0.278    0.252    0.277    0.251    0.277
+             96    0.084   0.201   0.083   0.201   0.082    0.200    0.084    0.202    0.085    0.203    0.090    0.209    0.086    0.204
+ E XCHANGE
+
+
+
+
+             192   0.187   0.307   0.176   0.298   0.174    0.297    0.178    0.299    0.179    0.302    0.171    0.297    0.179    0.301
+             336   0.337   0.422   0.332   0.416   0.330    0.416    0.332    0.417    0.331    0.417    0.335    0.419    0.329    0.416
+             720   0.858   0.695   0.867   0.700   0.853    0.696    0.867    0.698    0.851    0.696    0.862    0.690    0.849    0.694
+             AVG   0.367   0.406   0.365   0.404   0.360    0.402    0.365    0.404    0.362    0.405    0.365    0.404    0.360    0.404
+             96    0.193   0.291   0.194   0.285   0.196    0.285    0.200    0.289    0.195    0.288    0.189    0.283    0.162    0.249
+             192   0.199   0.297   0.199   0.291   0.200    0.291    0.202    0.292    0.201    0.294    0.196    0.289    0.172    0.259
+ ECL
+
+
+
+
+             336   0.216   0.312   0.216   0.307   0.216    0.306    0.218    0.307    0.217    0.309    0.212    0.304    0.189    0.276
+             720   0.257   0.345   0.257   0.339   0.258    0.339    0.259    0.338    0.258    0.341    0.254    0.337    0.227    0.309
+             AVG   0.216   0.331   0.257   0.339   0.218    0.305    0.220    0.307    0.218    0.308    0.213    0.303    0.188    0.273
+             96    0.472   0.305   0.513   0.340   0.532    0.354    0.514    0.329    0.499    0.328    0.437    0.280    0.430    0.277
+ T RAFFIC
+
+
+
+
+             192   0.474   0.304   0.512   0.338   0.526    0.349    0.497    0.328    0.500    0.328    0.447    0.283    0.443    0.280
+             336   0.491   0.331   0.525   0.342   0.539    0.354    0.504    0.328    0.512    0.332    0.460    0.289    0.456    0.286
+             720   0.523   0.327   0.560   0.359   0.576    0.372    0.540    0.335    0.547    0.350    0.492    0.307    0.488    0.304
+             AVG   0.490   0.317   0.528   0.345   0.543    0.357    0.514    0.330    0.515    0.335    0.459    0.290    0.454    0.287
+
+
+
+
+                                                                    21
+                              TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 17. Full results for the in-domain setting of forecasting based on PatchTST. Pre-training and linear probing on the same dataset. The
+standard deviations are within 0.005 for MSE and within 0.004 for MAE. Note that the Random init. here refers to the train-from-scratch
+model, which will optimize the whole model. Thus, the Random init. is in the different setting w.r.t. other pre-training methods, where the
+latters are from linear probing.
+
+ M ETHODS          R ANDOM INIT.     TS2V EC            TFC               TST            T I -MAE          S IM MTM         T IME S IAME
+  M ETRIC          MSE     MAE     MSE     MAE      MSE      MAE      MSE      MAE      MSE    MAE        MSE    MAE        MSE      MAE
+             96    0.420   0.423   0.390   0.399   0.386    0.402    0.371    0.396    0.392    0.403    0.379    0.400    0.379    0.401
+ ETT H 1
+
+
+
+
+             192   0.465   0.449   0.444   0.431   0.433    0.429    0.421    0.424    0.441    0.431    0.427    0.428    0.429    0.432
+             336   0.504   0.470   0.483   0.451   0.427    0.470    0.454    0.443    0.483    0.453    0.465    0.447    0.449    0.460
+             720   0.502   0.492   0.486   0.477   0.470    0.472    0.474    0.462    0.484    0.477    0.460    0.462    0.468    0.460
+             AVG   0.473   0.458   0.451   0.440   0.440    0.443    0.430    0.431    0.450    0.441    0.433    0.434    0.431    0.438
+             96    0.297   0.345   0.290   0.341   0.291    0.341    0.287    0.340    0.324    0.368    0.299    0.351    0.281    0.336
+ ETT H 2
+
+
+
+
+             192   0.388   0.400   0.371   0.390   0.369    0.389    0.389    0.391    0.405    0.415    0.377    0.400    0.362    0.387
+             336   0.426   0.434   0.428   0.437   0.418    0.430    0.411    0.426    0.442    0.447    0.420    0.433    0.406    0.423
+             720   0.431   0.446   0.430   0.446   0.423    0.443    0.421    0.442    0.463    0.467    0.422    0.446    0.418    0.441
+             AVG   0.385   0.406   0.380   0.404   0.375    0.401    0.372    0.400    0.409    0.424    0.380    0.408    0.367    0.397
+             96    0.330   0.368   0.329   0.365   0.341    0.375    0.325    0.362    0.372    0.388    0.325    0.363    0.320    0.361
+ ETT M 1
+
+
+
+
+             192   0.369   0.385   0.370   0.385   0.382    0.393    0.366    0.383    0.408    0.406    0.368    0.383    0.361    0.383
+             336   0.400   0.407   0.403   0.408   0.415    0.413    0.398    0.403    0.439    0.426    0.399    0.404    0.392    0.403
+             720   0.460   0.439   0.459   0.438   0.470    0.444    0.459    0.436    0.496    0.458    0.462    0.439    0.453    0.438
+             AVG   0.390   0.400   0.390   0.399   0.402    0.406    0.387    0.396    0.429    0.420    0.389    0.397    0.382    0.396
+             96    0.175   0.258   0.177   0.264   0.180    0.268    0.181    0.269    0.192    0.276    0.179    0.267    0.178    0.265
+ ETT M 2
+
+
+
+
+             192   0.247   0.307   0.241   0.304   0.245    0.309    0.244    0.308    0.255    0.314    0.244    0.307    0.243    0.305
+             336   0.309   0.345   0.300   0.342   0.303    0.346    0.303    0.345    0.319    0.354    0.304    0.346    0.303    0.343
+             720   0.408   0.403   0.398   0.398   0.399    0.401    0.402    0.400    0.416    0.406    0.402    0.401    0.400    0.399
+             AVG   0.285   0.328   0.279   0.327   0.282    0.331    0.283    0.331    0.296    0.338    0.282    0.330    0.281    0.328
+             96    0.177   0.218   0.192    0.23   0.192    0.230    0.187    0.229    0.194    0.234    0.181    0.223    0.184    0.227
+ W EATHER
+
+
+
+
+             192   0.225   0.259   0.237   0.267   0.237    0.267    0.231    0.265    0.237    0.268    0.227    0.261    0.230    0.264
+             336   0.278   0.297   0.291   0.304   0.291    0.304    0.284    0.302    0.292    0.307    0.280    0.299    0.283    0.300
+             720   0.354   0.348   0.365   0.353   0.365    0.353    0.358    0.348    0.362    0.351    0.354    0.346    0.356    0.348
+             AVG   0.259   0.281   0.271   0.289   0.271    0.289    0.265    0.286    0.271    0.290    0.261    0.282    0.263    0.285
+             96    0.084   0.201   0.191   0.309   0.178    0.300    0.176    0.297    0.190    0.308    0.175    0.297    0.177    0.300
+ E XCHANGE
+
+
+
+
+             192   0.187   0.307   0.328   0.413   0.328    0.414    0.327    0.413    0.336    0.418    0.336    0.420    0.325    0.413
+             336   0.337   9,422   0.853   0.696   0.864    0.700    0.850    0.696    0.945    0.741    0.842    0.692    0.842    0.691
+             720   0.858   0.695   0.853   0.696   0.864    0.700    0.850    0.696    0.945    0.741    0.842    0.692    0.842    0.691
+             AVG   0.367   0.406   0.365   0.406   0.364    0.404    0.359    0.402    0.391    0.420    0.359    0.403    0.357    0.403
+             96    0.193   0.291   0.239   0.329   0.218    0.305    0.183    0.273    0.211    0.297    0.180    0.270    0.177    0.262
+             192   0.199   0.297   0.238   0.331   0.218    0.307    0.187    0.279    0.212    0.300    0.177    0.272    0.183    0.268
+ ECL
+
+
+
+
+             336   0.216   0.312   0.254   0.345   0.232    0.321    0.203    0.294    0.227    0.314    0.201    0.284    0.198    0.283
+             720   0.257   0.345   0.295   0.373   0.273    0.351    0.244    0.327    0.269    0.345    0.243    0.322    0.239    0.317
+             AVG   0.216   0.311   0.257   0.345   0.235    0.321    0.204    0.293    0.230    0.314    0.200    0.287    0.199    0.283
+             96    0.472   0.305   0.778   0.474   0.703    0.427    0.600    0.386    0.724    0.438    0.550    0.353    0.491    0.325
+ T RAFFIC
+
+
+
+
+             192   0.474   0.304   0.730   0.455   0.651    0.408    0.573    0.375    0.677    0.420    0.563    0.365    0.486    0.317
+             336   0.491   0.331   0.741   0.460   0.659    0.410    0.583    0.378    0.685    0.423    0.587    0.368    0.498    0.321
+             720   0.523   0.327   0.780   0.475   0.699    0.427    0.619    0.395    0.724    0.439    0.602    0.385    0.532    0.338
+             AVG   0.490   0.317   0.757   0.466   0.678    0.418    0.594    0.384    0.703    0.430    0.576    0.368    0.502    0.325
+
+
+
+
+                                                                    22
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 18. In-domain fine-tuning results for time series classification. The model was pre-trained on datasets AD, TDBrain, and PTB, then
+fine-tuned on the same dataset. Accuracy (%), Precision (%), Recall (%), F1 score (%), AUROC (%), AUPRC (%) are recorded. We
+perform the experiment five times for each outcome and present the mean and standard deviation as our reported findings.
+
+  DATASETS        M ETHODS            ACCURACY         P RECISION       R ECALL         F1 S CORE        AUROC            AUPRC
+                  R ANDOM INIT.       80.62±2.17       80.51±2.24      80.48±2.18      80.48±2.19       86.60±1.60       86.48±1.74
+                  CPC                 77.40±7.28       79.91±4.35      78.52±6.18      77.09±7.65      89.81±2.98       89.49±3.20
+                  TNC                 78.58±6.21       81.10±4.09      79.97±5.50      78.43±6.35      92.26±2.38       92.10±2.60
+                  TS2 VEC             81.26±2.08       81.21±2.14      81.34±2.04      81.12±2.06      89.20±1.76       88.94±1.85
+      AD          C O ST              73.87±4.35       77.22±2.36      75.51±3.70      73.60±4.65      89.28±2.07       88.78±2.23
+                  L A ST              72.63±5.58       75.82±0.71      73.66±3.50      72.06±5.87      84.97±4.00       84.22±4.57
+                  TF-C                75.31±8.27       75.87±8.73      74.83±8.98      74.54±8.85      79.45±10.23      79.33±10.57
+                  COMET               84.50±4.46       88.31±2.42      82.95±5.39      83.33±5.15      94.44±2.37       94.43±2.48
+                  TST                 81.50±2.16       82.23±2.12      82.35±2.16      81.49±2.16      90.41±2.06       89.67±2.42
+                  T I -MAE            80.70±3.73       82.23±2.92      81.84±3.39      80.67±3.73      92.32±2.80       92.18±2.93
+                  S IM MTM            86.19±1.12       87.08±1.42      85.41±1.03      85.89±1.11      91.99±0.83       92.04±0.84
+                  T IME S IAM         89.93±1.68       90.23±1.39      89.46±1.90      89.72±1.78       95.31±1.95       95.25±2.19
+                  R ANDOM INIT.       79.08±2.33       80.15±2.16      79.08±2.33      78.93±2.39       89.17±1.94       89.48±1.90
+                  CPC                 85.19±2.99       85.35±2.88      85.19±2.99      85.17±3.01       93.50±2.55       93.68±2.50
+                  TNC                 85.21±1.92       86.49±1.86      85.21±1.92      85.08±1.95       95.77±1.30       95.95±1.25
+                  TS2 VEC             80.21±1.69       81.38±1.97      80.21±1.69      80.07±1.69       89.57±2.31       89.60±2.37
+  TDB RAIN        C O ST              83.86±3.71       85.00±3.00      83.86±3.71      83.70±3.89       94.58±1.90       94.79±1.79
+                  L A ST              85.13±1.85       85.79±1.54      85.13±1.85      85.06±1.90       94.88±8.26       95.10±0.81
+                  TF-C                66.62±1.76       67.15±1.64      66.62±1.76      66.35±1.91       65.43±6.13       66.18±4.90
+                  COMET               85.47±1.16       85.68±1.20      85.47±1.16      85.45±1.16       93.73±1.02       93.96±0.99
+                  TST                 83.22±1.91       84.86±1.08      83.22±1.91      83.01±2.03       93.86±1.10       94.03±0.99
+                  T I -MAE            88.16±1.87       88.96±1.42      88.16±1.87      88.10±1.91       97.27±0.49       96.94±0.48
+                  S IM MTM            84.81±1.54       86.43±1.07      84.81±1.54      84.54±1.67       94.18±1.57       89.51±1.52
+                  T IME S IAM         90.67±1.24       91.08±1.13      90.67±1.24      90.64±1.25       96.96±0.80       96.82±0.82
+                  R ANDOM INIT.       84.19±1.29       83.35±1.68      78.46±2.50      80.33±2.02       89.55±1.83       83.61±2.68
+                  CPC                 88.30±3.07       88.90±1.00      81.54±6.51      83.75±5.67      89.86±3.87       88.68±2.89
+                  TNC                 90.53±2.92       89.01±2.87      87.06±5.22      87.82±4.13      93.12±2.21       91.01±1.55
+                  TS2 VEC             85.14±1.66       87.82±2.21      76.84±3.99      79.66±3.63      90.50±1.59       90.07±1.73
+     PTB          C O ST              88.61±1.36       87.75±1.23      80.23±2.39      83.81±2.33      93.79±2.36       93.01±2.37
+                  L A ST              89.22±3.10       89.12±2.71      83.32±5.54      85.45±4.66      94.91±1.13       91.79±4.25
+                  TF-C                87.50±2.43       85.50±3.04      82.68±4.04      83.77±3.50      77.59±19.22      80.62±15.10
+                  COMET               87.84±1.98       87.67±1.72      81.14±3.68      83.45±3.22      92.95±1.56       87.47±2.82
+                  TST                 84.25±3.29       84.05±3.95      74.83±5.49      77.45±5.59      90.44±3.05       85.74±3.25
+                  T I -MAE            88.39±1.78       88.55±1.51      81.76±3.13      84.23±2.70      90.37±5.70       88.76±5.00
+                  S IM MTM            90.04±1.23       89.09±1.33      85.52±2.57      87.05±2.38      92.68±1.23       90.14±3.01
+                  T IME S IAM         91.32±2.92       89.97±2.89      88.02±4.93      88.84±4.12       96.42±1.51       94.33±2.09
+
+
+
+
+                                                                  23
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 19. Cross-domain fine-tuning results for time series classification. The model is pre-trained on the TSLD-1G dataset and fine-tuned
+on AD, TDBrain, and PTB. Accuracy (%), Precision (%), Recall (%), F1 score (%), AUROC (%), AUPRC (%) are recorded. We perform
+the experiment five times for each outcome and present the mean and standard deviation as our reported findings.
+
+  DATASETS        M ETHODS             ACCURACY         P RECISION       R ECALL         F1 S CORE        AUROC           AUPRC
+                  R ANDOM INIT.        80.62±2.17       80.51±2.24      80.48±2.18      80.48±2.19      86.60±1.60       86.48±1.74
+                  TS2 VEC              80.59±6.45       81.77±8.72      81.61±9.20      80.53±9.55      90.31±6.38       90.00±7.94
+                  TF-C                 87.98±1.77       88.30±1.68      88.30±1.69      87.90±1.75      95.56±1.52       95.43±1.54
+      AD
+                  TST                  82.60±3.71       83.81±2.63      83.35±3.02      82.51±3.66      93.05±2.17       92.75±2.50
+                  T I -MAE             80.40±5.26       81.72±5.02      81.13±4.66      80.31±5.18      91.32±4.48       91.16±4.75
+                  S IM MTM             87.74±1.78       87.66±1.91      87.78±1.78      87.63±1.78      94.73±1.32       94.71±1.36
+                  T IME S IAM          90.47±2.04       90.50±2.01      90.21±2.13      90.32±2.09      96.34±1.36       96.41±1.39
+                  R ANDOM INIT.        79.08±2.33       80.15±2.16      79.08±2.33      78.93±2.39      89.17±1.94       89.48±1.90
+                  TS2 VEC              85.58±8.16       86.26±7.78      85.58±8.16      85.45±8.32      94.44±4.03       94.69±3.79
+                  TF-C                 82.84±2.57       83.22±2.58      82.84±2.57      82.79±2.58      92.13±2.17       92.28±2.11
+   TDB RAIN
+                  TST                  83.65±2.52       84.75±2.27      83.65±2.52      83.51±2.59      93.41±2.13       93.58±2.08
+                  T I -MAE             85.22±2.40       82.85±2.01      82.42±2.47      82.38±2.53      90.25±1.39       90.26±1.36
+                  S IM MTM             85.29±1.87       86.61±2.45      86.23±2.59      86.19±2.62      94.00±1.78       93.95±1.84
+                  T IME S IAM          86.26±2.54       87.17±2.07      80.26±2.54      86.17±2.62      95.41±1.35       95.56±1.30
+                  R ANDOM INIT.        84.19±1.29       83.35±1.68      78.46±2.50      80.33±2.02      89.55±1.83       83.61±2.68
+                  TS2 VEC              89.23±7.76       89.58±7.15      89.23±7.76      89.17±7.88      96.13±3.82       96.27±3.63
+                  TF-C                 89.18±1.89       88.63±2.21      84.48±3.98      85.64±2.66      94.31±1.71       91.52±2.79
+      PTB
+                  TST                  85.81±5.92       85.80±4.96      77.40±1.02      79.32±1.07      92.04±2.89       86.27±4.97
+                  T I -MAE             86.67±2.55       85.91±1.10      80.32±6.76      81.83±4.94      92.60±4.45       91.08±3.78
+                  S IM MTM             85.64±1.68       85.94±1.58      77.01±3.00      79.80±2.78      92.93±0.68       88.03±2.31
+                  T IME S IAM          90.45±1.98       89.58±1.53      86.11±3.75      87.53±2.83      93.13±2.32       89.94±3.10
+
+
+
+
+                                                                   24
+                            TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling
+
+
+
+
+Table 20. Ablation studies were conducted on TimeSiam. “W/o Siamese” refers to solely focusing on modeling subseries itself, without
+incorporating Siamese modeling. “W/o Masking” indicates the absence of mask augmentation in the current subseries.
+
+          I NPUT-96               R ANDOM I NIT.            W/ O S IAMESE            W/ O M ASKING              T IME S IAM
+         P REDICT-O              MSE         MAE          MSE          MAE         MSE          MAE         MSE          MAE
+                      96         0.420       0.423        0.377        0.401       0.381        0.403       0.378        0.401
+                      192        0.465       0.449        0.423        0.430       0.430        0.431       0.422        0.430
+                      336        0.504       0.470        0.458        0.451       0.466        0.452       0.459        0.452
+     ETT H 1          720        0.502       0.492        0.471        0.478       0.470        0.474       0.459        0.437
+                      AVG        0.473       0.458        0.432        0.440       0.437        0.440       0.429        0.437
+                      96         0.297       0.345        0.291        0.346       0.289        0.339       0.293        0.345
+                      192        0.388       0.400        0.375        0.396       0.378        0.393       0.370        0.392
+                      336        0.426       0.434        0.416        0.432       0.412        0.426       0.410        0.424
+     ETT H 2          720        0.431       0.446        0.421        0.446       0.420        0.441       0.418        0.440
+                      AVG        0.385       0.406        0.376        0.405       0.375        0.400       0.373        0.400
+                      96         0.330       0.368        0.317        0.359       0.333        0.368       0.319        0.360
+                      192        0.369       0.385        0.363        0.387       0.367        0.385       0.353        0.379
+                      336        0.400       0.407        0.385        0.403       0.400        0.409       0.383        0.402
+     ETT M 1          720        0.460       0.439        0.444        0.438       0.459        0.442       0.440        0.436
+                      AVG        0.390       0.400        0.377        0.397       0.390        0.410       0.374        0.394
+                      96         0.175       0.258        0.177        0.262       0.177        0.261       0.175        0.261
+                      192        0.247       0.307        0.241        0.303       0.243        0.303       0.241        0.303
+                      336        0.309       0.345        0.302        0.343       0.307        0.347       0.300        0.341
+     ETT M 2          720        0.408       0.403        0.398        0.398       0.405        0.404       0.399        0.398
+                      AVG        0.285       0.328        0.280        0.327       0.283        0.329       0.279        0.326
+                      96         0.177       0.218        0.174        0.219       0.176        0.219       0.171        0.213
+                      192        0.225       0.259        0.221        0.258       0.224        0.259       0.217        0.253
+                      336        0.278       0.297        0.275        0.296       0.279        0.299       0.272        0.293
+    W EATHER          720        0.354       0.384        0.353        0.345       0.356        0.350       0.348        0.343
+                      AVG        0.259       0.281        0.256        0.280       0.259        0.282       0.252        0.276
+                      96         0.084       0.201        0.089        0.209       0.083        0.201       0.084        0.203
+                      192        0.187       0.307        0.196        0.314       0.173        0.297       0.176        0.300
+                      336        0.337       0.422        0.334        0.419       0.341        0.424       0.310        0.404
+   E XCHANGE          720        0.858       0.695        0.856        0.700       0.856        0.698       0.842        0.690
+                      AVG        0.367       0.406        0.369        0.411       0.363        0.405       0.353        0.399
+                      96         0.193       0.291        0.164        0.250       0.165        0.253       0.164        0.245
+                      192        0.199       0.297        0.175        0.261       0.177        0.258       0.173        0.256
+                      336        0.216       0.312        0.191        0.278       0.190        0.274       0.189        0.275
+       ECL            720        0.257       0.345        0.230        0.312       0.232        0.311       0.229        0.310
+                      AVG        0.216       0.331        0.190        0.275       0.191        0.274       0.189        0.272
+                      96         0.472       0.305        0.433        0.281       0.438        0.283       0.429        0.279
+                      192        0.474       0.304        0.446        0.287       0.447        0.287       0.442        0.282
+                      336        0.491       0.331        0.459        0.288       0.459        0.289       0.456        0.288
+     T RAFFIC         720        0.523       0.327        0.490        0.306       0.494        0.307       0.486        0.307
+                      AVG        0.490       0.317        0.457        0.291       0.460        0.292       0.453        0.289
+
+
+
+
+                                                                  25
+

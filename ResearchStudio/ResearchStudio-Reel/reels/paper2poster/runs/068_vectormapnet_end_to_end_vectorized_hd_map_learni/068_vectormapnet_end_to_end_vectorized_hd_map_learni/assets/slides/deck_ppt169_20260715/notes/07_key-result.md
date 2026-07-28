@@ -1,0 +1,1 @@
+VectorMapNet sets a new state of the art. It beats HDMapNet by 14.2 mAP on nuScenes and 14.6 on Argoverse2. Gains hold across sensors: nearly eighteen points camera-only, about ten LiDAR-only, over fourteen with fusion. Two-stage fine-tuning pushes fusion to 53.7 mAP versus 31.0.

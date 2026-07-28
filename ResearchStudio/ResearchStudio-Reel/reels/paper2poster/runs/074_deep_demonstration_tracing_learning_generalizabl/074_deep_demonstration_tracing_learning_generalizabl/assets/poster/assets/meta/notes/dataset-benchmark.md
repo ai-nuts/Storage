@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: The authors build VPAM (Valet Parking Assist in Maze), a demo-navigation benchmark where a point agent travels from a start to a target in a maze using only l-step local views (8 rays × 5 steps), with randomly generated obstacles that may not exist in the demonstration. Eight tasks vary single- vs multi-map, obstacle presence, and coordinate availability.
+
+Supporting detail: DDT is further evaluated on Meta-World, Gymnasium (Reacher, Pusher), and a MuJoCo robot manipulation task with grasping, stacking, and clutter, plus partially observable VPAM variants.
+
+Narration: To test one-shot imitation under unforeseen change, the authors created a benchmark called Valet Parking Assist in Maze, or VPAM, inspired by real-world valet parking. In it, a point agent must reach a target in a maze it has never seen globally, relying only on short local views computed from eight rays. Crucially, rectangular obstacles are randomly placed on the path and often did not exist in the demonstration, so the agent cannot blindly replay demonstrated actions. Eight task variants change whether it is a single map or many, whether obstacles are present, and whether coordinates are given. Beyond VPAM, DDT is also applied to robotics benchmarks including Meta-World with added disturbances, Gymnasium's Reacher and Pusher, and a MuJoCo manipulation task involving grasping, stacking, and cluttered environments.

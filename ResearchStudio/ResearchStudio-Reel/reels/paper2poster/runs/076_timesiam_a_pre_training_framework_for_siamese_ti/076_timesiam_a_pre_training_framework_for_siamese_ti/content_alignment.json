@@ -1,0 +1,1782 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T11:11:50Z",
+  "title": "TimeSiam: A Pre-Training Framework for Siamese Time-Series Modeling",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Self-supervised pre-training reshaped how we build models for images and text: learn general-purpose representations from mountains of unlabeled data first, then fine-tune on the task you actually care about. Time series looks like the perfect next candidate. Industrial sensors, wearables, and the broader Internet of Things (IoT) generate a staggering, ever-growing stream of unlabeled measurements, and almost none of it is annotated. The temptation is obvious: borrow the recipes that worked for vision and language and point them at time series."
+            },
+            {
+              "type": "paragraph",
+              "text": "The trouble is that those recipes fit awkwardly. When you randomly mask points scattered across a series, you can shatter the smooth temporal structure the signal depends on, sometimes making reconstruction so hard the model learns very little. Contrastive learning has the opposite failure mode: comparing whole series for similarity tends to ignore the fine-grained correlations inside them, and it leans on data augmentations that are notoriously difficult to design for temporal data. Both families quietly overlook the one thing that makes a time series a time series: how a past observation is correlated with the present one."
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam, from a group at Tsinghua University and published at ICML 2024, takes that correlation as its central object. Instead of masking a window in isolation, it samples a past subseries and a current subseries from the same sequence and trains a Siamese network to reconstruct the masked present from the past. That single design choice forces the model to internalize how distant moments in a series relate, and it turns out to transfer remarkably well across tasks and domains."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Three self-supervised recipes for time series. (a) Masked modeling reconstructs a masked series in isolation. (b) Contrastive learning pushes apart different series while pulling together two augmentations of the same series. (c) TimeSiam instead reconstructs a masked current window from a randomly sampled past window, making cross-time correlation the learning signal.",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2402.02475"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code: https://github.com/thuml/TimeSiam"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why borrowed recipes fall short"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be concrete about what goes wrong. Masked modeling was designed for tokens and image patches, where masking removes a discrete unit that the surrounding context can still infer. A time series is continuous and locally smooth, so masking scattered points either leaves an easy interpolation problem or, at high masking ratios, destroys enough structure that the task stops teaching anything useful. Contrastive methods sidestep reconstruction, but they hinge on augmentations that preserve semantics while changing appearance, and for temporal signals it is genuinely unclear which transformations do that. Series-wise similarity also collapses a whole window into one representation, throwing away the within-window dynamics that downstream forecasting and classification both rely on."
+            },
+            {
+              "type": "paragraph",
+              "text": "The motivation for a better recipe is not academic. The volume of unlabeled time series flowing off IoT sensors and wearable devices keeps growing, and a pre-training method that explicitly models temporal correlation could finally put that data to work for forecasting and classification without hand labeling. The question TimeSiam asks is simple: rather than treating each window on its own, why not build the pre-training task around the relationship between temporally distanced observations?"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The core idea: reconstruct the present from the past"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam builds its pretext task from a pair the authors call Siamese subseries. From a single long series it randomly samples two windows: a past subseries and a current subseries. The current window is lightly corrupted with a simple augmentation such as masking. Two encoders with shared weights process the past and current windows, and a decoder with cross-attention reconstructs the masked current series, using the past window as the key and value and the corrupted present as the query. Training minimizes the squared error between the true and reconstructed current window. Because the only way to fill in the masked present is to exploit its correlation with the past, the encoder is pushed to learn exactly the temporal structure that masking and contrastive objectives leave on the table."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. The TimeSiam framework. (a) During pre-training, a past window and a masked current window are drawn from the same series, encoded by shared-weight Siamese encoders, and a cross-attention decoder reconstructs the current window from the past. A learnable lineage embedding, indexed by the relative distance between the two windows, is added before encoding. (b) At fine-tuning, multiple lineages are either averaged for a fixed-length input or concatenated to extend the input length.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Lineage embeddings: one model, many time gaps"
+            },
+            {
+              "type": "paragraph",
+              "text": "A past window and a current window can sit close together in time or far apart, and the correlation between them changes with that gap. Forcing a single encoder to treat a one-step-back window and a thousand-step-back window identically would blur useful information. TimeSiam handles this with learnable lineage embeddings: a small set of vectors indexed by the relative distance between the past and current windows, added to the input representation before encoding. One model can then represent many temporal distances at once, and the final representation is an ensemble over these lineages. At fine-tuning, the lineage embeddings are averaged when the input length is fixed, or concatenated segment by segment when the model is adapted to a longer input, so a single model can stretch to inputs far longer than the windows it ever encountered while pre-training on the source data."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it work? Results across 13 benchmarks"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation is deliberately broad, spanning 13 benchmarks and two mainstream tasks. Forecasting covers the four ETT subsets along with Weather, Electricity, Traffic, and Exchange; classification covers the EEG datasets AD and TDBrain and the ECG dataset PTB. On top of these established benchmarks the authors build two new large-scale, multi-domain pre-training corpora, TSLD-500M and TSLD-1G, where the larger one packs 13.9M examples drawn from diverse, non-overlapping domains and lets the paper stress-test cross-domain transfer."
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are consistent and strong. On in-domain forecasting, TimeSiam lowers average mean squared error by 5.7% with a PatchTST backbone and 2.5% with iTransformer, relative to training from random initialization, and remember these backbones already forecast well from scratch. On in-domain classification it raises average accuracy by 11.5%. Across both settings it outperforms 8 strong self-supervised baselines, including reconstruction-based methods like SimMTM and contrastive ones like TS2Vec and CoST. The scatter plots below make the pattern easy to see: TimeSiam (the red star) sits in the top-left corner in both the in-domain and cross-domain panels, meaning the lowest forecasting error and the highest classification accuracy at once."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Forecasting error (MSE, lower is better) versus classification accuracy (higher is better) for many self-supervised baselines, in the in-domain setting (left) and the cross-domain setting where pre-training uses TSLD-1G (right). TimeSiam, the red star, is alone in the top-left of both panels, dominating both axes at once.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. In-domain gains of TimeSiam over random initialization, averaged across benchmarks.",
+              "headers": [
+                "Setting",
+                "Metric",
+                "TimeSiam vs. random init."
+              ],
+              "rows": [
+                [
+                  "In-domain forecasting (PatchTST)",
+                  "Avg MSE",
+                  "5.7% lower"
+                ],
+                [
+                  "In-domain forecasting (iTransformer)",
+                  "Avg MSE",
+                  "2.5% lower"
+                ],
+                [
+                  "In-domain classification",
+                  "Avg accuracy",
+                  "11.5% higher"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The cross-domain story is the most striking. Pre-training on the large, diverse TSLD-1G corpus and fine-tuning on an entirely different target dataset sometimes beats even in-domain pre-training, and TimeSiam remains the best method under the distribution shift that cross-domain transfer imposes. That is a useful signal for practitioners: the scale and diversity of the pre-training data genuinely pay off, and a model pre-trained once on broad, varied data can then be reused across many different downstream sources."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Adapting to longer inputs"
+            },
+            {
+              "type": "paragraph",
+              "text": "One practical worry with any forecasting model is what happens when you feed it a longer history at fine-tuning time than it was trained on. Longer inputs carry more information but also more noise, and a standard model can actually get worse as the input grows. Because TimeSiam can concatenate lineage embeddings across segments, it adapts to extended inputs natively rather than degrading. The panels below track average error as the input length grows for four datasets, and the pattern is clear: the from-scratch baseline flattens or bends upward while TimeSiam keeps improving."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 4. Fine-tuning to extended input lengths (96, 192, 288, 384, 576) on an iTransformer backbone, reporting MSE averaged over the forecast horizons 96, 192, 336, 720. As the input grows, training from random initialization can degrade, while TimeSiam continues to lower error.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What the ablations confirm"
+            },
+            {
+              "type": "paragraph",
+              "text": "Ablations on the Traffic benchmark pin down which design choices matter. Reconstructing the current window from a past one clearly beats plain self-reconstruction, which validates the core Siamese idea rather than the masking alone. The masking ratio has a sweet spot near 25%: masking only 15% makes the pretext task too easy to teach anything, while masking 75% makes it too hard to guide useful learning. And lineage embeddings deliver consistent gains over random initialization; adding more of them keeps improving results up to a point, confirming that explicitly modeling several temporal distances is worth the small extra cost."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "Figure 6. Effect of the number of lineage embeddings on ECL and Traffic, using 1, 2, and 3 lineage tokens under the input-96 in-domain setting. More lineage tokens push the curves below the random-initialization line across forecast horizons, showing that modeling multiple temporal distances helps.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure6.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam's contribution is a reframing more than a new architecture. By posing time-series pre-training as past-to-current reconstruction between Siamese subseries, and equipping one model with learnable lineage embeddings to span different temporal distances, it captures exactly the correlations that masking and contrastive objectives miss. The framework is backbone-agnostic, dropping cleanly onto PatchTST, iTransformer, and TCN, and its benefits grow with larger and more diverse pre-training data. The honest boundary is that cross-domain pre-training does not always beat in-domain pre-training, since the gap between pre-training and fine-tuning domains still matters. But as a simple, general way to turn unlabeled time series into strong transferable representations, TimeSiam sets a clear new bar for both forecasting and classification. For practitioners the recipe is easy to adopt: pre-train once on whatever unlabeled series you already collect, attach the encoder to a standard forecaster or classifier, and fine-tune as usual. The broader lesson is that the design of the pretext task can matter more than raw scale, and for time series the task worth learning is how the past shapes the present."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "自监督预训练（self-supervised pre-training）改变了图像和文本模型的构建方式：先在海量无标注数据上学习通用表示，再在真正关心的任务上微调。时间序列看起来是下一个理想场景，工业传感器、可穿戴设备以及更广义的物联网（IoT）每天都在产生海量且不断增长的测量数据，而其中几乎没有标注。于是一个很自然的想法出现了：把在视觉和语言上奏效的配方，直接搬到时间序列上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "问题在于，这些配方并不太合身。当你在序列上随机遮盖（mask）零散的点时，可能会破坏信号赖以成立的平滑时间结构，有时甚至让重构任务难到模型学不到什么东西。对比学习（contrastive learning）则是另一种失败模式：以整条序列为单位计算相似度，往往忽略序列内部细粒度的相关性，而且它依赖的数据增强对时间信号来说极难设计。两类方法都悄悄忽略了让时间序列之所以成为时间序列的那件事：过去的观测与当下的观测之间是相关的。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自清华大学、发表于 ICML 2024 的 TimeSiam，正是把这种相关性当作核心对象。它不再孤立地遮盖一个窗口，而是从同一条序列中采样一个「过去」子序列和一个「当前」子序列，训练孪生网络（Siamese network）用过去还原被遮盖的现在。这一个设计选择，迫使模型把序列中相隔较远时刻之间的关系内化下来，而它在跨任务、跨领域的迁移上表现得出奇地好。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 时间序列自监督预训练的三种配方。(a) 掩码建模：孤立地重构被遮盖的序列；(b) 对比学习：拉开不同序列，同时拉近同一序列的两种增强；(c) TimeSiam：用随机采样的过去窗口去重构被遮盖的当前窗口，把「跨时间相关性」作为学习信号。",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2402.02475"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/thuml/TimeSiam"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么「借来的配方」不够用"
+            },
+            {
+              "type": "paragraph",
+              "text": "具体看看问题出在哪里。掩码建模最初是为词元和图像块设计的，遮盖掉一个离散单元后，周围上下文仍能推断出它。可时间序列是连续且局部平滑的，遮盖零散的点，要么留下一个很容易插值的简单问题，要么在高遮盖比例下破坏了太多结构，让任务不再教给模型任何有用的东西。对比方法绕开了重构，却依赖既保持语义又改变表象的增强，而对时间信号来说，哪些变换能做到这一点其实并不清楚。以整条序列计算相似度，还会把一个窗口压成单一表示，丢掉了下游预测和分类都要依赖的窗口内部动态。"
+            },
+            {
+              "type": "paragraph",
+              "text": "追求更好配方的动机并不只是学术上的。物联网传感器和可穿戴设备产出的无标注时间序列体量持续膨胀，一种显式建模时间相关性的预训练方法，或许能在无需人工标注的情况下，把这些数据真正用于预测和分类。TimeSiam 提出的问题很简单：与其孤立地看待每个窗口，为什么不围绕「相隔一段时间的观测之间的关系」来构建预训练任务？"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "核心思路：用过去还原现在"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam 的预训练任务建立在作者称为「孪生子序列」（Siamese subseries）的一对窗口之上。从一条长序列中，它随机采样两个窗口：一个过去子序列和一个当前子序列，并用遮盖这类简单增强轻微地扰动当前窗口。两个共享权重的编码器分别处理过去与当前窗口，一个带交叉注意力（cross-attention）的解码器再用过去窗口作为键和值、用被扰动的现在作为查询，去重构被遮盖的当前序列。训练目标就是真实当前窗口与重构结果之间的平方误差。因为填补被遮盖现在的唯一途径，就是利用它与过去的相关性，编码器被推着去学习那种被掩码和对比目标都留在桌面上的时间结构。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2 TimeSiam 框架总览。(a) 预训练阶段：从同一序列取出一个过去窗口和一个被遮盖的当前窗口，由共享权重的孪生编码器编码，交叉注意力解码器用过去重构当前；编码前会加入一个按两窗口相对距离索引的可学习血缘嵌入（lineage embedding）。(b) 微调阶段：对固定长度输入将多个血缘取平均，对更长输入则逐段拼接以扩展输入长度。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "血缘嵌入：一个模型，覆盖多种时间间隔"
+            },
+            {
+              "type": "paragraph",
+              "text": "过去窗口和当前窗口在时间上可能相隔很近，也可能相隔很远，而两者之间的相关性会随这个间隔而变化。若强迫同一个编码器把「回看一步」和「回看上千步」的窗口一视同仁，就会模糊掉有用的信息。TimeSiam 用可学习的血缘嵌入（lineage embedding）来处理这一点：一小组按过去与当前窗口相对距离索引的向量，在编码前加到输入表示上。这样一个模型就能同时表示多种时间间隔，最终表示是这些血缘的集成。微调时，输入长度固定就对血缘嵌入取平均，要适配更长输入就逐段拼接，这让 TimeSiam 能够干净地扩展到比预训练时更长的输入。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果如何？覆盖 13 个基准的实验"
+            },
+            {
+              "type": "paragraph",
+              "text": "评测覆盖面很广，横跨 13 个基准和两大主流任务。预测涵盖四个 ETT 子集，以及 Weather、Electricity、Traffic 和 Exchange；分类涵盖 EEG 数据集 AD、TDBrain 和 ECG 数据集 PTB。在这些既有基准之外，作者还构建了两个大规模、多领域的预训练语料 TSLD-500M 和 TSLD-1G，其中更大的一个汇集了来自多样、互不重叠领域的 13.9M 条样本，用来压力测试跨领域迁移。"
+            },
+            {
+              "type": "paragraph",
+              "text": "关键数字一致而有力。在域内预测上，相对随机初始化，TimeSiam 用 PatchTST 骨干把平均均方误差（MSE）降低了 5.7%，用 iTransformer 骨干降低了 2.5%，而这些骨干本身从零训练时就已经很能预测。在域内分类上，它把平均准确率提升了 11.5%。在两种设定下，它都胜过 8 个强自监督基线，包括 SimMTM 这类基于重构的方法，以及 TS2Vec、CoST 这类对比方法。下面的散点图让这一规律一目了然：TimeSiam（红色星标）在域内和跨领域两幅图中都独处左上角，也就是同时取得最低的预测误差和最高的分类准确率。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 预测误差（MSE，越低越好）对分类准确率（越高越好）的对比，涵盖域内设定（左）与用 TSLD-1G 预训练的跨领域设定（右）。红色星标的 TimeSiam 在两幅图中都独占左上角，同时在两个坐标轴上领先。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表1 TimeSiam 相对随机初始化的域内提升（跨基准平均）。",
+              "headers": [
+                "设定",
+                "指标",
+                "TimeSiam 相对随机初始化"
+              ],
+              "rows": [
+                [
+                  "域内预测（PatchTST）",
+                  "平均 MSE",
+                  "降低 5.7%"
+                ],
+                [
+                  "域内预测（iTransformer）",
+                  "平均 MSE",
+                  "降低 2.5%"
+                ],
+                [
+                  "域内分类",
+                  "平均准确率",
+                  "提升 11.5%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "最引人注目的是跨领域的结果。在大规模、多样的 TSLD-1G 上预训练、再到一个完全不同的目标数据集上微调，有时甚至能超过域内预训练；而在跨领域迁移带来的分布偏移下，TimeSiam 仍是最好的方法。这对实践者是个有用的信号：预训练数据的规模与多样性确有回报，一个在广泛数据上预训练一次的模型，可以在众多下游来源上复用。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "适配更长的输入"
+            },
+            {
+              "type": "paragraph",
+              "text": "任何预测模型都会遇到一个现实顾虑：如果在微调时喂给它比训练时更长的历史，会发生什么？更长的输入携带更多信息，但也带来更多噪声，标准模型反而可能随输入变长而变差。由于 TimeSiam 能跨段拼接血缘嵌入，它是原生地适配更长输入，而非退化。下面四个数据集的曲线记录了平均误差随输入长度增长的变化，规律很清楚：从零训练的基线趋平甚至上翘，而 TimeSiam 持续改善。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图4 在 iTransformer 骨干上微调到扩展输入长度（96、192、288、384、576），报告在预测步长 96、192、336、720 上平均的 MSE。随着输入变长，随机初始化训练可能退化，而 TimeSiam 持续降低误差。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融实验证实了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 Traffic 基准上的消融实验，锁定了哪些设计选择真正重要。用过去窗口重构当前窗口，明显优于单纯的自重构，这验证的是孪生这一核心思想，而不只是遮盖本身。遮盖比例存在一个甜点区，大约在 25% 附近：只遮盖 15% 会让预训练任务太容易，教不了什么；遮盖 75% 又太难，无法引导有用的学习。而血缘嵌入相对随机初始化能带来稳定收益，适当增加数量还会继续改善结果，这证实显式建模若干种时间间隔，值得那一点点额外开销。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "图6 血缘嵌入数量在 ECL 和 Traffic 上的影响，在 input-96 的域内设定下分别使用 1、2、3 个血缘 token。血缘 token 越多，曲线在各预测步长上越低于随机初始化基线，说明建模多种时间间隔确有帮助。",
+              "width_inches": 4.8,
+              "src": "assets/blog/figures/figure6.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam 的贡献更多是一次重新表述，而非全新架构。它把时间序列预训练表述为孪生子序列之间「用过去还原现在」的重构，并给单个模型配上可学习的血缘嵌入以覆盖不同时间间隔，从而精准捕捉到掩码与对比目标所遗漏的相关性。这一框架与骨干无关，能干净地嵌入 PatchTST、iTransformer 和 TCN，其收益还会随更大、更多样的预训练数据而增长。需要诚实指出的边界是：跨领域预训练并不总能胜过域内预训练，因为预训练与微调领域之间的差距依然重要。但作为一种把无标注时间序列转化为强可迁移表示的简单而通用的方法，TimeSiam 为预测与分类都立下了清晰的新标杆。对实践者来说，这套配方很容易上手：在你手头已有的任意无标注序列上预训练一次，把编码器接到标准的预测器或分类器上，再照常微调即可。更广的启示是，预训练任务的设计有时比单纯堆数据规模更重要，而对时间序列而言，最值得学习的任务，正是理解过去如何塑造现在。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 482.59,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 482.59,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 64.11,
+          "relative_start": 0.5,
+          "relative_end": 64.11,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 64.11,
+          "global_end": 111.33,
+          "relative_start": 64.11,
+          "relative_end": 111.33,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 111.33,
+          "global_end": 153.29,
+          "relative_start": 111.33,
+          "relative_end": 153.29,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 153.29,
+          "global_end": 201.4,
+          "relative_start": 153.29,
+          "relative_end": 201.4,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 201.4,
+          "global_end": 262.47,
+          "relative_start": 201.4,
+          "relative_end": 262.47,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 262.47,
+          "global_end": 312.21,
+          "relative_start": 262.47,
+          "relative_end": 312.21,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 312.21,
+          "global_end": 363.15,
+          "relative_start": 312.21,
+          "relative_end": 363.15,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 363.15,
+          "global_end": 405.59,
+          "relative_start": 363.15,
+          "relative_end": 405.59,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 405.59,
+          "global_end": 448.27,
+          "relative_start": 405.59,
+          "relative_end": 448.27,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 448.27,
+          "global_end": 482.55,
+          "relative_start": 448.27,
+          "relative_end": 482.55,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Three self-supervised recipes for time series. (a) Masked modeling reconstructs a masked series in isolation. (b) Contrastive learning pushes apart different series while pulling together two augmentations of the same series. (c) TimeSiam instead reconstructs a masked current window from a randomly sampled past window, making cross-time correlation the learning signal.",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why borrowed recipes fall short"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be concrete about what goes wrong. Masked modeling was designed for tokens and image patches, where masking removes a discrete unit that the surrounding context can still infer. A time series is continuous and locally smooth, so masking scattered points either leaves an easy interpolation problem or, at high masking ratios, destroys enough structure that the task stops teaching anything useful. Contrastive methods sidestep reconstruction, but they hinge on augmentations that preserve semantics while changing appearance, and for temporal signals it is genuinely unclear which transformations do that. Series-wise similarity also collapses a whole window into one representation, throwing away the within-window dynamics that downstream forecasting and classification both rely on."
+            },
+            {
+              "type": "paragraph",
+              "text": "The motivation for a better recipe is not academic. The volume of unlabeled time series flowing off IoT sensors and wearable devices keeps growing, and a pre-training method that explicitly models temporal correlation could finally put that data to work for forecasting and classification without hand labeling. The question TimeSiam asks is simple: rather than treating each window on its own, why not build the pre-training task around the relationship between temporally distanced observations?"
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "自监督预训练（self-supervised pre-training）改变了图像和文本模型的构建方式：先在海量无标注数据上学习通用表示，再在真正关心的任务上微调。时间序列看起来是下一个理想场景，工业传感器、可穿戴设备以及更广义的物联网（IoT）每天都在产生海量且不断增长的测量数据，而其中几乎没有标注。于是一个很自然的想法出现了：把在视觉和语言上奏效的配方，直接搬到时间序列上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "问题在于，这些配方并不太合身。当你在序列上随机遮盖（mask）零散的点时，可能会破坏信号赖以成立的平滑时间结构，有时甚至让重构任务难到模型学不到什么东西。对比学习（contrastive learning）则是另一种失败模式：以整条序列为单位计算相似度，往往忽略序列内部细粒度的相关性，而且它依赖的数据增强对时间信号来说极难设计。两类方法都悄悄忽略了让时间序列之所以成为时间序列的那件事：过去的观测与当下的观测之间是相关的。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自清华大学、发表于 ICML 2024 的 TimeSiam，正是把这种相关性当作核心对象。它不再孤立地遮盖一个窗口，而是从同一条序列中采样一个「过去」子序列和一个「当前」子序列，训练孪生网络（Siamese network）用过去还原被遮盖的现在。这一个设计选择，迫使模型把序列中相隔较远时刻之间的关系内化下来，而它在跨任务、跨领域的迁移上表现得出奇地好。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 时间序列自监督预训练的三种配方。(a) 掩码建模：孤立地重构被遮盖的序列；(b) 对比学习：拉开不同序列，同时拉近同一序列的两种增强；(c) TimeSiam：用随机采样的过去窗口去重构被遮盖的当前窗口，把「跨时间相关性」作为学习信号。",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2402.02475"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/thuml/TimeSiam"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 64.11,
+        "end": 111.33,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 47.22,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.12,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 64.11,
+          "global_end": 111.33,
+          "relative_start": 0.0,
+          "relative_end": 47.22,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Self-supervised pre-training reshaped how we build models for images and text: learn general-purpose representations from mountains of unlabeled data first, then fine-tune on the task you actually care about. Time series looks like the perfect next candidate. Industrial sensors, wearables, and the broader Internet of Things (IoT) generate a staggering, ever-growing stream of unlabeled measurements, and almost none of it is annotated. The temptation is obvious: borrow the recipes that worked for vision and language and point them at time series."
+            },
+            {
+              "type": "paragraph",
+              "text": "The trouble is that those recipes fit awkwardly. When you randomly mask points scattered across a series, you can shatter the smooth temporal structure the signal depends on, sometimes making reconstruction so hard the model learns very little. Contrastive learning has the opposite failure mode: comparing whole series for similarity tends to ignore the fine-grained correlations inside them, and it leans on data augmentations that are notoriously difficult to design for temporal data. Both families quietly overlook the one thing that makes a time series a time series: how a past observation is correlated with the present one."
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam, from a group at Tsinghua University and published at ICML 2024, takes that correlation as its central object. Instead of masking a window in isolation, it samples a past subseries and a current subseries from the same sequence and trains a Siamese network to reconstruct the masked present from the past. That single design choice forces the model to internalize how distant moments in a series relate, and it turns out to transfer remarkably well across tasks and domains."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Three self-supervised recipes for time series. (a) Masked modeling reconstructs a masked series in isolation. (b) Contrastive learning pushes apart different series while pulling together two augmentations of the same series. (c) TimeSiam instead reconstructs a masked current window from a randomly sampled past window, making cross-time correlation the learning signal.",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2402.02475"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code: https://github.com/thuml/TimeSiam"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 时间序列自监督预训练的三种配方。(a) 掩码建模：孤立地重构被遮盖的序列；(b) 对比学习：拉开不同序列，同时拉近同一序列的两种增强；(c) TimeSiam：用随机采样的过去窗口去重构被遮盖的当前窗口，把「跨时间相关性」作为学习信号。",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么「借来的配方」不够用"
+            },
+            {
+              "type": "paragraph",
+              "text": "具体看看问题出在哪里。掩码建模最初是为词元和图像块设计的，遮盖掉一个离散单元后，周围上下文仍能推断出它。可时间序列是连续且局部平滑的，遮盖零散的点，要么留下一个很容易插值的简单问题，要么在高遮盖比例下破坏了太多结构，让任务不再教给模型任何有用的东西。对比方法绕开了重构，却依赖既保持语义又改变表象的增强，而对时间信号来说，哪些变换能做到这一点其实并不清楚。以整条序列计算相似度，还会把一个窗口压成单一表示，丢掉了下游预测和分类都要依赖的窗口内部动态。"
+            },
+            {
+              "type": "paragraph",
+              "text": "追求更好配方的动机并不只是学术上的。物联网传感器和可穿戴设备产出的无标注时间序列体量持续膨胀，一种显式建模时间相关性的预训练方法，或许能在无需人工标注的情况下，把这些数据真正用于预测和分类。TimeSiam 提出的问题很简单：与其孤立地看待每个窗口，为什么不围绕「相隔一段时间的观测之间的关系」来构建预训练任务？"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 111.33,
+        "end": 153.29,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 41.96,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 42.86,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 111.33,
+          "global_end": 153.29,
+          "relative_start": 0.0,
+          "relative_end": 41.96,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Three self-supervised recipes for time series. (a) Masked modeling reconstructs a masked series in isolation. (b) Contrastive learning pushes apart different series while pulling together two augmentations of the same series. (c) TimeSiam instead reconstructs a masked current window from a randomly sampled past window, making cross-time correlation the learning signal.",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam's contribution is a reframing more than a new architecture. By posing time-series pre-training as past-to-current reconstruction between Siamese subseries, and equipping one model with learnable lineage embeddings to span different temporal distances, it captures exactly the correlations that masking and contrastive objectives miss. The framework is backbone-agnostic, dropping cleanly onto PatchTST, iTransformer, and TCN, and its benefits grow with larger and more diverse pre-training data. The honest boundary is that cross-domain pre-training does not always beat in-domain pre-training, since the gap between pre-training and fine-tuning domains still matters. But as a simple, general way to turn unlabeled time series into strong transferable representations, TimeSiam sets a clear new bar for both forecasting and classification. For practitioners the recipe is easy to adopt: pre-train once on whatever unlabeled series you already collect, attach the encoder to a standard forecaster or classifier, and fine-tune as usual. The broader lesson is that the design of the pretext task can matter more than raw scale, and for time series the task worth learning is how the past shapes the present."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果如何？覆盖 13 个基准的实验"
+            },
+            {
+              "type": "paragraph",
+              "text": "评测覆盖面很广，横跨 13 个基准和两大主流任务。预测涵盖四个 ETT 子集，以及 Weather、Electricity、Traffic 和 Exchange；分类涵盖 EEG 数据集 AD、TDBrain 和 ECG 数据集 PTB。在这些既有基准之外，作者还构建了两个大规模、多领域的预训练语料 TSLD-500M 和 TSLD-1G，其中更大的一个汇集了来自多样、互不重叠领域的 13.9M 条样本，用来压力测试跨领域迁移。"
+            },
+            {
+              "type": "paragraph",
+              "text": "关键数字一致而有力。在域内预测上，相对随机初始化，TimeSiam 用 PatchTST 骨干把平均均方误差（MSE）降低了 5.7%，用 iTransformer 骨干降低了 2.5%，而这些骨干本身从零训练时就已经很能预测。在域内分类上，它把平均准确率提升了 11.5%。在两种设定下，它都胜过 8 个强自监督基线，包括 SimMTM 这类基于重构的方法，以及 TS2Vec、CoST 这类对比方法。下面的散点图让这一规律一目了然：TimeSiam（红色星标）在域内和跨领域两幅图中都独处左上角，也就是同时取得最低的预测误差和最高的分类准确率。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 预测误差（MSE，越低越好）对分类准确率（越高越好）的对比，涵盖域内设定（左）与用 TSLD-1G 预训练的跨领域设定（右）。红色星标的 TimeSiam 在两幅图中都独占左上角，同时在两个坐标轴上领先。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表1 TimeSiam 相对随机初始化的域内提升（跨基准平均）。",
+              "headers": [
+                "设定",
+                "指标",
+                "TimeSiam 相对随机初始化"
+              ],
+              "rows": [
+                [
+                  "域内预测（PatchTST）",
+                  "平均 MSE",
+                  "降低 5.7%"
+                ],
+                [
+                  "域内预测（iTransformer）",
+                  "平均 MSE",
+                  "降低 2.5%"
+                ],
+                [
+                  "域内分类",
+                  "平均准确率",
+                  "提升 11.5%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "最引人注目的是跨领域的结果。在大规模、多样的 TSLD-1G 上预训练、再到一个完全不同的目标数据集上微调，有时甚至能超过域内预训练；而在跨领域迁移带来的分布偏移下，TimeSiam 仍是最好的方法。这对实践者是个有用的信号：预训练数据的规模与多样性确有回报，一个在广泛数据上预训练一次的模型，可以在众多下游来源上复用。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 153.29,
+        "end": 201.4,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 48.11,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 49.01,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 153.29,
+          "global_end": 201.4,
+          "relative_start": 0.0,
+          "relative_end": 48.11,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why borrowed recipes fall short"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be concrete about what goes wrong. Masked modeling was designed for tokens and image patches, where masking removes a discrete unit that the surrounding context can still infer. A time series is continuous and locally smooth, so masking scattered points either leaves an easy interpolation problem or, at high masking ratios, destroys enough structure that the task stops teaching anything useful. Contrastive methods sidestep reconstruction, but they hinge on augmentations that preserve semantics while changing appearance, and for temporal signals it is genuinely unclear which transformations do that. Series-wise similarity also collapses a whole window into one representation, throwing away the within-window dynamics that downstream forecasting and classification both rely on."
+            },
+            {
+              "type": "paragraph",
+              "text": "The motivation for a better recipe is not academic. The volume of unlabeled time series flowing off IoT sensors and wearable devices keeps growing, and a pre-training method that explicitly models temporal correlation could finally put that data to work for forecasting and classification without hand labeling. The question TimeSiam asks is simple: rather than treating each window on its own, why not build the pre-training task around the relationship between temporally distanced observations?"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it work? Results across 13 benchmarks"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation is deliberately broad, spanning 13 benchmarks and two mainstream tasks. Forecasting covers the four ETT subsets along with Weather, Electricity, Traffic, and Exchange; classification covers the EEG datasets AD and TDBrain and the ECG dataset PTB. On top of these established benchmarks the authors build two new large-scale, multi-domain pre-training corpora, TSLD-500M and TSLD-1G, where the larger one packs 13.9M examples drawn from diverse, non-overlapping domains and lets the paper stress-test cross-domain transfer."
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are consistent and strong. On in-domain forecasting, TimeSiam lowers average mean squared error by 5.7% with a PatchTST backbone and 2.5% with iTransformer, relative to training from random initialization, and remember these backbones already forecast well from scratch. On in-domain classification it raises average accuracy by 11.5%. Across both settings it outperforms 8 strong self-supervised baselines, including reconstruction-based methods like SimMTM and contrastive ones like TS2Vec and CoST. The scatter plots below make the pattern easy to see: TimeSiam (the red star) sits in the top-left corner in both the in-domain and cross-domain panels, meaning the lowest forecasting error and the highest classification accuracy at once."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Forecasting error (MSE, lower is better) versus classification accuracy (higher is better) for many self-supervised baselines, in the in-domain setting (left) and the cross-domain setting where pre-training uses TSLD-1G (right). TimeSiam, the red star, is alone in the top-left of both panels, dominating both axes at once.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. In-domain gains of TimeSiam over random initialization, averaged across benchmarks.",
+              "headers": [
+                "Setting",
+                "Metric",
+                "TimeSiam vs. random init."
+              ],
+              "rows": [
+                [
+                  "In-domain forecasting (PatchTST)",
+                  "Avg MSE",
+                  "5.7% lower"
+                ],
+                [
+                  "In-domain forecasting (iTransformer)",
+                  "Avg MSE",
+                  "2.5% lower"
+                ],
+                [
+                  "In-domain classification",
+                  "Avg accuracy",
+                  "11.5% higher"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The cross-domain story is the most striking. Pre-training on the large, diverse TSLD-1G corpus and fine-tuning on an entirely different target dataset sometimes beats even in-domain pre-training, and TimeSiam remains the best method under the distribution shift that cross-domain transfer imposes. That is a useful signal for practitioners: the scale and diversity of the pre-training data genuinely pay off, and a model pre-trained once on broad, varied data can then be reused across many different downstream sources."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "自监督预训练（self-supervised pre-training）改变了图像和文本模型的构建方式：先在海量无标注数据上学习通用表示，再在真正关心的任务上微调。时间序列看起来是下一个理想场景，工业传感器、可穿戴设备以及更广义的物联网（IoT）每天都在产生海量且不断增长的测量数据，而其中几乎没有标注。于是一个很自然的想法出现了：把在视觉和语言上奏效的配方，直接搬到时间序列上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "问题在于，这些配方并不太合身。当你在序列上随机遮盖（mask）零散的点时，可能会破坏信号赖以成立的平滑时间结构，有时甚至让重构任务难到模型学不到什么东西。对比学习（contrastive learning）则是另一种失败模式：以整条序列为单位计算相似度，往往忽略序列内部细粒度的相关性，而且它依赖的数据增强对时间信号来说极难设计。两类方法都悄悄忽略了让时间序列之所以成为时间序列的那件事：过去的观测与当下的观测之间是相关的。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自清华大学、发表于 ICML 2024 的 TimeSiam，正是把这种相关性当作核心对象。它不再孤立地遮盖一个窗口，而是从同一条序列中采样一个「过去」子序列和一个「当前」子序列，训练孪生网络（Siamese network）用过去还原被遮盖的现在。这一个设计选择，迫使模型把序列中相隔较远时刻之间的关系内化下来，而它在跨任务、跨领域的迁移上表现得出奇地好。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 时间序列自监督预训练的三种配方。(a) 掩码建模：孤立地重构被遮盖的序列；(b) 对比学习：拉开不同序列，同时拉近同一序列的两种增强；(c) TimeSiam：用随机采样的过去窗口去重构被遮盖的当前窗口，把「跨时间相关性」作为学习信号。",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2402.02475"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/thuml/TimeSiam"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么「借来的配方」不够用"
+            },
+            {
+              "type": "paragraph",
+              "text": "具体看看问题出在哪里。掩码建模最初是为词元和图像块设计的，遮盖掉一个离散单元后，周围上下文仍能推断出它。可时间序列是连续且局部平滑的，遮盖零散的点，要么留下一个很容易插值的简单问题，要么在高遮盖比例下破坏了太多结构，让任务不再教给模型任何有用的东西。对比方法绕开了重构，却依赖既保持语义又改变表象的增强，而对时间信号来说，哪些变换能做到这一点其实并不清楚。以整条序列计算相似度，还会把一个窗口压成单一表示，丢掉了下游预测和分类都要依赖的窗口内部动态。"
+            },
+            {
+              "type": "paragraph",
+              "text": "追求更好配方的动机并不只是学术上的。物联网传感器和可穿戴设备产出的无标注时间序列体量持续膨胀，一种显式建模时间相关性的预训练方法，或许能在无需人工标注的情况下，把这些数据真正用于预测和分类。TimeSiam 提出的问题很简单：与其孤立地看待每个窗口，为什么不围绕「相隔一段时间的观测之间的关系」来构建预训练任务？"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 201.4,
+        "end": 262.47,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 61.07,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 61.97,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 201.4,
+          "global_end": 262.47,
+          "relative_start": 0.0,
+          "relative_end": 61.07,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it work? Results across 13 benchmarks"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation is deliberately broad, spanning 13 benchmarks and two mainstream tasks. Forecasting covers the four ETT subsets along with Weather, Electricity, Traffic, and Exchange; classification covers the EEG datasets AD and TDBrain and the ECG dataset PTB. On top of these established benchmarks the authors build two new large-scale, multi-domain pre-training corpora, TSLD-500M and TSLD-1G, where the larger one packs 13.9M examples drawn from diverse, non-overlapping domains and lets the paper stress-test cross-domain transfer."
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are consistent and strong. On in-domain forecasting, TimeSiam lowers average mean squared error by 5.7% with a PatchTST backbone and 2.5% with iTransformer, relative to training from random initialization, and remember these backbones already forecast well from scratch. On in-domain classification it raises average accuracy by 11.5%. Across both settings it outperforms 8 strong self-supervised baselines, including reconstruction-based methods like SimMTM and contrastive ones like TS2Vec and CoST. The scatter plots below make the pattern easy to see: TimeSiam (the red star) sits in the top-left corner in both the in-domain and cross-domain panels, meaning the lowest forecasting error and the highest classification accuracy at once."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Forecasting error (MSE, lower is better) versus classification accuracy (higher is better) for many self-supervised baselines, in the in-domain setting (left) and the cross-domain setting where pre-training uses TSLD-1G (right). TimeSiam, the red star, is alone in the top-left of both panels, dominating both axes at once.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. In-domain gains of TimeSiam over random initialization, averaged across benchmarks.",
+              "headers": [
+                "Setting",
+                "Metric",
+                "TimeSiam vs. random init."
+              ],
+              "rows": [
+                [
+                  "In-domain forecasting (PatchTST)",
+                  "Avg MSE",
+                  "5.7% lower"
+                ],
+                [
+                  "In-domain forecasting (iTransformer)",
+                  "Avg MSE",
+                  "2.5% lower"
+                ],
+                [
+                  "In-domain classification",
+                  "Avg accuracy",
+                  "11.5% higher"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The cross-domain story is the most striking. Pre-training on the large, diverse TSLD-1G corpus and fine-tuning on an entirely different target dataset sometimes beats even in-domain pre-training, and TimeSiam remains the best method under the distribution shift that cross-domain transfer imposes. That is a useful signal for practitioners: the scale and diversity of the pre-training data genuinely pay off, and a model pre-trained once on broad, varied data can then be reused across many different downstream sources."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果如何？覆盖 13 个基准的实验"
+            },
+            {
+              "type": "paragraph",
+              "text": "评测覆盖面很广，横跨 13 个基准和两大主流任务。预测涵盖四个 ETT 子集，以及 Weather、Electricity、Traffic 和 Exchange；分类涵盖 EEG 数据集 AD、TDBrain 和 ECG 数据集 PTB。在这些既有基准之外，作者还构建了两个大规模、多领域的预训练语料 TSLD-500M 和 TSLD-1G，其中更大的一个汇集了来自多样、互不重叠领域的 13.9M 条样本，用来压力测试跨领域迁移。"
+            },
+            {
+              "type": "paragraph",
+              "text": "关键数字一致而有力。在域内预测上，相对随机初始化，TimeSiam 用 PatchTST 骨干把平均均方误差（MSE）降低了 5.7%，用 iTransformer 骨干降低了 2.5%，而这些骨干本身从零训练时就已经很能预测。在域内分类上，它把平均准确率提升了 11.5%。在两种设定下，它都胜过 8 个强自监督基线，包括 SimMTM 这类基于重构的方法，以及 TS2Vec、CoST 这类对比方法。下面的散点图让这一规律一目了然：TimeSiam（红色星标）在域内和跨领域两幅图中都独处左上角，也就是同时取得最低的预测误差和最高的分类准确率。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 预测误差（MSE，越低越好）对分类准确率（越高越好）的对比，涵盖域内设定（左）与用 TSLD-1G 预训练的跨领域设定（右）。红色星标的 TimeSiam 在两幅图中都独占左上角，同时在两个坐标轴上领先。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表1 TimeSiam 相对随机初始化的域内提升（跨基准平均）。",
+              "headers": [
+                "设定",
+                "指标",
+                "TimeSiam 相对随机初始化"
+              ],
+              "rows": [
+                [
+                  "域内预测（PatchTST）",
+                  "平均 MSE",
+                  "降低 5.7%"
+                ],
+                [
+                  "域内预测（iTransformer）",
+                  "平均 MSE",
+                  "降低 2.5%"
+                ],
+                [
+                  "域内分类",
+                  "平均准确率",
+                  "提升 11.5%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "最引人注目的是跨领域的结果。在大规模、多样的 TSLD-1G 上预训练、再到一个完全不同的目标数据集上微调，有时甚至能超过域内预训练；而在跨领域迁移带来的分布偏移下，TimeSiam 仍是最好的方法。这对实践者是个有用的信号：预训练数据的规模与多样性确有回报，一个在广泛数据上预训练一次的模型，可以在众多下游来源上复用。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 262.47,
+        "end": 312.21,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 49.74,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 50.64,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 262.47,
+          "global_end": 312.21,
+          "relative_start": 0.0,
+          "relative_end": 49.74,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it work? Results across 13 benchmarks"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation is deliberately broad, spanning 13 benchmarks and two mainstream tasks. Forecasting covers the four ETT subsets along with Weather, Electricity, Traffic, and Exchange; classification covers the EEG datasets AD and TDBrain and the ECG dataset PTB. On top of these established benchmarks the authors build two new large-scale, multi-domain pre-training corpora, TSLD-500M and TSLD-1G, where the larger one packs 13.9M examples drawn from diverse, non-overlapping domains and lets the paper stress-test cross-domain transfer."
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are consistent and strong. On in-domain forecasting, TimeSiam lowers average mean squared error by 5.7% with a PatchTST backbone and 2.5% with iTransformer, relative to training from random initialization, and remember these backbones already forecast well from scratch. On in-domain classification it raises average accuracy by 11.5%. Across both settings it outperforms 8 strong self-supervised baselines, including reconstruction-based methods like SimMTM and contrastive ones like TS2Vec and CoST. The scatter plots below make the pattern easy to see: TimeSiam (the red star) sits in the top-left corner in both the in-domain and cross-domain panels, meaning the lowest forecasting error and the highest classification accuracy at once."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Forecasting error (MSE, lower is better) versus classification accuracy (higher is better) for many self-supervised baselines, in the in-domain setting (left) and the cross-domain setting where pre-training uses TSLD-1G (right). TimeSiam, the red star, is alone in the top-left of both panels, dominating both axes at once.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. In-domain gains of TimeSiam over random initialization, averaged across benchmarks.",
+              "headers": [
+                "Setting",
+                "Metric",
+                "TimeSiam vs. random init."
+              ],
+              "rows": [
+                [
+                  "In-domain forecasting (PatchTST)",
+                  "Avg MSE",
+                  "5.7% lower"
+                ],
+                [
+                  "In-domain forecasting (iTransformer)",
+                  "Avg MSE",
+                  "2.5% lower"
+                ],
+                [
+                  "In-domain classification",
+                  "Avg accuracy",
+                  "11.5% higher"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The cross-domain story is the most striking. Pre-training on the large, diverse TSLD-1G corpus and fine-tuning on an entirely different target dataset sometimes beats even in-domain pre-training, and TimeSiam remains the best method under the distribution shift that cross-domain transfer imposes. That is a useful signal for practitioners: the scale and diversity of the pre-training data genuinely pay off, and a model pre-trained once on broad, varied data can then be reused across many different downstream sources."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What the ablations confirm"
+            },
+            {
+              "type": "paragraph",
+              "text": "Ablations on the Traffic benchmark pin down which design choices matter. Reconstructing the current window from a past one clearly beats plain self-reconstruction, which validates the core Siamese idea rather than the masking alone. The masking ratio has a sweet spot near 25%: masking only 15% makes the pretext task too easy to teach anything, while masking 75% makes it too hard to guide useful learning. And lineage embeddings deliver consistent gains over random initialization; adding more of them keeps improving results up to a point, confirming that explicitly modeling several temporal distances is worth the small extra cost."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "Figure 6. Effect of the number of lineage embeddings on ECL and Traffic, using 1, 2, and 3 lineage tokens under the input-96 in-domain setting. More lineage tokens push the curves below the random-initialization line across forecast horizons, showing that modeling multiple temporal distances helps.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure6.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果如何？覆盖 13 个基准的实验"
+            },
+            {
+              "type": "paragraph",
+              "text": "评测覆盖面很广，横跨 13 个基准和两大主流任务。预测涵盖四个 ETT 子集，以及 Weather、Electricity、Traffic 和 Exchange；分类涵盖 EEG 数据集 AD、TDBrain 和 ECG 数据集 PTB。在这些既有基准之外，作者还构建了两个大规模、多领域的预训练语料 TSLD-500M 和 TSLD-1G，其中更大的一个汇集了来自多样、互不重叠领域的 13.9M 条样本，用来压力测试跨领域迁移。"
+            },
+            {
+              "type": "paragraph",
+              "text": "关键数字一致而有力。在域内预测上，相对随机初始化，TimeSiam 用 PatchTST 骨干把平均均方误差（MSE）降低了 5.7%，用 iTransformer 骨干降低了 2.5%，而这些骨干本身从零训练时就已经很能预测。在域内分类上，它把平均准确率提升了 11.5%。在两种设定下，它都胜过 8 个强自监督基线，包括 SimMTM 这类基于重构的方法，以及 TS2Vec、CoST 这类对比方法。下面的散点图让这一规律一目了然：TimeSiam（红色星标）在域内和跨领域两幅图中都独处左上角，也就是同时取得最低的预测误差和最高的分类准确率。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 预测误差（MSE，越低越好）对分类准确率（越高越好）的对比，涵盖域内设定（左）与用 TSLD-1G 预训练的跨领域设定（右）。红色星标的 TimeSiam 在两幅图中都独占左上角，同时在两个坐标轴上领先。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表1 TimeSiam 相对随机初始化的域内提升（跨基准平均）。",
+              "headers": [
+                "设定",
+                "指标",
+                "TimeSiam 相对随机初始化"
+              ],
+              "rows": [
+                [
+                  "域内预测（PatchTST）",
+                  "平均 MSE",
+                  "降低 5.7%"
+                ],
+                [
+                  "域内预测（iTransformer）",
+                  "平均 MSE",
+                  "降低 2.5%"
+                ],
+                [
+                  "域内分类",
+                  "平均准确率",
+                  "提升 11.5%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "最引人注目的是跨领域的结果。在大规模、多样的 TSLD-1G 上预训练、再到一个完全不同的目标数据集上微调，有时甚至能超过域内预训练；而在跨领域迁移带来的分布偏移下，TimeSiam 仍是最好的方法。这对实践者是个有用的信号：预训练数据的规模与多样性确有回报，一个在广泛数据上预训练一次的模型，可以在众多下游来源上复用。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融实验证实了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 Traffic 基准上的消融实验，锁定了哪些设计选择真正重要。用过去窗口重构当前窗口，明显优于单纯的自重构，这验证的是孪生这一核心思想，而不只是遮盖本身。遮盖比例存在一个甜点区，大约在 25% 附近：只遮盖 15% 会让预训练任务太容易，教不了什么；遮盖 75% 又太难，无法引导有用的学习。而血缘嵌入相对随机初始化能带来稳定收益，适当增加数量还会继续改善结果，这证实显式建模若干种时间间隔，值得那一点点额外开销。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "图6 血缘嵌入数量在 ECL 和 Traffic 上的影响，在 input-96 的域内设定下分别使用 1、2、3 个血缘 token。血缘 token 越多，曲线在各预测步长上越低于随机初始化基线，说明建模多种时间间隔确有帮助。",
+              "width_inches": 4.8,
+              "src": "assets/blog/figures/figure6.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 312.21,
+        "end": 363.15,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 50.94,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 51.84,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 312.21,
+          "global_end": 363.15,
+          "relative_start": 0.0,
+          "relative_end": 50.94,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "Figure 6. Effect of the number of lineage embeddings on ECL and Traffic, using 1, 2, and 3 lineage tokens under the input-96 in-domain setting. More lineage tokens push the curves below the random-initialization line across forecast horizons, showing that modeling multiple temporal distances helps.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure6.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why borrowed recipes fall short"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be concrete about what goes wrong. Masked modeling was designed for tokens and image patches, where masking removes a discrete unit that the surrounding context can still infer. A time series is continuous and locally smooth, so masking scattered points either leaves an easy interpolation problem or, at high masking ratios, destroys enough structure that the task stops teaching anything useful. Contrastive methods sidestep reconstruction, but they hinge on augmentations that preserve semantics while changing appearance, and for temporal signals it is genuinely unclear which transformations do that. Series-wise similarity also collapses a whole window into one representation, throwing away the within-window dynamics that downstream forecasting and classification both rely on."
+            },
+            {
+              "type": "paragraph",
+              "text": "The motivation for a better recipe is not academic. The volume of unlabeled time series flowing off IoT sensors and wearable devices keeps growing, and a pre-training method that explicitly models temporal correlation could finally put that data to work for forecasting and classification without hand labeling. The question TimeSiam asks is simple: rather than treating each window on its own, why not build the pre-training task around the relationship between temporally distanced observations?"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融实验证实了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 Traffic 基准上的消融实验，锁定了哪些设计选择真正重要。用过去窗口重构当前窗口，明显优于单纯的自重构，这验证的是孪生这一核心思想，而不只是遮盖本身。遮盖比例存在一个甜点区，大约在 25% 附近：只遮盖 15% 会让预训练任务太容易，教不了什么；遮盖 75% 又太难，无法引导有用的学习。而血缘嵌入相对随机初始化能带来稳定收益，适当增加数量还会继续改善结果，这证实显式建模若干种时间间隔，值得那一点点额外开销。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure6.png",
+              "caption": "图6 血缘嵌入数量在 ECL 和 Traffic 上的影响，在 input-96 的域内设定下分别使用 1、2、3 个血缘 token。血缘 token 越多，曲线在各预测步长上越低于随机初始化基线，说明建模多种时间间隔确有帮助。",
+              "width_inches": 4.8,
+              "src": "assets/blog/figures/figure6.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 363.15,
+        "end": 405.59,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 42.44,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.34,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 363.15,
+          "global_end": 405.59,
+          "relative_start": 0.0,
+          "relative_end": 42.44,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it work? Results across 13 benchmarks"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation is deliberately broad, spanning 13 benchmarks and two mainstream tasks. Forecasting covers the four ETT subsets along with Weather, Electricity, Traffic, and Exchange; classification covers the EEG datasets AD and TDBrain and the ECG dataset PTB. On top of these established benchmarks the authors build two new large-scale, multi-domain pre-training corpora, TSLD-500M and TSLD-1G, where the larger one packs 13.9M examples drawn from diverse, non-overlapping domains and lets the paper stress-test cross-domain transfer."
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are consistent and strong. On in-domain forecasting, TimeSiam lowers average mean squared error by 5.7% with a PatchTST backbone and 2.5% with iTransformer, relative to training from random initialization, and remember these backbones already forecast well from scratch. On in-domain classification it raises average accuracy by 11.5%. Across both settings it outperforms 8 strong self-supervised baselines, including reconstruction-based methods like SimMTM and contrastive ones like TS2Vec and CoST. The scatter plots below make the pattern easy to see: TimeSiam (the red star) sits in the top-left corner in both the in-domain and cross-domain panels, meaning the lowest forecasting error and the highest classification accuracy at once."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Forecasting error (MSE, lower is better) versus classification accuracy (higher is better) for many self-supervised baselines, in the in-domain setting (left) and the cross-domain setting where pre-training uses TSLD-1G (right). TimeSiam, the red star, is alone in the top-left of both panels, dominating both axes at once.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. In-domain gains of TimeSiam over random initialization, averaged across benchmarks.",
+              "headers": [
+                "Setting",
+                "Metric",
+                "TimeSiam vs. random init."
+              ],
+              "rows": [
+                [
+                  "In-domain forecasting (PatchTST)",
+                  "Avg MSE",
+                  "5.7% lower"
+                ],
+                [
+                  "In-domain forecasting (iTransformer)",
+                  "Avg MSE",
+                  "2.5% lower"
+                ],
+                [
+                  "In-domain classification",
+                  "Avg accuracy",
+                  "11.5% higher"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The cross-domain story is the most striking. Pre-training on the large, diverse TSLD-1G corpus and fine-tuning on an entirely different target dataset sometimes beats even in-domain pre-training, and TimeSiam remains the best method under the distribution shift that cross-domain transfer imposes. That is a useful signal for practitioners: the scale and diversity of the pre-training data genuinely pay off, and a model pre-trained once on broad, varied data can then be reused across many different downstream sources."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果如何？覆盖 13 个基准的实验"
+            },
+            {
+              "type": "paragraph",
+              "text": "评测覆盖面很广，横跨 13 个基准和两大主流任务。预测涵盖四个 ETT 子集，以及 Weather、Electricity、Traffic 和 Exchange；分类涵盖 EEG 数据集 AD、TDBrain 和 ECG 数据集 PTB。在这些既有基准之外，作者还构建了两个大规模、多领域的预训练语料 TSLD-500M 和 TSLD-1G，其中更大的一个汇集了来自多样、互不重叠领域的 13.9M 条样本，用来压力测试跨领域迁移。"
+            },
+            {
+              "type": "paragraph",
+              "text": "关键数字一致而有力。在域内预测上，相对随机初始化，TimeSiam 用 PatchTST 骨干把平均均方误差（MSE）降低了 5.7%，用 iTransformer 骨干降低了 2.5%，而这些骨干本身从零训练时就已经很能预测。在域内分类上，它把平均准确率提升了 11.5%。在两种设定下，它都胜过 8 个强自监督基线，包括 SimMTM 这类基于重构的方法，以及 TS2Vec、CoST 这类对比方法。下面的散点图让这一规律一目了然：TimeSiam（红色星标）在域内和跨领域两幅图中都独处左上角，也就是同时取得最低的预测误差和最高的分类准确率。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 预测误差（MSE，越低越好）对分类准确率（越高越好）的对比，涵盖域内设定（左）与用 TSLD-1G 预训练的跨领域设定（右）。红色星标的 TimeSiam 在两幅图中都独占左上角，同时在两个坐标轴上领先。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表1 TimeSiam 相对随机初始化的域内提升（跨基准平均）。",
+              "headers": [
+                "设定",
+                "指标",
+                "TimeSiam 相对随机初始化"
+              ],
+              "rows": [
+                [
+                  "域内预测（PatchTST）",
+                  "平均 MSE",
+                  "降低 5.7%"
+                ],
+                [
+                  "域内预测（iTransformer）",
+                  "平均 MSE",
+                  "降低 2.5%"
+                ],
+                [
+                  "域内分类",
+                  "平均准确率",
+                  "提升 11.5%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "最引人注目的是跨领域的结果。在大规模、多样的 TSLD-1G 上预训练、再到一个完全不同的目标数据集上微调，有时甚至能超过域内预训练；而在跨领域迁移带来的分布偏移下，TimeSiam 仍是最好的方法。这对实践者是个有用的信号：预训练数据的规模与多样性确有回报，一个在广泛数据上预训练一次的模型，可以在众多下游来源上复用。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 405.59,
+        "end": 448.27,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 42.68,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.58,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 405.59,
+          "global_end": 448.27,
+          "relative_start": 0.0,
+          "relative_end": 42.68,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Three self-supervised recipes for time series. (a) Masked modeling reconstructs a masked series in isolation. (b) Contrastive learning pushes apart different series while pulling together two augmentations of the same series. (c) TimeSiam instead reconstructs a masked current window from a randomly sampled past window, making cross-time correlation the learning signal.",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam's contribution is a reframing more than a new architecture. By posing time-series pre-training as past-to-current reconstruction between Siamese subseries, and equipping one model with learnable lineage embeddings to span different temporal distances, it captures exactly the correlations that masking and contrastive objectives miss. The framework is backbone-agnostic, dropping cleanly onto PatchTST, iTransformer, and TCN, and its benefits grow with larger and more diverse pre-training data. The honest boundary is that cross-domain pre-training does not always beat in-domain pre-training, since the gap between pre-training and fine-tuning domains still matters. But as a simple, general way to turn unlabeled time series into strong transferable representations, TimeSiam sets a clear new bar for both forecasting and classification. For practitioners the recipe is easy to adopt: pre-train once on whatever unlabeled series you already collect, attach the encoder to a standard forecaster or classifier, and fine-tune as usual. The broader lesson is that the design of the pretext task can matter more than raw scale, and for time series the task worth learning is how the past shapes the present."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 时间序列自监督预训练的三种配方。(a) 掩码建模：孤立地重构被遮盖的序列；(b) 对比学习：拉开不同序列，同时拉近同一序列的两种增强；(c) TimeSiam：用随机采样的过去窗口去重构被遮盖的当前窗口，把「跨时间相关性」作为学习信号。",
+              "width_inches": 6.1,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结"
+            },
+            {
+              "type": "paragraph",
+              "text": "TimeSiam 的贡献更多是一次重新表述，而非全新架构。它把时间序列预训练表述为孪生子序列之间「用过去还原现在」的重构，并给单个模型配上可学习的血缘嵌入以覆盖不同时间间隔，从而精准捕捉到掩码与对比目标所遗漏的相关性。这一框架与骨干无关，能干净地嵌入 PatchTST、iTransformer 和 TCN，其收益还会随更大、更多样的预训练数据而增长。需要诚实指出的边界是：跨领域预训练并不总能胜过域内预训练，因为预训练与微调领域之间的差距依然重要。但作为一种把无标注时间序列转化为强可迁移表示的简单而通用的方法，TimeSiam 为预测与分类都立下了清晰的新标杆。对实践者来说，这套配方很容易上手：在你手头已有的任意无标注序列上预训练一次，把编码器接到标准的预测器或分类器上，再照常微调即可。更广的启示是，预训练任务的设计有时比单纯堆数据规模更重要，而对时间序列而言，最值得学习的任务，正是理解过去如何塑造现在。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "TimeSiam: Teaching Time-Series Models to Learn From Their Own Past",
+            "subtitle": "An ICML 2024 framework from Tsinghua University reframes self-supervised pre-training as reconstructing the present from the past, setting a new state of the art across 13 benchmarks."
+          },
+          "zh": {
+            "title": "TimeSiam：让时间序列模型向自己的「过去」学习",
+            "subtitle": "清华大学团队发表于 ICML 2024 的自监督预训练框架，将预训练重构为「用过去还原现在」，在 13 个基准上刷新纪录。"
+          }
+        }
+      },
+      "segment": {
+        "start": 448.27,
+        "end": 482.55,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 34.28,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 35.18,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 448.27,
+          "global_end": 482.55,
+          "relative_start": 0.0,
+          "relative_end": 34.28,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

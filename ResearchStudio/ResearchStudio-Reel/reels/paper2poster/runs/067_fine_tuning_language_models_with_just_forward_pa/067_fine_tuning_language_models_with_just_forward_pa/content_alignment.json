@@ -1,0 +1,1666 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-15T17:31:28Z",
+  "title": "Fine-Tuning Language Models with Just Forward Passes",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Fine-tuning is what turns a general pre-trained language model into a useful one, but it has a quiet, growing cost: memory. The reason is backpropagation. To compute a gradient, the standard training loop caches every intermediate activation on the forward pass, then stores a full gradient and a set of optimizer states on the backward pass. Together these can demand up to 12× the memory that plain inference needs on the same model. For a small model nobody notices. As models scale into the tens of billions of parameters, that factor becomes the wall you hit first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap is easiest to feel in hardware terms. On a single 80GB A100 GPU, you can comfortably run inference on a 30B-parameter model. Try to fine-tune on that same card with Adam, and you are limited to roughly a 2.7B model, an order of magnitude smaller. So the frustrating situation is that the hardware can clearly hold and run the big model, it just cannot afford the bookkeeping that gradient-based training layers on top."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper, from Princeton University, asks whether that bookkeeping is truly necessary. Its answer is MeZO, a memory-efficient zeroth-order optimizer that fine-tunes a language model using only forward passes, with no backpropagation at all. The headline is that training then costs about the same memory as inference, while still matching gradient-based fine-tuning on many tasks. Figure 1 sets the stakes: across eleven tasks on OPT-13B, MeZO tracks full Adam fine-tuning closely while using only 1/12 of the memory."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.17333  |  Code: https://github.com/princeton-nlp/MeZO"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fine-tuning got so memory-hungry"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to separate two costs. Inference only needs the model weights and a modest activation buffer for the tokens currently in flight. Backpropagation adds three things on top: the cached activations for the whole forward pass, a gradient of the same size as the parameters, and optimizer state such as Adam's running averages, which for Adam is another two copies of the parameters. Add it up and a training step can need many times the footprint of a forward pass. Parameter-efficient methods like LoRA and prefix tuning shrink the optimizer and gradient terms, but they do not remove the activation caching, and they still run backpropagation."
+            },
+            {
+              "type": "paragraph",
+              "text": "There is an old idea that sidesteps backpropagation entirely: zeroth-order optimization, which estimates a gradient purely from function values. You perturb the parameters, look at how the loss changes, and infer a descent direction from those two numbers. The catch, and the reason the field mostly ignored it for large models, is a pessimistic piece of classical theory: the convergence rate of zeroth-order methods was expected to degrade in proportion to the number of parameters. For a model with billions of them, that sounds hopeless. The paper's central empirical claim is that this pessimism does not hold when you are fine-tuning a strong pre-trained model on a downstream task."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "MeZO: a gradient estimate that fits in an inference footprint"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO is built on a classical estimator called SPSA (simultaneous perturbation stochastic approximation). Each step samples a single random direction z with the same shape as the parameters, drawn from a standard Gaussian. It adds a small step ε·z to every parameter and records the loss, then subtracts to get the loss on the other side. The difference between those two losses, divided by 2ε, is a single scalar, the projected gradient, and the parameter update simply moves along z scaled by that scalar and the learning rate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Concretely, the SPSA gradient estimate is ∇̂L(θ) = [ L(θ+εz) − L(θ−εz) ] / (2ε) · z with z drawn from N(0, I), and the parameter update is the ordinary SGD step θ ← θ − η · ∇̂L(θ) applied along that single sampled direction."
+            },
+            {
+              "type": "paragraph",
+              "text": "Written naively, this still doubles memory, because you have to store the full perturbation vector z to add it, evaluate, and subtract it again. The engineering insight that makes MeZO practical is to never store z. Instead it stores only the random seed, and regenerates z on the fly each time it is needed, once to perturb positively, once to perturb negatively, and once to apply the update. Because the same seed reproduces the same z, MeZO perturbs and resets the weights in place, so the entire perturb-evaluate-update cycle runs inside the memory of a plain forward pass. Two forward passes per step, no gradients, no activation cache, no optimizer state."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The memory story, measured"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 makes the payoff concrete. It profiles GPU memory on MultiRC across OPT sizes from 1.3B to 30B, comparing zero-shot inference, in-context learning, full fine-tuning, prefix-tuning fine-tuning, and MeZO. MeZO's bar sits right on top of the inference bar at every scale, while the fine-tuning bars climb far above it. The saving grows with model size, reaching up to 12× at 13B, and it is what lets a single 80GB A100 fine-tune a 30B model where backpropagation would fit only 2.7B."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. GPU memory on MultiRC (about 400 tokens per example) for different OPT sizes and tuning methods. MeZO uses the same memory as inference and delivers up to 12× savings over standard fine-tuning.",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Memory saving of MeZO over full fine-tuning (Adam), by OPT model size, read from Figure 3. MeZO's own footprint equals inference at every scale.",
+              "headers": [
+                "OPT model",
+                "Saving vs. fine-tuning"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it actually match fine-tuning?"
+            },
+            {
+              "type": "paragraph",
+              "text": "Memory savings only matter if quality holds up, so the evaluation is deliberately broad. On the autoregressive side it uses OPT models from 1.3B up to 66B on SuperGLUE classification, multiple-choice tasks such as COPA and ReCoRD, and generation tasks such as SQuAD and DROP. On the masked-language-model side it uses RoBERTa-large (350M parameters) on six sentence-classification and inference tasks, in both a few-shot regime (k=16) and a many-shot regime (k=512). The baselines are the honest ones: zero-shot, in-context learning, linear probing, and full Adam fine-tuning."
+            },
+            {
+              "type": "paragraph",
+              "text": "The OPT-13B result in Figure 1 is the clearest single summary. MeZO comfortably outperforms zero-shot prediction, in-context learning, and linear probing, and it lands within about 1% of full fine-tuning on 7 of 11 tasks, at 1/12 of the memory. On RoBERTa-large the same pattern holds at smaller scale: MeZO stays close to fine-tuning, coming within roughly 5% in the many-shot k=512 setting. And the memory win does not cost wall-clock time in practice; in the authors' implementation MeZO needs about 2× fewer GPU-hours than Adam fine-tuning for a 30B model."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "It composes with the tricks you already use"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO is not an alternative to parameter-efficient tuning, it stacks on top of it. Figure 2 reports RoBERTa-large with MeZO applied to full parameters, to LoRA, and to prefix-tuning, alongside their fine-tuning counterparts. The MeZO variants sit close to each other and to fine-tuning, which means you can combine forward-pass-only training with LoRA or prefix-tuning and keep the accuracy. Because MeZO only ever reads the loss value and never a true gradient, it can also optimize objectives that have no gradient at all, such as accuracy or F1 directly, and against the prior zeroth-order method BBTv2 it improves accuracy by up to 11% absolute."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. RoBERTa-large: zero-shot, linear probing (LP), and MeZO and fine-tuning (FT) with full parameters, LoRA, and prefix-tuning. MeZO beats zero-shot and LP and approaches fine-tuning (within about 5% at k=512) with far less memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why the pessimism was wrong"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper also explains why a method that classical theory said should crawl instead converges at a usable rate. The short version is that when you start from a well pre-trained model, the loss landscape around the current weights is effectively low-dimensional. The rate of MeZO is governed by that effective local structure, the local rank of the landscape, rather than by the raw parameter count. This is why the parameter-count pessimism does not bite: fine-tuning does not have to search the full billion-dimensional space, only the small subspace that matters near a good solution."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting message is simple: fine-tuning no longer strictly requires backpropagation. With MeZO you can adapt very large language models using only forward passes, at the memory cost of inference, and still match gradient-based quality on many tasks, which in turn lets you train models an order of magnitude larger on the same hardware. The honest boundary is worth stating too. MeZO closes most of the gap to fine-tuning but not all of it, it can need more steps to get there, and the strong convergence rests on starting from a capable pre-trained model. Within those limits, it turns the memory budget of inference into a training budget, and that is a genuinely useful trade."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "微调（fine-tuning）是把一个通用预训练模型变得真正好用的关键一步，但它有一个越来越棘手的代价：显存。根源在于反向传播（backpropagation）。为了算出梯度，标准训练流程要在前向过程中缓存所有中间激活值，再在反向过程中存下一份完整梯度和一整套优化器状态。三者叠加，训练一步所需的显存最多可以达到同一模型做推理时的 12× 。模型小的时候没人会在意，可一旦参数量涨到几百亿，这个倍数就成了你最先撞上的那堵墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换成硬件的语言会更直观。在一块 80GB 的 A100 上，你可以从容地对一个 30B 参数的模型做推理；但如果想用 Adam 在同一块卡上微调，能塞下的模型就只剩大约 2.7B，整整小了一个数量级。让人别扭的地方正在于此：硬件明明装得下、也跑得动这个大模型，只是负担不起基于梯度的训练额外压上来的那一大堆记账开销。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自普林斯顿大学（Princeton University）的论文追问的正是：这些记账开销真的不可省吗？它给出的答案是 MeZO，一种省显存的零阶优化器（zeroth-order optimizer），只用前向传播来微调语言模型，完全不做反向传播。核心结论是：这样训练所需的显存和推理几乎一样，却仍能在很多任务上追平基于梯度的微调。图 1 先把赌注摆清楚：在 OPT-13B 的 11 个任务上，MeZO 紧贴着完整的 Adam 微调，用的显存却只有它的 1/12，几乎回到了推理时的水平。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2305.17333  |  代码：https://github.com/princeton-nlp/MeZO"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "微调为什么这么吃显存"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把两种开销分开看。推理只需要模型权重，外加一小块给当前 token 用的激活缓冲。反向传播则在此之上多压了三样东西：整个前向过程缓存下来的激活值、一份和参数一样大的梯度，以及优化器状态——对 Adam 来说，那又是两份参数大小的滑动平均。加起来，一步训练的显存占用就是一次前向传播的好几倍。像 LoRA、prefix tuning 这样的参数高效方法能压缩优化器和梯度那部分，却并没有去掉激活缓存，而且它们照样要做反向传播。"
+            },
+            {
+              "type": "paragraph",
+              "text": "有一个绕开反向传播的老思路：零阶优化（zeroth-order optimization），只用函数值来估计梯度。你对参数做一点扰动，看损失如何变化，再从这两个数值里推断出一个下降方向。它一直被大模型冷落的原因，是一条颇为悲观的经典理论：零阶方法的收敛速度会随参数量成正比地变差。对一个动辄几十亿参数的模型来说，这听上去毫无希望。而本文最核心的经验结论恰恰是：当你是在一个强预训练模型上、针对下游任务做微调时，这份悲观并不成立。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "MeZO：塞进推理显存里的梯度估计"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO 建立在一个经典估计器 SPSA（同时扰动随机逼近，simultaneous perturbation stochastic approximation）之上。每一步采样一个与参数形状相同的随机方向 z，服从标准高斯分布；给每个参数加上一小步 ε·z 后记录损失，再减去这一步得到另一侧的损失。这两个损失之差除以 2ε，就是一个标量——投影梯度；参数更新只需沿着 z、按这个标量和学习率缩放后移动即可。"
+            },
+            {
+              "type": "paragraph",
+              "text": "具体来说，SPSA 的梯度估计为 ∇̂L(θ) = [ L(θ+εz) − L(θ−εz) ] / (2ε) · z，其中 z ~ N(0, I)；随后的参数更新就是普通的 SGD 一步 θ ← θ − η · ∇̂L(θ)，只沿着这一个随机采样出来的方向移动。"
+            },
+            {
+              "type": "paragraph",
+              "text": "照字面实现，这仍会让显存翻倍，因为你得把完整的扰动向量 z 存下来，才能加上去、评估、再减回来。让 MeZO 真正可行的工程巧思，是干脆不存 z：只保存那颗随机种子，在每次需要时按种子即时重新生成 z——一次用于正向扰动，一次用于反向扰动，一次用于施加更新。因为同一颗种子会复现出同一个 z，MeZO 得以就地对权重扰动再复位，于是整个「扰动—评估—更新」的循环都发生在一次普通前向传播的显存之内。每步只要两次前向传播，没有梯度，没有激活缓存，也没有优化器状态。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把省显存这件事测出来"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 把收益摆得很实在。它在 MultiRC 上、对从 1.3B 到 30B 的各档 OPT 模型测了 GPU 显存，比较 zero-shot 推理、上下文学习、完整微调、prefix-tuning 微调以及 MeZO。每一档规模上，MeZO 的柱子都紧贴在推理柱之上，而微调的柱子高高地压在上面。节省幅度随模型增大而增大，在 13B 上最高可达 12× ；也正是它，让一块 80GB 的 A100 能微调 30B 的模型，而反向传播在同一块卡上只装得下 2.7B，差距悬殊得近乎荒诞。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图 3. MultiRC（每条样本约 400 个 token）上不同 OPT 规模与调参方法的 GPU 显存。MeZO 用的显存和推理一样，相比标准微调最高可省 12× 。",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 按 OPT 模型规模看，MeZO 相比完整微调（Adam）的显存节省，数据读自图 3。MeZO 自身的显存在各档规模上都等同于推理。",
+              "headers": [
+                "OPT 模型",
+                "相比微调的节省"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "它真的能追平微调吗"
+            },
+            {
+              "type": "paragraph",
+              "text": "省显存只有在质量站得住时才有意义，所以评测铺得很广。在自回归一侧，用了从 1.3B 一直到 66B 的 OPT 模型，覆盖 SuperGLUE 分类任务、COPA 与 ReCoRD 这类多选任务，以及 SQuAD、DROP 这类生成任务。在掩码语言模型一侧，用 RoBERTa-large（350M 参数）跑六个句子分类与推理任务，同时测少样本（k=16）和多样本（k=512）两种设置。对照组也都很诚实：包括 zero-shot、上下文学习、线性探测（LP），以及用 Adam 做的完整微调，几种常见做法都摆在一起比较。"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 1 里的 OPT-13B 结果是最凝练的一张总结。MeZO 明显胜过 zero-shot、上下文学习和线性探测，并在 11 个任务里有 7 个与完整微调相差约 1% 以内，而显存只有 1/12 。RoBERTa-large 上，同样的规律在更小的规模上重演：MeZO 紧贴微调，在多样本 k=512 设置下相差约 5% 。而且这份省显存在实践中并不以时间为代价——在作者的实现里，微调一个 30B 模型时，MeZO 所需的 GPU 小时数比 Adam 微调还少约 2× 。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "它能和你已经在用的技巧叠加"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO 不是参数高效微调的替代品，而是叠在它之上。图 2 给出 RoBERTa-large 上把 MeZO 分别用于全参数、LoRA 和 prefix-tuning 的结果，并与各自的微调版本并排比较。几个 MeZO 变体彼此靠得很近，也都贴近微调——这意味着你可以把「只用前向传播」的训练和 LoRA 或 prefix-tuning 组合起来，同时保住精度。又因为 MeZO 全程只读取损失值、从不需要真正的梯度，它还能直接优化那些根本没有梯度的目标，比如直接优化准确率或 F1；而相较此前的零阶方法 BBTv2，它的准确率最高提升了 11% 。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图 2. RoBERTa-large：zero-shot、线性探测（LP），以及全参数、LoRA、prefix-tuning 下的 MeZO 与微调（FT）。MeZO 胜过 zero-shot 和 LP，并以远更少的显存逼近微调（k=512 时相差约 5%）。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "那份悲观错在哪里"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文还解释了：为什么一个被经典理论判定「应该慢如爬行」的方法，实际却能以可用的速度收敛。简单说，当你从一个训练得很好的模型出发时，当前权重附近的损失地形其实是近似低维的。MeZO 的收敛速度由这份局部有效结构——地形的局部秩——决定，而不取决于原始的参数量。这正是参数量悲观论不再咬人的原因：微调并不需要在完整的几十亿维空间里搜索，只需要在好解附近那一小块真正重要的子空间里搜索。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结"
+            },
+            {
+              "type": "paragraph",
+              "text": "最值得记住的一句话很简单：微调不再必须依赖反向传播。有了 MeZO，你可以只用前向传播来微调很大的语言模型，代价只是推理级的显存，却仍能在很多任务上追平基于梯度的质量；反过来，这也让你能在同样的硬件上训练大一个数量级的模型。边界也值得如实说清：MeZO 追平了微调的大部分差距，但并非全部；它可能需要更多步数才走到那里；而它之所以能快速收敛，前提是从一个足够强的预训练模型出发。在这些边界之内，它把推理的显存预算变成了训练预算，这是一笔实打实的好买卖。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 419.9,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 419.9,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 46.81,
+          "relative_start": 0.5,
+          "relative_end": 46.81,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 46.81,
+          "global_end": 84.02,
+          "relative_start": 46.81,
+          "relative_end": 84.02,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 84.02,
+          "global_end": 122.19,
+          "relative_start": 84.02,
+          "relative_end": 122.19,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 122.19,
+          "global_end": 173.83,
+          "relative_start": 122.19,
+          "relative_end": 173.83,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 173.83,
+          "global_end": 228.25,
+          "relative_start": 173.83,
+          "relative_end": 228.25,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 228.25,
+          "global_end": 270.36,
+          "relative_start": 228.25,
+          "relative_end": 270.36,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 270.36,
+          "global_end": 308.96,
+          "relative_start": 270.36,
+          "relative_end": 308.96,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 308.96,
+          "global_end": 353.85,
+          "relative_start": 308.96,
+          "relative_end": 353.85,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 353.85,
+          "global_end": 384.15,
+          "relative_start": 353.85,
+          "relative_end": 384.15,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 384.15,
+          "global_end": 419.85,
+          "relative_start": 384.15,
+          "relative_end": 419.85,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Fine-tuning is what turns a general pre-trained language model into a useful one, but it has a quiet, growing cost: memory. The reason is backpropagation. To compute a gradient, the standard training loop caches every intermediate activation on the forward pass, then stores a full gradient and a set of optimizer states on the backward pass. Together these can demand up to 12× the memory that plain inference needs on the same model. For a small model nobody notices. As models scale into the tens of billions of parameters, that factor becomes the wall you hit first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap is easiest to feel in hardware terms. On a single 80GB A100 GPU, you can comfortably run inference on a 30B-parameter model. Try to fine-tune on that same card with Adam, and you are limited to roughly a 2.7B model, an order of magnitude smaller. So the frustrating situation is that the hardware can clearly hold and run the big model, it just cannot afford the bookkeeping that gradient-based training layers on top."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper, from Princeton University, asks whether that bookkeeping is truly necessary. Its answer is MeZO, a memory-efficient zeroth-order optimizer that fine-tunes a language model using only forward passes, with no backpropagation at all. The headline is that training then costs about the same memory as inference, while still matching gradient-based fine-tuning on many tasks. Figure 1 sets the stakes: across eleven tasks on OPT-13B, MeZO tracks full Adam fine-tuning closely while using only 1/12 of the memory."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.17333  |  Code: https://github.com/princeton-nlp/MeZO"
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "微调（fine-tuning）是把一个通用预训练模型变得真正好用的关键一步，但它有一个越来越棘手的代价：显存。根源在于反向传播（backpropagation）。为了算出梯度，标准训练流程要在前向过程中缓存所有中间激活值，再在反向过程中存下一份完整梯度和一整套优化器状态。三者叠加，训练一步所需的显存最多可以达到同一模型做推理时的 12× 。模型小的时候没人会在意，可一旦参数量涨到几百亿，这个倍数就成了你最先撞上的那堵墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换成硬件的语言会更直观。在一块 80GB 的 A100 上，你可以从容地对一个 30B 参数的模型做推理；但如果想用 Adam 在同一块卡上微调，能塞下的模型就只剩大约 2.7B，整整小了一个数量级。让人别扭的地方正在于此：硬件明明装得下、也跑得动这个大模型，只是负担不起基于梯度的训练额外压上来的那一大堆记账开销。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自普林斯顿大学（Princeton University）的论文追问的正是：这些记账开销真的不可省吗？它给出的答案是 MeZO，一种省显存的零阶优化器（zeroth-order optimizer），只用前向传播来微调语言模型，完全不做反向传播。核心结论是：这样训练所需的显存和推理几乎一样，却仍能在很多任务上追平基于梯度的微调。图 1 先把赌注摆清楚：在 OPT-13B 的 11 个任务上，MeZO 紧贴着完整的 Adam 微调，用的显存却只有它的 1/12，几乎回到了推理时的水平。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2305.17333  |  代码：https://github.com/princeton-nlp/MeZO"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 46.81,
+        "end": 84.02,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 37.21,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 38.11,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 46.81,
+          "global_end": 84.02,
+          "relative_start": 0.0,
+          "relative_end": 37.21,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fine-tuning got so memory-hungry"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to separate two costs. Inference only needs the model weights and a modest activation buffer for the tokens currently in flight. Backpropagation adds three things on top: the cached activations for the whole forward pass, a gradient of the same size as the parameters, and optimizer state such as Adam's running averages, which for Adam is another two copies of the parameters. Add it up and a training step can need many times the footprint of a forward pass. Parameter-efficient methods like LoRA and prefix tuning shrink the optimizer and gradient terms, but they do not remove the activation caching, and they still run backpropagation."
+            },
+            {
+              "type": "paragraph",
+              "text": "There is an old idea that sidesteps backpropagation entirely: zeroth-order optimization, which estimates a gradient purely from function values. You perturb the parameters, look at how the loss changes, and infer a descent direction from those two numbers. The catch, and the reason the field mostly ignored it for large models, is a pessimistic piece of classical theory: the convergence rate of zeroth-order methods was expected to degrade in proportion to the number of parameters. For a model with billions of them, that sounds hopeless. The paper's central empirical claim is that this pessimism does not hold when you are fine-tuning a strong pre-trained model on a downstream task."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "微调为什么这么吃显存"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把两种开销分开看。推理只需要模型权重，外加一小块给当前 token 用的激活缓冲。反向传播则在此之上多压了三样东西：整个前向过程缓存下来的激活值、一份和参数一样大的梯度，以及优化器状态——对 Adam 来说，那又是两份参数大小的滑动平均。加起来，一步训练的显存占用就是一次前向传播的好几倍。像 LoRA、prefix tuning 这样的参数高效方法能压缩优化器和梯度那部分，却并没有去掉激活缓存，而且它们照样要做反向传播。"
+            },
+            {
+              "type": "paragraph",
+              "text": "有一个绕开反向传播的老思路：零阶优化（zeroth-order optimization），只用函数值来估计梯度。你对参数做一点扰动，看损失如何变化，再从这两个数值里推断出一个下降方向。它一直被大模型冷落的原因，是一条颇为悲观的经典理论：零阶方法的收敛速度会随参数量成正比地变差。对一个动辄几十亿参数的模型来说，这听上去毫无希望。而本文最核心的经验结论恰恰是：当你是在一个强预训练模型上、针对下游任务做微调时，这份悲观并不成立。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 84.02,
+        "end": 122.19,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 38.17,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 39.07,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 84.02,
+          "global_end": 122.19,
+          "relative_start": 0.0,
+          "relative_end": 38.17,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "MeZO: a gradient estimate that fits in an inference footprint"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO is built on a classical estimator called SPSA (simultaneous perturbation stochastic approximation). Each step samples a single random direction z with the same shape as the parameters, drawn from a standard Gaussian. It adds a small step ε·z to every parameter and records the loss, then subtracts to get the loss on the other side. The difference between those two losses, divided by 2ε, is a single scalar, the projected gradient, and the parameter update simply moves along z scaled by that scalar and the learning rate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Concretely, the SPSA gradient estimate is ∇̂L(θ) = [ L(θ+εz) − L(θ−εz) ] / (2ε) · z with z drawn from N(0, I), and the parameter update is the ordinary SGD step θ ← θ − η · ∇̂L(θ) applied along that single sampled direction."
+            },
+            {
+              "type": "paragraph",
+              "text": "Written naively, this still doubles memory, because you have to store the full perturbation vector z to add it, evaluate, and subtract it again. The engineering insight that makes MeZO practical is to never store z. Instead it stores only the random seed, and regenerates z on the fly each time it is needed, once to perturb positively, once to perturb negatively, and once to apply the update. Because the same seed reproduces the same z, MeZO perturbs and resets the weights in place, so the entire perturb-evaluate-update cycle runs inside the memory of a plain forward pass. Two forward passes per step, no gradients, no activation cache, no optimizer state."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "MeZO：塞进推理显存里的梯度估计"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO 建立在一个经典估计器 SPSA（同时扰动随机逼近，simultaneous perturbation stochastic approximation）之上。每一步采样一个与参数形状相同的随机方向 z，服从标准高斯分布；给每个参数加上一小步 ε·z 后记录损失，再减去这一步得到另一侧的损失。这两个损失之差除以 2ε，就是一个标量——投影梯度；参数更新只需沿着 z、按这个标量和学习率缩放后移动即可。"
+            },
+            {
+              "type": "paragraph",
+              "text": "具体来说，SPSA 的梯度估计为 ∇̂L(θ) = [ L(θ+εz) − L(θ−εz) ] / (2ε) · z，其中 z ~ N(0, I)；随后的参数更新就是普通的 SGD 一步 θ ← θ − η · ∇̂L(θ)，只沿着这一个随机采样出来的方向移动。"
+            },
+            {
+              "type": "paragraph",
+              "text": "照字面实现，这仍会让显存翻倍，因为你得把完整的扰动向量 z 存下来，才能加上去、评估、再减回来。让 MeZO 真正可行的工程巧思，是干脆不存 z：只保存那颗随机种子，在每次需要时按种子即时重新生成 z——一次用于正向扰动，一次用于反向扰动，一次用于施加更新。因为同一颗种子会复现出同一个 z，MeZO 得以就地对权重扰动再复位，于是整个「扰动—评估—更新」的循环都发生在一次普通前向传播的显存之内。每步只要两次前向传播，没有梯度，没有激活缓存，也没有优化器状态。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 122.19,
+        "end": 173.83,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 51.64,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 52.54,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 122.19,
+          "global_end": 173.83,
+          "relative_start": 0.0,
+          "relative_end": 51.64,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fine-tuning got so memory-hungry"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to separate two costs. Inference only needs the model weights and a modest activation buffer for the tokens currently in flight. Backpropagation adds three things on top: the cached activations for the whole forward pass, a gradient of the same size as the parameters, and optimizer state such as Adam's running averages, which for Adam is another two copies of the parameters. Add it up and a training step can need many times the footprint of a forward pass. Parameter-efficient methods like LoRA and prefix tuning shrink the optimizer and gradient terms, but they do not remove the activation caching, and they still run backpropagation."
+            },
+            {
+              "type": "paragraph",
+              "text": "There is an old idea that sidesteps backpropagation entirely: zeroth-order optimization, which estimates a gradient purely from function values. You perturb the parameters, look at how the loss changes, and infer a descent direction from those two numbers. The catch, and the reason the field mostly ignored it for large models, is a pessimistic piece of classical theory: the convergence rate of zeroth-order methods was expected to degrade in proportion to the number of parameters. For a model with billions of them, that sounds hopeless. The paper's central empirical claim is that this pessimism does not hold when you are fine-tuning a strong pre-trained model on a downstream task."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The memory story, measured"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 makes the payoff concrete. It profiles GPU memory on MultiRC across OPT sizes from 1.3B to 30B, comparing zero-shot inference, in-context learning, full fine-tuning, prefix-tuning fine-tuning, and MeZO. MeZO's bar sits right on top of the inference bar at every scale, while the fine-tuning bars climb far above it. The saving grows with model size, reaching up to 12× at 13B, and it is what lets a single 80GB A100 fine-tune a 30B model where backpropagation would fit only 2.7B."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. GPU memory on MultiRC (about 400 tokens per example) for different OPT sizes and tuning methods. MeZO uses the same memory as inference and delivers up to 12× savings over standard fine-tuning.",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Memory saving of MeZO over full fine-tuning (Adam), by OPT model size, read from Figure 3. MeZO's own footprint equals inference at every scale.",
+              "headers": [
+                "OPT model",
+                "Saving vs. fine-tuning"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "微调为什么这么吃显存"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把两种开销分开看。推理只需要模型权重，外加一小块给当前 token 用的激活缓冲。反向传播则在此之上多压了三样东西：整个前向过程缓存下来的激活值、一份和参数一样大的梯度，以及优化器状态——对 Adam 来说，那又是两份参数大小的滑动平均。加起来，一步训练的显存占用就是一次前向传播的好几倍。像 LoRA、prefix tuning 这样的参数高效方法能压缩优化器和梯度那部分，却并没有去掉激活缓存，而且它们照样要做反向传播。"
+            },
+            {
+              "type": "paragraph",
+              "text": "有一个绕开反向传播的老思路：零阶优化（zeroth-order optimization），只用函数值来估计梯度。你对参数做一点扰动，看损失如何变化，再从这两个数值里推断出一个下降方向。它一直被大模型冷落的原因，是一条颇为悲观的经典理论：零阶方法的收敛速度会随参数量成正比地变差。对一个动辄几十亿参数的模型来说，这听上去毫无希望。而本文最核心的经验结论恰恰是：当你是在一个强预训练模型上、针对下游任务做微调时，这份悲观并不成立。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把省显存这件事测出来"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 把收益摆得很实在。它在 MultiRC 上、对从 1.3B 到 30B 的各档 OPT 模型测了 GPU 显存，比较 zero-shot 推理、上下文学习、完整微调、prefix-tuning 微调以及 MeZO。每一档规模上，MeZO 的柱子都紧贴在推理柱之上，而微调的柱子高高地压在上面。节省幅度随模型增大而增大，在 13B 上最高可达 12× ；也正是它，让一块 80GB 的 A100 能微调 30B 的模型，而反向传播在同一块卡上只装得下 2.7B，差距悬殊得近乎荒诞。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图 3. MultiRC（每条样本约 400 个 token）上不同 OPT 规模与调参方法的 GPU 显存。MeZO 用的显存和推理一样，相比标准微调最高可省 12× 。",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 按 OPT 模型规模看，MeZO 相比完整微调（Adam）的显存节省，数据读自图 3。MeZO 自身的显存在各档规模上都等同于推理。",
+              "headers": [
+                "OPT 模型",
+                "相比微调的节省"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 173.83,
+        "end": 228.25,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 54.42,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 55.32,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 173.83,
+          "global_end": 228.25,
+          "relative_start": 0.0,
+          "relative_end": 54.42,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it actually match fine-tuning?"
+            },
+            {
+              "type": "paragraph",
+              "text": "Memory savings only matter if quality holds up, so the evaluation is deliberately broad. On the autoregressive side it uses OPT models from 1.3B up to 66B on SuperGLUE classification, multiple-choice tasks such as COPA and ReCoRD, and generation tasks such as SQuAD and DROP. On the masked-language-model side it uses RoBERTa-large (350M parameters) on six sentence-classification and inference tasks, in both a few-shot regime (k=16) and a many-shot regime (k=512). The baselines are the honest ones: zero-shot, in-context learning, linear probing, and full Adam fine-tuning."
+            },
+            {
+              "type": "paragraph",
+              "text": "The OPT-13B result in Figure 1 is the clearest single summary. MeZO comfortably outperforms zero-shot prediction, in-context learning, and linear probing, and it lands within about 1% of full fine-tuning on 7 of 11 tasks, at 1/12 of the memory. On RoBERTa-large the same pattern holds at smaller scale: MeZO stays close to fine-tuning, coming within roughly 5% in the many-shot k=512 setting. And the memory win does not cost wall-clock time in practice; in the authors' implementation MeZO needs about 2× fewer GPU-hours than Adam fine-tuning for a 30B model."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "微调（fine-tuning）是把一个通用预训练模型变得真正好用的关键一步，但它有一个越来越棘手的代价：显存。根源在于反向传播（backpropagation）。为了算出梯度，标准训练流程要在前向过程中缓存所有中间激活值，再在反向过程中存下一份完整梯度和一整套优化器状态。三者叠加，训练一步所需的显存最多可以达到同一模型做推理时的 12× 。模型小的时候没人会在意，可一旦参数量涨到几百亿，这个倍数就成了你最先撞上的那堵墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换成硬件的语言会更直观。在一块 80GB 的 A100 上，你可以从容地对一个 30B 参数的模型做推理；但如果想用 Adam 在同一块卡上微调，能塞下的模型就只剩大约 2.7B，整整小了一个数量级。让人别扭的地方正在于此：硬件明明装得下、也跑得动这个大模型，只是负担不起基于梯度的训练额外压上来的那一大堆记账开销。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自普林斯顿大学（Princeton University）的论文追问的正是：这些记账开销真的不可省吗？它给出的答案是 MeZO，一种省显存的零阶优化器（zeroth-order optimizer），只用前向传播来微调语言模型，完全不做反向传播。核心结论是：这样训练所需的显存和推理几乎一样，却仍能在很多任务上追平基于梯度的微调。图 1 先把赌注摆清楚：在 OPT-13B 的 11 个任务上，MeZO 紧贴着完整的 Adam 微调，用的显存却只有它的 1/12，几乎回到了推理时的水平。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2305.17333  |  代码：https://github.com/princeton-nlp/MeZO"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 228.25,
+        "end": 270.36,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 42.11,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.01,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 228.25,
+          "global_end": 270.36,
+          "relative_start": 0.0,
+          "relative_end": 42.11,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "MeZO: a gradient estimate that fits in an inference footprint"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO is built on a classical estimator called SPSA (simultaneous perturbation stochastic approximation). Each step samples a single random direction z with the same shape as the parameters, drawn from a standard Gaussian. It adds a small step ε·z to every parameter and records the loss, then subtracts to get the loss on the other side. The difference between those two losses, divided by 2ε, is a single scalar, the projected gradient, and the parameter update simply moves along z scaled by that scalar and the learning rate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Concretely, the SPSA gradient estimate is ∇̂L(θ) = [ L(θ+εz) − L(θ−εz) ] / (2ε) · z with z drawn from N(0, I), and the parameter update is the ordinary SGD step θ ← θ − η · ∇̂L(θ) applied along that single sampled direction."
+            },
+            {
+              "type": "paragraph",
+              "text": "Written naively, this still doubles memory, because you have to store the full perturbation vector z to add it, evaluate, and subtract it again. The engineering insight that makes MeZO practical is to never store z. Instead it stores only the random seed, and regenerates z on the fly each time it is needed, once to perturb positively, once to perturb negatively, and once to apply the update. Because the same seed reproduces the same z, MeZO perturbs and resets the weights in place, so the entire perturb-evaluate-update cycle runs inside the memory of a plain forward pass. Two forward passes per step, no gradients, no activation cache, no optimizer state."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "It composes with the tricks you already use"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO is not an alternative to parameter-efficient tuning, it stacks on top of it. Figure 2 reports RoBERTa-large with MeZO applied to full parameters, to LoRA, and to prefix-tuning, alongside their fine-tuning counterparts. The MeZO variants sit close to each other and to fine-tuning, which means you can combine forward-pass-only training with LoRA or prefix-tuning and keep the accuracy. Because MeZO only ever reads the loss value and never a true gradient, it can also optimize objectives that have no gradient at all, such as accuracy or F1 directly, and against the prior zeroth-order method BBTv2 it improves accuracy by up to 11% absolute."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. RoBERTa-large: zero-shot, linear probing (LP), and MeZO and fine-tuning (FT) with full parameters, LoRA, and prefix-tuning. MeZO beats zero-shot and LP and approaches fine-tuning (within about 5% at k=512) with far less memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把省显存这件事测出来"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 把收益摆得很实在。它在 MultiRC 上、对从 1.3B 到 30B 的各档 OPT 模型测了 GPU 显存，比较 zero-shot 推理、上下文学习、完整微调、prefix-tuning 微调以及 MeZO。每一档规模上，MeZO 的柱子都紧贴在推理柱之上，而微调的柱子高高地压在上面。节省幅度随模型增大而增大，在 13B 上最高可达 12× ；也正是它，让一块 80GB 的 A100 能微调 30B 的模型，而反向传播在同一块卡上只装得下 2.7B，差距悬殊得近乎荒诞。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图 3. MultiRC（每条样本约 400 个 token）上不同 OPT 规模与调参方法的 GPU 显存。MeZO 用的显存和推理一样，相比标准微调最高可省 12× 。",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 按 OPT 模型规模看，MeZO 相比完整微调（Adam）的显存节省，数据读自图 3。MeZO 自身的显存在各档规模上都等同于推理。",
+              "headers": [
+                "OPT 模型",
+                "相比微调的节省"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "它能和你已经在用的技巧叠加"
+            },
+            {
+              "type": "paragraph",
+              "text": "MeZO 不是参数高效微调的替代品，而是叠在它之上。图 2 给出 RoBERTa-large 上把 MeZO 分别用于全参数、LoRA 和 prefix-tuning 的结果，并与各自的微调版本并排比较。几个 MeZO 变体彼此靠得很近，也都贴近微调——这意味着你可以把「只用前向传播」的训练和 LoRA 或 prefix-tuning 组合起来，同时保住精度。又因为 MeZO 全程只读取损失值、从不需要真正的梯度，它还能直接优化那些根本没有梯度的目标，比如直接优化准确率或 F1；而相较此前的零阶方法 BBTv2，它的准确率最高提升了 11% 。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图 2. RoBERTa-large：zero-shot、线性探测（LP），以及全参数、LoRA、prefix-tuning 下的 MeZO 与微调（FT）。MeZO 胜过 zero-shot 和 LP，并以远更少的显存逼近微调（k=512 时相差约 5%）。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 270.36,
+        "end": 308.96,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 38.6,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 39.5,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 270.36,
+          "global_end": 308.96,
+          "relative_start": 0.0,
+          "relative_end": 38.6,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fine-tuning got so memory-hungry"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to separate two costs. Inference only needs the model weights and a modest activation buffer for the tokens currently in flight. Backpropagation adds three things on top: the cached activations for the whole forward pass, a gradient of the same size as the parameters, and optimizer state such as Adam's running averages, which for Adam is another two copies of the parameters. Add it up and a training step can need many times the footprint of a forward pass. Parameter-efficient methods like LoRA and prefix tuning shrink the optimizer and gradient terms, but they do not remove the activation caching, and they still run backpropagation."
+            },
+            {
+              "type": "paragraph",
+              "text": "There is an old idea that sidesteps backpropagation entirely: zeroth-order optimization, which estimates a gradient purely from function values. You perturb the parameters, look at how the loss changes, and infer a descent direction from those two numbers. The catch, and the reason the field mostly ignored it for large models, is a pessimistic piece of classical theory: the convergence rate of zeroth-order methods was expected to degrade in proportion to the number of parameters. For a model with billions of them, that sounds hopeless. The paper's central empirical claim is that this pessimism does not hold when you are fine-tuning a strong pre-trained model on a downstream task."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "微调（fine-tuning）是把一个通用预训练模型变得真正好用的关键一步，但它有一个越来越棘手的代价：显存。根源在于反向传播（backpropagation）。为了算出梯度，标准训练流程要在前向过程中缓存所有中间激活值，再在反向过程中存下一份完整梯度和一整套优化器状态。三者叠加，训练一步所需的显存最多可以达到同一模型做推理时的 12× 。模型小的时候没人会在意，可一旦参数量涨到几百亿，这个倍数就成了你最先撞上的那堵墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换成硬件的语言会更直观。在一块 80GB 的 A100 上，你可以从容地对一个 30B 参数的模型做推理；但如果想用 Adam 在同一块卡上微调，能塞下的模型就只剩大约 2.7B，整整小了一个数量级。让人别扭的地方正在于此：硬件明明装得下、也跑得动这个大模型，只是负担不起基于梯度的训练额外压上来的那一大堆记账开销。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自普林斯顿大学（Princeton University）的论文追问的正是：这些记账开销真的不可省吗？它给出的答案是 MeZO，一种省显存的零阶优化器（zeroth-order optimizer），只用前向传播来微调语言模型，完全不做反向传播。核心结论是：这样训练所需的显存和推理几乎一样，却仍能在很多任务上追平基于梯度的微调。图 1 先把赌注摆清楚：在 OPT-13B 的 11 个任务上，MeZO 紧贴着完整的 Adam 微调，用的显存却只有它的 1/12，几乎回到了推理时的水平。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2305.17333  |  代码：https://github.com/princeton-nlp/MeZO"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 308.96,
+        "end": 353.85,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 44.89,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.79,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 308.96,
+          "global_end": 353.85,
+          "relative_start": 0.0,
+          "relative_end": 44.89,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Fine-tuning is what turns a general pre-trained language model into a useful one, but it has a quiet, growing cost: memory. The reason is backpropagation. To compute a gradient, the standard training loop caches every intermediate activation on the forward pass, then stores a full gradient and a set of optimizer states on the backward pass. Together these can demand up to 12× the memory that plain inference needs on the same model. For a small model nobody notices. As models scale into the tens of billions of parameters, that factor becomes the wall you hit first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap is easiest to feel in hardware terms. On a single 80GB A100 GPU, you can comfortably run inference on a 30B-parameter model. Try to fine-tune on that same card with Adam, and you are limited to roughly a 2.7B model, an order of magnitude smaller. So the frustrating situation is that the hardware can clearly hold and run the big model, it just cannot afford the bookkeeping that gradient-based training layers on top."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper, from Princeton University, asks whether that bookkeeping is truly necessary. Its answer is MeZO, a memory-efficient zeroth-order optimizer that fine-tunes a language model using only forward passes, with no backpropagation at all. The headline is that training then costs about the same memory as inference, while still matching gradient-based fine-tuning on many tasks. Figure 1 sets the stakes: across eleven tasks on OPT-13B, MeZO tracks full Adam fine-tuning closely while using only 1/12 of the memory."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.17333  |  Code: https://github.com/princeton-nlp/MeZO"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把省显存这件事测出来"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 把收益摆得很实在。它在 MultiRC 上、对从 1.3B 到 30B 的各档 OPT 模型测了 GPU 显存，比较 zero-shot 推理、上下文学习、完整微调、prefix-tuning 微调以及 MeZO。每一档规模上，MeZO 的柱子都紧贴在推理柱之上，而微调的柱子高高地压在上面。节省幅度随模型增大而增大，在 13B 上最高可达 12× ；也正是它，让一块 80GB 的 A100 能微调 30B 的模型，而反向传播在同一块卡上只装得下 2.7B，差距悬殊得近乎荒诞。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图 3. MultiRC（每条样本约 400 个 token）上不同 OPT 规模与调参方法的 GPU 显存。MeZO 用的显存和推理一样，相比标准微调最高可省 12× 。",
+              "width_inches": 5.2,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 按 OPT 模型规模看，MeZO 相比完整微调（Adam）的显存节省，数据读自图 3。MeZO 自身的显存在各档规模上都等同于推理。",
+              "headers": [
+                "OPT 模型",
+                "相比微调的节省"
+              ],
+              "rows": [
+                [
+                  "1.3B",
+                  "7×"
+                ],
+                [
+                  "2.7B",
+                  "8×"
+                ],
+                [
+                  "6.7B",
+                  "11×"
+                ],
+                [
+                  "13B",
+                  "12×"
+                ],
+                [
+                  "30B",
+                  "11×"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 353.85,
+        "end": 384.15,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 30.3,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.2,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 353.85,
+          "global_end": 384.15,
+          "relative_start": 0.0,
+          "relative_end": 30.3,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. OPT-13B across eleven tasks: zero-shot, in-context learning (ICL), MeZO, and full fine-tuning with Adam (FT). MeZO clearly beats zero-shot and ICL and comes within about 1% of fine-tuning on 7 of 11 tasks, despite using only 1/12 of the memory.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Does it actually match fine-tuning?"
+            },
+            {
+              "type": "paragraph",
+              "text": "Memory savings only matter if quality holds up, so the evaluation is deliberately broad. On the autoregressive side it uses OPT models from 1.3B up to 66B on SuperGLUE classification, multiple-choice tasks such as COPA and ReCoRD, and generation tasks such as SQuAD and DROP. On the masked-language-model side it uses RoBERTa-large (350M parameters) on six sentence-classification and inference tasks, in both a few-shot regime (k=16) and a many-shot regime (k=512). The baselines are the honest ones: zero-shot, in-context learning, linear probing, and full Adam fine-tuning."
+            },
+            {
+              "type": "paragraph",
+              "text": "The OPT-13B result in Figure 1 is the clearest single summary. MeZO comfortably outperforms zero-shot prediction, in-context learning, and linear probing, and it lands within about 1% of full fine-tuning on 7 of 11 tasks, at 1/12 of the memory. On RoBERTa-large the same pattern holds at smaller scale: MeZO stays close to fine-tuning, coming within roughly 5% in the many-shot k=512 setting. And the memory win does not cost wall-clock time in practice; in the authors' implementation MeZO needs about 2× fewer GPU-hours than Adam fine-tuning for a 30B model."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting message is simple: fine-tuning no longer strictly requires backpropagation. With MeZO you can adapt very large language models using only forward passes, at the memory cost of inference, and still match gradient-based quality on many tasks, which in turn lets you train models an order of magnitude larger on the same hardware. The honest boundary is worth stating too. MeZO closes most of the gap to fine-tuning but not all of it, it can need more steps to get there, and the strong convergence rests on starting from a capable pre-trained model. Within those limits, it turns the memory budget of inference into a training budget, and that is a genuinely useful trade."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "微调（fine-tuning）是把一个通用预训练模型变得真正好用的关键一步，但它有一个越来越棘手的代价：显存。根源在于反向传播（backpropagation）。为了算出梯度，标准训练流程要在前向过程中缓存所有中间激活值，再在反向过程中存下一份完整梯度和一整套优化器状态。三者叠加，训练一步所需的显存最多可以达到同一模型做推理时的 12× 。模型小的时候没人会在意，可一旦参数量涨到几百亿，这个倍数就成了你最先撞上的那堵墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换成硬件的语言会更直观。在一块 80GB 的 A100 上，你可以从容地对一个 30B 参数的模型做推理；但如果想用 Adam 在同一块卡上微调，能塞下的模型就只剩大约 2.7B，整整小了一个数量级。让人别扭的地方正在于此：硬件明明装得下、也跑得动这个大模型，只是负担不起基于梯度的训练额外压上来的那一大堆记账开销。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自普林斯顿大学（Princeton University）的论文追问的正是：这些记账开销真的不可省吗？它给出的答案是 MeZO，一种省显存的零阶优化器（zeroth-order optimizer），只用前向传播来微调语言模型，完全不做反向传播。核心结论是：这样训练所需的显存和推理几乎一样，却仍能在很多任务上追平基于梯度的微调。图 1 先把赌注摆清楚：在 OPT-13B 的 11 个任务上，MeZO 紧贴着完整的 Adam 微调，用的显存却只有它的 1/12，几乎回到了推理时的水平。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图 1. OPT-13B 上的 11 个任务：zero-shot、上下文学习（ICL）、MeZO，以及用 Adam 做的完整微调（FT）。MeZO 明显优于 zero-shot 和 ICL，并在 11 个任务里有 7 个与微调相差约 1% 以内，而显存只用了 1/12 。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2305.17333  |  代码：https://github.com/princeton-nlp/MeZO"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "微调为什么这么吃显存"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把两种开销分开看。推理只需要模型权重，外加一小块给当前 token 用的激活缓冲。反向传播则在此之上多压了三样东西：整个前向过程缓存下来的激活值、一份和参数一样大的梯度，以及优化器状态——对 Adam 来说，那又是两份参数大小的滑动平均。加起来，一步训练的显存占用就是一次前向传播的好几倍。像 LoRA、prefix tuning 这样的参数高效方法能压缩优化器和梯度那部分，却并没有去掉激活缓存，而且它们照样要做反向传播。"
+            },
+            {
+              "type": "paragraph",
+              "text": "有一个绕开反向传播的老思路：零阶优化（zeroth-order optimization），只用函数值来估计梯度。你对参数做一点扰动，看损失如何变化，再从这两个数值里推断出一个下降方向。它一直被大模型冷落的原因，是一条颇为悲观的经典理论：零阶方法的收敛速度会随参数量成正比地变差。对一个动辄几十亿参数的模型来说，这听上去毫无希望。而本文最核心的经验结论恰恰是：当你是在一个强预训练模型上、针对下游任务做微调时，这份悲观并不成立。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Fine-Tuning Language Models With Just Forward Passes",
+            "subtitle": "Princeton's MeZO adapts billion-parameter models at the memory cost of inference — NeurIPS 2023"
+          },
+          "zh": {
+            "title": "只用前向传播，就能微调大模型",
+            "subtitle": "普林斯顿提出 MeZO：在推理级显存下微调百亿参数模型（NeurIPS 2023）"
+          }
+        }
+      },
+      "segment": {
+        "start": 384.15,
+        "end": 419.85,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 35.7,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.6,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 384.15,
+          "global_end": 419.85,
+          "relative_start": 0.0,
+          "relative_end": 35.7,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

@@ -1,0 +1,59 @@
+---
+title: Fine-Tuning Language Models with Just Forward Passes
+authors: Sadhika Malladi¹, Tianyu Gao¹, Eshaan Nichani¹, Alex Damian¹, Jason D. Lee¹, Danqi Chen¹, Sanjeev Arora¹
+institutes: ¹Princeton University
+venue: NeurIPS 2023
+paper_url: https://arxiv.org/abs/2305.17333
+code_url: https://github.com/princeton-nlp/MeZO
+title_audio_script: Fine-tuning large language models normally requires backpropagation, which stores activations and gradients and consumes enormous memory. This paper, from Princeton University, introduces MeZO, a memory-efficient zeroth-order optimizer that fine-tunes language models using only forward passes. MeZO adapts the classical zeroth-order SGD method to run in place, so training costs the same memory as inference. On a single 80-gigabyte A100 GPU, MeZO can train a 30-billion-parameter model, where backpropagation with Adam fits only a 2.7-billion one. Across many tasks and model scales, MeZO matches fine-tuning performance with up to twelve times less memory.
+---
+
+## Problem
+**Necessary:** As language models grow, fine-tuning with backpropagation needs prohibitively large memory to store activations, gradients, and optimizer states, up to 12x the memory required for inference.
+**Additional:** On a single 80GB A100, inference runs a 30B model, but Adam fine-tuning fits only a 2.7B model, a roughly 11x gap in trainable model size.
+**Audio script:** Fine-tuning has driven much of the recent success of language models, but it comes at a steep memory cost. Backpropagation must cache intermediate activations and store gradients and optimizer states, which together can require up to twelve times the memory of plain inference. As models scale into the tens of billions of parameters, this becomes the binding constraint. Concretely, a single eighty-gigabyte A100 GPU can run inference on a thirty-billion-parameter model, yet standard Adam fine-tuning on the same hardware is limited to only a two-point-seven-billion-parameter model.
+
+## Motivation
+**Necessary:** Zeroth-order methods can estimate gradients from just two forward passes, but classical theory predicts their convergence slows in proportion to the number of parameters, making them seem hopeless for billion-parameter models.
+**Additional:** In-context learning and linear probing avoid full fine-tuning but leave accuracy on the table; a truly memory-light optimizer that still matches fine-tuning was missing.
+**Audio script:** Zeroth-order optimization offers a tempting escape: it can estimate a gradient using only two forward passes, requiring no backpropagation at all. The catch is that classical analyses suggest zeroth-order methods converge catastrophically slowly for large models, with the rate degrading in proportion to the number of parameters. That pessimism, combined with a naive implementation that still doubles memory, is why zeroth-order methods have been overlooked for modern language models. This paper asks whether that pessimism actually holds when fine-tuning pre-trained models on downstream tasks.
+
+## Contribution
+**Necessary:** The paper proposes MeZO, an in-place zeroth-order SGD optimizer that fine-tunes language models with the exact memory footprint of inference, and shows it matches backpropagation across model types, scales, and tasks with up to 12x memory savings.
+**Additional:** It also provides theory explaining why MeZO converges fast despite huge parameter counts (the rate depends on the loss landscape's effective local rank, not the parameter count), and shows MeZO works with LoRA, prefix tuning, and non-differentiable objectives.
+**Audio script:** The paper makes four main contributions. First, it introduces MeZO, a memory-efficient zeroth-order optimizer that adapts classical zeroth-order SGD to operate in place, so fine-tuning costs no more memory than inference. Second, through comprehensive experiments across masked and autoregressive models, scales up to sixty-six billion parameters, and classification, multiple-choice, and generation tasks, it shows MeZO matches full backpropagation fine-tuning while using far less memory. Third, it demonstrates compatibility with parameter-efficient methods like LoRA and prefix tuning, and the ability to optimize non-differentiable objectives such as accuracy or F1. Fourth, it supplies theory explaining why MeZO converges quickly despite the enormous parameter count.
+
+## Method
+**Necessary:** MeZO estimates gradients with SPSA, perturbing all parameters along a single random Gaussian direction z, computing the loss difference between the plus and minus perturbations, and updating parameters along z scaled by that projected gradient. The key trick is to store only the random seed, not z, and regenerate z on the fly during both perturbation and update, so no extra memory beyond inference is needed.
+**Additional:** Because each of z's uses is reconstructed from the same seed, MeZO perturbs and resets parameters in place, avoiding the 2x memory that vanilla ZO-SGD incurs from storing the perturbation vector. SPSA needs only two forward passes per step and plugs into SGD (and even Adam) directly.
+**Key equation:** `$\widehat{\nabla}\mathcal{L}(\theta;\mathcal{B}) = \frac{\mathcal{L}(\theta+\epsilon z;\mathcal{B}) - \mathcal{L}(\theta-\epsilon z;\mathcal{B})}{2\epsilon}\, z, \quad z \sim \mathcal{N}(0, I_d)$` and the update `$\theta_{t+1} = \theta_t - \eta\, \widehat{\nabla}\mathcal{L}(\theta;\mathcal{B}_t)$`
+**Audio script:** MeZO is built on a classical zeroth-order gradient estimator called SPSA, or simultaneous perturbation stochastic approximation. At each step it samples a single random Gaussian direction z, adds epsilon times z to every parameter and records the loss, then subtracts to get the loss on the opposite side. The difference of these two losses divided by twice epsilon gives a scalar called the projected gradient, and the parameters are then updated by moving along z scaled by this scalar and the learning rate. The crucial engineering insight is that instead of storing the full random vector z, which would double memory, MeZO stores only the random seed and regenerates z deterministically each time it is needed. This lets the entire perturb, evaluate, and update cycle happen in place, so training uses exactly the same memory as inference.
+
+## Dataset / Benchmark
+**Necessary:** Experiments span RoBERTa-large on sentence classification (SST-2, SST-5, SNLI, MNLI, RTE, TREC) in few-shot (k=16) and many-shot (k=512) settings, and OPT models from 1.3B to 66B on SuperGLUE tasks plus multiple-choice (COPA, ReCoRD) and generation (SQuAD, DROP).
+**Additional:** Comparisons include zero-shot, in-context learning, linear probing, and full Adam fine-tuning, each evaluated with the paper's task prompts.
+**Audio script:** The evaluation is deliberately broad. On the masked-language-model side, it uses RoBERTa-large on six sentence-classification and inference tasks, tested in both a few-shot regime with sixteen examples per class and a many-shot regime with five hundred and twelve. On the autoregressive side, it uses OPT models ranging from one-point-three billion up to sixty-six billion parameters, evaluated on SuperGLUE classification tasks, multiple-choice tasks like COPA and ReCoRD, and generation tasks including SQuAD and DROP. Baselines include zero-shot prediction, in-context learning, linear probing, and standard Adam fine-tuning.
+
+## Key Result
+**Necessary:** MeZO substantially outperforms zero-shot, in-context learning, and linear probing, and matches Adam fine-tuning within roughly 1% on 7 of 11 OPT-13B tasks while using only 1/12 of the memory. On RoBERTa-large it approaches fine-tuning within about 5% at k=512.
+**Additional:** MeZO also cuts wall-clock cost: it needs only about half as many GPU-hours as Adam fine-tuning for a 30B model in the authors' implementation.
+**Audio script:** The headline result is that MeZO closes most of the gap to backpropagation fine-tuning at a fraction of the memory. On OPT-thirteen-billion, MeZO comes within about one percent of full Adam fine-tuning on seven of eleven tasks, while consuming only one-twelfth of the memory, and it clearly beats zero-shot prediction, in-context learning, and linear probing. On RoBERTa-large in the many-shot setting, it lands within roughly five percent of fine-tuning. Beyond memory, MeZO is also faster in practice, requiring about half the GPU-hours of Adam fine-tuning for a thirty-billion-parameter model.
+
+## Ablation Study
+**Necessary:** MeZO is compatible with parameter-efficient tuning: MeZO with LoRA and MeZO with prefix tuning perform on par with full-parameter MeZO. Using n=1 perturbation per step is the most compute-efficient choice.
+**Additional:** MeZO can directly optimize non-differentiable objectives such as accuracy and F1, and outperforms the prior zeroth-order method BBTv2 by up to 11% absolute.
+**Audio script:** Several ablations probe MeZO's flexibility. Combining MeZO with parameter-efficient methods, namely LoRA and prefix tuning, gives accuracy on par with tuning all parameters, showing the two approaches compose well. Using a single random perturbation per step, rather than averaging several, turns out to be the most efficient setting for a fixed number of forward passes. Because MeZO only needs loss values and never actual gradients, it can optimize non-differentiable objectives directly, such as maximizing accuracy or F1 score. And against a prior zeroth-order baseline, BBTv2, MeZO improves accuracy by up to eleven percentage points.
+
+## Headline Numbers
+**Necessary:**
+- Up to **12x** memory reduction versus Adam fine-tuning (OPT-13B); same memory as inference.
+- Trains a **30B** model on one 80GB A100 GPU, versus only **2.7B** for backprop.
+- Within **~1%** of fine-tuning on **7 of 11** OPT-13B tasks.
+- Up to **2x** fewer GPU-hours than Adam fine-tuning at 30B scale.
+**Additional:** Scales tested up to 66B; beats BBTv2 by up to 11% absolute.
+**Audio script:** A few numbers capture the impact. MeZO delivers up to a twelvefold reduction in memory compared with Adam fine-tuning on OPT-thirteen-billion, using no more memory than inference. On a single eighty-gigabyte A100, it trains a thirty-billion-parameter model where backpropagation fits only two-point-seven billion. It matches fine-tuning within about one percent on seven of eleven tasks, and it roughly halves the GPU-hours needed at the thirty-billion scale.
+
+## Takeaway
+**Necessary:** You can fine-tune huge language models with just forward passes: MeZO matches backpropagation quality at inference-level memory, unlocking training of models an order of magnitude larger on the same hardware.
+**Additional:** Contrary to classical zeroth-order pessimism, fine-tuning a well pre-trained model converges in a rate governed by the local effective dimensionality of the loss, not the raw parameter count.
+**Audio script:** The lasting takeaway is that fine-tuning no longer strictly requires backpropagation. With MeZO, you can adapt very large language models using only forward passes, at the memory cost of inference, and still match the quality of gradient-based fine-tuning on many tasks. This overturns the classical worry that zeroth-order methods must scale badly with model size: when you start from a strong pre-trained model, convergence is governed by the effective local structure of the loss landscape rather than the sheer number of parameters, which is why MeZO works at billion-parameter scale.

@@ -1,0 +1,837 @@
+                                                 M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+
+                                                          Burak Bartan 1 Haoming Li 2 Harris Teague 1 Christopher Lott 1 Bistra Dilkina 2
+
+
+                                                                  Abstract
+
+
+
+
+                                                                                                                          Total duration increase %
+                                                                                                                                                      10               Checkmate
+                                              The deployment and training of neural networks                                                                           Moccasin (C=2)
+                                              on edge computing devices pose many challenges.                                                         8
+arXiv:2304.14463v2 [cs.LG] 30 May 2023
+
+
+
+
+                                              The low memory nature of edge devices is often
+                                                                                                                                                      6
+                                              one of the biggest limiting factors encountered in
+                                              the deployment of large neural network models.                                                          4
+                                              Tensor rematerialization or recompute is a way to
+                                              address high memory requirements for neural net-                                                             0   500 1000 1500 2000
+                                              work training and inference. In this paper we con-                                                                  Solve time (sec)
+                                              sider the problem of execution time minimization                 Figure 1. Percentage of total duration increase against solve time in
+                                              of compute graphs subject to a memory budget. In                 seconds for our proposed method (M OCCASIN) and C HECKMATE
+                                              particular, we develop a new constraint program-                 (Jain et al., 2020) on a real-world graph with n = 442 nodes and
+                                              ming formulation called M OCCASIN with only                      m = 1247 edges. The memory budget is set to 80% of the peak
+                                              O(n) integer variables, where n is the number                    memory for the initial topological order without rematerialization.
+                                              of nodes in the compute graph. This is a signif-                 The time until the first data point in each curve is spent on presolve.
+                                              icant improvement over the works in the recent
+                                              literature that propose formulations with O(n2 )
+                                              Boolean variables. We present numerical studies                  Effective optimization of the local memory footprint during
+                                              that show that our approach is up to an order of                 the computation can make a difference in meeting latency
+                                              magnitude faster than recent work especially for                 targets for computations since global memory accesses can
+                                              large-scale graphs.                                              be too slow (Sze et al., 2017, Sec. V). In addition, the
+                                                                                                               trend toward on-device training will further stress the lim-
+                                                                                                               ited resources due to the need to store intermediate data for
+                                         1. Introduction                                                       gradient back-propagation (tinyML Foundation, 2022).
+                                         The need for efficient deep neural network (DNN) compu-               There are several techniques for DNN computation sequenc-
+                                         tations for both training and inference continues to grow.            ing that can be used to manage the local memory footprint,
+                                         Most compute architectures for DNNs make use of a limited             and a well-developed toolchain for this purpose is likely to
+                                         amount of fast, local memory in conjunction with a much               employ multiple methods working together. For example,
+                                         larger amount of global memory that is significantly slower           operation sequencing is a technique studied in (Gagrani
+                                         to access. For example, accelerators for mobile devices               et al., 2022) and its references. Our paper focuses on an-
+                                         today will dedicate several MB of local memory (per core)             other technique called rematerialization. When input data
+                                         for storage of intermediate output tensors before resorting to        is needed for a compute operation, it can be read from local
+                                         the devices’ main memory; training of large DNNs are done             memory, or alternatively be recomputed (rematerialized).
+                                         primarily on GPU’s local GDDR memory before offload-                  In some cases the extra compute can prove to be advanta-
+                                         ing tensors to DDR memory on the motherboard. However,                geous relative to occupying valuable local memory with
+                                         there are many DNNs in practice for which the local memory            the data until it is ready to be used, with the latter leav-
+                                         is not enough to store all the required intermediate outputs.         ing a larger memory footprint. Deciding what operations
+                                             1
+                                                                                                               to rematerialize (or not) in order to optimize latency and
+                                               Qualcomm AI Research, Qualcomm AI Research is an ini-           memory-use is a PSPACE-complete problem (Gilbert et al.,
+                                         tiative of Qualcomm Technologies, Inc. 2 University of Southern
+                                         California, Los Angeles, USA. Correspondence to: Burak Bartan         1979). Further, we often need a method that can tackle large
+                                         <bbartan AT qti.qualcomm.com>.                                        computation graphs with acceptable “compile time”, thus
+                                                                                                               need an approach that scales well with graph size.
+                                         Proceedings of the 40 th International Conference on Machine
+                                         Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright            While there is a history of rematerialization research for
+                                         2023 by the author(s).                                                managing register use by compilers (Kubota, 1998; Briggs
+
+                                                                                                           1
+                             M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+et al., 1992), more recently, these techniques have been fur-        1.1. Related Work
+ther developed and studied for use in DNNs, where the size
+                                                                     The problem of rematerialization has its roots in compiler
+of computation graphs and the amount of data movement
+                                                                     optimization (Colombet et al., 2015; Lozano & Schulte,
+can be extremely large (Jain et al., 2020; Patil et al., 2022;
+                                                                     2019; Lozano et al., 2019) and automatic differentiation
+Schuler et al., 2022). These works formulate a mixed inte-
+                                                                     with checkpointing (Kubota, 1998; Griewank & Walther,
+ger linear program (MILP) with a Boolean variable for each
+                                                                     2008; 2000). Recently, there is a stream of works on re-
+use of a compute node’s output – either read from memory
+                                                                     materialization in machine learning, motivated by the need
+or rematerialized. We have found that this formulation has
+                                                                     to train large DNN on GPU with limited memory capacity
+limitations when attempting to scale to large graphs due
+                                                                     (Kumar et al., 2019; Kusumoto et al., 2019; Beaumont et al.,
+to the need for O(n2 ) Boolean variables (where n is the
+                                                                     2021; Chen et al., 2016; Kirisame et al., 2021; Mostafa,
+number of nodes in the computation graph). While linear
+                                                                     2022; Huang et al., 2019); most relevant to us are the works
+relaxation followed by rounding is an approximation that is
+                                                                     based on combinatorial optimization (Jain et al., 2020; Patil
+leveraged in these works, we have found that these rounded
+                                                                     et al., 2022; Schuler et al., 2022).
+solutions can be far from optimal, limiting the applicability
+of this approach.                                                    The scope of our work is most closely aligned with that of
+                                                                     (Jain et al., 2020), where they develop a mixed integer linear
+The general rematerialization problem is stated here, and
+                                                                     program (MILP) for duration minimization under memory
+will be made more explicit in Section 2. Given a directed
+                                                                     constraints referred to as C HECKMATE. The formulation of
+acyclic graph (DAG), G = (V, E), with |V | = n and
+                                                                     C HECKMATE defines Boolean matrix variables R, S, F for
+|E| = m, let nodes v ∈ V represent compute operations and
+                                                                     node/tensor recomputation, local memory storage, and deal-
+directed edges (u, v) ∈ E represent data dependencies such
+                                                                     location, respectively, resulting in O(n2 ) Boolean variables.
+that the output tensors of all the nodes {w : (w, v) ∈ E}
+                                                                     While the paper demonstrates the capability of rematerializa-
+(predecessors of v) are required to be present in local mem-
+                                                                     tion to meet memory limits while minimizing duration, the
+ory before computing v. Let seq(G) be a rematerialization
+                                                                     paper does not sufficiently address the problem complexity
+sequence of nodes (ordered list) that contains each node at
+                                                                     and scaling to larger graphs. The authors do mention this
+least once. The rematerialization problem statement is then
+                                                                     issue and offer a method of linear relaxation of the Boolean
+as follows:
+                                                                     variables followed by 2-stage rounding to accelerate finding
+M EMORY- CONSTRAINED    C OMPUTATION                 G RAPH          a solution. However, our experiments show that for many
+S EQUENCING WITH R EMATERIALIZATION                                  graphs, this rounding approach produces results that are far
+                                                                     from optimal, and often the rounded solution does not meet
+       minimize     total execution duration                         the memory threshold and is thus infeasible (see Section 3).
+         seq(G)
+                                                                     As a consequence of formulating the problem using matrices
+       subject to
+                                                                     of variables where the columns represent specific nodes (per-
+          − seq(G) meets the data dependencies of G                  mutations are not supported), in C HECKMATE all solutions
+          − peak memory footprint of seq(G)                          are constrained to follow an input sequence of the graph
+               ≤ local memory capacity M                             nodes without rematerialization. We call this the “input
+                                                                     topological order”. This input must be a valid topological
+This definition is intentionally high-level and lacking some         order for solutions that meet the node precedence require-
+details that will be provided later. Since our later formu-          ments to be possible. The question then arises, “what input
+lations do not directly optimize the sequence but rather             topological order should be used?” Indeed this constraint
+optimize other variables from which memory footprints and            significantly reduces the space of potential valid remateri-
+the final sequence are computed, we skip further description         alization sequences so can be valuable to limit algorithm
+of such details in this section.                                     complexity. However, as shown in (Gagrani et al., 2022),
+                                                                     there can be a wide variability of peak memory footprint for
+Our work introduces a new optimization model formulation             different sequences (without rematerialization).
+that defines the problem variables as retention intervals, al-
+lowing use of only O(n) integer variables. We then leverage          One of the attractive features of our new formulation is that
+constrained programming (CP), allowing complex data de-              it does not require an input topological order. However,
+pendency and cumulative memory threshold constraints to              when studying the graphs used in (Jain et al., 2020), we
+be enforced easily and efficiently during optimization. We           found no variations in the peak memory footprint across
+further show that our proposed approach demonstrates sig-            50 randomly generated topological orders for each graph
+nificant scaling improvements relative to the MILP formula-          (without rematerialization). To compare directly with prior
+tion of C HECKMATE (Jain et al., 2020). Figure 1 provides a          methods, we add the input topological order constraint (see
+numerical comparison of the two methods.                             Section 2.3) and use this for all of our experiments. Remov-
+
+                                                                 2
+                             M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+ing the input topological order constraint and/or studying
+the impact of different input topological orders on solution
+quality and solve time are an interesting topic for future                       1            2            3            4
+research.
+                                                                                 Figure 2. Example graph with 4 nodes.
+A follow-on to C HECKMATE (Patil et al., 2022) recognizes
+that memory optimization may combine rematerialization
+with paging – strategically reading and writing intermediate            • Constrained number of allowed rematerializations: We
+data to external memory. While these external memory ac-                  introduce parameter Cv that defines the maximum num-
+cesses are slow, they still may be required if the available              ber of times a node v can be computed in the final
+local memory is too small to fit any rematerialization solu-              sequence. We demonstrate empirically that this com-
+tion of practical total duration. This work, however, still               plexity reduction retains solution quality even for very
+suffers from a scaling issue as it inherits the O(n2 ) Boolean            small values of Cv .
+variable formulation. An extension of our formulation to
+incorporate paging would be valuable future research. An-               • Compare and contrast approaches: We provide com-
+other extension is (Schuler et al., 2022) which builds on the             parison of solution speed for C HECKMATE vs M OC -
+C HECKMATE formulation to allow making rematerialization                  CASIN and demonstrate equivalence of solutions.
+decisions across two heterogeneous cores. This extension
+also suffers from the same fundamental scaling issue.                   • Impact of memory limit: Prior works make simple
+                                                                          assumptions on local memory limit in their evaluation.
+In (Kumar et al., 2019), a novel method is introduced for                 We show the impact of a range of local memory limits
+finding a valid rematerialization sequence (one that meets                on solution speed and final solution value.
+the required memory threshold) by performing divide-and-
+conquer using tree decomposition. This work focuses on
+proving an attractive complexity for generating such a se-           2. Retention Intervals Formulation
+quence. However, it is of limited use in practice since it
+                                                                     The main building block of our formulation is the concept
+does not contain any explicit mechanism for minimizing to-
+                                                                     of output retention intervals which, as we will show, simpli-
+tal duration of the final sequence produced by the algorithm.
+                                                                     fies the problem formulation greatly. For each node in the
+The potential for reducing peak local memory footprint us-           computation graph, we will define intervals that indicate the
+ing rematerialization depends on the computation graph               retention of its output in local memory. More precisely, each
+topology. For example, a line graph (string of nodes con-            rematerialization of a node will have its own interval. Here,
+nected by single edges) offers no potential for improvement          with a misuse of terminology, we use the term rematerializa-
+since the local memory footprint at each node does not               tion for the first time that a node is computed as well. We
+depend on past deallocations. In contrast, a simple U-net            will assume a node v ∈ V is allowed to be rematerialized
+typically allows significant opportunities for footprint sav-        up to Cv times, hence Cv intervals will be defined for node
+ings. In general, we observe that networks with “long skip           v. The parameter Cv could be considered a hyperparameter.
+connections” are the topologies that exhibit more poten-             We will show via numerical experiments that picking Cv to
+tial for rematerialization gains. DNN training computation           be as small as 2 for all of the nodes is often good enough in
+graphs have a “U-net-like” structure since they have for-            practice and is without loss of optimality (see Section 3).
+ward and backward paths with edges that cross between the
+                                                                     We define the retention intervals for each node v ∈ V by its
+two to support gradient computation in the backward path.
+                                                                     “start” and “end” times
+(Jain et al., 2020) only experiments with training graphs. In
+contrast, we study rematerialization on both training and in-
+                                                                                   siv , eiv ∈ D, ∀i ∈ {1, . . . , Cv } ,
+ference graphs, and find compelling rematerialization gains
+also for inference graphs, particularly ones with complex            where the domain D is a set of integers of size O(n) that
+interconnect topology.                                               will be defined explicitly in the subsequent subsections.
+                                                                     A memory block of size mv is allocated at the start and
+1.2. Contributions                                                   deallocated at the end of the interval.
+   • Retention intervals formulation of rematerialization:           The concept of time in our formulation is defined through
+     We introduce M OCCASIN, a new formulation with sig-             compute events. This is one of the key components of our
+     nificantly better scaling of solution complexity to large       proposed formulation. To better illustrate this point, con-
+     graphs. We demonstrate that this formulation can be             sider Figure 3, which depicts our formulation for the 4-node
+     solved effectively using constraint programming (CP).           example graph in Figure 2. In this example, we have set
+                                                                     Cv = 2 for all nodes v. Figure 3 illustrates the formulation
+
+                                                                 3
+                                             M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+             1   2         3         4   5      6                7             8              9             10
+                                                                                                                                               domain to be seconds (which would require quantization)
+ Events                                                                                                                       ...              or processor cycles, then the corresponding CP formulation
+                                                                                                                                               would require variable domains of larger sizes. The domain
+ Node 1                                                                                                                                        size of the variables in the formulation has a direct impact
+           𝒔𝟏𝟏                 𝒆𝟏𝟏                        𝒔𝟐𝟏                                                    𝒆𝟐𝟏
+                                                                                                                                               on the solver speed especially for CP solvers.
+ Node 2              𝒔𝟏𝟐                             𝒆𝟏𝟐                                                                                       Note that for each interval, the first time slot (shown using a
+                                                                                                                                               filled circle in Figure 3) is dedicated to the computation of
+ Node 3                                                                                                          𝒆𝟏𝟑
+                                              𝒔𝟏𝟑                                                                                              node v while the rest of the interval indicates the retention
+ Node 4
+                                                                                                                                               of the output of node v. It follows that intervals may not
+                                                                                                     𝒔𝟏𝟒 𝒆𝟏𝟒
+                                                    Confidential – Qualcomm Technologies, Inc. and/or its affiliated companies – May           start at the same time due to our system model where nodes
+                                                                                                               Contain Trade Secrets   5
+
+
+Figure 3. Visualization of the retention intervals formulation.                                                                                are executed sequentially, i.e. there is no parallel computing.
+                                                                                                                                               The empty circles in Figure 3 indicate that no interval starts
+                                                                                                                                               at that particular time, i.e., no computation occurs. The deci-
+for this graph where the vertical axis corresponds to differ-                                                                                  sion of which circles will be filled or empty is a by-product
+ent nodes and the horizontal axis is the time partitioned into                                                                                 of the optimization problem and not known ahead of time.
+events. The formulation as visualized in Figure 3 shows two                                                                                    Furthermore, it is important to note that a memory block of
+intervals for node 1 and one interval for the other nodes. The                                                                                 size mv is allocated during the entirety of the interval. Also,
+reason for this is that the optimal solution for this example                                                                                  observe that since the first event of an interval indicates the
+case requires only one active interval for nodes 2, 3, 4 while                                                                                 compute of that node, this is when the predecessors of that
+requiring two active intervals for node 1. We note that the                                                                                    node must be available in memory.
+starting and ending positions of the intervals in Figure 3 are
+obtained by solving the optimization problem. These are                                                                                        2.1. Optimization Problem Formulation
+not known ahead of time, but rather modeled as variables in
+the optimization problem. Furthermore, this figure depicts                                                                                     In addition to the start and end times of the intervals, we
+circles as visual representation of potential node execution                                                                                   define the Boolean variables aiv to model whether the i’th
+events. For example, in Figure 3, node 1 is computed during                                                                                    interval of node v is active or inactive. This grants us the
+event 1 and its output is kept in memory until event 3. The                                                                                    flexibility of not requiring a node v to be rematerialized ex-
+second interval for node 1 starts in event 7 indicating that                                                                                   actly Cv times. If inactive (i.e. aiv = 0), the corresponding
+node 1 is recomputed during event 7. Observe that event                                                                                        interval does not contribute to the sum in the objective as
+1 has a memory usage of m1 , while event 7 has a memory                                                                                        well as the sums in the memory and precedence constraints.
+usage of m1 + m3 , as the output of node 3 is retained in                                                                                      We assume that the duration wv and output size mv for each
+memory when node 1 is recomputed.                                                                                                              node are known. Using the retention intervals as the foun-
+                                                                                                                                               dation of our formulation, we state the rematerialization
+The total duration of the rematerialization sequence is a                                                                                      problem as an optimization problem as follows:
+weighted sum over the events in which a node is being
+executed, where the weights are simply the actual durations
+of the nodes (in seconds or processor cycles). Such events                                                                                                  X
+                                                                                                                                               minimize            wv aiv                                 (1)
+are marked with a filled circle in Figure 3. We say that                                                                                          s,e,a
+                                                                                                                                                             v,i
+the peak memory footprint of a solution is the maximum
+memory usage among all events. The cyan colored arrows                                                                                         subject to siv ≤ eiv , ∀v, i                               (2)
+in Figure 3 represent the memory usage of node execution                                                                                                    eiv ≤ si+1
+                                                                                                                                                                   v , ∀v, ∀i < Cv                        (3)
+events. The peak memory footprint of the solution in the                                                                                                           X
+                                                                                                                                                                               mv aiv ≤ M, ∀t ∈ D         (4)
+example is 3, assuming each node outputs a unit-size tensor,
+                                                                                                                                                            v,i : siv ≤t≤eiv
+realized at event 10. Observe that events marked with empty
+circles do not contribute to either the duration or the peak                                                                                                ∀(u, v) ∈ E, ∀i ∈ {i : aiv = 1}, ∃j such that
+memory footprint of the solution.                                                                                                                                     aju = 1, sju + 1 ≤ siv ≤ eju        (5)
+The primary reason why we work with this event-based def-                                                                                                   siv ̸= sju , ∀v, u ∈ {v, u : v ̸= u}, ∀i, j   (6)
+inition for time is to keep the domain of the variables siv , eiv
+                                                                                                                                                            a1v = 1, ∀v                                   (7)
+at a small size. More concretely, the CP-SAT solver (Perron
+& Furnon, 2022), which we use to solve numerically our                                                                                                      siv , eiv ∈ D, aiv ∈ {0, 1}, ∀v, i .          (8)
+proposed optimization problem, accepts only integer vari-
+ables as it implements Lazy Clause Generation (Ohrimenko                                                                                       The objective (1) is the total duration. Constraints (2) en-
+et al., 2009), known to be effective for constrained schedul-                                                                                  force that the end time of each interval comes after its start
+ing problems (Schutt et al., 2013). If we instead set the time                                                                                 time. Constraints (3) ensure that intervals of the same node
+
+                                                                                                                                           4
+                               M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+do not overlap. The memory budget constraints are given in                cessors must be available in memory. This could be writ-
+(4), where the parameter t represents time. The precedence                ten as the constraints in (5). Note that these are nonlinear
+constraints (5) enforce that there exists an overlapping and              constraints in the variables. We employ the reservoir
+active interval for all predecessors of v at all start times siv of       constraint from constraint programming to model the data
+v. Observe that the memory and precedence constraints are                 dependencies. We view each predecessor as a resource
+nonlinear constraints. We describe in detail how the cumula-              whose level needs be maintained such that it does not go
+tive constraint and the reservoir constraint from constraint              below 0 while its successor is being executed.
+programming are used to model these nonlinear constraints
+                                                                          Let us define the resource level change events f (·) for each
+in the next subsection. The constraints in (7) are intended to
+                                                                          edge (u, v) ∈ E and i ∈ {1, . . . , Cv }:
+make the first retention interval for every node active. The
+constraints (6) ensure that the starting times of the intervals               f (siv ) = −1
+are all different, i.e. compute events do not overlap.
+                                                                              f (siv + 1) = 1
+The domain of the variables siv , eiv is as follows
+                                                                              f (s1u ) = 1, f (s2u ) = 1, . . . , f (sC
+                                                                                                                      u )=1
+                                                                                                                       u
+                                   X
+                D = {1, 2, . . . ,      Cv } ,                 (9)            f (e1u ) = −1, f (e2u ) = −1, . . . , f (eC
+                                                                                                                        u ) = −1 .
+                                                                                                                         u
+                                                                                                                                     (10)
+                                      v
+      P                                                                   The level change function f (·) returns 0 at every other
+where v Cv is equal to the number of intervals, which is
+                                                                          point in time except for those in (10). The function
+upper bounded by |D|
+                  P ≤ n maxv Cv . Observe that we may                     AddReservoirConstraintWithActive from CP-
+not have more than v Cv filled circles in Figure 3.
+                                                                          SAT takes the following input parameters: times, demands,
+                                                                          actives, minimum level. Times and demands are as defined
+2.2. Memory and Precedence Constraints using CP                           in (10). Actives are the Boolean variables aiv and the mini-
+Memory constraints: The set of constraints in (4) enforces                mum level is set to 0. This constraint ensures that for node
+that the resource usage never exceeds the local memory                    v, one of the intervals for each of its predecessors u overlaps
+budget M at any time t. Note that the constraint (4) is not               with the starting time of the node v.
+linear in the variables siv , eiv . This type of inequality can be        Finally, the nonlinear constraints (6) could be addressed
+modeled using the CP constraint cumulative.                               using the alldifferent constraint from CP.
+The cyan colored arrows in Figure 3 are intended to visually
+represent how we model the memory constraint. Each verti-                 2.3. Complexity Reduction by Enforcing an Initial
+cal arrow can be viewed as a separate inequality constraint.                   Topological Ordering
+In particular, the sum of output sizes mv for each interval
+                                                                          The proposed framework offers the flexibility of allowing
+an arrow intersects is less than or equal to M . Recall that
+                                                                          solutions that are not limited to a predetermined topological
+it is not needed to have an arrow for each circle in Figure 3
+                                                                          ordering. However, one could enforce an input topological
+since the memory use could not increase during the empty
+                                                                          ordering to reduce the size of the search space and in turn
+circles. Hence, we only need to consider the filled circles.
+                                                                          reduce the solve time. We expand upon this point in this
+However, we do not know which circles are to be filled
+                                                                          subsection.
+ahead of time. This is readily addressed by the cumulative
+modeling which considers only the beginning of intervals                  We start by considering a new domain for the integer vari-
+for memory calculation.                                                   ables siv , eiv :
+We have used the function AddCumulative from CP-                                             n              n(n + 1) o
+SAT (Perron & Furnon, 2022) for the memory constraints.                                   D = 1, 2, . . . ,            ,             (11)
+                                                                                                               2
+This function requires intervals, demands, and capacity as
+input arguments. Intervals are the retention intervals from               where the domain size is now O(n2 ) rather than O(n). We
+our formulation defined by the start and end variables siv , eiv          now introduce the concept of stages into our formulation,
+and considered only when aiv = 1. The demand for each                     which has been previously employed in (Jain et al., 2020).
+interval is the output size mv for the corresponding node v.              The j’th stage contains j events; this is depicted in Figure
+Finally, the capacity is simply the memory budget M . The                 4. Given a topological ordering of the nodes, the first stage
+pseudo-code representation of this constraint is as follows:              enforces the computation of the first node in the order. In
+                                                                          subsequent stages, the j’th node in the input topological
+    cumulative({siv , eiv , aiv , mv }v∈V,i∈{1..Cv } , M ) .              order is enforced to be computed in the last event of stage j,
+                                                                          while the previous events in stage j allow nodes 1, . . . , (j −
+Precedence constraints: We recall that prior to the execu-                1) to be computed. In particular, we enforce that node j
+tion of each compute task, the outputs of all of its prede-               could be computed only in event j of a stage. Since this
+
+                                                                      5
+                                          M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+          Stage 1   Stage 2          Stage 3                                      Stage 4                                                              2.5. Overview of Formulations
+ Events
+                                                                                                                                                       Table 1 provides a complexity comparison for our approach
+                                                                                                                                                       and the approach of (Jain et al., 2020). When comparing
+ Node 1                       𝒆𝟏𝟏                                                                                 𝒆𝟐𝟏
+          𝒔𝟏𝟏                                                𝒔𝟐𝟏                                                                                       the number of constraints for different formulations, it is
+                                                                                                                                                       important to keep in mind that the constraints in the MILP
+ Node 2                𝒔𝟏𝟐                           𝒆𝟏𝟐                                                                                               are all linear constraints while the constraints of the CP
+                                                                                                                                                       could be linear or nonlinear.
+ Node 3                                                                                                           𝒆𝟏𝟑
+                                               𝒔𝟏𝟑
+
+ Node 4
+                                                                                                      𝒔𝟏𝟒 𝒆𝟏𝟒
+                                                     Confidential – Qualcomm Technologies, Inc. and/or its affiliated companies – May
+                                                                                                                Contain Trade Secrets   4              Remark 2.1. The optimization problem in (1) - (8) is spec-
+       Figure 4. Illustration of events grouped into stages.                                                                                           ified using integer variables siv and eiv while the discrete
+                                                                                                                                                       variables of the MILP in (Jain et al., 2020) are all Boolean.
+                                                                                                                                                       The fact that our formulation is stated using integer vari-
+restricts the starting times of each interval to specific events,                                                                                      ables as opposed to Boolean variables is only for conve-
+we no longer need to explicitly include the constraint (6).                                                                                            nience. For a more direct comparison of variable counts, it
+Note that the start time for the first retention interval for                                                                                          is straightforward to rewrite this optimization problem by
+each node is no longer a variable but a fixed value. More                                                                                              representing the integer variables as Boolean sequences, in
+precisely, for node v, the value of s1v is equal to j(j + 1)/2,                                                                                        which case the number of Boolean decision variables will be
+where j is the index of node v in the input topological                                                                                                O(Cn log n) (taking C = maxv Cv ) as opposed to O(n2 )
+ordering.                                                                                                                                              Boolean variables in the C HECKMATE formulation.
+
+2.4. Optimization in Two Phases
+Our approach consists of two phases. In Phase 1, we solve                                                                                              Note that the size of search space in Table 1 for M OCCASIN
+a variant of the optimization problem in (1) - (8) to find                                                                                             is dominated by the term nCn . For the version of M OC -
+                                                                                                                                                       CASIN with Boolean decision variables, the search space
+a memory feasible solution. This solution is then used as
+initialization for Phase 2, which is the optimization problem                                                                                          size would scale with 2Cn log n , which is the same as nCn .
+stated in (1) - (8). The problem in Phase 1 has the objective                                                                                          This is smaller than the size of the search space for C HECK -
+                                                                                                                                                                           2
+                                                                                                                                                       MATE , which is 2n +nm .
+
+                    minimize             max(Mvar , M )                                                                                     (12)
+                    s,e,a,Mvar
+                                                                                                                                                       3. Numerical Results
+where we introduce the variable Mvar ∈ R for the peak                                                                                                  3.1. Graphs for Evaluation
+memory footprint. We modify the memory constraint in (4)                                                                                               The graphs we use for evaluation of the method presented
+as follows for Phase 1:                                                                                                                                in this paper come from several sources. Additional descrip-
+                    X                                                                                                                                  tions can be found in Appendix A.2.
+                                    mv aiv ≤ Mvar , ∀t ∈ D .                                                                                (13)
+            v,i : siv ≤t≤eiv
+                                                                                                                                                       Checkmate Graphs: We use graphs from the checkmate
+                                                                                                                                                       repository (Jain, 2020). They represent the single-batch
+                                                                                                                                                       training computation graphs for a selected set of neural
+The goal of Phase 1 is to arrive at an intermediate solution,
+                                                                                                                                                       networks. Use of these graphs allows us to compare directly
+whose peak memory footprint is below the local memory
+                                                                                                                                                       to results presented in that work.
+target M . We address this by considering the maximum of
+the peak memory variable Mvar and memory budget M as                                                                                                   Random Layered Graphs: We leverage the synthetically
+the objective. This objective could be linearized by intro-                                                                                            constructed random layered graphs introduced in (Gagrani
+ducing an auxiliary variable τ ∈ R and then considering:                                                                                               et al., 2022, Appendix A) as examples of graphs with com-
+minimize τ subject to τ ≥ Mvar and τ ≥ M . The other                                                                                                   plex interconnect topology.
+constraints of the optimization problem are unchanged.
+                                                                                                                                                       Real-world Graphs: While our synthetic and standard,
+Note that any topological ordering of the graph G provides                                                                                             public-domain graphs are valuable for experimentation, we
+a trivial feasible solution to the problem in Phase 1 since it                                                                                         also see value in presenting results obtained from neural
+does not have a hard memory constraint. For the remateri-                                                                                              computation graphs used for commercial development of
+alization problem itself, however, there is no easy solution                                                                                           artificial intelligence hardware and software products. We
+that could be constructed and provided as an initial solution.                                                                                         sample a set of representative graphs that have diverse ar-
+Phase 1 is intended to fill this gap.                                                                                                                  chitectures and size.
+
+                                                                                                                                                   6
+                              M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+
+                     Table 1. Overview of formulation complexities for C HECKMATE and our proposed method.
+
+           Formulation            # Bool. vars              # integer vars               Size of search space     # constraints
+                                                                                                   2
+      C HECKMATE - MILP          O(n2 + nm)                   -                             O(2n +nm )            O(n2 + nm)
+        M OCCASIN - CP             O(Cn)           O(Cn) (domain size = O(n))              O(2Cn + nCn )            O(Cm)
+
+
+3.2. Experimental Setup                                                 used the version of the formulation in Section 2.3 where
+                                                                        we enforce an input topological ordering, which we have
+We use the open source CP-SAT solver from Google OR-
+                                                                        randomly generated.
+Tools (Perron & Furnon, 2022) to solve the CP. For the
+comparisons against C HECKMATE, we have used the imple-                 Table 2 provides numerical results for a range of different
+mentation provided in the codebase for (Jain et al., 2020),             computation graphs. In Table 2 we have selected the mem-
+which utilizes Gurobi (Gurobi Optimization, LLC, 2023)                  ory budget values for each graph to be the 80% and 90%
+and CVXPY (Diamond & Boyd, 2016; Agrawal et al., 2018).                 of the initial peak memory without rematerialization. In
+We have run all of the numerical experiments on a 16-CPU                addition to the methods of C HECKMATE and M OCCASIN,
+core workstation with a 32 GB of RAM. Furthermore, we                   we include results for the rounding algorithm proposed in
+note that once a solution to the optimization problem is ob-            (Jain et al., 2020) under the “LP+rounding” column of the
+tained, the corresponding sequence of tasks can be executed             table. This method consists of relaxing the MILP into a lin-
+on any hardware, CPU or GPU. We note that this is due                   ear program (LP) and then rounding the solution (see (Jain
+to the generality of our approach where we do not make                  et al., 2020) for further details on this algorithm). Note that
+any assumptions on the computing unit that will be used to              solution produced by the rounding algorithm is not guaran-
+execute the computations.                                               teed to satisfy the memory budget constraint. This could
+                                                                        be seen in Table 2 where in most cases the peak memory
+3.3. Experimental Results                                               for the relaxation and rounding approach is higher than the
+                                                                        memory budget M .
+Figure 5 shows the solve progress plots for 4 random lay-
+ered graphs G1 , . . . , G4 of varied sizes and 4 different local       Table 2 shows that the random layered graphs and real-
+memory budget values for each graph. The curves of M OC -               world graphs are the most challenging ones among the graph
+CASIN are all shifted to the right by the amount of time                set. The solve times for these graphs are higher than the
+spent in Phase 1 for fair comparison. We have set the time              CM graphs, which is consistent with the fact that they have
+limit to 30 minutes for G1 , G2 , G3 and 1 hour for G4 .                higher edge densities and more complex edge connectivities.
+
+For G1 , the solve times are in the order of a few seconds              It is critical to highlight that M OCCASIN is able to scale
+and we observe that M OCCASIN is faster to obtain similar               to graphs with few hundreds of nodes and a few thousands
+objective values as C HECKMATE. For G2 , which has n =                  of edges. This is while achieving a few percents of total
+250 nodes, when the memory budget is tight, we see that                 duration increase, which is essential to performance.
+C HECKMATE fails to find a feasible solution within the
+given time limit of 30 minutes. For the highest memory                  4. Conclusion
+budget value, it finds the optimal solution in 10 minutes
+while M OCCASIN finishes in a few seconds. For graphs                   Rematerialization is a valuable technique that allows to save
+G3 and G4 , which have n = 500 and n = 1000 nodes                       peak local memory footprint at the expense of longer total
+respectively, C HECKMATE times out with no solution even if             duration of computation. However, finding a rematerializa-
+we consider a higher time limit of 3 hours while M OCCASIN              tion sequence that minimizes total duration while meeting
+converges to a good solution (i.e. low total duration increase)         a prescribed local memory limit is not easy - especially for
+under less than an hour. In addition to the solve time, the             graphs with complex interconnections. Previous research
+memory required for optimization also becomes a critical                (Jain et al., 2020) demonstrates a MILP formulation that can
+factor for large graphs. In fact, for G3 and G4 , C HECKMATE            address this optimization problem, however our experiments
+exits with an out-of-memory error. The results in Figure 5              show that that approach does not scale well as the graph
+are best understood by contrasting the number of discrete               size, and the complexity of graph topology grow.
+variables in C HECKMATE, which grows quadratically in n                 We introduce M OCCASIN, a new formulation that expresses
+while it grows n log(n) in M OCCASIN (see Table 1).                     the decision variables as retention intervals specified by the
+In all of the experiments, we have set Cv = 2 for all v ∈ V ,           start and end event indices of each node’s output tensor. We
+which we specified in the plot legends by C = 2. We have                further manage complexity using the hyper-parameter Cv
+
+
+                                                                    7
+                                                                     M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+    Total duration increase %
+
+
+
+
+                                                                             Total duration increase %
+
+
+
+
+                                                                                                                                                  Total duration increase %
+
+
+
+
+                                                                                                                                                                                                                      Total duration increase %
+                                                                                                         15                   Checkmate                                       2.5                Checkmate                                                              Checkmate
+                                                                                                                              Moccasin (C=2)                                                     Moccasin (C=2)                                   2.5                   Moccasin (C=2)
+                                3
+                                                                                                         10                                                                   2.0                                                                 2.0
+                                2                                                                                                                                             1.5                                                                 1.5
+                                                   Checkmate                                                 5
+                                                   Moccasin (C=2)                                                                                                             1.0                                                                 1.0
+                                1
+                                         10     12 14 16 18                                                        200       400      600                                           1720 1740 1760 1780 1800                                          2000      2500      3000    3500
+                                                Solve time (sec)                                                     Solve time (sec)                                                     Solve time (sec)                                                       Solve time (sec)
+                                              G1 , M = 41687                                                     G2 , M = 132156                                                      G3 , M = 255995                                                        G4 , M = 547757
+
+                                15                                                                       8
+
+
+
+
+                                                                                                                                                  Total duration increase %
+    Total duration increase %
+
+
+
+
+                                                                             Total duration increase %
+
+
+
+
+                                                                                                                                                                                                                      Total duration increase %
+                                                         Checkmate                                                            Checkmate                                       6                 Checkmate                                                               Checkmate
+                                                         Moccasin (C=2)                                                       Moccasin (C=2)                                                    Moccasin (C=2)                                    5                     Moccasin (C=2)
+                                                                                                         6                                                                    5
+                                10                                                                                                                                                                                                                4
+                                                                                                                                                                              4
+                                    5                                                                    4                                                                    3                                                                   3
+                                                                                                                                                                              2                                                                   2
+                                                                                                         2
+                                        10     12     14     16     18                                    60     65      70      75    80                                     1000    1200 1400 1600        1800                                         2000      2500 3000       3500
+                                                 Solve time (sec)                                                     Solve time (sec)                                                   Solve time (sec)                                                       Solve time (sec)
+                                              G1 , M = 39371                                                     G2 , M = 124814                                                      G3 , M = 241773                                                        G4 , M = 517326
+
+                                                                                                         14
+                                                                             Total duration increase %
+
+
+
+
+                                                                                                                                                  Total duration increase %
+
+
+
+
+                                                                                                                                                                                                                      Total duration increase %
+    Total duration increase %
+
+
+
+
+                                6                        Checkmate                                                            Checkmate                                                         Checkmate                                                               Checkmate
+                                                         Moccasin (C=2)                                                       Moccasin (C=2)                                  10                Moccasin (C=2)                                                          Moccasin (C=2)
+                                                                                                         12                                                                                                                                       8
+                                5                                                                                                                                              8
+                                                                                                         10
+                                4                                                                                                                                                                                                                 6
+                                                                                                          8                                                                    6
+                                3                                                                         6                                                                                                                                       4
+                                                                                                                                                                              4
+                                        10.0 12.5 15.0 17.5 20.0 22.5                                              200        400       600                                   1000 1200 1400 1600 1800                                                   2000      2500 3000       3500
+                                                Solve time (sec)                                                     Solve time (sec)                                                 Solve time (sec)                                                          Solve time (sec)
+                                              G1 , M = 37055                                                     G2 , M = 117472                                                      G3 , M = 227551                                                        G4 , M = 486895
+
+                             500                                                                      22.5
+ Total duration increase %
+
+
+
+
+                                                                                                                                               Total duration increase %
+
+
+
+
+                                                                                                                                                                                                                   Total duration increase %
+                                                                          Total duration increase %
+
+
+
+
+                                                                                                                            Checkmate                                                           Checkmate                                      16                       Checkmate
+                                                                                                      20.0                  Moccasin (C=2)                                 20                   Moccasin (C=2)                                                          Moccasin (C=2)
+                             400                                                                                                                                                                                                               14
+                             300                         Checkmate                                    17.5                                                                                                                                     12
+                                                         Moccasin (C=2)                                                                                                    15
+                             200                                                                      15.0                                                                                                                                     10
+                             100                                                                      12.5                                                                 10                                                                   8
+                               0                                                                                                                                                                                                                6
+                                         10       20        30       40                                          250 500 750 1000 1250                                              750 1000 1250 1500 1750                                              2500 2750 3000 3250 3500
+                                                 Solve time (sec)                                                   Solve time (sec)                                                     Solve time (sec)                                                     Solve time (sec)
+                                              G1 , M = 34739                                                     G2 , M = 111598                                                      G3 , M = 213329                                                        G4 , M = 456464
+
+
+Figure 5. Solve progress plots for random layered graphs under different memory budget constraints. The graph name and memory budget
+are as indicated in the caption for each plot. The node and edge counts (n, m) for the graphs are as follows: G1 : (100, 236), G2 :
+(250, 944), G3 : (500, 2461), G4 : (1000, 5875).
+
+
+which limits the maximum number of retention intervals for                                                                                                                    Finally, rematerialization is seen as one component among
+each node. Our experimental results include C HECKMATE                                                                                                                        a set of tools for managing memory use during execution
+graphs (training graphs with simple interconnect topology),                                                                                                                   of complex computation graphs arising in deep learning
+synthetically generated random layered graphs (that model                                                                                                                     applications. Joint optimization of this with other methods
+inference graphs with complex topology), and real-world in-                                                                                                                   such as sequencing, scheduling for parallel compute, and
+ference graphs in active use commercially. We demonstrate                                                                                                                     paging to global memory are viewed as valuable topics for
+that M OCCASIN provides the same optimization result as                                                                                                                       further research.
+C HECKMATE with up to an order-of-magnitude less solve
+time for mid-sized graphs (100-250 nodes). It also enables                                                                                                                    References
+us to find solutions for larger graphs (up to 1000 nodes) and
+for more challenging peak local memory limits, cases where                                                                                                                    Agrawal, A., Verschueren, R., Diamond, S., and Boyd, S.
+the MILP formulation of C HECKMATE failed to return any                                                                                                                        A rewriting system for convex optimization problems.
+solution within the time limit.                                                                                                                                                Journal of Control and Decision, 5(1):42–60, 2018.
+
+
+                                                                                                                                                 8
+                               M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+
+Table 2. Experiment results. The abbreviations used in the table are as follows: RL: Random layered graphs, RW: Real-world graphs, CM:
+graphs used in (Jain et al., 2020) to evaluate C HECKMATE, where CM 1 is FCN with VGG layers and CM 2 is the ResNet50 model, n:
+number of nodes, m: number of edges, M : memory budget, TDI: total duration increase in percentage, peak mem: peak memory of the
+resulting rematerialization sequence. The column ‘Time (s)’ indicates the elapsed time in seconds until the best solution. Dashes “-”
+indicate that no solution is found. The best solution in each row is shown in bold font. Full version of this table could be found in the
+Appendix.
+
+                                            C HECKMATE MILP               C HECKMATE LP+Rounding                  M OCCASIN
+  Graph    (n, m)         M            TDI %    Peak mem Time (s)        TDI % Peak mem Time (s)         TDI %    Peak mem Time (s)
+  RL G2    (250, 944)     132,156         0.9      132,130      685.1      93.0    178,200      401.7       0.9     131,831       55.0
+                          117,472           -            -          -     328.6    181,200      696.9       4.9     117,400      639.5
+  RL G4    (1000, 5875)   547,757           -            -          -         -          -          -       0.7     547,660     3612.9
+                          486,895           -            -          -         -          -          -       3.4     486,880     3611.8
+  RW 1     (358, 947)     20,227,276      2.3   20,226,048     1340.0         -           -          -      2.3   20,226,048     123.5
+                          17,979,801      4.5   17,977,344     1605.4         -           -          -      4.5   17,977,344     122.0
+  RW 2     (442, 1247)    10,817,740      1.4   10,811,392     1856.7         -           -          -      1.4   10,813,440    1201.3
+                          9,615,769       2.8    9,615,360     2242.9         -           -          -      2.8    9,613,312     303.9
+  RW 3     (574, 1304)    10,539,417        -            -          -         -           -          -      0.8   10,539,008    1802.4
+                          9,368,371         -            -          -         -           -          -      1.6    9,367,552    1802.8
+  CM 1     (73, 149)      11.3 GB         0.0      11.1 GB        6.3       0.0    11.4 GB        6.8       0.0     11.1 GB        3.1
+                          10.0 GB         0.1      9.65 GB        5.6       0.1    10.8 GB        6.7       0.1      9.9 GB        3.1
+  CM 2     (353, 751)     31.9 GB         0.1      31.6 GB      434.1       0.1    31.5 GB      505.2       0.2     31.9 GB       65.2
+                          28.4 GB         0.3      28.3 GB      485.3       0.5    27.8 GB     1065.4       0.3     28.4 GB       69.3
+
+
+Beaumont, O., Eyraud-Dubois, L., and Shilova, A. Efficient              Griewank, A. and Walther, A. Algorithm 799: revolve: an
+  combination of rematerialization and offloading for train-              implementation of checkpointing for the reverse or ad-
+  ing dnns. Advances in Neural Information Processing                     joint mode of computational differentiation. ACM Trans-
+  Systems, 34:23844–23857, 2021.                                          actions on Mathematical Software (TOMS), 26(1):19–45,
+                                                                          2000.
+Briggs, P., Cooper, K. D., and Torczon, L. Rematerialization.
+  In Proceedings of the ACM SIGPLAN 1992 conference                     Griewank, A. and Walther, A. Evaluating derivatives:
+  on Programming language design and implementation,                      principles and techniques of algorithmic differentiation.
+  pp. 311–321, 1992.                                                      SIAM, 2008.
+
+Chen, T., Xu, B., Zhang, C., and Guestrin, C. Training                  Gurobi Optimization, LLC. Gurobi Optimizer Reference
+  deep nets with sublinear memory cost. arXiv preprint                    Manual, 2023. URL https://www.gurobi.com.
+  arXiv:1604.06174, 2016.                                               Huang, Y., Cheng, Y., Bapna, A., Firat, O., Chen, D., Chen,
+                                                                          M., Lee, H., Ngiam, J., Le, Q. V., Wu, Y., et al. Gpipe:
+Colombet, Q., Brandner, F., and Darte, A. Studying opti-
+                                                                          Efficient training of giant neural networks using pipeline
+  mal spilling in the light of ssa. ACM Transactions on
+                                                                          parallelism. Advances in neural information processing
+  Architecture and Code Optimization (TACO), 11(4):1–26,
+                                                                          systems, 32, 2019.
+  2015.
+                                                                        Jain, P.   Checkmate repository, 2020. URL
+Diamond, S. and Boyd, S. CVXPY: A Python-embedded                          https://github.com/parasj/checkmate/
+  modeling language for convex optimization. Journal of                    tree/mlsys20_artifact.
+  Machine Learning Research, 17(83):1–5, 2016.
+                                                                        Jain, P., Jain, A., Nrusimha, A., Gholami, A., Abbeel, P.,
+Gagrani, M., Rainone, C., Yang, Y., Teague, H., Jeon, W.,                  Gonzalez, J., Keutzer, K., and Stoica, I. Checkmate:
+  Bondesan, R., van Hoof, H., Lott, C., Zeng, W. W., and                   Breaking the memory wall with optimal tensor remateri-
+  Zappi, P. Neural topological ordering for computation                    alization. Proceedings of Machine Learning and Systems,
+  graphs. In Advances in Neural Information Processing                     2:497–511, 2020.
+  Systems, 2022.
+                                                                        Kirisame, M., Lyubomirsky, S., Haan, A., Brennan, J.,
+Gilbert, J. R., Lengauer, T., and Tarjan, R. E. The pebbling              He, M., Roesch, J., Chen, T., and Tatlock, Z. Dy-
+  problem is complete in polynomial space. In Proceedings                 namic tensor rematerialization. In International Confer-
+  of the eleventh annual ACM symposium on Theory of                       ence on Learning Representations, 2021. URL https:
+  computing, pp. 237–248, 1979.                                           //openreview.net/forum?id=Vfs_2RnOD0H.
+
+                                                                   9
+                             M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+Kubota, K. A fortran77 preprocessor for reverse mode auto-
+  matic differentiation with recursive checkpointing. Opti-
+  mization Methods and Software, 10(2):319–335, 1998.
+Kumar, R., Purohit, M., Svitkina, Z., Vee, E., and Wang, J.
+  Efficient rematerialization for deep networks. Advances
+  in Neural Information Processing Systems, 32, 2019.
+
+Kusumoto, M., Inoue, T., Watanabe, G., Akiba, T., and
+  Koyama, M. A graph theoretic framework of recompu-
+  tation algorithms for memory-efficient backpropagation.
+ Advances in Neural Information Processing Systems, 32,
+  2019.
+
+Lozano, R. C. and Schulte, C. Survey on combinatorial
+  register allocation and instruction scheduling. ACM Com-
+  puting Surveys (CSUR), 52(3):1–50, 2019.
+Lozano, R. C., Carlsson, M., Blindell, G. H., and Schulte, C.
+  Combinatorial register allocation and instruction schedul-
+  ing. ACM Transactions on Programming Languages and
+  Systems (TOPLAS), 41(3):1–53, 2019.
+Mostafa, H. Sequential aggregation and rematerialization:
+ Distributed full-batch training of graph neural networks
+ on large graphs. Proceedings of Machine Learning and
+ Systems, 4:265–275, 2022.
+
+Ohrimenko, O., Stuckey, P. J., and Codish, M. Propagation
+  via lazy clause generation. Constraints, 14(3):357–391,
+  2009.
+Patil, S. G., Jain, P., Dutta, P., Stoica, I., and Gonzalez, J.
+  Poet: Training neural networks on tiny devices with inte-
+  grated rematerialization and paging. In International Con-
+  ference on Machine Learning, pp. 17573–17583. PMLR,
+  2022.
+Perron, L. and Furnon, V. Or-tools, 2022. URL https:
+  //developers.google.com/optimization/.
+
+Schuler, M., Membarth, R., and Slusallek, P. Xengine:
+  Optimal tensor rematerialization for neural networks in
+  heterogeneous environments. ACM Transactions on Ar-
+  chitecture and Code Optimization, pp. 5, 2022.
+
+Schutt, A., Feydy, T., Stuckey, P. J., and Wallace, M. G.
+  Solving rcpsp/max by lazy clause generation. Journal of
+  scheduling, 16(3):273–289, 2013.
+Sze, V., Chen, Y.-H., Yang, T.-J., and Emer, J. S. Efficient
+  processing of deep neural networks: A tutorial and survey.
+  Proceedings of the IEEE, 105(12):2295–2329, 2017.
+
+tinyML Foundation. tinyML On-Device Learning Forum,
+   2022. URL https://www.tinyml.org/event/
+   on-device-learning/.
+
+
+
+                                                                  10
+                               M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+A. Appendix
+A.1. Additional Numerical Experiments
+Figure 6 shows the time until best solution as a function of number of nodes n in log-log scale. The reason why the blue
+curve stops after n = 250 is that C HECKMATE does not produce a feasible solution within the given time limit of 1 hour.
+Figure 6 shows that our method demonstrates better scalability. In instances where both methods return feasible solutions,
+the objective function values are the same. For graphs with more than n = 250 nodes, for the feasible solutions that our
+method finds, the corresponding total duration increase is consistently less than 5%.
+
+
+
+
+                                          Time until best sol. (sec)
+                                                                       103
+
+                                                                       102
+
+                                                                       101
+                                                                                                  Checkmate
+                                                                       100                        Moccasin (C=2)
+                                                                                          10 2                103
+                                                                                       Number of nodes (n)
+
+Figure 6. Time until the best solution as a function of number of nodes n for random layered graphs. The memory budget is selected for
+each graph as the 90% of the peak memory for the input topological order.
+
+Table 3 shows the extended version of Table 2, where results for additional graphs are included.
+
+
+                                                                        Table 3. Extended version of Table 2.
+                                            C HECKMATE MILP                                       C HECKMATE LP+Rounding             M OCCASIN
+  Graph    (n, m)         M            TDI %    Peak mem Time (s)                                TDI % Peak mem Time (s)     TDI %   Peak mem Time (s)
+  RL G1    (100, 236)     41,687         0.8                                  41,360      18.5     0.1     44,939     16.0     0.8      40,820       9.3
+                          37,055         2.3                                  36,830      22.7     7.3     43,370     20.1     2.3      36,810       9.5
+  RL G2    (250, 944)     132,156        0.9                                 132,130     685.1    93.0    178,200    401.7     0.9     131,831      55.0
+                          117,472          -                                       -         -   328.6    181,200    696.9     4.9     117,400     639.5
+  RL G3    (500, 2461)    255,995          -                                       -         -       -          -        -     0.7     255,959    1803.3
+                          227,551          -                                       -         -       -          -        -     3.4     227,429    1804.8
+  RL G4    (1000, 5875)   547,757          -                                       -         -       -          -        -     0.7     547,660    3612.9
+                          486,895          -                                       -         -       -          -        -     3.4     486,880    3611.8
+  RW 1     (358, 947)     20,227,276     2.3                            20,226,048      1340.0       -          -        -     2.3   20,226,048    123.5
+                          17,979,801     4.5                            17,977,344      1605.4       -          -        -     4.5   17,977,344    122.0
+  RW 2     (442, 1247)    10,817,740     1.4                            10,811,392      1856.7       -          -        -     1.4   10,813,440   1201.3
+                          9,615,769      2.8                             9,615,360      2242.9       -          -        -     2.8    9,613,312    303.9
+  RW 3     (574, 1304)    10,539,417       -                                     -           -       -          -        -     0.8   10,539,008   1802.4
+                          9,368,371        -                                     -           -       -          -        -     1.6    9,367,552   1802.8
+  RW 4     (698, 1436)    24,328,396       -                                     -           -       -          -        -     1.7   24,328,192   1803.9
+                          21,625,241       -                                     -           -       -          -        -     3.4   21,624,832   1314.0
+  CM 1     (73, 149)      11.3 GB        0.0                                 11.1 GB       6.3     0.0    11.4 GB      6.8     0.0     11.1 GB       3.1
+                          10.0 GB        0.1                                 9.65 GB       5.6     0.1    10.8 GB      6.7     0.1      9.9 GB       3.1
+  CM 2     (353, 751)     31.9 GB        0.1                                 31.6 GB     434.1     0.1    31.5 GB    505.2     0.2     31.9 GB      65.2
+                          28.4 GB        0.3                                 28.3 GB     485.3     0.5    27.8 GB   1065.4     0.3     28.4 GB      69.3
+
+
+A.2. Examples of Graphs Used in Experiments
+Figure 7 shows visualizations of two of the graphs that we use for our experiments to give a better understanding of the
+structure of these graphs. The Checkmate FCN8 graph (left) is a training computation graph and the 100-node random
+layered graph (right) models an inference graph. We study much larger graphs, but these are quite difficult to visualize in
+two dimensions.
+
+                                                                                            11
+                               M OCCASIN: Efficient Tensor Rematerialization for Neural Networks
+
+
+
+
+                                                                          Random layered example (100 nodes, 268 edges)
+
+
+
+
+                        Checkmate FCN8 (73 nodes, 149 edges)
+
+Figure 7. The example graphs used for our experiments are shown using a simple visualization showing only the structure of the graphs.
+
+
+
+
+                                                                 12
+

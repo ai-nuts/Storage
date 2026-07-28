@@ -1,0 +1,3 @@
+# Title
+
+As deep generative models grow more capable, they increasingly memorize and reproduce their training data, raising serious privacy and copyright concerns. This paper, from Layer 6 AI and published at ICLR 2025, proposes the manifold memorization hypothesis: a geometric framework that reasons about memorization through the local intrinsic dimension of the data and model manifolds. It provides a formal standard for how memorized a datapoint is, cleanly separates memorization caused by overfitting from memorization caused by the data itself, and yields scalable tools to detect and mitigate memorization all the way up to Stable Diffusion.

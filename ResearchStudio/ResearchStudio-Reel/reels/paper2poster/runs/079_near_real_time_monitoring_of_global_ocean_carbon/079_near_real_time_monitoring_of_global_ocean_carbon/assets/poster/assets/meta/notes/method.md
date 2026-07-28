@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A CNN-plus-linear model is trained with semi-supervised learning to learn the non-linear relationship between GOBM/data-product estimates and observed predictors (year, month, latitude, longitude, and nine environmental factors such as SST, ICE, CHL, MLD, CO2, SSS, SSH, SLP, wind). Global 180×360 grids are cut into 18×18 patches; a supervised RMSE loss on labeled data is combined with an unsupervised consistency loss between weakly (10% features masked) and strongly (30% masked) augmented predictions.
+
+Supporting detail: Predictions are ensembled via K-fold cross-validation; near-real-time xCO2 is extended by a separate model achieving a test RMSE of 1.74 (~0.5% error). The CNN stacks hidden dimensions 9→64→64 and linear layers 64→64→1 with GELU activation and dropout p=0.25.
+
+Narration: The method treats each biogeochemical model or data product as a target that a neural network learns to reproduce from observable predictors: year, month, latitude, longitude, and nine environmental variables like sea-surface temperature, salinity, chlorophyll and wind. Global grids are cut into small eighteen-by-eighteen patches and fed through stacked convolutional and linear layers. The clever part is semi-supervised learning: alongside a standard supervised error on labeled points, the model adds an unsupervised consistency loss that forces its predictions to agree when ten percent versus thirty percent of the input features are masked. Combining the two losses makes the model markedly more stable.

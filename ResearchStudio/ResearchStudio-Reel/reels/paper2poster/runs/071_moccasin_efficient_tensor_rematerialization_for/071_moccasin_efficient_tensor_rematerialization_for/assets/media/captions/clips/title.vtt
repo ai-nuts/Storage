@@ -1,0 +1,363 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:06.474
+Deploying and training neural networks on edge
+devices is often bottlenecked by tight memory.
+
+00:00:06.554 --> 00:00:11.877
+Tensor rematerialization, recomputing intermediate
+tensors instead of storing them,
+
+00:00:11.957 --> 00:00:14.676
+trades extra compute for lower peak memory.
+
+00:00:14.756 --> 00:00:16.694
+This paper introduces Moccasin,
+
+00:00:16.774 --> 00:00:23.724
+a new constraint programming formulation for the
+problem of minimizing execution time under a memory budget.
+
+00:00:23.804 --> 00:00:28.216
+Unlike prior work that needs a quadratic number of
+Boolean variables,
+
+00:00:28.296 --> 00:00:31.861
+Moccasin uses only a linear number of integer variables,
+
+00:00:31.941 --> 00:00:37.720
+letting it scale to much larger compute graphs and
+run up to an order of magnitude faster.
+
+00:00:38.100 --> 00:00:43.021
+Neural networks running on edge devices are
+constrained above all by memory.
+
+00:00:43.101 --> 00:00:48.811
+One way to fit a large model into a small memory
+footprint is rematerialization: instead
+
+00:00:48.891 --> 00:00:51.246
+of storing every intermediate tensor,
+
+00:00:51.326 --> 00:00:53.681
+you recompute some of them on demand.
+
+00:00:53.761 --> 00:00:56.510
+The catch is that recomputation costs time.
+
+00:00:56.590 --> 00:01:02.630
+So the core problem is a scheduling one: for a
+given compute graph and a fixed memory budget,
+
+00:01:02.710 --> 00:01:08.223
+decide which tensors to retain and which to
+recompute so that total execution time is
+
+00:01:08.303 --> 00:01:12.434
+as small as possible while peak memory never
+exceeds the budget.
+
+00:01:12.514 --> 00:01:17.040
+This is a hard combinatorial optimization, in
+general PSPACE-complete.
+
+00:01:17.420 --> 00:01:21.564
+The leading prior method, Checkmate,
+
+00:01:21.644 --> 00:01:25.789
+casts rematerialization as a mixed-integer linear program.
+
+00:01:25.869 --> 00:01:30.013
+It is expressive,
+
+00:01:30.093 --> 00:01:34.238
+but its number of Boolean decision variables grows
+with the square of the number of nodes in the graph.
+
+00:01:34.318 --> 00:01:38.462
+That quadratic growth becomes a wall: for graphs
+with a few hundred nodes and a few thousand edges,
+
+00:01:38.542 --> 00:01:42.687
+Checkmate either times out or runs out of memory
+during the solve.
+
+00:01:42.767 --> 00:01:46.911
+Because the trend toward on-device training and
+stricter latency targets keeps enlarging these graphs,
+
+00:01:46.991 --> 00:01:51.136
+we need a formulation whose complexity grows much
+more slowly,
+
+00:01:51.216 --> 00:01:55.360
+so realistic graphs can be solved within an
+acceptable compile time.
+
+00:01:55.740 --> 00:02:00.117
+The paper's main contribution is Moccasin,
+
+00:02:00.197 --> 00:02:04.574
+a constraint programming formulation of tensor
+rematerialization.
+
+00:02:04.654 --> 00:02:09.031
+Its central idea is to represent each node's
+decisions as a small number of retention intervals,
+
+00:02:09.111 --> 00:02:13.488
+defined by the start and end event of the tensor's
+lifetime,
+
+00:02:13.568 --> 00:02:17.945
+which reduces the count of discrete variables from
+quadratic to linear in the number of nodes.
+
+00:02:18.025 --> 00:02:22.402
+On top of this,
+
+00:02:22.482 --> 00:02:26.859
+the authors show how to encode the nonlinear memory
+and precedence constraints using standard CP building blocks,
+
+00:02:26.939 --> 00:02:31.316
+the cumulative and reservoir constraints,
+
+00:02:31.396 --> 00:02:35.773
+and they add an optional variant that enforces an
+input topological ordering to further reduce the search space.
+
+00:02:35.853 --> 00:02:40.230
+The payoff is up to an order-of-magnitude speedup
+over prior work on large graphs.
+
+00:02:40.610 --> 00:02:44.161
+Moccasin represents the schedule with retention intervals.
+
+00:02:44.241 --> 00:02:45.851
+For each node in the graph,
+
+00:02:45.931 --> 00:02:49.669
+the method allows up to a small constant number of
+intervals,
+
+00:02:49.749 --> 00:02:53.801
+each specified by an integer start event and an
+integer end event,
+
+00:02:53.881 --> 00:02:59.184
+indicating when that node's output tensor is
+computed and how long it stays in memory.
+
+00:02:59.264 --> 00:03:03.065
+A Boolean flag marks whether each interval is
+actually active,
+
+00:03:03.145 --> 00:03:06.633
+so a node need not be recomputed a fixed number of times.
+
+00:03:06.713 --> 00:03:09.325
+The objective minimizes the total duration,
+
+00:03:09.405 --> 00:03:14.896
+a weighted sum over the active compute events where
+the weights are node execution times.
+
+00:03:14.976 --> 00:03:20.342
+The memory budget is enforced through the
+constraint programming cumulative constraint,
+
+00:03:20.422 --> 00:03:24.661
+treating tensor sizes as resource demands and the
+budget as capacity,
+
+00:03:24.741 --> 00:03:31.046
+while data dependencies between predecessors and
+successors are handled with the reservoir constraint.
+
+00:03:31.126 --> 00:03:34.802
+The whole model is handed to Google OR-Tools'
+CP-SAT solver.
+
+00:03:34.882 --> 00:03:38.871
+Because each node uses only a small constant number
+of intervals,
+
+00:03:38.951 --> 00:03:43.190
+the total number of integer variables stays linear
+in the graph size.
+
+00:03:43.570 --> 00:03:46.438
+The evaluation uses a range of compute graphs.
+
+00:03:46.518 --> 00:03:50.989
+The main scaling study is on four random layered
+graphs, G1 through G4,
+
+00:03:51.069 --> 00:03:56.437
+whose sizes grow from one hundred nodes and a
+couple hundred edges up to one thousand
+
+00:03:56.517 --> 00:03:58.744
+nodes and nearly six thousand edges.
+
+00:03:58.824 --> 00:04:04.512
+There is also a real-world compute graph with four
+hundred forty-two nodes and over twelve
+
+00:04:04.592 --> 00:04:07.525
+hundred edges used for the headline comparison.
+
+00:04:07.605 --> 00:04:13.165
+For every graph the memory budget is set to eighty
+and ninety percent of the peak memory
+
+00:04:13.245 --> 00:04:16.369
+of the initial schedule without rematerialization,
+
+00:04:16.449 --> 00:04:19.830
+so the solver is forced to actually recompute tensors.
+
+00:04:19.910 --> 00:04:25.150
+All experiments run on a sixteen-core workstation
+with thirty-two gigabytes of RAM.
+
+00:04:25.530 --> 00:04:29.379
+Across the board,
+
+00:04:29.459 --> 00:04:33.308
+Moccasin solves the rematerialization problem
+substantially faster than Checkmate,
+
+00:04:33.388 --> 00:04:37.237
+up to an order of magnitude on the larger graphs.
+
+00:04:37.317 --> 00:04:41.166
+On the smallest graph the two are comparable, but
+the gap widens quickly.
+
+00:04:41.246 --> 00:04:45.095
+For the graph with two hundred fifty nodes and a
+tight memory budget,
+
+00:04:45.175 --> 00:04:49.025
+Checkmate fails to find any feasible solution
+within thirty minutes,
+
+00:04:49.105 --> 00:04:52.954
+and at the loosest budget it takes ten minutes,
+while Moccasin finishes in seconds.
+
+00:04:53.034 --> 00:04:56.883
+For the five hundred and one thousand node graphs,
+Checkmate times out entirely,
+
+00:04:56.963 --> 00:05:00.812
+finding no solution even given three hours, and it
+exits with an out-of-memory error,
+
+00:05:00.892 --> 00:05:04.741
+whereas Moccasin converges to a good,
+
+00:05:04.821 --> 00:05:08.670
+low-duration-increase solution in under an hour.
+
+00:05:09.050 --> 00:05:11.127
+The paper studies a few key knobs.
+
+00:05:11.207 --> 00:05:16.647
+The most important is the optional
+topological-ordering restriction: enforcing an input
+
+00:05:16.727 --> 00:05:21.976
+ordering enlarges the variable domain slightly but
+shrinks the overall search space,
+
+00:05:22.056 --> 00:05:26.227
+reducing solve time compared to the fully
+unrestricted formulation.
+
+00:05:26.307 --> 00:05:31.493
+The per-node interval budget, called C, is fixed at
+two throughout the experiments,
+
+00:05:31.573 --> 00:05:34.285
+which the authors note in every plot legend.
+
+00:05:34.365 --> 00:05:39.995
+The complexity table makes the contrast concrete:
+Checkmate's Boolean variable count grows
+
+00:05:40.075 --> 00:05:43.738
+quadratically in the number of nodes plus a
+node-edge term,
+
+00:05:43.818 --> 00:05:49.004
+while Moccasin's integer variable count grows only
+linearly in the number of nodes,
+
+00:05:49.084 --> 00:05:50.590
+with a constant factor C.
+
+00:05:50.970 --> 00:05:54.812
+A few numbers capture the impact.
+
+00:05:54.892 --> 00:05:58.734
+Moccasin needs only a linear number of integer
+variables in the graph size,
+
+00:05:58.814 --> 00:06:02.656
+compared to a quadratic number of Boolean variables
+for the prior state of the art.
+
+00:06:02.736 --> 00:06:06.578
+This translates into solve times up to an order of
+magnitude, roughly ten times,
+
+00:06:06.658 --> 00:06:10.500
+faster on large graphs.
+
+00:06:10.580 --> 00:06:14.422
+And the solutions it finds are high quality: the
+total duration increase from rematerialization
+
+00:06:14.502 --> 00:06:18.344
+stays consistently below five percent.
+
+00:06:18.424 --> 00:06:22.266
+Crucially,
+
+00:06:22.346 --> 00:06:26.188
+Moccasin scales to graphs with up to one thousand
+nodes and nearly six thousand edges,
+
+00:06:26.268 --> 00:06:30.110
+a regime where the competing method simply times
+out or runs out of memory.
+
+00:06:30.490 --> 00:06:35.883
+The lasting takeaway is that the right problem
+formulation changes what is tractable.
+
+00:06:35.963 --> 00:06:42.580
+By expressing rematerialization decisions as a
+small set of retention intervals in a constraint program,
+
+00:06:42.660 --> 00:06:48.568
+Moccasin reduces the number of discrete variables
+from quadratic to linear in the graph size.
+
+00:06:48.648 --> 00:06:54.621
+That single change lets it scale to compute graphs
+far larger than prior methods could handle,
+
+00:06:54.701 --> 00:07:00.802
+solving them up to ten times faster while keeping
+the added runtime overhead under five percent.
+
+00:07:00.882 --> 00:07:04.215
+And because the output is just an execution sequence,
+
+00:07:04.295 --> 00:07:07.370
+the resulting schedule can run on any CPU or GPU.

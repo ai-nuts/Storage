@@ -1,0 +1,502 @@
+1
+00:00:00,500 --> 00:00:02,578
+<font color="#FFFFFF">This paper, presented at ICML 2024,</font>
+
+2
+00:00:02,658 --> 00:00:08,249
+<font color="#FFFFFF">tackles one-shot imitation learning when the world
+changes after the demonstration is given.</font>
+
+3
+00:00:08,329 --> 00:00:11,763
+<font color="#FFFFFF">The authors introduce Deep Demonstration Tracing, or DDT,</font>
+
+4
+00:00:11,843 --> 00:00:17,681
+<font color="#FFFFFF">a method that lets an imitator agent adaptively
+trace the right states in a single demonstration</font>
+
+5
+00:00:17,761 --> 00:00:20,331
+<font color="#FFFFFF">while recovering from unforeseen obstacles.</font>
+
+6
+00:00:20,411 --> 00:00:26,866
+<font color="#FFFFFF">DDT combines a purpose-built demonstration
+transformer with a meta-reinforcement-learning training scheme,</font>
+
+7
+00:00:26,946 --> 00:00:34,140
+<font color="#FFFFFF">and it outperforms prior one-shot imitation methods
+across a new maze navigation benchmark and several robotics tasks.</font>
+
+8
+00:00:34,520 --> 00:00:40,721
+<font color="#FFFFFF">One-shot imitation learning asks an agent to carry
+out a task after seeing just a single demonstration.</font>
+
+9
+00:00:40,801 --> 00:00:44,319
+<font color="#FFFFFF">It works well when deployment looks like the
+demonstration,</font>
+
+10
+00:00:44,399 --> 00:00:46,148
+<font color="#FFFFFF">but the real world is dynamic.</font>
+
+11
+00:00:46,228 --> 00:00:50,478
+<font color="#FFFFFF">After the demonstration is provided, an unexpected
+obstacle can appear,</font>
+
+12
+00:00:50,558 --> 00:00:52,246
+<font color="#FFFFFF">or a grasped object can slip,</font>
+
+13
+00:00:52,326 --> 00:00:56,271
+<font color="#FFFFFF">pushing the agent into situations the demonstration
+never covered.</font>
+
+14
+00:00:56,351 --> 00:01:00,417
+<font color="#FFFFFF">Traditional one-shot imitation methods excel in
+stationary settings,</font>
+
+15
+00:01:00,497 --> 00:01:05,478
+<font color="#FFFFFF">yet their ability to handle these unforeseen
+changes is limited and rarely studied.</font>
+
+16
+00:01:05,558 --> 00:01:12,430
+<font color="#FFFFFF">This paper focuses squarely on that gap: making
+one-shot imitation robust when the environment changes at runtime.</font>
+
+17
+00:01:12,810 --> 00:01:17,714
+<font color="#FFFFFF">Consider a person following a demonstrated route
+from a start point to a destination.</font>
+
+18
+00:01:17,794 --> 00:01:21,585
+<font color="#FFFFFF">Partway there, a truck is parked where the
+demonstration had none.</font>
+
+19
+00:01:21,665 --> 00:01:26,862
+<font color="#FFFFFF">A human simply detours around it and then rejoins
+the original path at a convenient point.</font>
+
+20
+00:01:26,942 --> 00:01:31,261
+<font color="#FFFFFF">This is easy for people but hard for current
+one-shot imitation techniques,</font>
+
+21
+00:01:31,341 --> 00:01:38,180
+<font color="#FFFFFF">which mostly clone demonstrated actions and have no
+principled way to behave in states the demonstration never showed.</font>
+
+22
+00:01:38,260 --> 00:01:42,578
+<font color="#FFFFFF">The authors distill this human behavior into a
+three-stage decision process</font>
+
+23
+00:01:42,658 --> 00:01:45,393
+<font color="#FFFFFF">identify which demonstrated states are relevant,</font>
+
+24
+00:01:45,473 --> 00:01:49,791
+<font color="#FFFFFF">analyze how the expert behaved there, and trace
+back onto the demonstration</font>
+
+25
+00:01:49,871 --> 00:01:52,430
+<font color="#FFFFFF">and use it as the blueprint for their method.</font>
+
+26
+00:01:52,810 --> 00:01:56,260
+<font color="#FFFFFF">The paper makes three main contributions.</font>
+
+27
+00:01:56,340 --> 00:01:59,790
+<font color="#FFFFFF">First,</font>
+
+28
+00:01:59,870 --> 00:02:03,320
+<font color="#FFFFFF">it advances the one-shot imitation setting by
+deliberately introducing a large difference</font>
+
+29
+00:02:03,400 --> 00:02:06,850
+<font color="#FFFFFF">between when the demonstration is collected and
+when the policy is deployed,</font>
+
+30
+00:02:06,930 --> 00:02:10,380
+<font color="#FFFFFF">and it supports this with a new
+demonstration-navigation benchmark.</font>
+
+31
+00:02:10,460 --> 00:02:13,910
+<font color="#FFFFFF">Second,</font>
+
+32
+00:02:13,990 --> 00:02:17,440
+<font color="#FFFFFF">it proposes a demonstration transformer
+architecture that encourages the policy to trace the demonstration,</font>
+
+33
+00:02:17,520 --> 00:02:20,970
+<font color="#FFFFFF">following the three-stage identify, analyze, and
+trace process.</font>
+
+34
+00:02:21,050 --> 00:02:24,500
+<font color="#FFFFFF">Third,</font>
+
+35
+00:02:24,580 --> 00:02:28,030
+<font color="#FFFFFF">it addresses one-shot imitation as a context-based
+meta-reinforcement-learning problem,</font>
+
+36
+00:02:28,110 --> 00:02:31,560
+<font color="#FFFFFF">and it theoretically analyzes the conditions under
+which an imitator can succeed from just a single trajectory.</font>
+
+37
+00:02:31,940 --> 00:02:35,322
+<font color="#FFFFFF">DDT has two core pieces.</font>
+
+38
+00:02:35,402 --> 00:02:38,784
+<font color="#FFFFFF">The first is the demonstration transformer,</font>
+
+39
+00:02:38,864 --> 00:02:42,246
+<font color="#FFFFFF">which turns the human three-stage process into a network.</font>
+
+40
+00:02:42,326 --> 00:02:45,707
+<font color="#FFFFFF">The agent's current state becomes a query;</font>
+
+41
+00:02:45,787 --> 00:02:49,169
+<font color="#FFFFFF">the demonstration's states and actions become keys
+and values.</font>
+
+42
+00:02:49,249 --> 00:02:52,631
+<font color="#FFFFFF">An attention-weighting module identifies which
+demonstrated states to follow,</font>
+
+43
+00:02:52,711 --> 00:02:56,093
+<font color="#FFFFFF">a point-wise multiplication analyzes how the expert
+behaved in those states,</font>
+
+44
+00:02:56,173 --> 00:02:59,555
+<font color="#FFFFFF">and the result is combined with the current state
+to produce the action</font>
+
+45
+00:02:59,635 --> 00:03:03,017
+<font color="#FFFFFF">the tracing step.</font>
+
+46
+00:03:03,097 --> 00:03:06,479
+<font color="#FFFFFF">The second piece is training.</font>
+
+47
+00:03:06,559 --> 00:03:09,941
+<font color="#FFFFFF">Rather than behavior cloning,</font>
+
+48
+00:03:10,021 --> 00:03:13,402
+<font color="#FFFFFF">DDT frames one-shot imitation as context-based
+meta-reinforcement learning,</font>
+
+49
+00:03:13,482 --> 00:03:16,864
+<font color="#FFFFFF">so the agent can explore and learn to act in states
+the demonstration never visited.</font>
+
+50
+00:03:16,944 --> 00:03:20,326
+<font color="#FFFFFF">It uses a carefully designed stationary OSIL reward
+that rewards following the demonstration</font>
+
+51
+00:03:20,406 --> 00:03:23,788
+<font color="#FFFFFF">while a large-weighted task reward keeps the focus
+on actually completing the task,</font>
+
+52
+00:03:23,868 --> 00:03:27,250
+<font color="#FFFFFF">and it optimizes everything with Soft Actor-Critic.</font>
+
+53
+00:03:27,630 --> 00:03:31,209
+<font color="#FFFFFF">To test one-shot imitation under unforeseen change,</font>
+
+54
+00:03:31,289 --> 00:03:34,867
+<font color="#FFFFFF">the authors created a benchmark called Valet
+Parking Assist in Maze, or VPAM,</font>
+
+55
+00:03:34,947 --> 00:03:38,526
+<font color="#FFFFFF">inspired by real-world valet parking.</font>
+
+56
+00:03:38,606 --> 00:03:42,184
+<font color="#FFFFFF">In it, a point agent must reach a target in a maze
+it has never seen globally,</font>
+
+57
+00:03:42,264 --> 00:03:45,843
+<font color="#FFFFFF">relying only on short local views computed from
+eight rays.</font>
+
+58
+00:03:45,923 --> 00:03:49,501
+<font color="#FFFFFF">Crucially,</font>
+
+59
+00:03:49,581 --> 00:03:53,160
+<font color="#FFFFFF">rectangular obstacles are randomly placed on the
+path and often did not exist in the demonstration,</font>
+
+60
+00:03:53,240 --> 00:03:56,819
+<font color="#FFFFFF">so the agent cannot blindly replay demonstrated actions.</font>
+
+61
+00:03:56,899 --> 00:04:00,477
+<font color="#FFFFFF">Eight task variants change whether it is a single
+map or many,</font>
+
+62
+00:04:00,557 --> 00:04:04,136
+<font color="#FFFFFF">whether obstacles are present, and whether
+coordinates are given.</font>
+
+63
+00:04:04,216 --> 00:04:07,794
+<font color="#FFFFFF">Beyond VPAM,</font>
+
+64
+00:04:07,874 --> 00:04:11,453
+<font color="#FFFFFF">DDT is also applied to robotics benchmarks
+including Meta-World with added disturbances,</font>
+
+65
+00:04:11,533 --> 00:04:15,111
+<font color="#FFFFFF">Gymnasium's Reacher and Pusher, and a MuJoCo
+manipulation task involving grasping,</font>
+
+66
+00:04:15,191 --> 00:04:18,770
+<font color="#FFFFFF">stacking, and cluttered environments.</font>
+
+67
+00:04:19,150 --> 00:04:22,577
+<font color="#FFFFFF">Across the VPAM benchmark, DDT consistently leads.</font>
+
+68
+00:04:22,657 --> 00:04:26,364
+<font color="#FFFFFF">On the training set it reaches a success rate of 0.86,</font>
+
+69
+00:04:26,444 --> 00:04:31,695
+<font color="#FFFFFF">on non-obstacle test settings 0.84, and even under
+unforeseen obstacles 0.73</font>
+
+70
+00:04:31,775 --> 00:04:33,519
+<font color="#FFFFFF">well above every baseline,</font>
+
+71
+00:04:33,599 --> 00:04:40,813
+<font color="#FFFFFF">with the closest competitor DCRL at 0.57 under
+obstacles and behavior-cloning Trans4OSIL as low as 0.16.</font>
+
+72
+00:04:40,893 --> 00:04:47,196
+<font color="#FFFFFF">Just as important is stability: moving from the
+training condition to unforeseen obstacles,</font>
+
+73
+00:04:47,276 --> 00:04:52,667
+<font color="#FFFFFF">DDT's performance drops only fifteen percent, while
+the baselines drop twenty,</font>
+
+74
+00:04:52,747 --> 00:04:56,104
+<font color="#FFFFFF">thirty-three, and fifty-two percent respectively.</font>
+
+75
+00:04:56,184 --> 00:05:00,031
+<font color="#FFFFFF">On the Meta-World robotics tasks with added disturbance,</font>
+
+76
+00:05:00,111 --> 00:05:05,222
+<font color="#FFFFFF">DDT still succeeds sixty-one percent of the time on
+unseen demonstrations,</font>
+
+77
+00:05:05,302 --> 00:05:09,781
+<font color="#FFFFFF">whereas the strongest baseline manages only about
+twelve percent.</font>
+
+78
+00:05:09,861 --> 00:05:14,410
+<font color="#FFFFFF">The meta-RL mechanism is what gives DDT this
+robustness to change.</font>
+
+79
+00:05:14,790 --> 00:05:18,658
+<font color="#FFFFFF">To confirm each component matters, the authors
+ablate two pieces.</font>
+
+80
+00:05:18,738 --> 00:05:23,153
+<font color="#FFFFFF">First, they swap the demonstration transformer for
+a standard transformer;</font>
+
+81
+00:05:23,233 --> 00:05:26,798
+<font color="#FFFFFF">this significantly reduces the final asymptotic
+performance,</font>
+
+82
+00:05:26,878 --> 00:05:31,354
+<font color="#FFFFFF">underscoring that the tailored architecture, not
+just attention in general,</font>
+
+83
+00:05:31,434 --> 00:05:33,723
+<font color="#FFFFFF">is what drives DDT's imitation ability.</font>
+
+84
+00:05:33,803 --> 00:05:38,643
+<font color="#FFFFFF">Second, they remove the OSIL reward and train with
+only the sparse ending reward;</font>
+
+85
+00:05:38,723 --> 00:05:42,895
+<font color="#FFFFFF">this sharply slows learning, because the OSIL
+reward supplies a dense,</font>
+
+86
+00:05:42,975 --> 00:05:48,362
+<font color="#FFFFFF">informative signal that lets the agent closely
+follow the demonstration early in training.</font>
+
+87
+00:05:48,442 --> 00:05:55,530
+<font color="#FFFFFF">Together the ablations show the demonstration
+transformer and the OSIL reward each play a distinct and necessary role.</font>
+
+88
+00:05:55,910 --> 00:05:59,472
+<font color="#FFFFFF">A few numbers capture the impact.</font>
+
+89
+00:05:59,552 --> 00:06:03,114
+<font color="#FFFFFF">Under unforeseen obstacles, DDT succeeds
+seventy-three percent of the time,</font>
+
+90
+00:06:03,194 --> 00:06:06,755
+<font color="#FFFFFF">compared to fifty-seven percent for the best baseline.</font>
+
+91
+00:06:06,835 --> 00:06:10,397
+<font color="#FFFFFF">Its performance degradation from training to
+unforeseen obstacles is just fifteen percent,</font>
+
+92
+00:06:10,477 --> 00:06:14,039
+<font color="#FFFFFF">at least five percent better retention than any
+competitor.</font>
+
+93
+00:06:14,119 --> 00:06:17,681
+<font color="#FFFFFF">On disturbed Meta-World tasks it reaches sixty-one
+percent on unseen demonstrations while</font>
+
+94
+00:06:17,761 --> 00:06:21,323
+<font color="#FFFFFF">baselines stay at or below twelve percent.</font>
+
+95
+00:06:21,403 --> 00:06:24,965
+<font color="#FFFFFF">And when scaled up,</font>
+
+96
+00:06:25,045 --> 00:06:28,606
+<font color="#FFFFFF">DDT improves roughly two-fold with more model
+parameters and shows a clean log-linear</font>
+
+97
+00:06:28,686 --> 00:06:32,248
+<font color="#FFFFFF">gain with both data volume and model size,</font>
+
+98
+00:06:32,328 --> 00:06:35,890
+<font color="#FFFFFF">hinting at its promise as a backbone for generalist
+agents.</font>
+
+99
+00:06:36,270 --> 00:06:37,543
+<font color="#FFFFFF">The takeaway is simple.</font>
+
+100
+00:06:37,623 --> 00:06:42,192
+<font color="#FFFFFF">Instead of blindly replaying a demonstration, an
+agent should learn to trace it</font>
+
+101
+00:06:42,272 --> 00:06:45,841
+<font color="#FFFFFF">figuring out which demonstrated states are relevant
+right now,</font>
+
+102
+00:06:45,921 --> 00:06:48,195
+<font color="#FFFFFF">understanding what the expert did there,</font>
+
+103
+00:06:48,275 --> 00:06:50,960
+<font color="#FFFFFF">and steering back onto the path after a detour.</font>
+
+104
+00:06:51,040 --> 00:06:56,139
+<font color="#FFFFFF">Deep Demonstration Tracing operationalizes this
+with a demonstration transformer trained</font>
+
+105
+00:06:56,219 --> 00:06:57,963
+<font color="#FFFFFF">by meta-reinforcement learning,</font>
+
+106
+00:06:58,043 --> 00:07:03,671
+<font color="#FFFFFF">and the result is one-shot imitation that stays
+robust when the environment changes unexpectedly,</font>
+
+107
+00:07:03,751 --> 00:07:05,790
+<font color="#FFFFFF">a regime where earlier methods fail.</font>
+
+108
+00:07:05,870 --> 00:07:10,792
+<font color="#FFFFFF">Its clean scaling behavior even suggests it could
+become a building block for larger,</font>
+
+109
+00:07:10,872 --> 00:07:12,910
+<font color="#FFFFFF">more general decision-making agents.</font>

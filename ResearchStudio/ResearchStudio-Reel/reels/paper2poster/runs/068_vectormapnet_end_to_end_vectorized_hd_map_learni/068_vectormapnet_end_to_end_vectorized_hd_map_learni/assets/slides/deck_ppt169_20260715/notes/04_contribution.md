@@ -1,0 +1,1 @@
+VectorMapNet makes three contributions. It predicts vectorized outputs directly from sensors, with no rasterization or post-processing. It uses the polyline as one flexible primitive for points, lines, curves, and polygons, whose vertex order encodes direction. And it adapts detection transformers to locate elements in bird's-eye view.

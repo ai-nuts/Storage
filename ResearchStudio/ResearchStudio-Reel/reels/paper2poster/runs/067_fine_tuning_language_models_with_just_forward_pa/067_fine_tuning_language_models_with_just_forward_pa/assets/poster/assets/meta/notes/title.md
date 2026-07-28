@@ -1,0 +1,3 @@
+# Title
+
+Fine-tuning large language models normally requires backpropagation, which stores activations and gradients and consumes enormous memory. This paper, from Princeton University, introduces MeZO, a memory-efficient zeroth-order optimizer that fine-tunes language models using only forward passes. MeZO adapts the classical zeroth-order SGD method to run in place, so training costs the same memory as inference. On a single 80-gigabyte A100 GPU, MeZO can train a 30-billion-parameter model, where backpropagation with Adam fits only a 2.7-billion one. Across many tasks and model scales, MeZO matches fine-tuning performance with up to twelve times less memory.

@@ -1,0 +1,7 @@
+# Headline Numbers
+
+Core claim: - Iterations and samples scale as α^(−2/3); required context length scales as α⁻¹ (train) / α′⁻¹ (test). - Training touches only a (M₁−1)^(−1/2) fraction of all in-domain tasks yet generalizes to the rest. - Out-of-domain classification error falls below 0.01 once S₁ ≥ 1.
+
+Supporting detail: - Pruning the small-magnitude MLP neurons keeps error at O(ε + M₁^(−1/2)) (near-lossless); experimentally, magnitude-based pruning up to ~15% of W_O neurons does not hurt out-of-domain generalization. - Pruning large-magnitude neurons at rate R raises error to ≥ Ω(R + (α′M₁)⁻¹).
+
+Narration: A few numbers capture the paper's message. The training cost, both in iterations and in samples, scales as alpha to the minus two-thirds, and the required context length as one over alpha. The model needs to be trained on only a vanishing fraction, order one over the square root of the number of patterns, of all in-domain tasks, yet it generalizes to the rest. Out-of-domain error drops below one percent once the combination strength reaches one. And on pruning: removing the low-magnitude neurons keeps error at order epsilon plus one over the square root of M-one, essentially lossless, and in experiments magnitude-based pruning of up to about fifteen percent of the output-layer neurons leaves out-of-domain accuracy intact, whereas pruning the large-magnitude neurons degrades error at least linearly in the pruning rate.
