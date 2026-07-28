@@ -1,0 +1,1 @@
+Three of the four original claims hold: the model beats the variational-autoencoder baseline on every dynamical task, reaches near-perfect accuracy on trees, and its forward pass grows sub-quadratically. The fourth fails: backward passes were claimed to scale linearly, but the fitted exponent is clearly above one.

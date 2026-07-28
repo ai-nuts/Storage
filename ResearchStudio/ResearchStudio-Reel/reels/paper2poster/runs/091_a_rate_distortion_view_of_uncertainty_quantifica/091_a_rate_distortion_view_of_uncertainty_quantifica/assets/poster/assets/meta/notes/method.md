@@ -1,0 +1,7 @@
+# Method
+
+Core claim: DAB builds on the Information Bottleneck but replaces its rate term with an achievable rate from a Rate Distortion Finite Cardinality problem: it learns a codebook of k centroid distributions (codes) that quantize the encoders of all training points. A new example's uncertainty is its expected statistical distance (KL divergence) from the codebook, given by one forward pass.
+
+Supporting detail: Training alternates between gradient updates of the encoder/decoder and analytic updates of the soft assignments and centroids, mirroring a Blahut-Arimoto style scheme. DAB is analogous to a Gaussian Process, with the codebook playing the role of inducing points and statistical distance replacing Euclidean distance.
+
+Narration: DAB builds on the Information Bottleneck framework but replaces its rate term with an achievable rate borrowed from rate-distortion theory with finite cardinality. Concretely, the model learns a codebook of centroid distributions that quantize the encoders of all training points. The uncertainty of a new example is simply its expected statistical distance, here the Kullback-Leibler divergence, from that codebook. Training alternates between gradient updates of the encoder and decoder and cheap analytic updates of the soft assignments and centroids, echoing the classic Blahut-Arimoto algorithm. The result is closely analogous to a Gaussian Process, where the codebook plays the role of inducing points and statistical distance replaces Euclidean distance.

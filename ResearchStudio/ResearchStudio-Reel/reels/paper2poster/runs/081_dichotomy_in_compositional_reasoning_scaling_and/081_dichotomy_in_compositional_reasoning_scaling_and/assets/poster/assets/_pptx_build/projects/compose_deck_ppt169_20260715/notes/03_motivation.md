@@ -1,0 +1,1 @@
+Models are increasingly asked to chain skills for real reasoning, yet we lack a clear account of when chaining works. Prior studies are narrow with little theory, and the failure reproduces easily on frontier models.

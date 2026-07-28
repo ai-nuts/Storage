@@ -1,0 +1,1 @@
+The numbers tell it. Simple capitalization and swap reach about ninety percent for Llama. The compose-by-step version falls to twenty percent or lower, with no gain from scaling. Milder separable cases climb to forty-four and sixty-six percent.

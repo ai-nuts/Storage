@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: SPEED sets new state-of-the-art on all three standard benchmarks and all six ImageNet subsets. At IPC 1 storage it reaches 40.0% on CIFAR100 (+6.0%) and 26.9% on TinyImageNet (+10.9%) over the prior best, and averages +11.2% across ImageNet subsets versus the previous state-of-the-art at the same budget.
+
+Supporting detail: Its IPC 1 results rival prior methods' IPC 10 results using only ~10% of their parameters; on ImageSquawk IPC 10 it hits 71.8% (+15.0%). SPEED also holds the best accuracy at every step of continual learning and is far more robust to corruption, nearly doubling ResNet18 accuracy under every corruption type.
+
+Narration: The headline is a clean sweep. Across all three standard benchmarks and all six high-resolution ImageNet subsets, SPEED sets new state-of-the-art. At the tightest one-image-per-class budget, it reaches forty percent on CIFAR-100, a six point gain, and twenty-six point nine percent on TinyImageNet, a ten point nine gain over the previous best. On the ImageNet subsets it averages an eleven point two percent improvement at the same budget. Strikingly, its one-image-per-class results match what prior methods needed ten images per class to achieve, using only about ten percent of their storage. It also stays best at every step of continual learning, and under corruption on ResNet18 it nearly doubles the accuracy of prior methods.

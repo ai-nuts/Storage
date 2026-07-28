@@ -1,0 +1,1 @@
+A graph edit network attaches to a standard GNN backbone and predicts a script of edits: insert, delete or replace a node, or insert or delete an edge. Applying them in sequence maps the current graph to the next. Training uses reference mappings from graph-edit-distance approximators, with two loss variants, hinge and cross-entropy, and edge-filtering for citation graphs.

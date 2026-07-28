@@ -1,0 +1,7 @@
+# Method
+
+Core claim: The authors use a Bayes optimal classifier g on Contextual Stochastic Block Models as a reference for the true semantics, then define an over-robust example at node v as one where f and g agree on the clean graph, the perturbation changes g's prediction (semantics), yet f keeps its original prediction.
+
+Supporting detail: Over-robustness is quantified as the fraction of conventional adversarial robustness that cannot be explained by semantics-preserving robustness; label propagation (label spreading) is combined with GNN soft-predictions to inject the training graph's label structure into inference.
+
+Narration: The key idea is to introduce a trusted reference classifier that knows the true semantics. On Contextual Stochastic Block Models the authors can derive the Bayes optimal classifier, which chooses the most likely class given the data, and use it as the ground-truth reference g. An over-robust example is then a perturbed graph where the model and the reference agree on the clean input, the perturbation flips the reference (so the semantics genuinely changed), but the model stubbornly keeps its old prediction. They measure over-robustness as one minus the ratio of semantics-aware robustness to conventional robustness, so a value of zero-point-two means twenty percent of the measured robustness lies beyond semantic change. Finally, they combine graph neural networks with label propagation, feeding the training graph's known labels into the inference process to reduce this unwanted over-robustness.

@@ -1,0 +1,1 @@
+Benchmarks span three families: dynamical graph systems like Edit Cycles, Degree Rules and Game of Life; tree systems for Boolean-formula simplification and Peano addition; and, for scaling, an arXiv citation network of about twenty-seven thousand papers yielding fifteen hundred sub-graphs up to nearly three thousand nodes.

@@ -1,0 +1,1690 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T09:15:58Z",
+  "title": "Sparse Parameterization for Epitomic Dataset Distillation",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Modern deep learning runs on enormous datasets, and those datasets are expensive to store, move, and train on. Dataset distillation offers an appealing shortcut: compress a large dataset into a tiny synthetic one that still trains a model to competitive accuracy. The catch is that the synthetic budget is minuscule, sometimes as little as a single image per class, so every parameter spent on the synthetic set has to earn its place."
+            },
+            {
+              "type": "paragraph",
+              "text": "Most work in this area has poured its energy into the matching objective, the loss that aligns the synthetic data with the real data through gradients, feature distributions, or training trajectories. How the synthetic images are actually parameterized has been an afterthought: each image is usually optimized on its own, as an independent block of pixels or features. That naive scheme quietly ignores a fact every computer-vision researcher knows well, which is that natural images are full of repetition. Textures recur, patches echo one another, and similar structures show up across many images and many classes."
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED, presented at NeurIPS 2023, takes that redundancy seriously. Short for Sparse Parameterization for Epitomic Dataset Distillation, it reframes the synthetic dataset as a shared dictionary plus a set of sparse per-image codes, borrowing the classical idea behind dictionary learning and sparse coding. Concretely, it introduces three pieces: Spatial-Agnostic Epitomic Tokens (SAETs), a small pool of tokens reused by every image patch regardless of where it sits; Sparse Coding Matrices (SCMs), which select only the most significant tokens for each image; and a Feature-Recurrent Network (FReeNet) that reassembles those tokens back into full, high-resolution synthetic images, patch by patch."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The framework at a glance"
+            },
+            {
+              "type": "paragraph",
+              "text": "The overview below traces one synthetic image through the pipeline. On the left, a shared bank of SAETs, drawn as H parallel heads, is combined with a per-image SCM in which only a handful of entries are non-zero. Those sparse combinations feed FReeNet, a compact transformer-style block with Add & Norm and MLP layers that is applied recurrently, reusing the same shared tokens and codes at every step to build hierarchical image patches. The synthesized images on the right are what the matching objective actually compares against real data."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "Figure 1. The SPEED framework: a shared dictionary of Spatial-Agnostic Epitomic Tokens and sparse per-image coding matrices are recurrently assembled by FReeNet into synthetic images, which are then matched against real data.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://proceedings.neurips.cc/paper_files/paper/2023/hash/9e8889198d16fb79926e71adbe38cae4-Abstract-Conference.html    Code: https://github.com/MIV-XJTU/SPEED"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: redundancy hides in the parameterization"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see why parameterization matters, picture the tightest setting, one image per class on CIFAR100. A naive method spends the entire budget drawing exactly one synthetic image per class, pixel by pixel, with no sharing between classes. Yet many of those pixels encode the same edges, textures, and color blobs over and over. A few recent methods began to exploit relationships between synthetic images, but none removed redundancy in a spatially-agnostic way, meaning independent of where a feature happens to appear. SPEED's bet is that if you spend almost none of the budget on a shared dictionary and per-image sparse codes, and let a small network reconstruct the rest, you can fit far more informative content into the same storage."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How SPEED parameterizes a dataset"
+            },
+            {
+              "type": "paragraph",
+              "text": "Each synthetic image is written as a function of two things: the shared dictionary of SAETs, which is the same for the entire dataset, and a per-image Sparse Coding Matrix that selects and weights a few tokens. Multi-head sparse coding combines them, so a single image is expressed as a sparse mixture of shared building blocks rather than an isolated grid of pixels. Because the dictionary and the network are shared across every image, the only thing that has to be stored per image is its short list of non-zero code entries."
+            },
+            {
+              "type": "paragraph",
+              "text": "FReeNet then turns those sparse features into an image. It is a compact, transformer-style network, an MLP with residual connections and layer normalization, applied recurrently over R blocks so that a small set of weights can synthesize hierarchical, high-resolution patches. Training minimizes the chosen matching objective together with an L1 sparsity penalty that pushes most code entries toward zero. After training, each coding matrix is pruned to its top-k non-zero entries and stored in a sparse format, so the coding cost scales with only those few entries rather than the full dictionary."
+            },
+            {
+              "type": "paragraph",
+              "text": "The payoff is concrete. Under the same CIFAR100 budget that a naive method spends on a single image per class, SPEED's shared dictionary and sparse codes leave room for roughly 11 synthetic images per class. More images, all drawn from a shared and reusable representation, mean more of the information a downstream model needs, packed into the same tiny budget."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: state-of-the-art at a fraction of the storage"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED is evaluated on three standard benchmarks, CIFAR10 and CIFAR100 at 32×32 and TinyImageNet at 64×64, plus six high-resolution ImageNet subsets at 128×128 (ImageNette, ImageWoof, ImageFruit, ImageMeow, ImageSquawk, and ImageYellow), each with 10 classes. Everything is compared under equal storage budgets, counted in parameters per class at IPC 1, 10, and 50. Across all of these, SPEED sets a new state-of-the-art (SOTA)."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. SPEED's headline results under tight storage budgets.",
+              "headers": [
+                "Benchmark",
+                "Setting",
+                "SPEED Acc.",
+                "vs. prior SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet subsets (avg)",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are worth reading twice. At the tightest IPC 1 budget, SPEED reaches 40.0% on CIFAR100, a +6.0% gain over the previous best, and 26.9% on TinyImageNet, a +10.9% gain. Across the ImageNet subsets it improves on the prior SOTA by +11.2% on average at the same budget. Most striking, its IPC 1 results rival what earlier methods achieved at IPC 10 while using only about 10% of their parameters. On ImageSquawk at IPC 10 it reaches 71.8%, a +15.0% jump. The synthetic data also transfers to unseen backbones, reaching 51.5% on a ViT for CIFAR10 IPC 10, a +3.6% gain."
+            },
+            {
+              "type": "paragraph",
+              "text": "Those gains hold up under stress. In a continual-learning setup, where classes arrive in steps, SPEED stays on top at every stage. The plots below track test accuracy as the number of classes grows, on both a ConvNet and a ResNet18; the SPEED curve sits above DM, HaBa, and IDC throughout."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "Figure 2. Continual learning: SPEED keeps the best test accuracy at every step, on both ConvNet and ResNet18.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Robustness tells the same story. Training a model on SPEED's synthetic data and testing under corruption, across 14 corruption types at 5 severity levels, the authors compare accuracy. On ResNet18, SPEED nearly doubles the accuracy of prior methods under essentially every corruption."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "Figure 3. Robustness across many corruption types: SPEED (orange) clearly outperforms TM and HaBa on both ConvNet and ResNet18.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Sparsification is nearly free"
+            },
+            {
+              "type": "paragraph",
+              "text": "A natural worry is that aggressively pruning the codes would gut the synthetic data. SPEED's ablations say otherwise. Pruning each coding matrix to just k=48 non-zero entries, about 307K parameters, meets the storage budget while keeping ConvNet accuracy at 73.5%, barely below the 74.0% of the full 15M-parameter model. Push the pruning too far, down to k=12 and about 106K parameters, and accuracy does collapse, to 57.8%, so a moderate k is the sweet spot, and it even helps generalization to unseen architectures. On the network side, 2 recurrent blocks (R=2) and 3 heads (H=3) work best."
+            },
+            {
+              "type": "paragraph",
+              "text": "The qualitative check is the most convincing. The grids below show synthetic ImageSquawk samples before and after sparsification down to 0.3% density. The two are nearly indistinguishable: pruning removes almost all of the stored values while preserving the global semantics of each image."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure4.png",
+              "caption": "Figure 4. ImageSquawk synthetic samples before and after feature sparsification to 0.3% density: the pruned images look almost identical to the originals.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page8_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why it matters"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting message of SPEED is that how you parameterize a synthetic dataset deserves as much attention as the matching objective you optimize. By treating the dataset as a shared dictionary of spatial-agnostic tokens, sparse per-image codes, and a small recurrent network that reassembles them, SPEED removes the spatial redundancy that naive methods leave on the table. The result is state-of-the-art distillation at a fraction of the storage, with the biggest gains on high-resolution data, plus better transfer to unseen architectures and stronger robustness to corruption. It is also a drop-in idea: because it is a parameterization rather than a new objective, it plugs into gradient, distribution, and trajectory matching alike. Sparse, shared representation, in other words, is a general lever for making tiny synthetic datasets do far more."
+            },
+            {
+              "type": "paragraph",
+              "text": "None of this comes entirely for free. SPEED adds a small dictionary and a recurrent synthesizer to the distillation loop, and the sparsity level k has to be chosen with some care, since pruning too aggressively does cost accuracy. But the framework asks for no change to the matching objective, and it leaves the door open to richer dictionaries, learned sparsity patterns, and larger-scale datasets. For anyone building compact synthetic data, the practical lesson is simple: treat parameterization as a first-class design choice, not an afterthought to bolt on after the objective is already set."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "现代深度学习依赖庞大的数据集，而这些数据集的存储、传输和训练成本都很高。数据集蒸馏（dataset distillation）提供了一条诱人的捷径：把一个大数据集压缩成一个极小的合成数据集，却仍能训练出精度可用的模型。难点在于合成预算极其有限，有时每个类别只允许 1 张图像，因此花在合成集上的每一个参数都必须物尽其用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一领域的多数工作都把精力投入到匹配目标（matching objective）上，也就是通过梯度、特征分布或训练轨迹让合成数据对齐真实数据的那个损失函数。至于合成图像本身如何被参数化，则一直被当作次要问题：通常每张图像都被独立优化，作为一块互不相关的像素或特征。这种朴素方案悄悄忽略了一个计算机视觉研究者都熟知的事实：自然图像充满冗余。纹理会重复，图像块彼此呼应，相似的结构在许多图像、许多类别之间反复出现。"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED（发表于 NeurIPS 2023）认真对待了这种冗余。它的全称是 Sparse Parameterization for Epitomic Dataset Distillation，核心思想是把合成数据集重新表述为「一个共享字典加上一组稀疏的逐图像编码」，借用了字典学习与稀疏编码的经典思路。具体来说，它引入三个部件：Spatial-Agnostic Epitomic Tokens（SAETs，空间无关的表征性 token），一小组被所有图像块反复复用、与位置无关的 token；Sparse Coding Matrices（SCMs，稀疏编码矩阵），为每张图像只挑选最重要的少数 token；以及 Feature-Recurrent Network（FReeNet，特征循环网络），把这些 token 重新组装成完整的高分辨率合成图像。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "框架总览"
+            },
+            {
+              "type": "paragraph",
+              "text": "下图追踪了一张合成图像在整条流水线中的旅程。左侧，一组共享的 SAETs（画成 H 个并行的 head）与逐图像的 SCM 相结合，其中只有少数元素非零。这些稀疏组合被送入 FReeNet：一个紧凑的、类 Transformer 的模块，包含 Add & Norm 与 MLP 层，并被循环地重复应用，在每一步都复用同一套共享 token 和编码，从而构建出层次化的图像块。右侧合成出的图像，正是匹配目标真正拿来与真实数据比较的对象。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "图1 SPEED 框架：共享的 Spatial-Agnostic Epitomic Tokens 字典与稀疏的逐图像编码矩阵，经由 FReeNet 循环组装成合成图像，再与真实数据进行匹配。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://proceedings.neurips.cc/paper_files/paper/2023/hash/9e8889198d16fb79926e71adbe38cae4-Abstract-Conference.html    代码：https://github.com/MIV-XJTU/SPEED"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题：冗余藏在参数化里"
+            },
+            {
+              "type": "paragraph",
+              "text": "要理解参数化为何重要，不妨设想最极限的设置：在 CIFAR100 上每个类别只有 1 张图像。朴素方法会把全部预算用来逐像素地画出每类恰好 1 张合成图像，类别之间毫无共享。然而这些像素中有大量都在反复编码相同的边缘、纹理和色块。近来已有少数方法开始利用合成图像之间的关系，但没有一个以「空间无关」的方式去除冗余，也就是不管某个特征出现在哪里。SPEED 的赌注是：如果几乎不把预算花在共享字典和逐图像稀疏编码上，再让一个小网络去重建其余部分，就能在相同存储里塞进多得多的有用信息。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "SPEED 如何参数化一个数据集"
+            },
+            {
+              "type": "paragraph",
+              "text": "每张合成图像都被写成两样东西的函数：对整个数据集都相同的共享 SAETs 字典，以及一个逐图像的 Sparse Coding Matrix，用来挑选并加权少数 token。多头稀疏编码把二者结合，于是一张图像被表示为共享基元的稀疏混合，而不再是一格孤立的像素。由于字典和网络在所有图像间共享，每张图像真正需要存储的，只是它那份很短的非零编码列表。"
+            },
+            {
+              "type": "paragraph",
+              "text": "随后 FReeNet 把这些稀疏特征变成图像。它是一个紧凑的、类 Transformer 的网络（带残差连接和层归一化的 MLP），在 R 个块上循环应用，让一小组权重就能合成出层次化的高分辨率图像块。训练时最小化所选的匹配目标，并加上一个 L1 稀疏惩罚，把大多数编码元素推向零。训练结束后，每个编码矩阵都被剪枝到其 top-k 个非零元素，并以稀疏格式存储，于是编码开销只随这少数几个元素增长，而不随整个字典增长。"
+            },
+            {
+              "type": "paragraph",
+              "text": "收益是实打实的。在同一个 CIFAR100 预算下，朴素方法只够画出每类 1 张图像，而 SPEED 凭借共享字典和稀疏编码，能为每个类别留出约 11 张合成图像的空间。更多图像，又都来自一个可复用的共享表征，就意味着下游模型能学到更多有用信息。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：用零头的存储刷新 SOTA"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 在三个标准基准上评测：32×32 的 CIFAR10 与 CIFAR100、64×64 的 TinyImageNet，外加六个 128×128 的高分辨率 ImageNet 子集（ImageNette、ImageWoof、ImageFruit、ImageMeow、ImageSquawk、ImageYellow），每个子集包含 10 个类别。所有比较都在相同存储预算下进行，以每类参数量计，覆盖 IPC 1、10、50。在所有这些设置上，SPEED 都刷新了 state-of-the-art（SOTA）。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 SPEED 在极限存储预算下的核心结果。",
+              "headers": [
+                "基准",
+                "设置",
+                "SPEED 准确率",
+                "相比先前 SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet 子集（平均）",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "这些数字值得读两遍。在最紧的 IPC 1 预算下，SPEED 在 CIFAR100 上达到 40.0%，比先前最好成绩高出 +6.0%；在 TinyImageNet 上达到 26.9%，高出 +10.9%。在 ImageNet 子集上，它在相同预算下相比先前 SOTA 平均提升 +11.2%。最惊人的是，它的 IPC 1 结果足以媲美以往方法在 IPC 10 时的表现，而只用了大约 10% 的参数。在 ImageSquawk 的 IPC 10 上，它达到 71.8%，跃升 +15.0%。这些合成数据还能迁移到未见过的骨干网络：在 CIFAR10 IPC 10 上用 ViT 达到 51.5%，提升 +3.6%。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这些收益在压力测试下依然成立。在类别分步到来的持续学习（continual learning）设置中，SPEED 在每一个阶段都保持领先。下图追踪了测试准确率随类别数量增长的变化，分别在 ConvNet 和 ResNet18 上；SPEED 的曲线自始至终都高于 DM、HaBa 和 IDC。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "图2 持续学习：无论在 ConvNet 还是 ResNet18 上，SPEED 在每一步都保持最佳测试准确率。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "鲁棒性讲了同样的故事。作者用 SPEED 的合成数据训练模型，再在损坏（corruption）下测试，横跨 14 种损坏类型、5 个严重程度比较准确率。在 ResNet18 上，SPEED 在几乎每一种损坏下都把先前方法的准确率提高了近一倍。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "图3 面对多种损坏类型的鲁棒性：无论在 ConvNet 还是 ResNet18 上，SPEED（橙色）都明显优于 TM 与 HaBa。",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "稀疏化几乎是免费的"
+            },
+            {
+              "type": "paragraph",
+              "text": "一个自然的担忧是：如此激进地剪枝编码，会不会毁掉合成数据？SPEED 的消融实验给出了否定的答案。把每个编码矩阵剪枝到只剩 k=48 个非零元素（约 307K 参数），既满足存储预算，又让 ConvNet 的准确率保持在 73.5%，仅略低于完整的 15M 参数模型的 74.0%。若把剪枝推得太狠，降到 k=12、约 106K 参数，准确率确实会崩到 57.8%，所以适中的 k 才是甜点，而且它还能改善对未见架构的泛化。在网络一侧，2 个循环块（R=2）和 3 个注意力头（H=3）表现最好。"
+            },
+            {
+              "type": "paragraph",
+              "text": "最有说服力的是定性检查。下图展示了把稀疏度压到 0.3% 密度前后的 ImageSquawk 合成样本。两者几乎无法区分：剪枝去掉了几乎所有存储的数值，却保留了每张图像的全局语义。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure4.png",
+              "caption": "图4 ImageSquawk 在特征稀疏化到 0.3% 密度前后的合成样本：剪枝后的图像与原图几乎一模一样。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page8_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么这很重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 留下的长久启示是：如何参数化一个合成数据集，值得与你所优化的匹配目标同等的重视。通过把数据集看作「一个空间无关的共享 token 字典、稀疏的逐图像编码，以及一个负责重新组装的小型循环网络」，SPEED 去除了朴素方法白白浪费的空间冗余。结果就是用零头的存储实现了 state-of-the-art 的蒸馏，在高分辨率数据上收益最大，同时对未见架构有更好的迁移、对损坏有更强的鲁棒性。它还是一个即插即用的想法：因为它是一种参数化而非新的目标，所以能同样地嵌入梯度匹配、分布匹配和轨迹匹配。换句话说，稀疏而共享的表征，是让微小合成数据集发挥更大价值的一个通用杠杆。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一切并非完全免费。SPEED 在蒸馏流程中额外引入了一个小字典和一个循环合成器，而稀疏程度 k 也需要谨慎选择，因为剪枝过猛确实会牺牲精度。但这一框架不要求改动匹配目标，也为更丰富的字典、可学习的稀疏模式和更大规模的数据集留下了空间。对任何要构建紧凑合成数据的人来说，实践启示很简单：把参数化当作第一等的设计决策，而不是在确定目标之后才顺手填上的细节。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 385.45,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 385.45,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 54.9,
+          "relative_start": 0.5,
+          "relative_end": 54.9,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 54.9,
+          "global_end": 97.99,
+          "relative_start": 54.9,
+          "relative_end": 97.99,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 97.99,
+          "global_end": 145.16,
+          "relative_start": 97.99,
+          "relative_end": 145.16,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 145.16,
+          "global_end": 193.1,
+          "relative_start": 145.16,
+          "relative_end": 193.1,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 193.1,
+          "global_end": 245.29,
+          "relative_start": 193.1,
+          "relative_end": 245.29,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 245.29,
+          "global_end": 294.53,
+          "relative_start": 245.29,
+          "relative_end": 294.53,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 294.53,
+          "global_end": 342.85,
+          "relative_start": 294.53,
+          "relative_end": 342.85,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 342.85,
+          "global_end": 385.39,
+          "relative_start": 342.85,
+          "relative_end": 385.39,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "Figure 1. The SPEED framework: a shared dictionary of Spatial-Agnostic Epitomic Tokens and sparse per-image coding matrices are recurrently assembled by FReeNet into synthetic images, which are then matched against real data.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: redundancy hides in the parameterization"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see why parameterization matters, picture the tightest setting, one image per class on CIFAR100. A naive method spends the entire budget drawing exactly one synthetic image per class, pixel by pixel, with no sharing between classes. Yet many of those pixels encode the same edges, textures, and color blobs over and over. A few recent methods began to exploit relationships between synthetic images, but none removed redundancy in a spatially-agnostic way, meaning independent of where a feature happens to appear. SPEED's bet is that if you spend almost none of the budget on a shared dictionary and per-image sparse codes, and let a small network reconstruct the rest, you can fit far more informative content into the same storage."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "图1 SPEED 框架：共享的 Spatial-Agnostic Epitomic Tokens 字典与稀疏的逐图像编码矩阵，经由 FReeNet 循环组装成合成图像，再与真实数据进行匹配。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "现代深度学习依赖庞大的数据集，而这些数据集的存储、传输和训练成本都很高。数据集蒸馏（dataset distillation）提供了一条诱人的捷径：把一个大数据集压缩成一个极小的合成数据集，却仍能训练出精度可用的模型。难点在于合成预算极其有限，有时每个类别只允许 1 张图像，因此花在合成集上的每一个参数都必须物尽其用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一领域的多数工作都把精力投入到匹配目标（matching objective）上，也就是通过梯度、特征分布或训练轨迹让合成数据对齐真实数据的那个损失函数。至于合成图像本身如何被参数化，则一直被当作次要问题：通常每张图像都被独立优化，作为一块互不相关的像素或特征。这种朴素方案悄悄忽略了一个计算机视觉研究者都熟知的事实：自然图像充满冗余。纹理会重复，图像块彼此呼应，相似的结构在许多图像、许多类别之间反复出现。"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED（发表于 NeurIPS 2023）认真对待了这种冗余。它的全称是 Sparse Parameterization for Epitomic Dataset Distillation，核心思想是把合成数据集重新表述为「一个共享字典加上一组稀疏的逐图像编码」，借用了字典学习与稀疏编码的经典思路。具体来说，它引入三个部件：Spatial-Agnostic Epitomic Tokens（SAETs，空间无关的表征性 token），一小组被所有图像块反复复用、与位置无关的 token；Sparse Coding Matrices（SCMs，稀疏编码矩阵），为每张图像只挑选最重要的少数 token；以及 Feature-Recurrent Network（FReeNet，特征循环网络），把这些 token 重新组装成完整的高分辨率合成图像。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 54.9,
+        "end": 97.99,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 43.09,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.99,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 54.9,
+          "global_end": 97.99,
+          "relative_start": 0.0,
+          "relative_end": 43.09,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The framework at a glance"
+            },
+            {
+              "type": "paragraph",
+              "text": "The overview below traces one synthetic image through the pipeline. On the left, a shared bank of SAETs, drawn as H parallel heads, is combined with a per-image SCM in which only a handful of entries are non-zero. Those sparse combinations feed FReeNet, a compact transformer-style block with Add & Norm and MLP layers that is applied recurrently, reusing the same shared tokens and codes at every step to build hierarchical image patches. The synthesized images on the right are what the matching objective actually compares against real data."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "Figure 1. The SPEED framework: a shared dictionary of Spatial-Agnostic Epitomic Tokens and sparse per-image coding matrices are recurrently assembled by FReeNet into synthetic images, which are then matched against real data.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://proceedings.neurips.cc/paper_files/paper/2023/hash/9e8889198d16fb79926e71adbe38cae4-Abstract-Conference.html    Code: https://github.com/MIV-XJTU/SPEED"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "框架总览"
+            },
+            {
+              "type": "paragraph",
+              "text": "下图追踪了一张合成图像在整条流水线中的旅程。左侧，一组共享的 SAETs（画成 H 个并行的 head）与逐图像的 SCM 相结合，其中只有少数元素非零。这些稀疏组合被送入 FReeNet：一个紧凑的、类 Transformer 的模块，包含 Add & Norm 与 MLP 层，并被循环地重复应用，在每一步都复用同一套共享 token 和编码，从而构建出层次化的图像块。右侧合成出的图像，正是匹配目标真正拿来与真实数据比较的对象。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "图1 SPEED 框架：共享的 Spatial-Agnostic Epitomic Tokens 字典与稀疏的逐图像编码矩阵，经由 FReeNet 循环组装成合成图像，再与真实数据进行匹配。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://proceedings.neurips.cc/paper_files/paper/2023/hash/9e8889198d16fb79926e71adbe38cae4-Abstract-Conference.html    代码：https://github.com/MIV-XJTU/SPEED"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 97.99,
+        "end": 145.16,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 47.17,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.07,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 97.99,
+          "global_end": 145.16,
+          "relative_start": 0.0,
+          "relative_end": 47.17,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "Figure 1. The SPEED framework: a shared dictionary of Spatial-Agnostic Epitomic Tokens and sparse per-image coding matrices are recurrently assembled by FReeNet into synthetic images, which are then matched against real data.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: redundancy hides in the parameterization"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see why parameterization matters, picture the tightest setting, one image per class on CIFAR100. A naive method spends the entire budget drawing exactly one synthetic image per class, pixel by pixel, with no sharing between classes. Yet many of those pixels encode the same edges, textures, and color blobs over and over. A few recent methods began to exploit relationships between synthetic images, but none removed redundancy in a spatially-agnostic way, meaning independent of where a feature happens to appear. SPEED's bet is that if you spend almost none of the budget on a shared dictionary and per-image sparse codes, and let a small network reconstruct the rest, you can fit far more informative content into the same storage."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "图1 SPEED 框架：共享的 Spatial-Agnostic Epitomic Tokens 字典与稀疏的逐图像编码矩阵，经由 FReeNet 循环组装成合成图像，再与真实数据进行匹配。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "现代深度学习依赖庞大的数据集，而这些数据集的存储、传输和训练成本都很高。数据集蒸馏（dataset distillation）提供了一条诱人的捷径：把一个大数据集压缩成一个极小的合成数据集，却仍能训练出精度可用的模型。难点在于合成预算极其有限，有时每个类别只允许 1 张图像，因此花在合成集上的每一个参数都必须物尽其用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一领域的多数工作都把精力投入到匹配目标（matching objective）上，也就是通过梯度、特征分布或训练轨迹让合成数据对齐真实数据的那个损失函数。至于合成图像本身如何被参数化，则一直被当作次要问题：通常每张图像都被独立优化，作为一块互不相关的像素或特征。这种朴素方案悄悄忽略了一个计算机视觉研究者都熟知的事实：自然图像充满冗余。纹理会重复，图像块彼此呼应，相似的结构在许多图像、许多类别之间反复出现。"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED（发表于 NeurIPS 2023）认真对待了这种冗余。它的全称是 Sparse Parameterization for Epitomic Dataset Distillation，核心思想是把合成数据集重新表述为「一个共享字典加上一组稀疏的逐图像编码」，借用了字典学习与稀疏编码的经典思路。具体来说，它引入三个部件：Spatial-Agnostic Epitomic Tokens（SAETs，空间无关的表征性 token），一小组被所有图像块反复复用、与位置无关的 token；Sparse Coding Matrices（SCMs，稀疏编码矩阵），为每张图像只挑选最重要的少数 token；以及 Feature-Recurrent Network（FReeNet，特征循环网络），把这些 token 重新组装成完整的高分辨率合成图像。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 145.16,
+        "end": 193.1,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 47.94,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.84,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 145.16,
+          "global_end": 193.1,
+          "relative_start": 0.0,
+          "relative_end": 47.94,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "Figure 2. Continual learning: SPEED keeps the best test accuracy at every step, on both ConvNet and ResNet18.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: redundancy hides in the parameterization"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see why parameterization matters, picture the tightest setting, one image per class on CIFAR100. A naive method spends the entire budget drawing exactly one synthetic image per class, pixel by pixel, with no sharing between classes. Yet many of those pixels encode the same edges, textures, and color blobs over and over. A few recent methods began to exploit relationships between synthetic images, but none removed redundancy in a spatially-agnostic way, meaning independent of where a feature happens to appear. SPEED's bet is that if you spend almost none of the budget on a shared dictionary and per-image sparse codes, and let a small network reconstruct the rest, you can fit far more informative content into the same storage."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How SPEED parameterizes a dataset"
+            },
+            {
+              "type": "paragraph",
+              "text": "Each synthetic image is written as a function of two things: the shared dictionary of SAETs, which is the same for the entire dataset, and a per-image Sparse Coding Matrix that selects and weights a few tokens. Multi-head sparse coding combines them, so a single image is expressed as a sparse mixture of shared building blocks rather than an isolated grid of pixels. Because the dictionary and the network are shared across every image, the only thing that has to be stored per image is its short list of non-zero code entries."
+            },
+            {
+              "type": "paragraph",
+              "text": "FReeNet then turns those sparse features into an image. It is a compact, transformer-style network, an MLP with residual connections and layer normalization, applied recurrently over R blocks so that a small set of weights can synthesize hierarchical, high-resolution patches. Training minimizes the chosen matching objective together with an L1 sparsity penalty that pushes most code entries toward zero. After training, each coding matrix is pruned to its top-k non-zero entries and stored in a sparse format, so the coding cost scales with only those few entries rather than the full dictionary."
+            },
+            {
+              "type": "paragraph",
+              "text": "The payoff is concrete. Under the same CIFAR100 budget that a naive method spends on a single image per class, SPEED's shared dictionary and sparse codes leave room for roughly 11 synthetic images per class. More images, all drawn from a shared and reusable representation, mean more of the information a downstream model needs, packed into the same tiny budget."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "图2 持续学习：无论在 ConvNet 还是 ResNet18 上，SPEED 在每一步都保持最佳测试准确率。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题：冗余藏在参数化里"
+            },
+            {
+              "type": "paragraph",
+              "text": "要理解参数化为何重要，不妨设想最极限的设置：在 CIFAR100 上每个类别只有 1 张图像。朴素方法会把全部预算用来逐像素地画出每类恰好 1 张合成图像，类别之间毫无共享。然而这些像素中有大量都在反复编码相同的边缘、纹理和色块。近来已有少数方法开始利用合成图像之间的关系，但没有一个以「空间无关」的方式去除冗余，也就是不管某个特征出现在哪里。SPEED 的赌注是：如果几乎不把预算花在共享字典和逐图像稀疏编码上，再让一个小网络去重建其余部分，就能在相同存储里塞进多得多的有用信息。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "SPEED 如何参数化一个数据集"
+            },
+            {
+              "type": "paragraph",
+              "text": "每张合成图像都被写成两样东西的函数：对整个数据集都相同的共享 SAETs 字典，以及一个逐图像的 Sparse Coding Matrix，用来挑选并加权少数 token。多头稀疏编码把二者结合，于是一张图像被表示为共享基元的稀疏混合，而不再是一格孤立的像素。由于字典和网络在所有图像间共享，每张图像真正需要存储的，只是它那份很短的非零编码列表。"
+            },
+            {
+              "type": "paragraph",
+              "text": "随后 FReeNet 把这些稀疏特征变成图像。它是一个紧凑的、类 Transformer 的网络（带残差连接和层归一化的 MLP），在 R 个块上循环应用，让一小组权重就能合成出层次化的高分辨率图像块。训练时最小化所选的匹配目标，并加上一个 L1 稀疏惩罚，把大多数编码元素推向零。训练结束后，每个编码矩阵都被剪枝到其 top-k 个非零元素，并以稀疏格式存储，于是编码开销只随这少数几个元素增长，而不随整个字典增长。"
+            },
+            {
+              "type": "paragraph",
+              "text": "收益是实打实的。在同一个 CIFAR100 预算下，朴素方法只够画出每类 1 张图像，而 SPEED 凭借共享字典和稀疏编码，能为每个类别留出约 11 张合成图像的空间。更多图像，又都来自一个可复用的共享表征，就意味着下游模型能学到更多有用信息。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 145.16,
+        "end": 193.1,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 47.94,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.84,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 145.16,
+          "global_end": 193.1,
+          "relative_start": 0.0,
+          "relative_end": 47.94,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "key-result",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "Figure 2. Continual learning: SPEED keeps the best test accuracy at every step, on both ConvNet and ResNet18.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Modern deep learning runs on enormous datasets, and those datasets are expensive to store, move, and train on. Dataset distillation offers an appealing shortcut: compress a large dataset into a tiny synthetic one that still trains a model to competitive accuracy. The catch is that the synthetic budget is minuscule, sometimes as little as a single image per class, so every parameter spent on the synthetic set has to earn its place."
+            },
+            {
+              "type": "paragraph",
+              "text": "Most work in this area has poured its energy into the matching objective, the loss that aligns the synthetic data with the real data through gradients, feature distributions, or training trajectories. How the synthetic images are actually parameterized has been an afterthought: each image is usually optimized on its own, as an independent block of pixels or features. That naive scheme quietly ignores a fact every computer-vision researcher knows well, which is that natural images are full of repetition. Textures recur, patches echo one another, and similar structures show up across many images and many classes."
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED, presented at NeurIPS 2023, takes that redundancy seriously. Short for Sparse Parameterization for Epitomic Dataset Distillation, it reframes the synthetic dataset as a shared dictionary plus a set of sparse per-image codes, borrowing the classical idea behind dictionary learning and sparse coding. Concretely, it introduces three pieces: Spatial-Agnostic Epitomic Tokens (SAETs), a small pool of tokens reused by every image patch regardless of where it sits; Sparse Coding Matrices (SCMs), which select only the most significant tokens for each image; and a Feature-Recurrent Network (FReeNet) that reassembles those tokens back into full, high-resolution synthetic images, patch by patch."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "图2 持续学习：无论在 ConvNet 还是 ResNet18 上，SPEED 在每一步都保持最佳测试准确率。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "现代深度学习依赖庞大的数据集，而这些数据集的存储、传输和训练成本都很高。数据集蒸馏（dataset distillation）提供了一条诱人的捷径：把一个大数据集压缩成一个极小的合成数据集，却仍能训练出精度可用的模型。难点在于合成预算极其有限，有时每个类别只允许 1 张图像，因此花在合成集上的每一个参数都必须物尽其用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一领域的多数工作都把精力投入到匹配目标（matching objective）上，也就是通过梯度、特征分布或训练轨迹让合成数据对齐真实数据的那个损失函数。至于合成图像本身如何被参数化，则一直被当作次要问题：通常每张图像都被独立优化，作为一块互不相关的像素或特征。这种朴素方案悄悄忽略了一个计算机视觉研究者都熟知的事实：自然图像充满冗余。纹理会重复，图像块彼此呼应，相似的结构在许多图像、许多类别之间反复出现。"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED（发表于 NeurIPS 2023）认真对待了这种冗余。它的全称是 Sparse Parameterization for Epitomic Dataset Distillation，核心思想是把合成数据集重新表述为「一个共享字典加上一组稀疏的逐图像编码」，借用了字典学习与稀疏编码的经典思路。具体来说，它引入三个部件：Spatial-Agnostic Epitomic Tokens（SAETs，空间无关的表征性 token），一小组被所有图像块反复复用、与位置无关的 token；Sparse Coding Matrices（SCMs，稀疏编码矩阵），为每张图像只挑选最重要的少数 token；以及 Feature-Recurrent Network（FReeNet，特征循环网络），把这些 token 重新组装成完整的高分辨率合成图像。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 193.1,
+        "end": 245.29,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 52.19,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 53.09,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 193.1,
+          "global_end": 245.29,
+          "relative_start": 0.0,
+          "relative_end": 52.19,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "ablation-study",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: state-of-the-art at a fraction of the storage"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED is evaluated on three standard benchmarks, CIFAR10 and CIFAR100 at 32×32 and TinyImageNet at 64×64, plus six high-resolution ImageNet subsets at 128×128 (ImageNette, ImageWoof, ImageFruit, ImageMeow, ImageSquawk, and ImageYellow), each with 10 classes. Everything is compared under equal storage budgets, counted in parameters per class at IPC 1, 10, and 50. Across all of these, SPEED sets a new state-of-the-art (SOTA)."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. SPEED's headline results under tight storage budgets.",
+              "headers": [
+                "Benchmark",
+                "Setting",
+                "SPEED Acc.",
+                "vs. prior SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet subsets (avg)",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are worth reading twice. At the tightest IPC 1 budget, SPEED reaches 40.0% on CIFAR100, a +6.0% gain over the previous best, and 26.9% on TinyImageNet, a +10.9% gain. Across the ImageNet subsets it improves on the prior SOTA by +11.2% on average at the same budget. Most striking, its IPC 1 results rival what earlier methods achieved at IPC 10 while using only about 10% of their parameters. On ImageSquawk at IPC 10 it reaches 71.8%, a +15.0% jump. The synthetic data also transfers to unseen backbones, reaching 51.5% on a ViT for CIFAR10 IPC 10, a +3.6% gain."
+            },
+            {
+              "type": "paragraph",
+              "text": "Those gains hold up under stress. In a continual-learning setup, where classes arrive in steps, SPEED stays on top at every stage. The plots below track test accuracy as the number of classes grows, on both a ConvNet and a ResNet18; the SPEED curve sits above DM, HaBa, and IDC throughout."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "Figure 2. Continual learning: SPEED keeps the best test accuracy at every step, on both ConvNet and ResNet18.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Robustness tells the same story. Training a model on SPEED's synthetic data and testing under corruption, across 14 corruption types at 5 severity levels, the authors compare accuracy. On ResNet18, SPEED nearly doubles the accuracy of prior methods under essentially every corruption."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "Figure 3. Robustness across many corruption types: SPEED (orange) clearly outperforms TM and HaBa on both ConvNet and ResNet18.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why it matters"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting message of SPEED is that how you parameterize a synthetic dataset deserves as much attention as the matching objective you optimize. By treating the dataset as a shared dictionary of spatial-agnostic tokens, sparse per-image codes, and a small recurrent network that reassembles them, SPEED removes the spatial redundancy that naive methods leave on the table. The result is state-of-the-art distillation at a fraction of the storage, with the biggest gains on high-resolution data, plus better transfer to unseen architectures and stronger robustness to corruption. It is also a drop-in idea: because it is a parameterization rather than a new objective, it plugs into gradient, distribution, and trajectory matching alike. Sparse, shared representation, in other words, is a general lever for making tiny synthetic datasets do far more."
+            },
+            {
+              "type": "paragraph",
+              "text": "None of this comes entirely for free. SPEED adds a small dictionary and a recurrent synthesizer to the distillation loop, and the sparsity level k has to be chosen with some care, since pruning too aggressively does cost accuracy. But the framework asks for no change to the matching objective, and it leaves the door open to richer dictionaries, learned sparsity patterns, and larger-scale datasets. For anyone building compact synthetic data, the practical lesson is simple: treat parameterization as a first-class design choice, not an afterthought to bolt on after the objective is already set."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：用零头的存储刷新 SOTA"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 在三个标准基准上评测：32×32 的 CIFAR10 与 CIFAR100、64×64 的 TinyImageNet，外加六个 128×128 的高分辨率 ImageNet 子集（ImageNette、ImageWoof、ImageFruit、ImageMeow、ImageSquawk、ImageYellow），每个子集包含 10 个类别。所有比较都在相同存储预算下进行，以每类参数量计，覆盖 IPC 1、10、50。在所有这些设置上，SPEED 都刷新了 state-of-the-art（SOTA）。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 SPEED 在极限存储预算下的核心结果。",
+              "headers": [
+                "基准",
+                "设置",
+                "SPEED 准确率",
+                "相比先前 SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet 子集（平均）",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "这些数字值得读两遍。在最紧的 IPC 1 预算下，SPEED 在 CIFAR100 上达到 40.0%，比先前最好成绩高出 +6.0%；在 TinyImageNet 上达到 26.9%，高出 +10.9%。在 ImageNet 子集上，它在相同预算下相比先前 SOTA 平均提升 +11.2%。最惊人的是，它的 IPC 1 结果足以媲美以往方法在 IPC 10 时的表现，而只用了大约 10% 的参数。在 ImageSquawk 的 IPC 10 上，它达到 71.8%，跃升 +15.0%。这些合成数据还能迁移到未见过的骨干网络：在 CIFAR10 IPC 10 上用 ViT 达到 51.5%，提升 +3.6%。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这些收益在压力测试下依然成立。在类别分步到来的持续学习（continual learning）设置中，SPEED 在每一个阶段都保持领先。下图追踪了测试准确率随类别数量增长的变化，分别在 ConvNet 和 ResNet18 上；SPEED 的曲线自始至终都高于 DM、HaBa 和 IDC。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "图2 持续学习：无论在 ConvNet 还是 ResNet18 上，SPEED 在每一步都保持最佳测试准确率。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "鲁棒性讲了同样的故事。作者用 SPEED 的合成数据训练模型，再在损坏（corruption）下测试，横跨 14 种损坏类型、5 个严重程度比较准确率。在 ResNet18 上，SPEED 在几乎每一种损坏下都把先前方法的准确率提高了近一倍。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "图3 面对多种损坏类型的鲁棒性：无论在 ConvNet 还是 ResNet18 上，SPEED（橙色）都明显优于 TM 与 HaBa。",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么这很重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 留下的长久启示是：如何参数化一个合成数据集，值得与你所优化的匹配目标同等的重视。通过把数据集看作「一个空间无关的共享 token 字典、稀疏的逐图像编码，以及一个负责重新组装的小型循环网络」，SPEED 去除了朴素方法白白浪费的空间冗余。结果就是用零头的存储实现了 state-of-the-art 的蒸馏，在高分辨率数据上收益最大，同时对未见架构有更好的迁移、对损坏有更强的鲁棒性。它还是一个即插即用的想法：因为它是一种参数化而非新的目标，所以能同样地嵌入梯度匹配、分布匹配和轨迹匹配。换句话说，稀疏而共享的表征，是让微小合成数据集发挥更大价值的一个通用杠杆。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一切并非完全免费。SPEED 在蒸馏流程中额外引入了一个小字典和一个循环合成器，而稀疏程度 k 也需要谨慎选择，因为剪枝过猛确实会牺牲精度。但这一框架不要求改动匹配目标，也为更丰富的字典、可学习的稀疏模式和更大规模的数据集留下了空间。对任何要构建紧凑合成数据的人来说，实践启示很简单：把参数化当作第一等的设计决策，而不是在确定目标之后才顺手填上的细节。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 245.29,
+        "end": 294.53,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 49.24,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 50.14,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 245.29,
+          "global_end": 294.53,
+          "relative_start": 0.0,
+          "relative_end": 49.24,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "takeaway",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Sparsification is nearly free"
+            },
+            {
+              "type": "paragraph",
+              "text": "A natural worry is that aggressively pruning the codes would gut the synthetic data. SPEED's ablations say otherwise. Pruning each coding matrix to just k=48 non-zero entries, about 307K parameters, meets the storage budget while keeping ConvNet accuracy at 73.5%, barely below the 74.0% of the full 15M-parameter model. Push the pruning too far, down to k=12 and about 106K parameters, and accuracy does collapse, to 57.8%, so a moderate k is the sweet spot, and it even helps generalization to unseen architectures. On the network side, 2 recurrent blocks (R=2) and 3 heads (H=3) work best."
+            },
+            {
+              "type": "paragraph",
+              "text": "The qualitative check is the most convincing. The grids below show synthetic ImageSquawk samples before and after sparsification down to 0.3% density. The two are nearly indistinguishable: pruning removes almost all of the stored values while preserving the global semantics of each image."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure4.png",
+              "caption": "Figure 4. ImageSquawk synthetic samples before and after feature sparsification to 0.3% density: the pruned images look almost identical to the originals.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page8_figure4.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure4.png",
+              "caption": "图4 ImageSquawk 在特征稀疏化到 0.3% 密度前后的合成样本：剪枝后的图像与原图几乎一模一样。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page8_figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "现代深度学习依赖庞大的数据集，而这些数据集的存储、传输和训练成本都很高。数据集蒸馏（dataset distillation）提供了一条诱人的捷径：把一个大数据集压缩成一个极小的合成数据集，却仍能训练出精度可用的模型。难点在于合成预算极其有限，有时每个类别只允许 1 张图像，因此花在合成集上的每一个参数都必须物尽其用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一领域的多数工作都把精力投入到匹配目标（matching objective）上，也就是通过梯度、特征分布或训练轨迹让合成数据对齐真实数据的那个损失函数。至于合成图像本身如何被参数化，则一直被当作次要问题：通常每张图像都被独立优化，作为一块互不相关的像素或特征。这种朴素方案悄悄忽略了一个计算机视觉研究者都熟知的事实：自然图像充满冗余。纹理会重复，图像块彼此呼应，相似的结构在许多图像、许多类别之间反复出现。"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED（发表于 NeurIPS 2023）认真对待了这种冗余。它的全称是 Sparse Parameterization for Epitomic Dataset Distillation，核心思想是把合成数据集重新表述为「一个共享字典加上一组稀疏的逐图像编码」，借用了字典学习与稀疏编码的经典思路。具体来说，它引入三个部件：Spatial-Agnostic Epitomic Tokens（SAETs，空间无关的表征性 token），一小组被所有图像块反复复用、与位置无关的 token；Sparse Coding Matrices（SCMs，稀疏编码矩阵），为每张图像只挑选最重要的少数 token；以及 Feature-Recurrent Network（FReeNet，特征循环网络），把这些 token 重新组装成完整的高分辨率合成图像。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 294.53,
+        "end": 342.85,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 48.32,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 49.22,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 294.53,
+          "global_end": 342.85,
+          "relative_start": 0.0,
+          "relative_end": 48.32,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "ablation-study",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: state-of-the-art at a fraction of the storage"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED is evaluated on three standard benchmarks, CIFAR10 and CIFAR100 at 32×32 and TinyImageNet at 64×64, plus six high-resolution ImageNet subsets at 128×128 (ImageNette, ImageWoof, ImageFruit, ImageMeow, ImageSquawk, and ImageYellow), each with 10 classes. Everything is compared under equal storage budgets, counted in parameters per class at IPC 1, 10, and 50. Across all of these, SPEED sets a new state-of-the-art (SOTA)."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. SPEED's headline results under tight storage budgets.",
+              "headers": [
+                "Benchmark",
+                "Setting",
+                "SPEED Acc.",
+                "vs. prior SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet subsets (avg)",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline numbers are worth reading twice. At the tightest IPC 1 budget, SPEED reaches 40.0% on CIFAR100, a +6.0% gain over the previous best, and 26.9% on TinyImageNet, a +10.9% gain. Across the ImageNet subsets it improves on the prior SOTA by +11.2% on average at the same budget. Most striking, its IPC 1 results rival what earlier methods achieved at IPC 10 while using only about 10% of their parameters. On ImageSquawk at IPC 10 it reaches 71.8%, a +15.0% jump. The synthetic data also transfers to unseen backbones, reaching 51.5% on a ViT for CIFAR10 IPC 10, a +3.6% gain."
+            },
+            {
+              "type": "paragraph",
+              "text": "Those gains hold up under stress. In a continual-learning setup, where classes arrive in steps, SPEED stays on top at every stage. The plots below track test accuracy as the number of classes grows, on both a ConvNet and a ResNet18; the SPEED curve sits above DM, HaBa, and IDC throughout."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "Figure 2. Continual learning: SPEED keeps the best test accuracy at every step, on both ConvNet and ResNet18.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Robustness tells the same story. Training a model on SPEED's synthetic data and testing under corruption, across 14 corruption types at 5 severity levels, the authors compare accuracy. On ResNet18, SPEED nearly doubles the accuracy of prior methods under essentially every corruption."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "Figure 3. Robustness across many corruption types: SPEED (orange) clearly outperforms TM and HaBa on both ConvNet and ResNet18.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：用零头的存储刷新 SOTA"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 在三个标准基准上评测：32×32 的 CIFAR10 与 CIFAR100、64×64 的 TinyImageNet，外加六个 128×128 的高分辨率 ImageNet 子集（ImageNette、ImageWoof、ImageFruit、ImageMeow、ImageSquawk、ImageYellow），每个子集包含 10 个类别。所有比较都在相同存储预算下进行，以每类参数量计，覆盖 IPC 1、10、50。在所有这些设置上，SPEED 都刷新了 state-of-the-art（SOTA）。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 SPEED 在极限存储预算下的核心结果。",
+              "headers": [
+                "基准",
+                "设置",
+                "SPEED 准确率",
+                "相比先前 SOTA"
+              ],
+              "rows": [
+                [
+                  "CIFAR100",
+                  "IPC 1",
+                  "40.0%",
+                  "+6.0%"
+                ],
+                [
+                  "TinyImageNet",
+                  "IPC 1",
+                  "26.9%",
+                  "+10.9%"
+                ],
+                [
+                  "ImageNet 子集（平均）",
+                  "IPC 1",
+                  "—",
+                  "+11.2%"
+                ],
+                [
+                  "ImageSquawk",
+                  "IPC 10",
+                  "71.8%",
+                  "+15.0%"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "这些数字值得读两遍。在最紧的 IPC 1 预算下，SPEED 在 CIFAR100 上达到 40.0%，比先前最好成绩高出 +6.0%；在 TinyImageNet 上达到 26.9%，高出 +10.9%。在 ImageNet 子集上，它在相同预算下相比先前 SOTA 平均提升 +11.2%。最惊人的是，它的 IPC 1 结果足以媲美以往方法在 IPC 10 时的表现，而只用了大约 10% 的参数。在 ImageSquawk 的 IPC 10 上，它达到 71.8%，跃升 +15.0%。这些合成数据还能迁移到未见过的骨干网络：在 CIFAR10 IPC 10 上用 ViT 达到 51.5%，提升 +3.6%。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这些收益在压力测试下依然成立。在类别分步到来的持续学习（continual learning）设置中，SPEED 在每一个阶段都保持领先。下图追踪了测试准确率随类别数量增长的变化，分别在 ConvNet 和 ResNet18 上；SPEED 的曲线自始至终都高于 DM、HaBa 和 IDC。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_a.png",
+              "caption": "图2 持续学习：无论在 ConvNet 还是 ResNet18 上，SPEED 在每一步都保持最佳测试准确率。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/page7_figure2_a.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "鲁棒性讲了同样的故事。作者用 SPEED 的合成数据训练模型，再在损坏（corruption）下测试，横跨 14 种损坏类型、5 个严重程度比较准确率。在 ResNet18 上，SPEED 在几乎每一种损坏下都把先前方法的准确率提高了近一倍。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure2_b.png",
+              "caption": "图3 面对多种损坏类型的鲁棒性：无论在 ConvNet 还是 ResNet18 上，SPEED（橙色）都明显优于 TM 与 HaBa。",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/page7_figure2_b.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 245.29,
+        "end": 294.53,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 49.24,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 50.14,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 245.29,
+          "global_end": 294.53,
+          "relative_start": 0.0,
+          "relative_end": 49.24,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "takeaway",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "Figure 1. The SPEED framework: a shared dictionary of Spatial-Agnostic Epitomic Tokens and sparse per-image coding matrices are recurrently assembled by FReeNet into synthetic images, which are then matched against real data.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why it matters"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting message of SPEED is that how you parameterize a synthetic dataset deserves as much attention as the matching objective you optimize. By treating the dataset as a shared dictionary of spatial-agnostic tokens, sparse per-image codes, and a small recurrent network that reassembles them, SPEED removes the spatial redundancy that naive methods leave on the table. The result is state-of-the-art distillation at a fraction of the storage, with the biggest gains on high-resolution data, plus better transfer to unseen architectures and stronger robustness to corruption. It is also a drop-in idea: because it is a parameterization rather than a new objective, it plugs into gradient, distribution, and trajectory matching alike. Sparse, shared representation, in other words, is a general lever for making tiny synthetic datasets do far more."
+            },
+            {
+              "type": "paragraph",
+              "text": "None of this comes entirely for free. SPEED adds a small dictionary and a recurrent synthesizer to the distillation loop, and the sparsity level k has to be chosen with some care, since pruning too aggressively does cost accuracy. But the framework asks for no change to the matching objective, and it leaves the door open to richer dictionaries, learned sparsity patterns, and larger-scale datasets. For anyone building compact synthetic data, the practical lesson is simple: treat parameterization as a first-class design choice, not an afterthought to bolt on after the objective is already set."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page2_figure1.png",
+              "caption": "图1 SPEED 框架：共享的 Spatial-Agnostic Epitomic Tokens 字典与稀疏的逐图像编码矩阵，经由 FReeNet 循环组装成合成图像，再与真实数据进行匹配。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page2_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么这很重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "SPEED 留下的长久启示是：如何参数化一个合成数据集，值得与你所优化的匹配目标同等的重视。通过把数据集看作「一个空间无关的共享 token 字典、稀疏的逐图像编码，以及一个负责重新组装的小型循环网络」，SPEED 去除了朴素方法白白浪费的空间冗余。结果就是用零头的存储实现了 state-of-the-art 的蒸馏，在高分辨率数据上收益最大，同时对未见架构有更好的迁移、对损坏有更强的鲁棒性。它还是一个即插即用的想法：因为它是一种参数化而非新的目标，所以能同样地嵌入梯度匹配、分布匹配和轨迹匹配。换句话说，稀疏而共享的表征，是让微小合成数据集发挥更大价值的一个通用杠杆。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一切并非完全免费。SPEED 在蒸馏流程中额外引入了一个小字典和一个循环合成器，而稀疏程度 k 也需要谨慎选择，因为剪枝过猛确实会牺牲精度。但这一框架不要求改动匹配目标，也为更丰富的字典、可学习的稀疏模式和更大规模的数据集留下了空间。对任何要构建紧凑合成数据的人来说，实践启示很简单：把参数化当作第一等的设计决策，而不是在确定目标之后才顺手填上的细节。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Rethinking How We Store a Distilled Dataset: SPEED",
+            "subtitle": "NeurIPS 2023 · A sparse, shared parameterization for epitomic dataset distillation that sets state-of-the-art at a fraction of the storage"
+          },
+          "zh": {
+            "title": "重新思考蒸馏数据集的存储方式：SPEED",
+            "subtitle": "NeurIPS 2023 · 一种面向 epitomic 数据集蒸馏的稀疏共享参数化方法，用极小的存储代价刷新 SOTA"
+          }
+        }
+      },
+      "segment": {
+        "start": 342.85,
+        "end": 385.39,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 42.54,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.44,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 342.85,
+          "global_end": 385.39,
+          "relative_start": 0.0,
+          "relative_end": 42.54,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

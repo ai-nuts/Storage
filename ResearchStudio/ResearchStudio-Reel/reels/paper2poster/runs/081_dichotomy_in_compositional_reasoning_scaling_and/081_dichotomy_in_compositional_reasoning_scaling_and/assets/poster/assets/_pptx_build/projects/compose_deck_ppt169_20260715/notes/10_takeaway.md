@@ -1,0 +1,1 @@
+The takeaway: models combine two skills only when they act on separate parts of the input. When a task needs genuinely chained, multi-step reasoning, they fail, and more parameters won't help. Task structure predicts whether scaling helps.

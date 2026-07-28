@@ -1,0 +1,58 @@
+---
+title: PIXIU: A Large Language Model, Instruction Data and Evaluation Benchmark for Finance
+authors: Qianqian Xie¹, Weiguang Han¹, Xiao Zhang², Yanzhao Lai³, Min Peng¹, Alejandro Lopez-Lira⁴, Jimin Huang⁵
+institutes: ¹Wuhan University; ²Sun Yat-Sen University; ³Southwest Jiaotong University; ⁴University of Florida; ⁵ChanceFocus AMC
+venue: NeurIPS 2023
+paper_url: https://arxiv.org/abs/2306.05443
+code_url: https://github.com/chancefocus/PIXIU
+title_audio_script: This is PIXIU, a comprehensive open-source framework for financial artificial intelligence, published at NeurIPS 2023. Financial language is highly technical, yet before PIXIU there were no openly released financial large language models, no financial instruction tuning data, and no holistic evaluation benchmark. PIXIU fills all three gaps at once. It contributes FIT, the first multi-task, multi-modal financial instruction dataset with one hundred and thirty-six thousand samples; FinMA, the first openly released instruction-following financial large language model built by fine-tuning LLaMA; and FLARE, a standardized benchmark spanning financial natural language tasks and stock movement prediction. Together they let the community build, compare, and advance financial LLMs in the open.
+---
+
+## Problem
+**Necessary:** There are no publicly available financial large language models, financial instruction tuning datasets, or holistic evaluation benchmarks, which blocks open-source progress in financial AI.
+**Additional:** The one existing financial LLM, BloombergGPT (50B), is proprietary, is not instruction-tuned, and releases neither model nor data.
+**Audio script:** Financial technology has advanced rapidly with NLP, but the highly technical nature of financial text demands domain-specific models. Existing financial pre-trained models like finBERT and FLANG are small, below one billion parameters, limiting their generalization. The one large financial model, the fifty-billion-parameter BloombergGPT, is proprietary: neither its weights nor its training data are released, and it is not instruction-following. Critically, there are no open financial instruction datasets and no standardized benchmarks for comprehensively assessing financial LLMs. This leaves the research community without the resources needed to push financial AI forward in the open.
+
+## Motivation
+**Necessary:** Instruction tuning is critical for zero-shot ability on downstream financial tasks, and real-world finance needs prediction tasks such as stock movement that existing NLP-only benchmarks ignore.
+**Additional:** Prior benchmarks (FLUE, BBT-CFLEB) cover only financial NLP tasks and omit prediction tasks aligned with real trading scenarios.
+**Audio script:** Two gaps motivate this work. First, instruction tuning has proven essential for improving a model's zero-shot ability on downstream tasks, yet no financial instruction data exists to enable it. Second, existing financial benchmarks such as FLUE cover only natural language processing tasks. They ignore financial prediction tasks like stock movement prediction, which require exploiting both text and time-series data and are far more aligned with real-world financial scenarios. PIXIU is built to close both gaps with open resources, multi-task coverage, multi-modal data, and greater task diversity.
+
+## Contribution
+**Necessary:** PIXIU introduces FIT, the first multi-task multi-modal financial instruction dataset (136K samples, 5 tasks, 9 datasets); FinMA, the first openly released instruction-following financial LLM; and FLARE, the first benchmark spanning financial NLP and prediction tasks.
+**Additional:** The model, instruction data, benchmark datasets, and implementation are all open-sourced to encourage transparency and future research.
+**Audio script:** PIXIU makes four contributions. First, it introduces FIT, the first multi-task and multi-modal instruction tuning dataset for finance, covering five tasks and nine datasets with one hundred thirty-six thousand samples. Second, it introduces FLARE, the first evaluation benchmark that includes both financial language understanding and financial prediction. Third, it introduces FinMA, the first openly released, instruction-following financial large language model, achieving state-of-the-art on three financial NLP tasks and one prediction task. Fourth, it benchmarks FinMA against existing LLMs, revealing both their superiority and their key limitations for finance.
+
+## Method
+**Necessary:** PIXIU collects open financial data across five tasks, wraps each sample with domain-expert-written task-specific instructions to build FIT, then fine-tunes LLaMA (7B and 30B) with multi-task instruction tuning to produce FinMA.
+**Additional:** Data spans multiple modalities (text plus tabular reports and historical stock-price time series) and text types (reports, news, tweets, filings); variants include FinMA-7B, FinMA-30B (NLP tasks), and FinMA-7B-full (NLP + prediction).
+**Audio script:** The method has three stages. First, PIXIU gathers open-released data across five financial tasks: sentiment analysis, news headline classification, named entity recognition, question answering, and stock movement prediction. Domain experts write diverse task-specific instructions for each task, which are assembled with the data samples to form the FIT instruction dataset. This data is multi-modal, spanning text, tables from financial reports, and historical stock prices as time series. Second, LLaMA checkpoints at seven and thirty billion parameters are fine-tuned on FIT with multi-task instruction tuning, producing the FinMA model family. Third, FinMA and other LLMs are evaluated on the FLARE benchmark, which unifies four financial NLP tasks with six datasets and one prediction task with three datasets.
+
+## Dataset / Benchmark
+**Necessary:** FIT holds 136,609 instruction samples across 5 tasks and 9 datasets; FLARE evaluates on those 9 datasets covering sentiment (FPB, FiQA-SA), headline classification, NER, question answering (FinQA, ConvFinQA), and stock movement prediction (BigData22, ACL18, CIKM18).
+**Additional:** Metrics are task-specific: weighted F1 and accuracy for sentiment, average F1 for headlines, entity F1 for NER, exact-match accuracy for QA, and accuracy plus Matthews correlation coefficient for stock prediction.
+**Audio script:** FIT, the financial instruction tuning dataset, contains one hundred thirty-six thousand instruction samples across five tasks and nine datasets. The FLARE evaluation benchmark covers four financial NLP tasks with six datasets and one financial prediction task with three datasets. Sentiment analysis uses the Financial Phrase Bank and FiQA-SA, news headline classification uses the Headline dataset, named entity recognition uses a financial NER dataset, question answering uses FinQA and ConvFinQA, and stock movement prediction uses BigData22, ACL18, and CIKM18. Each task is scored with its standard metric, such as weighted F1, entity-level F1, exact-match accuracy, and the Matthews correlation coefficient for prediction.
+
+## Key Result
+**Necessary:** FinMA significantly outperforms BloombergGPT, ChatGPT, and GPT-4 on most FLARE NLP tasks; on the FPB sentiment dataset FinMA-30B beats GPT-4 by 10% F1 and BloombergGPT by 37% F1, and achieves SOTA on 3 NLP tasks plus 1 prediction dataset.
+**Additional:** FinMA underperforms on question answering (FinQA/ConvFinQA) due to LLaMA's weak quantitative reasoning, and all LLMs remain limited on stock movement prediction.
+**Audio script:** On the FLARE benchmark, the fine-tuned FinMA models significantly outperform other large language models on most financial NLP tasks, including sentiment analysis, headline classification, and named entity recognition. For example, on the Financial Phrase Bank sentiment dataset, FinMA-30B outperforms GPT-4 by ten percent F1 and BloombergGPT by thirty-seven percent F1. This demonstrates the value of tailoring LLMs to the financial domain through instruction tuning. However, FinMA underperforms on question answering tasks that demand quantitative reasoning, a limitation inherited from LLaMA's weak mathematical ability. And across all models, stock movement prediction remains challenging, leaving clear room for future improvement.
+
+## Ablation Study
+**Necessary:** Scaling from FinMA-7B to FinMA-30B gives no consistent gain on most NLP or prediction tasks, showing data quality and diversity matter more than parameter count; FinMA-7B-full (trained on NLP + prediction) achieves the best result on the ACL18 stock dataset.
+**Additional:** On complex quantitative QA (ConvFinQA), larger LLaMA-based FinMA does help, tracking LLaMA's better math performance at scale, but still trails GPT-4.
+**Audio script:** Comparing model variants is revealing. FinMA-30B shows no significantly better performance than FinMA-7B on most NLP tasks or on stock movement prediction, indicating that the quality and diversity of the instruction data matter more than sheer parameter count. Scale does help on complex quantitative question answering like ConvFinQA, mirroring LLaMA's improved math ability at larger sizes, though it still trails GPT-4. Notably, FinMA-7B-full, fine-tuned on both NLP and prediction tasks, achieves the best performance among all models on the ACL18 stock prediction dataset, highlighting the promise of task-specific instruction tuning for financial prediction.
+
+## Headline Numbers
+**Necessary:**
+- 136,609 (136K) instruction samples in FIT across 5 tasks and 9 datasets
+- FinMA-30B beats GPT-4 by +10% F1 and BloombergGPT by +37% F1 on FPB sentiment
+- SOTA on 3 financial NLP tasks + 1 financial prediction dataset
+- FinMA built on open LLaMA at 7B and 30B parameters
+**Additional:** FPB weighted F1 reaches 0.88 (FinMA-30B) versus 0.78 (GPT-4); Headline Avg F1 up to 0.98 for FinMA.
+**Audio script:** A few numbers capture PIXIU's impact. The FIT instruction dataset holds one hundred thirty-six thousand samples across five tasks and nine datasets. FinMA is built on the open LLaMA model at seven and thirty billion parameters. On the Financial Phrase Bank sentiment task, FinMA-30B exceeds GPT-4 by ten percent F1 and BloombergGPT by thirty-seven percent F1, reaching a weighted F1 around zero point eight eight. FinMA achieves state-of-the-art on three financial NLP tasks and one financial prediction dataset, all while being fully open-sourced.
+
+## Takeaway
+**Necessary:** PIXIU delivers the first open financial LLM (FinMA), instruction dataset (FIT), and benchmark (FLARE) together, showing domain instruction tuning beats far larger general models on financial NLP while exposing quantitative-reasoning and prediction as open challenges.
+**Additional:** Everything is open-sourced, providing a reproducible foundation for future financial AI research.
+**Audio script:** The takeaway is simple. PIXIU provides the financial AI community with its first fully open triad: an instruction-following financial large language model, a large multi-task instruction dataset, and a holistic evaluation benchmark. It shows that careful domain instruction tuning can let a relatively small open model beat far larger general-purpose systems on financial language tasks, while honestly exposing quantitative reasoning and stock movement prediction as the field's remaining open challenges.

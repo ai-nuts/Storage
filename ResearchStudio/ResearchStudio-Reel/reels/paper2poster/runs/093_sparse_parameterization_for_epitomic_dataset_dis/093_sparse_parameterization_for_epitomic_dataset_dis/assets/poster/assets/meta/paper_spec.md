@@ -1,0 +1,60 @@
+---
+title: Sparse Parameterization for Epitomic Dataset Distillation
+authors: Xing Wei¹, Anjia Cao¹, Funing Yang¹, Zhiheng Ma²
+institutes: ¹School of Software Engineering, Xi'an Jiaotong University; ²Shenzhen Institute of Advanced Technology, Chinese Academy of Sciences
+venue: NeurIPS 2023
+paper_url: https://proceedings.neurips.cc/paper_files/paper/2023/hash/9e8889198d16fb79926e71adbe38cae4-Abstract-Conference.html
+code_url: https://github.com/MIV-XJTU/SPEED
+title_audio_script: Deep learning depends on huge datasets that are costly to store, preprocess, and train on. Dataset distillation compresses a dataset into a tiny synthetic one that still trains high-accuracy models. This paper introduces SPEED, Sparse Parameterization for Epitomic dataset Distillation. Instead of tuning the matching objective like most prior work, SPEED rethinks how the synthetic dataset itself is parameterized. It borrows ideas from dictionary learning and sparse coding: a shared pool of spatial-agnostic epitomic tokens acts as a dictionary, sparse coding matrices pick the significant tokens per image, and a feature-recurrent network reassembles them into high-resolution synthetic images. The result is state-of-the-art distillation, especially on high-resolution ImageNet subsets, with a fraction of the storage.
+---
+
+## Problem
+**Necessary:** Dataset distillation compresses a large dataset into a small synthetic one, but prior methods obsess over the matching objective and use naive image-independent parameterization, ignoring spatial redundancy within and between synthetic images.
+**Additional:** This redundancy wastes the tiny storage budget, capping how much informative synthetic data can be packed in, and hurts most on high-resolution real-world images.
+**Audio script:** The goal of dataset distillation is to shrink a big dataset into a small synthetic set that still trains models well. Most existing work pours its energy into the matching objective, the loss that aligns the synthetic and real datasets. But how the synthetic images are actually parameterized has been an afterthought. The standard approach optimizes each synthetic image independently, a naive scheme that never exploits the fact that natural images share enormous amounts of visual structure, both within a single image and across different images. This spatial redundancy silently wastes the already tiny storage budget, and the problem gets worse as image resolution grows.
+
+## Motivation
+**Necessary:** Natural images contain heavy spatial redundancy that a shared, sparse representation can exploit; a few prior parameterization methods use cross-image relationships but none address redundancy irrespective of spatial location.
+**Additional:** Concentrating the storage budget on a compact shared dictionary plus sparse per-image codes lets SPEED synthesize far more informative images than the naive one-image-per-parameter scheme.
+**Audio script:** The key insight is that images are highly redundant. Patches repeat, textures recur, and similar structures appear across many images. Classical representation learning, dictionary learning and sparse coding, was built exactly to capture this: represent many signals as sparse combinations of a shared dictionary. A handful of recent distillation methods started exploiting relationships between synthetic images, but none tackled redundancy in a spatially-agnostic way, no matter where a feature appears. SPEED asks: what if we spend almost none of the storage budget on a shared dictionary and per-image sparse codes, and let a small network reconstruct rich images from them? That reframing is where the gains come from.
+
+## Contribution
+**Necessary:** SPEED is a universal sparse parameterization framework for epitomic dataset distillation that introduces Spatial-Agnostic Epitomic Tokens (SAETs), Sparse Coding Matrices (SCMs), and a Feature-Recurrent Network (FReeNet) to remove spatial redundancy within and between synthetic images.
+**Additional:** It is compatible with a wide range of matching objectives (gradient, distribution, trajectory), consistently boosting them, and achieves state-of-the-art distillation, especially on high-resolution ImageNet subsets.
+**Audio script:** SPEED makes three main contributions. First, it introduces spatial-agnostic epitomic tokens, a shared dictionary of tokens reused by every synthetic image patch, together with sparse coding matrices that select only the most significant tokens per image. Second, it proposes a feature-recurrent network, a compact transformer-style network that recurrently assembles those tokens into hierarchical, high-resolution synthetic images while reusing the same shared tokens and codes. Third, it shows this parameterization is a drop-in module: it plugs into gradient, distribution, and trajectory matching objectives alike and improves all of them. The framework sets new state-of-the-art results and is especially strong on high-resolution data.
+
+## Method
+**Necessary:** Each synthetic image is factorized as X̃ᵢ = Φ_ϕ(E, Aᵢ): a shared multi-head dictionary of epitomic tokens E and a per-image sparse coding matrix Aᵢ are combined by multi-head sparse coding, then a recurrent transformer-style FReeNet Φ_ϕ (shared SAETs/SCMs across R blocks, MLP + residual + layer-norm) synthesizes hierarchical image patches. Training minimizes a matching objective plus an ℓ1 sparsity penalty on the codes; after training, each SCM is pruned to its top-k elements and stored in sparse COO/uint8 format.
+**Additional:** Sharing SAETs and FReeNet across all images while keeping only sparse per-image codes cuts SCM storage complexity from O(NHKJ) to O(NHk) with k ≪ KJ, so a tight budget (e.g. CIFAR100 IPC 1) can hold ~11 synthetic images per class instead of one.
+**Key equation:** `$\tilde{X}_i = \Phi_\phi(E, A_i)$` ; `$\arg\min\ \mathbb{E}_{\theta\sim\Theta}\, D\!\left(\phi(\mathcal{T},\theta), \phi(\mathcal{S},\theta)\right) + \lambda \sum_{i=1}^{N}\sum_{h=1}^{H} \lVert A_i^{h} \rVert_1$` ; `$\bar{A} = B \odot A,\quad B[i,j] = \mathbb{1}\big[A[i,j] \in \mathrm{topk}(\lvert A\rvert)\big]$`
+
+## Dataset / Benchmark
+**Necessary:** Evaluated on three standard distillation benchmarks — CIFAR10 and CIFAR100 (32×32) and TinyImageNet (64×64) — and six high-resolution 128×128 ImageNet subsets (ImageNette, ImageWoof, ImageFruit, ImageMeow, ImageSquawk, ImageYellow), each with 10 classes, plus CIFAR100-C for corruption robustness.
+**Additional:** Storage is measured as parameters-per-class under IPC 1/10/50 budgets; the default backbone is a ConvNet with 128 channels and trajectory matching is the default objective, with cross-architecture eval on MLP, ResNet18, and ViT.
+**Audio script:** SPEED is tested broadly. On the standard side, it uses CIFAR-10 and CIFAR-100 at thirty-two by thirty-two resolution and TinyImageNet at sixty-four by sixty-four. To stress high-resolution performance, it uses six ImageNet subsets at one-twenty-eight by one-twenty-eight, each with ten classes: ImageNette, ImageWoof, ImageFruit, ImageMeow, ImageSquawk, and ImageYellow. Robustness is measured on CIFAR-100-C with fourteen corruption types at five severity levels. Everything is compared under equal storage budgets, counted in parameters per class, at one, ten, and fifty images per class. The default backbone is a ConvNet, the default matching objective is trajectory matching, and generalization is checked on MLP, ResNet18, and ViT.
+
+## Key Result
+**Necessary:** SPEED sets new state-of-the-art on all three standard benchmarks and all six ImageNet subsets. At IPC 1 storage it reaches 40.0% on CIFAR100 (+6.0%) and 26.9% on TinyImageNet (+10.9%) over the prior best, and averages +11.2% across ImageNet subsets versus the previous state-of-the-art at the same budget.
+**Additional:** Its IPC 1 results rival prior methods' IPC 10 results using only ~10% of their parameters; on ImageSquawk IPC 10 it hits 71.8% (+15.0%). SPEED also holds the best accuracy at every step of continual learning and is far more robust to corruption, nearly doubling ResNet18 accuracy under every corruption type.
+**Audio script:** The headline is a clean sweep. Across all three standard benchmarks and all six high-resolution ImageNet subsets, SPEED sets new state-of-the-art. At the tightest one-image-per-class budget, it reaches forty percent on CIFAR-100, a six point gain, and twenty-six point nine percent on TinyImageNet, a ten point nine gain over the previous best. On the ImageNet subsets it averages an eleven point two percent improvement at the same budget. Strikingly, its one-image-per-class results match what prior methods needed ten images per class to achieve, using only about ten percent of their storage. It also stays best at every step of continual learning, and under corruption on ResNet18 it nearly doubles the accuracy of prior methods.
+
+## Ablation Study
+**Necessary:** Feature sparsification is nearly free: pruning the SCM to k=48 non-zero elements (307K params) meets the storage budget while keeping ConvNet accuracy at 73.5%, versus 74.0% for the full 15M-parameter model. FReeNet depth R=2, three heads (H=3), and moderate token count/dimension are the best settings.
+**Additional:** A moderate k improves cross-architecture generalization; too-small k (12, 106K) collapses accuracy to 57.8%, and Figure 4 shows synthetic samples look almost identical before and after sparsification down to 0.3% density.
+**Audio script:** The ablations show sparsification is essentially free. Pruning each sparse coding matrix to just forty-eight non-zero elements, about three hundred thousand parameters, meets the storage budget while keeping ConvNet accuracy at seventy-three point five percent, barely below the seventy-four percent of the full fifteen-million-parameter model. Push k too low, down to twelve, and accuracy collapses, so a moderate value is best and even improves cross-architecture generalization. On the network side, two recurrent blocks and three heads work best. And qualitatively, synthetic images before and after sparsification to zero point three percent density look almost identical, confirming that the pruned features preserve the global semantics.
+
+## Headline Numbers
+**Necessary:**
+- CIFAR100 IPC 1: 40.0% test accuracy, +6.0% over prior SOTA
+- TinyImageNet IPC 1: 26.9%, +10.9% over prior SOTA
+- ImageNet subsets IPC 1: +11.2% average over previous SOTA
+- ~10% of prior methods' parameters to match their IPC 10 accuracy
+**Additional:**
+- ImageSquawk IPC 10: 71.8% (+15.0%)
+- ViT cross-architecture (CIFAR10 IPC 10): 51.5% (+3.6%)
+- Feature sparsification: 307K params (k=48) vs 15M full, ~0.3% density, ~73.5% accuracy retained
+
+## Takeaway
+**Necessary:** How you parameterize the synthetic dataset matters as much as the matching objective: a shared epitomic-token dictionary with sparse per-image codes and a recurrent synthesizer removes spatial redundancy, delivering state-of-the-art distillation at a fraction of the storage, especially on high-resolution data.
+**Additional:** Sparse parameterization also improves generalization to unseen architectures and robustness to corruption, suggesting sparsity is a general lever for efficient, transferable synthetic data.
+**Audio script:** The lasting message of SPEED is that parameterization deserves as much attention as the matching objective. By treating a synthetic dataset as a shared dictionary of spatial-agnostic epitomic tokens, sparse per-image coding matrices, and a small recurrent network that reassembles them, SPEED removes the spatial redundancy that naive methods leave on the table. The payoff is state-of-the-art distillation at a fraction of the storage, biggest on high-resolution images, plus better generalization to unseen architectures and stronger robustness to corruption. In short, sparse, shared representation is a powerful and general lever for making tiny synthetic datasets do far more.

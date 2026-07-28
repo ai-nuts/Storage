@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Two parallel Transformer streams process invariant and equivariant tokens; each stream has self-attention, a cross-attention module bridging to the other stream, and an FFN. Equivariant attention uses a modified score over the 3D-vector Query/Key so equivariance is preserved.
+
+Supporting detail: Invariant-cross-Equivariant and Equivariant-cross-Invariant attention specify Query/Key/Value differently per stream; standard Layer Normalization and structural encodings are incorporated. Existing models arise as special cases by restricting the modules.
+
+Narration: GeoMFormer keeps two representations for every atom: an invariant feature vector and an equivariant three-dimensional feature. These flow through two parallel Transformer streams. Within each stream, a self-attention module first mixes information across atoms. For the equivariant stream, standard attention is modified so the attention score is computed by summing dot products over the three-dimensional Query and Key vectors, which provably preserves equivariance. Then, the key innovation, a cross-attention module lets each stream query the other: the invariant stream attends to the equivariant stream and vice versa, fusing the two kinds of geometric information. A feed-forward network completes each block, and blocks are stacked. Because the design uses only standard Transformer components arranged this way, many earlier geometric networks fall out as special cases of the framework.

@@ -1,0 +1,1 @@
+Graph time-series prediction asks a model to forecast the next graph in a sequence, not just a label. Standard graph networks emit node or edge probabilities, which can't naturally express the structural operations that transform one graph into the next.

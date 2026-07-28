@@ -1,0 +1,55 @@
+---
+title: A Rate-Distortion View of Uncertainty Quantification
+authors: Ifigeneia Apostolopoulou¹, Benjamin Eysenbach², Frank Nielsen³, Artur Dubrawski¹
+institutes: ¹Machine Learning Department, Auton Lab, Carnegie Mellon University; ²Computer Science Department, Princeton University; ³Sony Computer Science Laboratories Inc., Tokyo, Japan
+venue: ICML 2024
+paper_url: https://arxiv.org/abs/2406.10775
+code_url: https://github.com/ifiaposto/Distance_Aware_Bottleneck
+title_audio_script: This paper, presented at ICML 2024, introduces the Distance Aware Bottleneck, a new way to give deep neural networks the sense of "knowing what they don't know." The authors reframe uncertainty quantification as a rate-distortion problem: the network learns a compact codebook that summarizes its training data, and the distance of a new input from that codebook becomes a principled uncertainty score, computed in a single forward pass.
+---
+
+## Problem
+**Necessary:** Deep neural networks usually cannot tell how far a new input lies from their training data, so they give overconfident predictions on out-of-distribution or hard examples.
+**Additional:** Probabilistic models like Gaussian Processes are naturally distance-aware, but reliable, efficient uncertainty estimation for real-world deep learning is still missing.
+**Audio script:** A trustworthy model should know when it is operating far from what it has seen. Deep neural networks, however, often make confident predictions even on inputs that are wildly different from their training data. Classical probabilistic models such as Gaussian Processes have a built-in sense of distance from the training set, but standard deep networks do not, and reliable, efficient uncertainty estimation for real deployments remains an open problem.
+
+## Motivation
+**Necessary:** Existing single-pass Deterministic Uncertainty Methods rely on architectural constraints (e.g. spectral normalization) to avoid feature collapse, which can hurt calibration and complicate integration into large pre-trained models.
+**Additional:** Ensembles and Bayesian methods are distance-aware but need many forward passes, making them expensive to deploy at scale.
+**Audio script:** Today's fast, single-forward-pass uncertainty methods usually depend on special architectural tricks, like spectral normalization, to stop the network's features from collapsing. Those constraints can quietly damage calibration and are awkward to bolt onto large pre-trained models. The alternative, deep ensembles and Bayesian networks, are naturally distance-aware but require many forward passes, which is expensive at scale. The authors ask whether a single deterministic model can be distance-aware without these drawbacks.
+
+## Contribution
+**Necessary:** The paper formulates uncertainty quantification as computing a rate-distortion function that compresses the training set into a codebook of prototype distributions, yielding the Distance Aware Bottleneck (DAB), a single-model, deterministic, single-forward-pass uncertainty estimator.
+**Additional:** It contributes a practical alternating-minimization learning algorithm, a "meta-probabilistic" distortion defined over distributions of embeddings, and a post-hoc variant that adds distance awareness to large pre-trained feature extractors.
+**Audio script:** Their key idea is to view uncertainty quantification through the lens of rate-distortion theory. They compress the entire training set into a small codebook of prototype distributions, and measure how far a new input is from that codebook. This gives the Distance Aware Bottleneck, or DAB: a single deterministic model that produces uncertainty in one forward pass. Along the way they contribute a practical alternating-minimization training algorithm, a meta-probabilistic distortion that operates over distributions of embeddings, and a post-hoc variant that adds distance awareness to large pre-trained feature extractors.
+
+## Method
+**Necessary:** DAB builds on the Information Bottleneck but replaces its rate term with an achievable rate from a Rate Distortion Finite Cardinality problem: it learns a codebook of k centroid distributions (codes) that quantize the encoders of all training points. A new example's uncertainty is its expected statistical distance (KL divergence) from the codebook, given by one forward pass.
+**Additional:** Training alternates between gradient updates of the encoder/decoder and analytic updates of the soft assignments and centroids, mirroring a Blahut-Arimoto style scheme. DAB is analogous to a Gaussian Process, with the codebook playing the role of inducing points and statistical distance replacing Euclidean distance.
+**Audio script:** DAB builds on the Information Bottleneck framework but replaces its rate term with an achievable rate borrowed from rate-distortion theory with finite cardinality. Concretely, the model learns a codebook of centroid distributions that quantize the encoders of all training points. The uncertainty of a new example is simply its expected statistical distance, here the Kullback-Leibler divergence, from that codebook. Training alternates between gradient updates of the encoder and decoder and cheap analytic updates of the soft assignments and centroids, echoing the classic Blahut-Arimoto algorithm. The result is closely analogous to a Gaussian Process, where the codebook plays the role of inducing points and statistical distance replaces Euclidean distance.
+**Key equation:** `$\mathcal{L}_{\mathrm{DAB}} \triangleq -I(Z,Y;\theta) + \beta I(P_X, Q;\theta,\phi) + \alpha\beta\, \mathbb{E}_{P_X,Q}\big[D\big(p(z\mid x;\theta), q_\kappa(z;\phi)\big)\big]$` ; `$\mathrm{uncertainty}(x_{\text{test}}) = \mathbb{E}\big[D\big(p(z\mid x_{\text{test}};\theta), q_\kappa(z;\phi)\big)\big]$`
+
+## Dataset / Benchmark
+**Necessary:** Evaluated on CIFAR-10 (in-distribution) with SVHN as far-OOD and CIFAR-100 as near-OOD, on CIFAR-10 misclassification prediction, and on large-scale ImageNet-1K with ImageNet-O as the OOD set.
+**Additional:** DAB uses a narrow 8-dimensional latent bottleneck with only 10 distributional codes; baselines include Deep Ensembles, DDU, DUQ, DUE, SNGP, and vanilla VIB.
+**Audio script:** The method is tested across several settings. On CIFAR-10 as the in-distribution data, SVHN serves as a far out-of-distribution set and CIFAR-100 as a harder near out-of-distribution set. The authors also study misclassification prediction on CIFAR-10 and scale up to ImageNet-1K with ImageNet-O as the out-of-distribution set. Notably, DAB works with a very narrow eight-dimensional latent bottleneck and just ten distributional codes, and is compared against strong baselines including deep ensembles, DDU, DUQ, DUE, SNGP, and the vanilla variational Information Bottleneck.
+
+## Key Result
+**Necessary:** On CIFAR-10, DAB outperforms all baselines on both OOD tasks, reaching AUROC 0.986 / AUPRC 0.994 on SVHN and AUROC 0.922 / AUPRC 0.915 on CIFAR-100, beating even a 5-model Deep Ensemble.
+**Additional:** It achieves this with a single forward pass and ~36.5M parameters versus the ensemble's ~182M, at comparable 95.9% accuracy.
+**Audio script:** The headline result is that DAB outperforms every baseline on both out-of-distribution tasks. Trained on CIFAR-10, it reaches an AUROC of 0.986 and AUPRC of 0.994 against SVHN, and an AUROC of 0.922 and AUPRC of 0.915 against the harder CIFAR-100, beating even a five-model deep ensemble. Crucially, it does this in a single forward pass with about thirty-six and a half million parameters, versus the ensemble's roughly one hundred and eighty-two million, while keeping accuracy on par at about ninety-six percent.
+
+## Ablation Study
+**Necessary:** For misclassification prediction on CIFAR-10, DAB reaches Calibration AUROC 0.930, closing the gap to Deep Ensembles (0.951) and far surpassing other single-pass DUMs such as DDU (0.632), DUE (0.856), DUQ (0.889), and SNGP (0.897).
+**Additional:** A codebook visualization shows each of the 10 centroids progressively attracting test points of a single class over training epochs, confirming the codes meaningfully represent the data.
+**Audio script:** On the task of predicting its own mistakes on CIFAR-10, DAB reaches a calibration AUROC of 0.930. That nearly closes the gap to a deep ensemble at 0.951, while dramatically outperforming other single-pass deterministic methods such as DDU at 0.632, DUE at 0.856, DUQ at 0.889, and SNGP at 0.897. A visualization of the learned codebook further shows each of the ten centroids progressively attracting test points of a single class as training proceeds, confirming that the codes capture meaningful structure in the data.
+
+## Headline Numbers
+**Necessary:** CIFAR-10 → SVHN OOD: AUROC 0.986 (best). CIFAR-10 → CIFAR-100 OOD: AUROC 0.922 (best). CIFAR-10 misclassification: Calibration AUROC 0.930.
+**Additional:** ImageNet-1K: DAB (fine-tuned ResNet-50) beats a 5-model ensemble on misclassification (Calibration AUROC 0.868 vs 0.861) and OOD detection (ImageNet-O AUROC 0.743 vs 0.642) with far fewer trainable parameters (~36.6M vs ~117.7M).
+**Audio script:** To summarize the numbers: on CIFAR-10, DAB achieves a best-in-class OOD AUROC of 0.986 against SVHN and 0.922 against CIFAR-100, and a misclassification calibration AUROC of 0.930. At ImageNet scale, DAB built on a fine-tuned ResNet-50 beats a five-model ensemble on misclassification, 0.868 versus 0.861, and on out-of-distribution detection against ImageNet-O, 0.743 versus 0.642, all while using far fewer trainable parameters, roughly thirty-six million versus one hundred and eighteen million.
+
+## Takeaway
+**Necessary:** Casting uncertainty as compressing training data into a learned codebook lets a single deterministic network measure how far new inputs are from what it has seen, matching or beating expensive ensembles.
+**Additional:** DAB provides a unified, GP-like notion of uncertainty for both classification and regression that can even be attached post-hoc to large pre-trained models.
+**Audio script:** The takeaway is that recasting uncertainty as the problem of compressing training data into a learned codebook gives a single deterministic network a genuine sense of distance from what it has seen, letting it match or beat expensive ensembles at a fraction of the cost. Because the notion of distance is statistical rather than geometric, DAB offers a unified, Gaussian-Process-like view of uncertainty that works for both classification and regression, and can even be attached after the fact to large pre-trained models.

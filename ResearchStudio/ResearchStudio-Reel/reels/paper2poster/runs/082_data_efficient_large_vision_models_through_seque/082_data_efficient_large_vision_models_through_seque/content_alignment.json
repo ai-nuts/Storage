@@ -1,0 +1,1607 @@
+{
+ "schema_version": "paper2any_alignment.v1",
+ "viewer_version": "section_modal.v2",
+ "template_version": "attention_golden_section_modal.v1",
+ "created_at": "2026-07-15T04:09:18Z",
+ "title": "Data-efficient Large Vision Models through Sequential Autoregression",
+ "artifacts": {
+  "poster": "assets/poster/poster.html",
+  "slides_dir": "assets/slides",
+  "video": "assets/media/video.mp4",
+  "video_source_kind": "raw_pre_subtitle",
+  "caption_delivery": "sidecar_vtt_toggle",
+  "captions": "assets/media/captions/video.vtt"
+ },
+ "downloads": [
+  {
+   "label": "All",
+   "href": "assets/downloads/all_final.zip"
+  },
+  {
+   "label": "Poster",
+   "href": "assets/downloads/poster_final.zip"
+  },
+  {
+   "label": "Video",
+   "href": "assets/downloads/video_final.zip"
+  },
+  {
+   "label": "Blog",
+   "href": "assets/downloads/blog_final.zip"
+  }
+ ],
+ "slides": [
+  {
+   "index": 1,
+   "id": "title",
+   "label": "Title",
+   "src": "assets/slides/slide_01.png",
+   "source": "slide-01.png"
+  },
+  {
+   "index": 2,
+   "id": "problem",
+   "label": "Problem",
+   "src": "assets/slides/slide_02.png",
+   "source": "slide-02.png"
+  },
+  {
+   "index": 3,
+   "id": "motivation",
+   "label": "Motivation",
+   "src": "assets/slides/slide_03.png",
+   "source": "slide-03.png"
+  },
+  {
+   "index": 4,
+   "id": "contribution",
+   "label": "Contribution",
+   "src": "assets/slides/slide_04.png",
+   "source": "slide-04.png"
+  },
+  {
+   "index": 5,
+   "id": "dataset-benchmark",
+   "label": "Dataset / Benchmark",
+   "src": "assets/slides/slide_05.png",
+   "source": "slide-05.png"
+  },
+  {
+   "index": 6,
+   "id": "key-result",
+   "label": "Key Result",
+   "src": "assets/slides/slide_06.png",
+   "source": "slide-06.png"
+  },
+  {
+   "index": 7,
+   "id": "ablation-study",
+   "label": "Ablation Study",
+   "src": "assets/slides/slide_07.png",
+   "source": "slide-07.png"
+  },
+  {
+   "index": 8,
+   "id": "takeaway",
+   "label": "Takeaway",
+   "src": "assets/slides/slide_08.png",
+   "source": "slide-08.png"
+  }
+ ],
+ "sections": [
+  {
+   "id": "title",
+   "label": "Title",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": ".titlebar"
+   },
+   "slide_indices": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "slides": [
+    {
+     "slide_index": 1,
+     "slide_id": "title",
+     "target": "#slide-1"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "paragraph",
+       "text": "Much of what makes language models work is a single, uniform interface: turn everything into tokens and predict the next one. Recent large vision models (LVMs) carry that autoregressive idea into vision, stitching an image and its annotation into a \"visual sentence\" and generating a segmentation map, a pose skeleton, or a derained image one token at a time. The appeal is obvious: one model, one interface, many tasks."
+      },
+      {
+       "type": "paragraph",
+       "text": "The catch is cost. The leading autoregressive LVMs run to 3B parameters and beyond, and training them consumes on the order of 400B visual tokens drawn from 1.64B images. That scale is expensive and awkward to deploy on the edge. Worse, the visual world is long-tailed: segmentation has abundant data, while tasks like keypoint detection and deraining are starved. Throw them into one training mixture and the data-rich tasks drown out the data-poor ones, so the model never learns the rare tasks at all."
+      },
+      {
+       "type": "paragraph",
+       "text": "DeLVM (Data-efficient Large Vision Models), published at ICML 2024, asks a blunt question: do we actually need all that size and data? The paper's answer is no, and the two tools it reaches for are refreshingly ordinary, data augmentation and knowledge distillation. Both are staples elsewhere in vision, yet almost nobody had tried them seriously on autoregressive LVMs. This work fills that gap."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. Overview of the DeLVM framework. (a) Training: a VQGAN encoder discretizes each image into a token sequence, and a causal transformer is trained by next-token prediction. (b) Inference: a few input-output image pairs form a task prompt; the model continues it to produce the output for a test image, which the VQGAN decoder turns back into an image. (c) Data augmentation rebalances long-tailed tasks to comparable data volumes. (d) Knowledge distillation uses a LLaMA-1B teacher to guide a compact LLaMA-300M student, which is cheaper and faster at inference.",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "Paper: https://arxiv.org/abs/2402.04841　·　Code: https://github.com/ggjy/DeLVM"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Move one: augmentation as free data"
+      },
+      {
+       "type": "paragraph",
+       "text": "The first observation is direct: for a data-starved task, simple random crops and flips buy you almost as much as collecting more real data. Training a LLaMA-300M for a fixed 12K steps on subsets of SA-1B and on augmented COCO-Pose, the authors compare adding real data against adding augmented data."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Augmentation matches the effect of introducing new data. Top row, the data-rich segmentation task (SA-1B): validation loss and perplexity keep dropping as training tokens grow. Bottom row, the data-poor pose-estimation task (COCO-Pose, originally about 0.03B tokens): scaling the data through augmentation alone reproduces almost the same downward trend as real new data.",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The two rows nearly coincide. For the data-rich segmentation task, more real data steadily lowers validation loss and perplexity; for the data-poor pose task, padding the data out with augmentation traces almost the same curve. Augmentation, in other words, stands in as cheap new data. That matters, because it reframes the long-tail problem from \"where do we find more data\" to \"how do we top up what we already have.\""
+      },
+      {
+       "type": "paragraph",
+       "text": "Once a single task is topped up, the real test is training several tasks together. The authors compare three ways of handling the imbalance: training directly on the raw unbalanced data; re-sampling the rare tasks, that is, repeating the minority tasks' examples until the counts even out; and using augmentation to expand every task to a comparable data volume. The differences show up directly in what the model generates on the same set of test inputs, which the figure below lays side by side across segmentation, pose, and deraining."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "Figure 3. Inference results under different balancing schemes. The diamond marks the test input. The model trained on unbalanced data (circle) is lopsided, doing well only on segmentation; re-sampling (triangle) makes things worse overall; rebalancing with augmentation (heart) yields cleaner, more sensible outputs across segmentation, pose, and deraining.",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The takeaway is clean. The raw mixture leaves the model lopsided, strong only on the data-heavy segmentation task. Naive re-sampling doesn't fix it and actually collapses on the scarce tasks. Only balancing the three tasks to comparable data volumes with augmentation gives the best overall performance across all three at once."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Move two: distillation to shrink the model"
+      },
+      {
+       "type": "paragraph",
+       "text": "The second lever is knowledge distillation, which the authors describe as the first use of distillation on autoregressive LVMs. The recipe itself is standard: a larger LLaMA-1B teacher guides a compact LLaMA-300M student, so that during training the student not only fits the ground-truth annotation but also aligns to the teacher's output distribution. The real question is the setting: in language distillation the teacher hands over soft probabilities over a vocabulary, whereas here the model generates images token by token, and both teacher and student emit long strings of discrete visual tokens. Under that generative setting, can distillation still transfer the teacher's ability to the student? Single-task results, shown in the figure below, give a fairly direct answer to that question."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure4.png",
+       "caption": "Figure 4. Single-task inference results. The diamond is the test input, the circle is the LLaMA-1B teacher, the triangle is a LLaMA-300M trained from scratch, and the heart is a LLaMA-300M trained with knowledge distillation. The teacher is best, and the distilled student (heart) is clearly closer to it, on both segmentation and pose estimation, than the same-size model trained from scratch (triangle).",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure4.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "It does help. In both single-task and multi-task settings, distillation consistently improves the compact student on segmentation, pose estimation, and deraining. Visually, the distilled LLaMA-300M produces segmentation maps and pose skeletons that sit closer to the LLaMA-1B teacher, while the from-scratch model of the same size looks noticeably rougher. On the Pascal-5i foreground-segmentation benchmark downstream, the distilled-and-fine-tuned LLaMA-300M also clearly beats its from-scratch counterpart."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "An easy-to-miss detail: multi-task training must be shuffled"
+      },
+      {
+       "type": "paragraph",
+       "text": "One of the paper's most instructive ablations concerns the order of the task data. Train the tasks sequentially rather than shuffled, one after another (segmentation on SA-1B, then pose on COCO-Pose, then deraining on Rain13K), and the model suffers catastrophic forgetting: it performs well only on the task it saw most recently and is nearly useless on the earlier ones. The authors report in a table that perplexity on the early tasks climbs from a normal hundred-something all the way into the thousands. The figure below places the inference results from three training stages together, making the forgetting easy to see."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "Figure 6. Inference results at different stages of sequential (unshuffled) training. The three rows correspond to test samples from segmentation, pose, and deraining data sources. Regardless of which task the prompt points to, the model's competence collapses onto whatever task it trained on last, the signature of catastrophic forgetting, showing that multi-task LVM training has to be shuffled.",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The lesson is that packing several tasks into one autoregressive LVM makes how you organize the data as important as the data itself. The authors also note that the prompt's background color propagates into the output: black-background prompts make a simple grayscale-threshold post-processing step a reliable way to extract the foreground mask. These small engineering details are exactly what makes a compact model actually work across tasks."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Both moves together: even an 80M model holds up"
+      },
+      {
+       "type": "paragraph",
+       "text": "Stacking augmentation and distillation, the authors push to a more extreme case: a LLaMA-80M with just 80M parameters, which the paper reports reaches 83.04% top-1 accuracy on ImageNet classification under this recipe. For a compact autoregressive model trained with a generative objective, that number is genuinely surprising, and it hints that generation and understanding might be learnable together in one model. The table below summarizes two representative results."
+      },
+      {
+       "type": "table",
+       "caption": "Table 1. Two representative DeLVM results (numbers from the paper).",
+       "headers": [
+        "Setting",
+        "Metric",
+        "Result"
+       ],
+       "rows": [
+        [
+         "LLaMA-300M (distilled + fine-tuned)",
+         "Pascal-5i foreground-seg mIoU (split 0/1/2/3)",
+         "18.58 / 21.32 / 19.90 / 21.08"
+        ],
+        [
+         "LLaMA-80M (augmentation + distillation)",
+         "ImageNet top-1 accuracy",
+         "83.04%"
+        ],
+        [
+         "SA-1B data 1% → 10%",
+         "Validation loss / perplexity drop:",
+         "0.19 / 22.4"
+        ]
+       ]
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "What it means, and where it stops"
+      },
+      {
+       "type": "paragraph",
+       "text": "DeLVM's message is clean: building a capable autoregressive vision model need not take 3B parameters and hundreds of billions of tokens. Two classical techniques, augmentation to rebalance long-tailed tasks and distillation to compress a large teacher, let a compact model trained on limited data perform well across segmentation, pose estimation, and deraining. An 80M version even touches 83.04% on ImageNet, pointing toward cheaper, more deployable generalist vision models."
+      },
+      {
+       "type": "paragraph",
+       "text": "The boundaries are worth stating too. The evaluation centers on a handful of tasks, segmentation, pose estimation, and deraining, so the task coverage is still narrow; the model leans on an off-the-shelf VQGAN tokenizer, whose reconstruction ceiling caps the quality of fine-grained outputs; and the eye-catching 83.04% comes from a specific setup whose reach to broader understanding tasks needs more validation. Still, as a study in spending less by using old tricks correctly, DeLVM offers a practical direction: before scaling the model up again, check whether you've wrung all you can out of the data you already have."
+      }
+     ],
+     "zh": [
+      {
+       "type": "paragraph",
+       "text": "语言模型的成功很大程度上建立在一个统一接口上：把一切都变成 token，然后做“下一个 token 预测”（next-token prediction）。最近的大视觉模型（Large Vision Model, LVM）把这套自回归思路搬进了视觉领域——把图像和它的标注拼成一句“视觉句子”（visual sentence），让模型像写句子一样逐个 token 地生成分割图、姿态骨架或去雨结果。这条路很有吸引力：一个模型、一套接口、多种任务。"
+      },
+      {
+       "type": "paragraph",
+       "text": "问题在于代价。目前领先的自回归 LVM 动辄 3B 以上参数，训练要吃掉约 400B 个视觉 token（来自 1.64B 张图像）。这样的规模既昂贵，也很难放到端侧部署。更棘手的是，视觉世界是长尾（long-tailed）的：分割任务数据充足，而关键点检测、去雨这类任务数据稀少。把它们简单混在一起训练，数据多的任务会淹没数据少的任务，模型干脆学不会那些稀有任务。"
+      },
+      {
+       "type": "paragraph",
+       "text": "这篇发表于 ICML 2024 的工作 DeLVM（Data-efficient Large Vision Models）提出了一个直接的问题：我们真的需要这么大、这么多数据吗？作者给出的答案是不需要，而用的两件工具都相当朴素——数据增强（data augmentation）与知识蒸馏（knowledge distillation）。它们在视觉里是老办法，却几乎没人在自回归 LVM 上认真试过。本文正是补上了这一块。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 DeLVM 框架总览。(a) 训练阶段：VQGAN 编码器把图像离散化成 token 序列，因果 Transformer 做下一个 token 预测；(b) 推理阶段：若干“输入-输出”图像对拼成任务提示（task prompt），模型据此续写测试图像的输出，再由 VQGAN 解码器还原成图像；(c) 数据增强把长尾任务补齐到相近数据量；(d) 知识蒸馏用 LLaMA-1B 教师指导紧凑的 LLaMA-300M 学生，推理更省、更快。",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文：https://arxiv.org/abs/2402.04841　·　代码：https://github.com/ggjy/DeLVM"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "为什么语言模型的训练配方搬不过来"
+      },
+      {
+       "type": "paragraph",
+       "text": "语言模型通常在海量语料上只训练一个 epoch，就能避免过拟合。视觉很少有这种奢侈：许多任务的数据集本来就很小，重复训练几十轮才是常态，语言模型的“一遍过”配方无法直接迁移。与此同时，社区的主流做法仍是把模型和数据集越堆越大。DeLVM 反其道而行：与其收集更多真实数据，不如把手头有限的数据用好——这正是数据增强和知识蒸馏的用武之地。"
+      },
+      {
+       "type": "paragraph",
+       "text": "在方法上，DeLVM 沿用了自回归 LVM 的接口。一张图像先经过一个现成的 VQGAN 编码器，被离散化成 256 个 token；多张图像的 token 顺序拼接，就构成一句视觉句子。因果（causal）Transformer 以交叉熵损失做下一个 token 预测来训练，本质上和训练一个语言模型没有区别。推理时，把几组“图像-标注”对当作任务提示，接上一张待处理的测试图像，模型自回归地生成接下来的 256 个 token，再由 VQGAN 解码器还原成结果图。任务是什么，完全由提示里的示例来定义。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "第一招：数据增强，等价于“凭空”补数据"
+      },
+      {
+       "type": "paragraph",
+       "text": "第一个观察很直接：对数据稀少的任务，简单的随机裁剪和翻转带来的收益，几乎等同于真的去收集更多数据。作者用固定 12K 训练步、在 SA-1B 子集和增强后的 COCO-Pose 上训练 LLaMA-300M，对比“加真实数据”与“加增强数据”两条曲线。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 数据增强与引入新数据的效果相当。上排为数据充足的图像分割任务（SA-1B）：随着训练 token 增多，验证损失与困惑度持续下降；下排为数据稀缺的姿态估计任务（COCO-Pose，原始约 0.03B token）：仅靠增强扩充数据，就能复现出与真实新数据几乎一致的下降趋势。",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "两排曲线几乎重合：对数据充足的分割任务，加真实数据会稳定降低验证损失和困惑度；对数据稀缺的姿态估计任务，只用增强把数据量补上去，也能得到几乎一样的曲线。换句话说，增强在这里扮演了“廉价的新数据”。这一点很关键，因为它把长尾问题从“去哪里找更多数据”变成了“把已有数据均衡地补齐”。"
+      },
+      {
+       "type": "paragraph",
+       "text": "补齐单个任务之后，真正的考验是把多个任务混在一起训练。作者比较了三种处理数据不均衡的方案：直接用原始不均衡数据训练；对稀有任务做重采样（re-sampling），也就是把少数任务的样本重复多次以凑够数量；以及用数据增强把每个任务都扩充到相近的数据量。三者的差别，可以直接从模型在同一组测试样本上的输出看出来——下图把分割、姿态、去雨三类任务的推理结果并排摆在一起。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "图3 不同均衡策略下的推理结果。菱形为测试输入。在不均衡数据上训练的模型（圆形）明显偏科，只有分割任务做得好；重采样（三角形）反而整体变差；用增强均衡数据（心形）在分割、姿态、去雨三类任务上都给出更干净、更合理的输出。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论清晰：直接混合会让模型偏科，只擅长数据最多的分割；简单重采样不但没解决问题，反而在稀有任务上崩掉；而用增强把三类任务补到相近的数据量，才在三个任务上同时拿到最好的整体表现。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "第二招：知识蒸馏，把大模型的能力搬进小模型"
+      },
+      {
+       "type": "paragraph",
+       "text": "第二个技巧是知识蒸馏——据作者所述，这是首次在自回归 LVM 上引入蒸馏。做法本身很标准：用一个较大的 LLaMA-1B 作教师，指导紧凑的 LLaMA-300M 学生，让学生在训练时不仅拟合真实标注，还要对齐教师的输出分布。真正的疑问在于设定：语言蒸馏里教师给的是词表上的软概率，而这里模型是在“逐 token 生成图像”，教师和学生吐出的是一长串离散视觉 token。在这种生成式设定下，蒸馏还能把教师的能力传给学生吗？下图用单任务训练的结果给出了直观回答。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure4.png",
+       "caption": "图4 单任务训练下的推理结果对比。菱形为测试输入，圆形为 LLaMA-1B 教师，三角形为从零训练的 LLaMA-300M，心形为经蒸馏的 LLaMA-300M。教师结果最好；而带蒸馏的学生（心形）无论在分割还是姿态估计上，都明显比从零训练的同规模模型（三角形）更接近教师。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure4.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "答案是管用。在单任务和多任务两种设定下，蒸馏都让紧凑学生在分割、姿态估计、去雨三个任务上稳定变好。从可视化看，带蒸馏的 LLaMA-300M 生成的分割图和姿态骨架都更接近 LLaMA-1B 教师，而从零训练的同规模模型则明显更粗糙。在 Pascal-5i 前景分割这个下游基准上，蒸馏加微调的 LLaMA-300M 也明显超过从零训练的版本。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "一个容易被忽略的细节：多任务必须打乱训练"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文里还有一个很有教育意义的消融，关于任务数据的排列顺序。如果不把不同任务的数据打乱、而是一个任务接一个任务地顺序训练（先在 SA-1B 上学分割，再到 COCO-Pose 学姿态，最后用 Rain13K 学去雨），模型会发生灾难性遗忘（catastrophic forgetting）：它只在最近训练过的那个任务上表现正常，对更早学过的任务几乎完全失能。作者在表格中报告，早期任务的困惑度会从正常的一百多一路飙升到上千。下图把三个训练阶段的推理结果摆在一起，遗忘的过程一目了然。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "图6 顺序（不打乱）训练不同阶段的推理结果。三行分别对应分割、姿态、去雨三种数据源的测试样本。无论提示指向哪个任务，模型的能力都只集中在它最近训练过的那个任务上——这正是灾难性遗忘的表现，说明多任务 LVM 训练必须打乱数据。",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "这提醒我们：把多个任务塞进一个自回归 LVM，数据的组织方式和数据本身一样重要。此外，作者还观察到提示的背景色会直接影响生成结果——用黑色背景的提示，能让后续“灰度阈值”这一简单后处理稳定地抽取前景分割掩码。这些看似琐碎的工程细节，恰恰是让紧凑模型真正跑通多任务的关键。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "两招叠加：连 80M 的模型都能打"
+      },
+      {
+       "type": "paragraph",
+       "text": "把增强和蒸馏叠在一起，作者进一步做了一个更极端的实验：一个仅 80M 参数的 LLaMA-80M，在这套配方下，据论文报告在 ImageNet 分类上达到了 83.04% 的 top-1 准确率。对一个以“生成”为训练目标的紧凑自回归模型来说，这个数字相当出人意料，也暗示了生成与理解或许可以在同一个模型里一起学。下表汇总了两个代表性结果。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 DeLVM 的两个代表性结果（数据来自论文）。",
+       "headers": [
+        "设置",
+        "指标",
+        "结果"
+       ],
+       "rows": [
+        [
+         "LLaMA-300M（蒸馏+微调）",
+         "Pascal-5i 前景分割 mIoU（split 0/1/2/3）",
+         "18.58 / 21.32 / 19.90 / 21.08"
+        ],
+        [
+         "LLaMA-80M（增强+蒸馏）",
+         "ImageNet top-1 准确率",
+         "83.04%"
+        ],
+        [
+         "SA-1B 数据 1% → 10%",
+         "验证损失 / 困惑度的下降幅度",
+         "0.19 / 22.4"
+        ]
+       ]
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "意义与边界"
+      },
+      {
+       "type": "paragraph",
+       "text": "DeLVM 传递的信息很清爽：要造一个能干活的自回归视觉模型，未必需要 3B 参数和几百 B 的 token。两个经典技巧——用数据增强来均衡长尾任务，用知识蒸馏来压缩大教师——就能让紧凑模型在有限数据上，于分割、姿态估计、去雨等任务上给出不错的表现。一个 80M 的版本甚至能在 ImageNet 上摸到 83.04%，指向了一条更省、更易部署的通用视觉模型路线。"
+      },
+      {
+       "type": "paragraph",
+       "text": "当然，边界也要说清楚。文中的评测集中在分割、姿态估计、去雨等少数几类任务上，任务面还不算宽；模型仍依赖一个现成的 VQGAN 分词器，其重建上限会限制细粒度输出的质量；83.04% 这一亮眼数字来自特定设置，能否推广到更广的理解类任务仍需更多验证。但作为一份“少花钱、把老办法用对”的研究，DeLVM 给出的方向足够实用：在把模型继续做大之前，先想想手里的数据有没有用满。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 0.0,
+    "end": 321.8,
+    "slides": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ]
+   },
+   "clip": "assets/media/clips/title.mp4",
+   "captions": "assets/media/captions/clips/title.vtt",
+   "clip_seconds": 321.8,
+   "slide_segments": [
+    {
+     "slide": 1,
+     "global_start": 0.5,
+     "global_end": 36.08,
+     "relative_start": 0.5,
+     "relative_end": 36.08,
+     "clip": "assets/media/slide_clips/slide-01.mp4"
+    },
+    {
+     "slide": 2,
+     "global_start": 36.08,
+     "global_end": 76.75,
+     "relative_start": 36.08,
+     "relative_end": 76.75,
+     "clip": "assets/media/slide_clips/slide-02.mp4"
+    },
+    {
+     "slide": 3,
+     "global_start": 76.75,
+     "global_end": 109.38,
+     "relative_start": 76.75,
+     "relative_end": 109.38,
+     "clip": "assets/media/slide_clips/slide-03.mp4"
+    },
+    {
+     "slide": 4,
+     "global_start": 109.38,
+     "global_end": 153.34,
+     "relative_start": 109.38,
+     "relative_end": 153.34,
+     "clip": "assets/media/slide_clips/slide-04.mp4"
+    },
+    {
+     "slide": 5,
+     "global_start": 153.34,
+     "global_end": 194.32,
+     "relative_start": 153.34,
+     "relative_end": 194.32,
+     "clip": "assets/media/slide_clips/slide-05.mp4"
+    },
+    {
+     "slide": 6,
+     "global_start": 194.32,
+     "global_end": 242.43,
+     "relative_start": 194.32,
+     "relative_end": 242.43,
+     "clip": "assets/media/slide_clips/slide-06.mp4"
+    },
+    {
+     "slide": 7,
+     "global_start": 242.43,
+     "global_end": 283.07,
+     "relative_start": 242.43,
+     "relative_end": 283.07,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    },
+    {
+     "slide": 8,
+     "global_start": 283.07,
+     "global_end": 321.77,
+     "relative_start": 283.07,
+     "relative_end": 321.77,
+     "clip": "assets/media/slide_clips/slide-08.mp4"
+    }
+   ]
+  },
+  {
+   "id": "problem",
+   "label": "Problem",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='problem']"
+   },
+   "slide_indices": [
+    2
+   ],
+   "slides": [
+    {
+     "slide_index": 2,
+     "slide_id": "problem",
+     "target": "#slide-2"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Move one: augmentation as free data"
+      },
+      {
+       "type": "paragraph",
+       "text": "The first observation is direct: for a data-starved task, simple random crops and flips buy you almost as much as collecting more real data. Training a LLaMA-300M for a fixed 12K steps on subsets of SA-1B and on augmented COCO-Pose, the authors compare adding real data against adding augmented data."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Augmentation matches the effect of introducing new data. Top row, the data-rich segmentation task (SA-1B): validation loss and perplexity keep dropping as training tokens grow. Bottom row, the data-poor pose-estimation task (COCO-Pose, originally about 0.03B tokens): scaling the data through augmentation alone reproduces almost the same downward trend as real new data.",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The two rows nearly coincide. For the data-rich segmentation task, more real data steadily lowers validation loss and perplexity; for the data-poor pose task, padding the data out with augmentation traces almost the same curve. Augmentation, in other words, stands in as cheap new data. That matters, because it reframes the long-tail problem from \"where do we find more data\" to \"how do we top up what we already have.\""
+      },
+      {
+       "type": "paragraph",
+       "text": "Once a single task is topped up, the real test is training several tasks together. The authors compare three ways of handling the imbalance: training directly on the raw unbalanced data; re-sampling the rare tasks, that is, repeating the minority tasks' examples until the counts even out; and using augmentation to expand every task to a comparable data volume. The differences show up directly in what the model generates on the same set of test inputs, which the figure below lays side by side across segmentation, pose, and deraining."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "Figure 3. Inference results under different balancing schemes. The diamond marks the test input. The model trained on unbalanced data (circle) is lopsided, doing well only on segmentation; re-sampling (triangle) makes things worse overall; rebalancing with augmentation (heart) yields cleaner, more sensible outputs across segmentation, pose, and deraining.",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The takeaway is clean. The raw mixture leaves the model lopsided, strong only on the data-heavy segmentation task. Naive re-sampling doesn't fix it and actually collapses on the scarce tasks. Only balancing the three tasks to comparable data volumes with augmentation gives the best overall performance across all three at once."
+      }
+     ],
+     "zh": [
+      {
+       "type": "paragraph",
+       "text": "语言模型的成功很大程度上建立在一个统一接口上：把一切都变成 token，然后做“下一个 token 预测”（next-token prediction）。最近的大视觉模型（Large Vision Model, LVM）把这套自回归思路搬进了视觉领域——把图像和它的标注拼成一句“视觉句子”（visual sentence），让模型像写句子一样逐个 token 地生成分割图、姿态骨架或去雨结果。这条路很有吸引力：一个模型、一套接口、多种任务。"
+      },
+      {
+       "type": "paragraph",
+       "text": "问题在于代价。目前领先的自回归 LVM 动辄 3B 以上参数，训练要吃掉约 400B 个视觉 token（来自 1.64B 张图像）。这样的规模既昂贵，也很难放到端侧部署。更棘手的是，视觉世界是长尾（long-tailed）的：分割任务数据充足，而关键点检测、去雨这类任务数据稀少。把它们简单混在一起训练，数据多的任务会淹没数据少的任务，模型干脆学不会那些稀有任务。"
+      },
+      {
+       "type": "paragraph",
+       "text": "这篇发表于 ICML 2024 的工作 DeLVM（Data-efficient Large Vision Models）提出了一个直接的问题：我们真的需要这么大、这么多数据吗？作者给出的答案是不需要，而用的两件工具都相当朴素——数据增强（data augmentation）与知识蒸馏（knowledge distillation）。它们在视觉里是老办法，却几乎没人在自回归 LVM 上认真试过。本文正是补上了这一块。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 DeLVM 框架总览。(a) 训练阶段：VQGAN 编码器把图像离散化成 token 序列，因果 Transformer 做下一个 token 预测；(b) 推理阶段：若干“输入-输出”图像对拼成任务提示（task prompt），模型据此续写测试图像的输出，再由 VQGAN 解码器还原成图像；(c) 数据增强把长尾任务补齐到相近数据量；(d) 知识蒸馏用 LLaMA-1B 教师指导紧凑的 LLaMA-300M 学生，推理更省、更快。",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文：https://arxiv.org/abs/2402.04841　·　代码：https://github.com/ggjy/DeLVM"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 36.08,
+    "end": 76.75,
+    "slides": [
+     2
+    ]
+   },
+   "clip": "assets/media/clips/problem.mp4",
+   "captions": "assets/media/captions/clips/problem.vtt",
+   "source_clip_seconds": 40.67,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 41.57,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 2,
+     "global_start": 36.08,
+     "global_end": 76.75,
+     "relative_start": 0.0,
+     "relative_end": 40.67,
+     "clip": "assets/media/slide_clips/slide-02.mp4"
+    }
+   ]
+  },
+  {
+   "id": "motivation",
+   "label": "Motivation",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='motivation']"
+   },
+   "slide_indices": [
+    3
+   ],
+   "slides": [
+    {
+     "slide_index": 1,
+     "slide_id": "title",
+     "target": "#slide-1"
+    },
+    {
+     "slide_index": 2,
+     "slide_id": "problem",
+     "target": "#slide-2"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. Overview of the DeLVM framework. (a) Training: a VQGAN encoder discretizes each image into a token sequence, and a causal transformer is trained by next-token prediction. (b) Inference: a few input-output image pairs form a task prompt; the model continues it to produce the output for a test image, which the VQGAN decoder turns back into an image. (c) Data augmentation rebalances long-tailed tasks to comparable data volumes. (d) Knowledge distillation uses a LLaMA-1B teacher to guide a compact LLaMA-300M student, which is cheaper and faster at inference.",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "图6 顺序（不打乱）训练不同阶段的推理结果。三行分别对应分割、姿态、去雨三种数据源的测试样本。无论提示指向哪个任务，模型的能力都只集中在它最近训练过的那个任务上——这正是灾难性遗忘的表现，说明多任务 LVM 训练必须打乱数据。",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "为什么语言模型的训练配方搬不过来"
+      },
+      {
+       "type": "paragraph",
+       "text": "语言模型通常在海量语料上只训练一个 epoch，就能避免过拟合。视觉很少有这种奢侈：许多任务的数据集本来就很小，重复训练几十轮才是常态，语言模型的“一遍过”配方无法直接迁移。与此同时，社区的主流做法仍是把模型和数据集越堆越大。DeLVM 反其道而行：与其收集更多真实数据，不如把手头有限的数据用好——这正是数据增强和知识蒸馏的用武之地。"
+      },
+      {
+       "type": "paragraph",
+       "text": "在方法上，DeLVM 沿用了自回归 LVM 的接口。一张图像先经过一个现成的 VQGAN 编码器，被离散化成 256 个 token；多张图像的 token 顺序拼接，就构成一句视觉句子。因果（causal）Transformer 以交叉熵损失做下一个 token 预测来训练，本质上和训练一个语言模型没有区别。推理时，把几组“图像-标注”对当作任务提示，接上一张待处理的测试图像，模型自回归地生成接下来的 256 个 token，再由 VQGAN 解码器还原成结果图。任务是什么，完全由提示里的示例来定义。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 76.75,
+    "end": 109.38,
+    "slides": [
+     3
+    ]
+   },
+   "clip": "assets/media/clips/motivation.mp4",
+   "captions": "assets/media/captions/clips/motivation.vtt",
+   "source_clip_seconds": 32.63,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 33.53,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 3,
+     "global_start": 76.75,
+     "global_end": 109.38,
+     "relative_start": 0.0,
+     "relative_end": 32.63,
+     "clip": "assets/media/slide_clips/slide-03.mp4"
+    }
+   ]
+  },
+  {
+   "id": "contribution",
+   "label": "Contribution",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='contribution']"
+   },
+   "slide_indices": [
+    4
+   ],
+   "slides": [
+    {
+     "slide_index": 3,
+     "slide_id": "motivation",
+     "target": "#slide-3"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. Overview of the DeLVM framework. (a) Training: a VQGAN encoder discretizes each image into a token sequence, and a causal transformer is trained by next-token prediction. (b) Inference: a few input-output image pairs form a task prompt; the model continues it to produce the output for a test image, which the VQGAN decoder turns back into an image. (c) Data augmentation rebalances long-tailed tasks to comparable data volumes. (d) Knowledge distillation uses a LLaMA-1B teacher to guide a compact LLaMA-300M student, which is cheaper and faster at inference.",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "第一招：数据增强，等价于“凭空”补数据"
+      },
+      {
+       "type": "paragraph",
+       "text": "第一个观察很直接：对数据稀少的任务，简单的随机裁剪和翻转带来的收益，几乎等同于真的去收集更多数据。作者用固定 12K 训练步、在 SA-1B 子集和增强后的 COCO-Pose 上训练 LLaMA-300M，对比“加真实数据”与“加增强数据”两条曲线。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 数据增强与引入新数据的效果相当。上排为数据充足的图像分割任务（SA-1B）：随着训练 token 增多，验证损失与困惑度持续下降；下排为数据稀缺的姿态估计任务（COCO-Pose，原始约 0.03B token）：仅靠增强扩充数据，就能复现出与真实新数据几乎一致的下降趋势。",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "两排曲线几乎重合：对数据充足的分割任务，加真实数据会稳定降低验证损失和困惑度；对数据稀缺的姿态估计任务，只用增强把数据量补上去，也能得到几乎一样的曲线。换句话说，增强在这里扮演了“廉价的新数据”。这一点很关键，因为它把长尾问题从“去哪里找更多数据”变成了“把已有数据均衡地补齐”。"
+      },
+      {
+       "type": "paragraph",
+       "text": "补齐单个任务之后，真正的考验是把多个任务混在一起训练。作者比较了三种处理数据不均衡的方案：直接用原始不均衡数据训练；对稀有任务做重采样（re-sampling），也就是把少数任务的样本重复多次以凑够数量；以及用数据增强把每个任务都扩充到相近的数据量。三者的差别，可以直接从模型在同一组测试样本上的输出看出来——下图把分割、姿态、去雨三类任务的推理结果并排摆在一起。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "图3 不同均衡策略下的推理结果。菱形为测试输入。在不均衡数据上训练的模型（圆形）明显偏科，只有分割任务做得好；重采样（三角形）反而整体变差；用增强均衡数据（心形）在分割、姿态、去雨三类任务上都给出更干净、更合理的输出。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论清晰：直接混合会让模型偏科，只擅长数据最多的分割；简单重采样不但没解决问题，反而在稀有任务上崩掉；而用增强把三类任务补到相近的数据量，才在三个任务上同时拿到最好的整体表现。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 109.38,
+    "end": 153.34,
+    "slides": [
+     4
+    ]
+   },
+   "clip": "assets/media/clips/contribution.mp4",
+   "captions": "assets/media/captions/clips/contribution.vtt",
+   "source_clip_seconds": 43.96,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 44.86,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 4,
+     "global_start": 109.38,
+     "global_end": 153.34,
+     "relative_start": 0.0,
+     "relative_end": 43.96,
+     "clip": "assets/media/slide_clips/slide-04.mp4"
+    }
+   ]
+  },
+  {
+   "id": "method",
+   "label": "Method",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='method']"
+   },
+   "slide_indices": [
+    4,
+    5
+   ],
+   "slides": [
+    {
+     "slide_index": 4,
+     "slide_id": "contribution",
+     "target": "#slide-4"
+    },
+    {
+     "slide_index": 5,
+     "slide_id": "dataset-benchmark",
+     "target": "#slide-5"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. Overview of the DeLVM framework. (a) Training: a VQGAN encoder discretizes each image into a token sequence, and a causal transformer is trained by next-token prediction. (b) Inference: a few input-output image pairs form a task prompt; the model continues it to produce the output for a test image, which the VQGAN decoder turns back into an image. (c) Data augmentation rebalances long-tailed tasks to comparable data volumes. (d) Knowledge distillation uses a LLaMA-1B teacher to guide a compact LLaMA-300M student, which is cheaper and faster at inference.",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 DeLVM 框架总览。(a) 训练阶段：VQGAN 编码器把图像离散化成 token 序列，因果 Transformer 做下一个 token 预测；(b) 推理阶段：若干“输入-输出”图像对拼成任务提示（task prompt），模型据此续写测试图像的输出，再由 VQGAN 解码器还原成图像；(c) 数据增强把长尾任务补齐到相近数据量；(d) 知识蒸馏用 LLaMA-1B 教师指导紧凑的 LLaMA-300M 学生，推理更省、更快。",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "为什么语言模型的训练配方搬不过来"
+      },
+      {
+       "type": "paragraph",
+       "text": "语言模型通常在海量语料上只训练一个 epoch，就能避免过拟合。视觉很少有这种奢侈：许多任务的数据集本来就很小，重复训练几十轮才是常态，语言模型的“一遍过”配方无法直接迁移。与此同时，社区的主流做法仍是把模型和数据集越堆越大。DeLVM 反其道而行：与其收集更多真实数据，不如把手头有限的数据用好——这正是数据增强和知识蒸馏的用武之地。"
+      },
+      {
+       "type": "paragraph",
+       "text": "在方法上，DeLVM 沿用了自回归 LVM 的接口。一张图像先经过一个现成的 VQGAN 编码器，被离散化成 256 个 token；多张图像的 token 顺序拼接，就构成一句视觉句子。因果（causal）Transformer 以交叉熵损失做下一个 token 预测来训练，本质上和训练一个语言模型没有区别。推理时，把几组“图像-标注”对当作任务提示，接上一张待处理的测试图像，模型自回归地生成接下来的 256 个 token，再由 VQGAN 解码器还原成结果图。任务是什么，完全由提示里的示例来定义。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 109.38,
+    "end": 153.34,
+    "slides": [
+     4
+    ]
+   },
+   "clip": "assets/media/clips/contribution.mp4",
+   "captions": "assets/media/captions/clips/contribution.vtt",
+   "source_clip_seconds": 43.96,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 44.86,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 4,
+     "global_start": 109.38,
+     "global_end": 153.34,
+     "relative_start": 0.0,
+     "relative_end": 43.96,
+     "clip": "assets/media/slide_clips/slide-04.mp4"
+    }
+   ],
+   "clip_source_section": "contribution"
+  },
+  {
+   "id": "dataset-benchmark",
+   "label": "Dataset / Benchmark",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='dataset-benchmark']"
+   },
+   "slide_indices": [
+    5
+   ],
+   "slides": [
+    {
+     "slide_index": 6,
+     "slide_id": "key-result",
+     "target": "#slide-6"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure4.png",
+       "caption": "Figure 4. Single-task inference results. The diamond is the test input, the circle is the LLaMA-1B teacher, the triangle is a LLaMA-300M trained from scratch, and the heart is a LLaMA-300M trained with knowledge distillation. The teacher is best, and the distilled student (heart) is clearly closer to it, on both segmentation and pose estimation, than the same-size model trained from scratch (triangle).",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure4.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure4.png",
+       "caption": "图4 单任务训练下的推理结果对比。菱形为测试输入，圆形为 LLaMA-1B 教师，三角形为从零训练的 LLaMA-300M，心形为经蒸馏的 LLaMA-300M。教师结果最好；而带蒸馏的学生（心形）无论在分割还是姿态估计上，都明显比从零训练的同规模模型（三角形）更接近教师。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure4.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "为什么语言模型的训练配方搬不过来"
+      },
+      {
+       "type": "paragraph",
+       "text": "语言模型通常在海量语料上只训练一个 epoch，就能避免过拟合。视觉很少有这种奢侈：许多任务的数据集本来就很小，重复训练几十轮才是常态，语言模型的“一遍过”配方无法直接迁移。与此同时，社区的主流做法仍是把模型和数据集越堆越大。DeLVM 反其道而行：与其收集更多真实数据，不如把手头有限的数据用好——这正是数据增强和知识蒸馏的用武之地。"
+      },
+      {
+       "type": "paragraph",
+       "text": "在方法上，DeLVM 沿用了自回归 LVM 的接口。一张图像先经过一个现成的 VQGAN 编码器，被离散化成 256 个 token；多张图像的 token 顺序拼接，就构成一句视觉句子。因果（causal）Transformer 以交叉熵损失做下一个 token 预测来训练，本质上和训练一个语言模型没有区别。推理时，把几组“图像-标注”对当作任务提示，接上一张待处理的测试图像，模型自回归地生成接下来的 256 个 token，再由 VQGAN 解码器还原成结果图。任务是什么，完全由提示里的示例来定义。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 153.34,
+    "end": 194.32,
+    "slides": [
+     5
+    ]
+   },
+   "clip": "assets/media/clips/dataset-benchmark.mp4",
+   "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+   "source_clip_seconds": 40.98,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 41.88,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 5,
+     "global_start": 153.34,
+     "global_end": 194.32,
+     "relative_start": 0.0,
+     "relative_end": 40.98,
+     "clip": "assets/media/slide_clips/slide-05.mp4"
+    }
+   ]
+  },
+  {
+   "id": "key-result",
+   "label": "Key Result",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='key-result']"
+   },
+   "slide_indices": [
+    6
+   ],
+   "slides": [
+    {
+     "slide_index": 7,
+     "slide_id": "ablation-study",
+     "target": "#slide-7"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Move one: augmentation as free data"
+      },
+      {
+       "type": "paragraph",
+       "text": "The first observation is direct: for a data-starved task, simple random crops and flips buy you almost as much as collecting more real data. Training a LLaMA-300M for a fixed 12K steps on subsets of SA-1B and on augmented COCO-Pose, the authors compare adding real data against adding augmented data."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Augmentation matches the effect of introducing new data. Top row, the data-rich segmentation task (SA-1B): validation loss and perplexity keep dropping as training tokens grow. Bottom row, the data-poor pose-estimation task (COCO-Pose, originally about 0.03B tokens): scaling the data through augmentation alone reproduces almost the same downward trend as real new data.",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The two rows nearly coincide. For the data-rich segmentation task, more real data steadily lowers validation loss and perplexity; for the data-poor pose task, padding the data out with augmentation traces almost the same curve. Augmentation, in other words, stands in as cheap new data. That matters, because it reframes the long-tail problem from \"where do we find more data\" to \"how do we top up what we already have.\""
+      },
+      {
+       "type": "paragraph",
+       "text": "Once a single task is topped up, the real test is training several tasks together. The authors compare three ways of handling the imbalance: training directly on the raw unbalanced data; re-sampling the rare tasks, that is, repeating the minority tasks' examples until the counts even out; and using augmentation to expand every task to a comparable data volume. The differences show up directly in what the model generates on the same set of test inputs, which the figure below lays side by side across segmentation, pose, and deraining."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "Figure 3. Inference results under different balancing schemes. The diamond marks the test input. The model trained on unbalanced data (circle) is lopsided, doing well only on segmentation; re-sampling (triangle) makes things worse overall; rebalancing with augmentation (heart) yields cleaner, more sensible outputs across segmentation, pose, and deraining.",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The takeaway is clean. The raw mixture leaves the model lopsided, strong only on the data-heavy segmentation task. Naive re-sampling doesn't fix it and actually collapses on the scarce tasks. Only balancing the three tasks to comparable data volumes with augmentation gives the best overall performance across all three at once."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "第一招：数据增强，等价于“凭空”补数据"
+      },
+      {
+       "type": "paragraph",
+       "text": "第一个观察很直接：对数据稀少的任务，简单的随机裁剪和翻转带来的收益，几乎等同于真的去收集更多数据。作者用固定 12K 训练步、在 SA-1B 子集和增强后的 COCO-Pose 上训练 LLaMA-300M，对比“加真实数据”与“加增强数据”两条曲线。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 数据增强与引入新数据的效果相当。上排为数据充足的图像分割任务（SA-1B）：随着训练 token 增多，验证损失与困惑度持续下降；下排为数据稀缺的姿态估计任务（COCO-Pose，原始约 0.03B token）：仅靠增强扩充数据，就能复现出与真实新数据几乎一致的下降趋势。",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "两排曲线几乎重合：对数据充足的分割任务，加真实数据会稳定降低验证损失和困惑度；对数据稀缺的姿态估计任务，只用增强把数据量补上去，也能得到几乎一样的曲线。换句话说，增强在这里扮演了“廉价的新数据”。这一点很关键，因为它把长尾问题从“去哪里找更多数据”变成了“把已有数据均衡地补齐”。"
+      },
+      {
+       "type": "paragraph",
+       "text": "补齐单个任务之后，真正的考验是把多个任务混在一起训练。作者比较了三种处理数据不均衡的方案：直接用原始不均衡数据训练；对稀有任务做重采样（re-sampling），也就是把少数任务的样本重复多次以凑够数量；以及用数据增强把每个任务都扩充到相近的数据量。三者的差别，可以直接从模型在同一组测试样本上的输出看出来——下图把分割、姿态、去雨三类任务的推理结果并排摆在一起。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "图3 不同均衡策略下的推理结果。菱形为测试输入。在不均衡数据上训练的模型（圆形）明显偏科，只有分割任务做得好；重采样（三角形）反而整体变差；用增强均衡数据（心形）在分割、姿态、去雨三类任务上都给出更干净、更合理的输出。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论清晰：直接混合会让模型偏科，只擅长数据最多的分割；简单重采样不但没解决问题，反而在稀有任务上崩掉；而用增强把三类任务补到相近的数据量，才在三个任务上同时拿到最好的整体表现。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "两招叠加：连 80M 的模型都能打"
+      },
+      {
+       "type": "paragraph",
+       "text": "把增强和蒸馏叠在一起，作者进一步做了一个更极端的实验：一个仅 80M 参数的 LLaMA-80M，在这套配方下，据论文报告在 ImageNet 分类上达到了 83.04% 的 top-1 准确率。对一个以“生成”为训练目标的紧凑自回归模型来说，这个数字相当出人意料，也暗示了生成与理解或许可以在同一个模型里一起学。下表汇总了两个代表性结果。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 DeLVM 的两个代表性结果（数据来自论文）。",
+       "headers": [
+        "设置",
+        "指标",
+        "结果"
+       ],
+       "rows": [
+        [
+         "LLaMA-300M（蒸馏+微调）",
+         "Pascal-5i 前景分割 mIoU（split 0/1/2/3）",
+         "18.58 / 21.32 / 19.90 / 21.08"
+        ],
+        [
+         "LLaMA-80M（增强+蒸馏）",
+         "ImageNet top-1 准确率",
+         "83.04%"
+        ],
+        [
+         "SA-1B 数据 1% → 10%",
+         "验证损失 / 困惑度的下降幅度",
+         "0.19 / 22.4"
+        ]
+       ]
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 194.32,
+    "end": 242.43,
+    "slides": [
+     6
+    ]
+   },
+   "clip": "assets/media/clips/key-result.mp4",
+   "captions": "assets/media/captions/clips/key-result.vtt",
+   "source_clip_seconds": 48.11,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 49.01,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 6,
+     "global_start": 194.32,
+     "global_end": 242.43,
+     "relative_start": 0.0,
+     "relative_end": 48.11,
+     "clip": "assets/media/slide_clips/slide-06.mp4"
+    }
+   ]
+  },
+  {
+   "id": "ablation-study",
+   "label": "Ablation Study",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='ablation-study']"
+   },
+   "slide_indices": [
+    7
+   ],
+   "slides": [
+    {
+     "slide_index": 8,
+     "slide_id": "takeaway",
+     "target": "#slide-8"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "Figure 6. Inference results at different stages of sequential (unshuffled) training. The three rows correspond to test samples from segmentation, pose, and deraining data sources. Regardless of which task the prompt points to, the model's competence collapses onto whatever task it trained on last, the signature of catastrophic forgetting, showing that multi-task LVM training has to be shuffled.",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why the language-model recipe doesn't transfer"
+      },
+      {
+       "type": "paragraph",
+       "text": "Language models typically train for a single epoch over vast corpora, which is enough to avoid overfitting. Vision rarely has that luxury: many task datasets are small to begin with, so repeating them for many epochs is the norm, and the one-pass schedule simply doesn't carry over. Meanwhile the field keeps scaling models and datasets up. DeLVM goes the other way: instead of collecting more real data, make better use of the limited data on hand, which is exactly what augmentation and distillation are for."
+      },
+      {
+       "type": "paragraph",
+       "text": "The method keeps the standard autoregressive LVM interface. An image passes through an off-the-shelf VQGAN encoder and becomes 256 discrete tokens; concatenating the tokens of several images yields a visual sentence. A causal transformer is trained with a cross-entropy next-token objective, which is no different in spirit from training a language model. At inference, a handful of image-annotation pairs act as a task prompt; appended with a fresh test image, the model autoregressively generates the next 256 tokens, and the VQGAN decoder reconstructs the result. What the task is gets defined entirely by the examples in the prompt."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "一个容易被忽略的细节：多任务必须打乱训练"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文里还有一个很有教育意义的消融，关于任务数据的排列顺序。如果不把不同任务的数据打乱、而是一个任务接一个任务地顺序训练（先在 SA-1B 上学分割，再到 COCO-Pose 学姿态，最后用 Rain13K 学去雨），模型会发生灾难性遗忘（catastrophic forgetting）：它只在最近训练过的那个任务上表现正常，对更早学过的任务几乎完全失能。作者在表格中报告，早期任务的困惑度会从正常的一百多一路飙升到上千。下图把三个训练阶段的推理结果摆在一起，遗忘的过程一目了然。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "图6 顺序（不打乱）训练不同阶段的推理结果。三行分别对应分割、姿态、去雨三种数据源的测试样本。无论提示指向哪个任务，模型的能力都只集中在它最近训练过的那个任务上——这正是灾难性遗忘的表现，说明多任务 LVM 训练必须打乱数据。",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "这提醒我们：把多个任务塞进一个自回归 LVM，数据的组织方式和数据本身一样重要。此外，作者还观察到提示的背景色会直接影响生成结果——用黑色背景的提示，能让后续“灰度阈值”这一简单后处理稳定地抽取前景分割掩码。这些看似琐碎的工程细节，恰恰是让紧凑模型真正跑通多任务的关键。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 242.43,
+    "end": 283.07,
+    "slides": [
+     7
+    ]
+   },
+   "clip": "assets/media/clips/ablation-study.mp4",
+   "captions": "assets/media/captions/clips/ablation-study.vtt",
+   "source_clip_seconds": 40.64,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 41.54,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 7,
+     "global_start": 242.43,
+     "global_end": 283.07,
+     "relative_start": 0.0,
+     "relative_end": 40.64,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    }
+   ]
+  },
+  {
+   "id": "headline-numbers",
+   "label": "Headline Numbers",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='headline-numbers']"
+   },
+   "slide_indices": [
+    7
+   ],
+   "slides": [
+    {
+     "slide_index": 7,
+     "slide_id": "ablation-study",
+     "target": "#slide-7"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "An easy-to-miss detail: multi-task training must be shuffled"
+      },
+      {
+       "type": "paragraph",
+       "text": "One of the paper's most instructive ablations concerns the order of the task data. Train the tasks sequentially rather than shuffled, one after another (segmentation on SA-1B, then pose on COCO-Pose, then deraining on Rain13K), and the model suffers catastrophic forgetting: it performs well only on the task it saw most recently and is nearly useless on the earlier ones. The authors report in a table that perplexity on the early tasks climbs from a normal hundred-something all the way into the thousands. The figure below places the inference results from three training stages together, making the forgetting easy to see."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure6.png",
+       "caption": "Figure 6. Inference results at different stages of sequential (unshuffled) training. The three rows correspond to test samples from segmentation, pose, and deraining data sources. Regardless of which task the prompt points to, the model's competence collapses onto whatever task it trained on last, the signature of catastrophic forgetting, showing that multi-task LVM training has to be shuffled.",
+       "width_inches": 3.2,
+       "src": "assets/blog/figures/figure6.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The lesson is that packing several tasks into one autoregressive LVM makes how you organize the data as important as the data itself. The authors also note that the prompt's background color propagates into the output: black-background prompts make a simple grayscale-threshold post-processing step a reliable way to extract the foreground mask. These small engineering details are exactly what makes a compact model actually work across tasks."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 DeLVM 框架总览。(a) 训练阶段：VQGAN 编码器把图像离散化成 token 序列，因果 Transformer 做下一个 token 预测；(b) 推理阶段：若干“输入-输出”图像对拼成任务提示（task prompt），模型据此续写测试图像的输出，再由 VQGAN 解码器还原成图像；(c) 数据增强把长尾任务补齐到相近数据量；(d) 知识蒸馏用 LLaMA-1B 教师指导紧凑的 LLaMA-300M 学生，推理更省、更快。",
+       "width_inches": 5.6,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "两招叠加：连 80M 的模型都能打"
+      },
+      {
+       "type": "paragraph",
+       "text": "把增强和蒸馏叠在一起，作者进一步做了一个更极端的实验：一个仅 80M 参数的 LLaMA-80M，在这套配方下，据论文报告在 ImageNet 分类上达到了 83.04% 的 top-1 准确率。对一个以“生成”为训练目标的紧凑自回归模型来说，这个数字相当出人意料，也暗示了生成与理解或许可以在同一个模型里一起学。下表汇总了两个代表性结果。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 DeLVM 的两个代表性结果（数据来自论文）。",
+       "headers": [
+        "设置",
+        "指标",
+        "结果"
+       ],
+       "rows": [
+        [
+         "LLaMA-300M（蒸馏+微调）",
+         "Pascal-5i 前景分割 mIoU（split 0/1/2/3）",
+         "18.58 / 21.32 / 19.90 / 21.08"
+        ],
+        [
+         "LLaMA-80M（增强+蒸馏）",
+         "ImageNet top-1 准确率",
+         "83.04%"
+        ],
+        [
+         "SA-1B 数据 1% → 10%",
+         "验证损失 / 困惑度的下降幅度",
+         "0.19 / 22.4"
+        ]
+       ]
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 242.43,
+    "end": 283.07,
+    "slides": [
+     7
+    ]
+   },
+   "clip": "assets/media/clips/ablation-study.mp4",
+   "captions": "assets/media/captions/clips/ablation-study.vtt",
+   "source_clip_seconds": 40.64,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 41.54,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 7,
+     "global_start": 242.43,
+     "global_end": 283.07,
+     "relative_start": 0.0,
+     "relative_end": 40.64,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    }
+   ],
+   "clip_source_section": "ablation-study"
+  },
+  {
+   "id": "takeaway",
+   "label": "Takeaway",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='takeaway']"
+   },
+   "slide_indices": [
+    8
+   ],
+   "slides": [
+    {
+     "slide_index": 8,
+     "slide_id": "takeaway",
+     "target": "#slide-8"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Move one: augmentation as free data"
+      },
+      {
+       "type": "paragraph",
+       "text": "The first observation is direct: for a data-starved task, simple random crops and flips buy you almost as much as collecting more real data. Training a LLaMA-300M for a fixed 12K steps on subsets of SA-1B and on augmented COCO-Pose, the authors compare adding real data against adding augmented data."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Augmentation matches the effect of introducing new data. Top row, the data-rich segmentation task (SA-1B): validation loss and perplexity keep dropping as training tokens grow. Bottom row, the data-poor pose-estimation task (COCO-Pose, originally about 0.03B tokens): scaling the data through augmentation alone reproduces almost the same downward trend as real new data.",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The two rows nearly coincide. For the data-rich segmentation task, more real data steadily lowers validation loss and perplexity; for the data-poor pose task, padding the data out with augmentation traces almost the same curve. Augmentation, in other words, stands in as cheap new data. That matters, because it reframes the long-tail problem from \"where do we find more data\" to \"how do we top up what we already have.\""
+      },
+      {
+       "type": "paragraph",
+       "text": "Once a single task is topped up, the real test is training several tasks together. The authors compare three ways of handling the imbalance: training directly on the raw unbalanced data; re-sampling the rare tasks, that is, repeating the minority tasks' examples until the counts even out; and using augmentation to expand every task to a comparable data volume. The differences show up directly in what the model generates on the same set of test inputs, which the figure below lays side by side across segmentation, pose, and deraining."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "Figure 3. Inference results under different balancing schemes. The diamond marks the test input. The model trained on unbalanced data (circle) is lopsided, doing well only on segmentation; re-sampling (triangle) makes things worse overall; rebalancing with augmentation (heart) yields cleaner, more sensible outputs across segmentation, pose, and deraining.",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The takeaway is clean. The raw mixture leaves the model lopsided, strong only on the data-heavy segmentation task. Naive re-sampling doesn't fix it and actually collapses on the scarce tasks. Only balancing the three tasks to comparable data volumes with augmentation gives the best overall performance across all three at once."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "第一招：数据增强，等价于“凭空”补数据"
+      },
+      {
+       "type": "paragraph",
+       "text": "第一个观察很直接：对数据稀少的任务，简单的随机裁剪和翻转带来的收益，几乎等同于真的去收集更多数据。作者用固定 12K 训练步、在 SA-1B 子集和增强后的 COCO-Pose 上训练 LLaMA-300M，对比“加真实数据”与“加增强数据”两条曲线。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 数据增强与引入新数据的效果相当。上排为数据充足的图像分割任务（SA-1B）：随着训练 token 增多，验证损失与困惑度持续下降；下排为数据稀缺的姿态估计任务（COCO-Pose，原始约 0.03B token）：仅靠增强扩充数据，就能复现出与真实新数据几乎一致的下降趋势。",
+       "width_inches": 3.5,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "两排曲线几乎重合：对数据充足的分割任务，加真实数据会稳定降低验证损失和困惑度；对数据稀缺的姿态估计任务，只用增强把数据量补上去，也能得到几乎一样的曲线。换句话说，增强在这里扮演了“廉价的新数据”。这一点很关键，因为它把长尾问题从“去哪里找更多数据”变成了“把已有数据均衡地补齐”。"
+      },
+      {
+       "type": "paragraph",
+       "text": "补齐单个任务之后，真正的考验是把多个任务混在一起训练。作者比较了三种处理数据不均衡的方案：直接用原始不均衡数据训练；对稀有任务做重采样（re-sampling），也就是把少数任务的样本重复多次以凑够数量；以及用数据增强把每个任务都扩充到相近的数据量。三者的差别，可以直接从模型在同一组测试样本上的输出看出来——下图把分割、姿态、去雨三类任务的推理结果并排摆在一起。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure3.png",
+       "caption": "图3 不同均衡策略下的推理结果。菱形为测试输入。在不均衡数据上训练的模型（圆形）明显偏科，只有分割任务做得好；重采样（三角形）反而整体变差；用增强均衡数据（心形）在分割、姿态、去雨三类任务上都给出更干净、更合理的输出。",
+       "width_inches": 6.4,
+       "src": "assets/blog/figures/figure3.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论清晰：直接混合会让模型偏科，只擅长数据最多的分割；简单重采样不但没解决问题，反而在稀有任务上崩掉；而用增强把三类任务补到相近的数据量，才在三个任务上同时拿到最好的整体表现。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "ICML 2024: You Don't Need 3B Parameters to Build a Generalist Vision Model",
+      "subtitle": "DeLVM, from the University of Sydney, Beijing Institute of Technology, and Huawei Noah's Ark Lab, uses data augmentation and knowledge distillation to make a compact autoregressive vision model learn multiple tasks from limited data"
+     },
+     "zh": {
+      "title": "ICML 2024 | 大视觉模型不必又大又贵：两个经典技巧就够了",
+      "subtitle": "悉尼大学、北京理工大学与华为诺亚方舟实验室提出 DeLVM，用数据增强与知识蒸馏，让紧凑的自回归视觉模型在有限数据上学好多任务"
+     }
+    }
+   },
+   "segment": {
+    "start": 283.07,
+    "end": 321.77,
+    "slides": [
+     8
+    ]
+   },
+   "clip": "assets/media/clips/takeaway.mp4",
+   "captions": "assets/media/captions/clips/takeaway.vtt",
+   "source_clip_seconds": 38.7,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 39.6,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 8,
+     "global_start": 283.07,
+     "global_end": 321.77,
+     "relative_start": 0.0,
+     "relative_end": 38.7,
+     "clip": "assets/media/slide_clips/slide-08.mp4"
+    }
+   ]
+  }
+ ],
+ "notes": [
+  "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+ ]
+}

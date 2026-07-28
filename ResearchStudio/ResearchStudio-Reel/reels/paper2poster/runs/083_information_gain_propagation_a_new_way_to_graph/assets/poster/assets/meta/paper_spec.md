@@ -1,0 +1,55 @@
+---
+title: "Information Gain Propagation: A New Way to Graph Active Learning with Soft Labels"
+authors: Wentao Zhang¹, Yexin Wang¹, Zhenbang You¹, Meng Cao², Ping Huang², Jiulong Shan², Zhi Yang¹³, Bin Cui¹³⁴
+institutes: ¹Peking University; ²Apple; ³National Engineering Laboratory for Big Data Analysis and Applications; ⁴Institute of Computational Social Science, Peking University (Qingdao)
+venue: ICLR 2022
+paper_url: https://arxiv.org/abs/2203.01093
+code_url:
+title_audio_script: Graph neural networks need lots of labeled nodes, and labeling them is expensive. This ICLR 2022 paper, Information Gain Propagation, rethinks graph active learning. Instead of asking an oracle to name the exact class of a node, it asks a much cheaper binary question, does this node belong to a given class, yes or no. That relaxed query yields a soft label, and a new selection criterion picks the nodes whose information gain propagates farthest across the graph. The result is higher accuracy at far lower labeling cost.
+---
+
+## Problem
+**Necessary:** GNNs need many labeled nodes, and existing graph active-learning methods assume an oracle can name the exact class of every selected node, an expensive multi-class query that exceeds expert capability when categories are many.
+**Additional:** Exact labeling is costly, especially out-of-domain (e.g. ogbn-papers100M has 172 classes), so hard-label queries do not scale with the number of categories.
+**Audio script:** Graph neural networks achieve strong results but rely on large amounts of labeled data, which is laborious and costly to obtain. Active learning cuts this cost by selecting the most valuable nodes to label. But every prior method makes the same assumption: an oracle can always name the exact class of any selected node. When the number of categories is large or the domain is unfamiliar, that exact multi-class question is far too demanding, and the labeling budget is spent inefficiently.
+
+## Motivation
+**Necessary:** Judging the exact class is much harder than confirming a guess. A relaxed yes/no query is cheaper per node, and prior uncertainty-based criteria ignore that a labeled node propagates information to its k-hop neighbors in a GNN.
+**Additional:** An exact multi-class query costs roughly c−1 times a binary query for c classes; prior criteria maximize single-node uncertainty, not graph-wide information gain.
+**Audio script:** Confirming a guess is far easier than naming the exact class. If a domain expert only has to answer a binary yes-or-no question, the labeling cost per node drops sharply, especially when there are many classes. At the same time, existing node-selection criteria were designed for hard labels and only look at the uncertainty of a single node. They ignore a defining property of graph neural networks: labeling one node propagates supervision across its k-hop neighborhood. The motivation is to exploit both cheaper queries and this propagation effect.
+
+## Contribution
+**Necessary:** IGP is the first graph active-learning framework built on relaxed binary queries and soft labels, paired with a new node-selection criterion that explicitly maximizes information-gain propagation across the graph.
+**Additional:** It works on any GNN backbone (SGC, APPNP, GCN, MVGRL) and consistently beats state-of-the-art AL baselines under equal labeling cost.
+**Audio script:** The paper makes three contributions. First, it introduces a new active-learning paradigm for graph neural networks that uses relaxed queries and soft labels instead of exact-class annotation. Second, it proposes a novel node-selection criterion that explicitly maximizes the propagation of information gain through the graph, rather than the uncertainty of individual nodes. Third, extensive experiments show the paradigm significantly outperforms state-of-the-art baselines on both accuracy and labeling cost, and generalizes across many GNN backbones.
+
+## Method
+**Necessary:** For each candidate node the oracle answers only "is the predicted label correct?" (yes/no), producing a normalized soft label. IGP estimates each node's influence magnitude on its neighbors, weights the information gain by that influence, and selects the budget-constrained node set that maximizes total propagated information gain.
+**Additional:** Pipeline loops Model Training (GNN on soft labels) → Node Selection (maximize IGP = influence magnitude × information gain) → Node Labeling (relaxed query → normalized label) → update. Influence magnitude uses feature-gradient / random-walk propagation over a k-layer GNN.
+**Key equation:** `$IGP(v_j,v_i,k)=H\!\Big(\sum_{v_m\in V_l} I_f(v_j,v_m,k)\hat{y}_m\Big)-H\!\Big(\sum_{v_m\in V_l\cup\{v_i\}} I_f(v_j,v_m,k)\hat{y}'_m\Big)$` and the selection objective `$\max_{V_l} F(V_l)=\sum_{v_i\in V_l}\sum_{v_j\in RF(v_i)} IGP(v_j,v_i,k),\;\; s.t.\;|V_l|=B$`
+**Audio script:** IGP works in a loop. A graph neural network is first trained on the currently labeled nodes with their soft labels. For each candidate node, the oracle is asked only whether the model's predicted label is correct, a binary question, and the answer is turned into a normalized soft label. To decide which nodes to label, IGP measures how strongly each node influences its neighbors through graph propagation, called the influence magnitude, and combines it with the information gain, the entropy reduction, of every influenced node. The chosen criterion, information gain propagation, is the expected reduction in uncertainty across a node's entire receptive field. Finally, IGP selects the subset of nodes, within the labeling budget, that maximizes the total propagated information gain, then updates the model and repeats.
+
+## Dataset / Benchmark
+**Necessary:** Evaluated on three citation networks (Cora, Citeseer, PubMed), one large social network (Reddit), and one OGB graph (ogbn-arxiv), under a fixed labeling-cost budget rather than a fixed label count.
+**Additional:** Budget is measured as query cost (money), with an exact query costing c−1× a relaxed query; budgets ranged from 2C to 20C labels (C = number of classes).
+**Audio script:** IGP is evaluated on five standard graph benchmarks: the three citation networks Cora, Citeseer, and PubMed, the large social network Reddit, and the Open Graph Benchmark dataset ogbn-arxiv. Crucially, the labeling budget is defined as the true annotation cost rather than a simple count of labels, since an exact multi-class query is far more expensive than a relaxed binary one. Budgets are varied from two to twenty labels per class to study how accuracy grows with cost.
+
+## Key Result
+**Necessary:** Under equal labeling budget (20 labels/class, GCN), IGP reaches 86.4% on Cora, 75.8% on Citeseer, and 83.6% on PubMed, beating the best baseline GRAIN by 1.6–2.2% on citation networks, 0.9% on Reddit, and 0.6% on ogbn-arxiv.
+**Additional:** IGP's accuracy rises fastest as budget grows, and it stays ahead across every budget size. On PubMed it beats ALG and GRAIN by more than 1.8% across four GNN backbones (SGC, APPNP, GCN, MVGRL).
+**Audio script:** Across every dataset and every labeling budget, IGP delivers the highest test accuracy. Under the same budget of twenty labels per class with a GCN, IGP reaches 86.4 percent on Cora, 75.8 percent on Citeseer, and 83.6 percent on PubMed, improving over the strongest prior method, GRAIN, by 1.6 to 2.2 percent on the citation networks, and by smaller but consistent margins on Reddit and ogbn-arxiv. As the budget grows, IGP's accuracy climbs the fastest, and the advantage holds across GNN backbones from simple SGC to self-supervised MVGRL.
+
+## Ablation Study
+**Necessary:** Removing any component hurts accuracy. Dropping informative selection costs up to −3.2% (PubMed), informative training up to −2.9%, information quantity up to −2.1%, and normalized label up to −2.4%.
+**Additional:** Informative selection is the single most important component (−2.5% on Cora vs smaller gaps for others), confirming that propagation-aware selection, not just soft-label training, drives the gains.
+**Audio script:** An ablation disables one component of IGP at a time. Removing informative selection, the propagation-aware node choice, causes the largest drop, up to 3.2 percent on PubMed and 2.5 percent on Cora, making it the most important ingredient. Removing informative training with soft labels costs up to 2.9 percent, dropping the influence-magnitude information quantity costs up to 2.1 percent, and removing the normalized soft label costs up to 2.4 percent. Every piece contributes, and the propagation-aware selection is what sets IGP apart.
+
+## Headline Numbers
+**Necessary:** 86.4% Cora accuracy; +2.2% over the best baseline on Cora; consistent SOTA across 5 datasets and 4 GNN backbones; binary yes/no query replaces multi-class labeling.
+**Additional:** +1.6–2.2% on citation networks; >1.8% over ALG/GRAIN on PubMed across backbones.
+**Audio script:** The headline numbers: 86.4 percent test accuracy on Cora, a 2.2 percent gain over the best prior baseline; state-of-the-art results across five datasets and four GNN backbones; and all of it achieved by replacing the expensive exact-class question with a single cheap binary query per node.
+
+## Takeaway
+**Necessary:** Ask a cheaper yes/no question and pick nodes whose information gain propagates farthest, and graph active learning gets both more accurate and much cheaper to label.
+**Additional:** Relaxed queries plus propagation-aware selection is a general recipe that plugs into any GNN.
+**Audio script:** The takeaway is simple. By relaxing the labeling question to a cheap binary yes-or-no and selecting nodes whose information gain propagates farthest across the graph, IGP makes graph active learning both more accurate and dramatically cheaper to label, and the recipe works with any graph neural network.

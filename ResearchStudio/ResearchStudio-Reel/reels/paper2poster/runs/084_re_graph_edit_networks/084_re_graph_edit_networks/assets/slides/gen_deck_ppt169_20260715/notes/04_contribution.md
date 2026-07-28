@@ -1,0 +1,1 @@
+The reproduction contributes four things: it re-runs the model and baseline to check each claim; it documents the synthetic data generators the paper omitted; it adds a cleaner setup separating training and test series; and it shows some benchmarks let the model win by memorising seen transitions.

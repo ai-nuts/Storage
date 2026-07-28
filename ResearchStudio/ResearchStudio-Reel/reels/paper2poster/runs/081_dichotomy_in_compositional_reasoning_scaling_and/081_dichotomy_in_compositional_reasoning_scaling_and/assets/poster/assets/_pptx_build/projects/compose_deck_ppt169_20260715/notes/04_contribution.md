@@ -1,0 +1,1 @@
+Three contributions: a test suite of linguistic and logical composite tasks with simple-task examples only; evaluation across Llama and GPT scales revealing a clear dichotomy; and a linear self-attention theory explaining when composition emerges.

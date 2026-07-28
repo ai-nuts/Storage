@@ -1,0 +1,60 @@
+---
+title: Uni[MASK]: Unified Inference in Sequential Decision Problems
+authors: Micah Carroll¹, Orr Paradise¹, Jessy Lin¹, Raluca Georgescu², Mingfei Sun², David Bignell², Stephanie Milani³, Katja Hofmann², Matthew Hausknecht², Anca Dragan¹, Sam Devlin²
+institutes: ¹UC Berkeley; ²Microsoft Research; ³Carnegie Mellon University
+venue: NeurIPS 2022
+paper_url: https://arxiv.org/abs/2211.10869
+code_url: https://github.com/micahcarroll/uniMASK
+title_audio_script: Randomly masking and predicting tokens has powered pretraining in language modeling. This paper, Uni-MASK, shows the same idea applies naturally to sequential decision making. Many well-studied tasks, behavior cloning, offline reinforcement learning, inverse dynamics, and waypoint conditioning, all correspond to different maskings over a sequence of states, actions, and returns. Uni-MASK unifies them into one framework, and a single model trained this way often matches or beats specialized single-task models, and consistently outperforms them after fine-tuning.
+---
+
+## Problem
+**Necessary:** Sequential decision problems are usually solved one task at a time, with a separate model trained for behavior cloning, offline RL, dynamics prediction, or goal conditioning, despite their shared structure.
+**Additional:** This siloing wastes the fact that all these inferences operate over the same trajectory of states, actions, and returns and could share representations.
+**Audio script:** In sequential decision making, tasks like behavior cloning, offline reinforcement learning, inverse dynamics, and goal or waypoint conditioning are typically each handled by a separate, specially trained model. Yet all of these tasks operate over the very same object: a trajectory of states, actions, and returns. Training a distinct model per task ignores this shared structure and misses the chance to build richer, reusable representations across tasks.
+
+## Motivation
+**Necessary:** Masked language modeling shows that predicting randomly masked tokens yields representations transferable across many downstream tasks; the authors observe decision-making inferences are just different maskings of a trajectory.
+**Additional:** Predicting a masked last action given prior states and actions is exactly a behavior-cloning inference, so the whole family of tasks fits one bidirectional masked-prediction objective.
+**Audio script:** Masked language modeling, the technique behind BERT, trains models to predict randomly masked tokens in a sequence, producing rich bidirectional representations that transfer to many tasks. The authors observe that this idea maps directly onto decision making. If you treat states and actions as tokens and mask the last action, predicting it is exactly a behavior cloning inference. Different tasks are simply different masking patterns over the same trajectory, so a single masked-prediction objective can, in principle, express them all.
+
+## Contribution
+**Necessary:** The paper introduces Uni[MASK], a framework that expresses inference tasks in sequential decision problems as input masking schemes, letting one model be trained on many tasks at once.
+**Additional:** It shows a single Uni[MASK] model matches or beats single-task models across tasks, and consistently outperforms them after fine-tuning; it also introduces an improved GPT baseline, Decision-GPT.
+**Audio script:** The main contribution is the Uni-MASK framework, a unified way to specify models for sequential decision making by casting each inference task as a masking scheme over a trajectory of states, actions, and reward-to-go tokens. Because tasks are just maskings, a single model can be trained to perform behavior cloning, reward conditioning, dynamics modeling, and goal or waypoint conditioning together. The authors show this single model often matches or exceeds specialized single-task models, and consistently outperforms them after fine-tuning. Along the way they also introduce Decision-GPT, an improved GPT-based baseline.
+
+## Method
+**Necessary:** A trajectory is tokenized into per-timestep state, action, and property (return-to-go) tokens; a masking scheme specifies which input tokens are shown and which outputs must be predicted, and a bidirectional BERT-style transformer encoder predicts the masked tokens.
+**Additional:** Four training regimes are compared: single-task, multi-task (random scheme per snippet), random-mask (arbitrary token masking), and fine-tune (random-mask pretraining then task-specific fine-tuning). Positional encoding replaces timestep encoding and only the first RTG token is fed in.
+**Audio script:** Uni-MASK represents a trajectory as a sequence of per-timestep tokens: a state, an action, and optionally a property token such as return-to-go, the sum of future rewards. A masking scheme specifies two things: which input tokens are visible to the model, and which output tokens the model must predict and be scored on. Different schemes recover different tasks. Behavior cloning conditions on past states and actions and predicts the next action; goal conditioning additionally reveals a future state; reward conditioning reveals return-to-go. The model itself is a bidirectional BERT-style transformer encoder that stacks each timestep's state, action, and property into one vector and predicts the masked tokens. The authors compare four training regimes: single-task, multi-task with a random scheme per snippet, fully random masking, and random-mask pretraining followed by task-specific fine-tuning.
+**Key equation:** `$\tau = \{(s_0,a_0,p_0),\dots,(s_T,a_T,p_T)\}, \quad \hat{R}_t = \sum_{t'=t}^{T} r_{t'}$` and the behavior-cloning inference `$P(a_t \mid s_{0:t}, a_{0:t-1})$`, with the general masked inference example `$P(a_2 \mid s_{0:2,T}, a_{0:1}, \hat{R}_0)$`.
+
+## Dataset / Benchmark
+**Necessary:** Two environments: a MiniGrid gridworld navigating to a goal behind a locked door, and the MuJoCo-physics Maze2D (D4RL) continuous-control maze.
+**Additional:** MiniGrid data is used for the qualitative and validation-loss task comparisons; Maze2D reports reward from 1000 rollouts across 5 seeds against feedforward, Decision Transformer, and Decision-GPT baselines at context lengths 5 and 10.
+**Audio script:** The framework is evaluated on two environments. The first is MiniGrid, a gridworld where an agent must reach a fixed goal behind a locked door; it is used to qualitatively demonstrate the many inference tasks a single model can perform and to compare task-specific validation losses. The second is Maze2D, a continuous-control maze from the MuJoCo-based D4RL benchmark, where the authors measure test-time reward over one thousand rollouts across five seeds, comparing Uni-MASK against a feedforward network, Decision Transformer, and their own improved Decision-GPT baseline at context lengths of five and ten.
+
+## Key Result
+**Necessary:** In MiniGrid, random-mask training outperforms single-task on all tasks, and random-mask pretraining plus fine-tuning gives the best performance, beating single-task on every task except behavior cloning.
+**Additional:** In Maze2D, fine-tuning is critical: multi-task-plus-fine-tune and random-mask-plus-fine-tune Uni[MASK] models beat all baselines at context length 5, reaching reward around 2.73 to 2.74 versus 1.13 to 1.49 for Decision Transformer.
+**Audio script:** In the MiniGrid environment, a single model trained with random masking outperforms single-task models on all tasks, and adding task-specific fine-tuning on top of random-mask pretraining gives the best performance of all, beating single-task models on every task except behavior cloning. This means that even if you only care about one inference task, first training on many tasks generally helps. In the harder Maze2D environment, fine-tuning becomes critical: the fine-tuned Uni-MASK models reach rewards around two point seven, outperforming every baseline at context length five, including a Decision Transformer that scores only around one point one to one point five.
+
+## Ablation Study
+**Necessary:** Comparing the four training regimes isolates fine-tuning as the key ingredient, and comparing single-task Uni[MASK] against Decision-GPT isolates BERT-style versus GPT-style backbones.
+**Additional:** At context length 10, BERT-style Uni[MASK] models degrade and are outperformed by the GPT-based Decision-GPT, exposing a difficulty of BERT-like architectures with longer-sequence generation; feeding only the first RTG token beat feeding it at every timestep.
+**Audio script:** The training-regime comparison isolates the effect of each ingredient and shows fine-tuning is the decisive one for good performance in the more complex Maze2D environment. A second, controlled comparison pits single-task Uni-MASK against the Decision-GPT baseline, where the only real difference is a BERT-style versus a GPT-style backbone. Here the picture is nuanced: BERT works well at a short context length of five, but at length ten the BERT-style Uni-MASK models degrade and are outbeaten by the GPT-based Decision-GPT, revealing a known difficulty of BERT-like architectures with longer-sequence generation.
+
+## Headline Numbers
+**Necessary:**
+- Maze2D reward (context length 5, BC): Uni[MASK] multi-task + finetune 2.73 vs Decision Transformer 1.13
+- Maze2D reward (context length 5, RC): Uni[MASK] finetune 2.73 vs Decision Transformer 1.49
+- One model performs behavior cloning, reward conditioning, dynamics, goal and waypoint conditioning
+**Additional:**
+- Results averaged over 6 seeds (MiniGrid) and 5 seeds / 1000 rollouts (Maze2D)
+- Random-mask + finetune beats single-task on all MiniGrid tasks except behavior cloning
+**Audio script:** A few numbers capture the impact. In Maze2D at context length five, the fine-tuned Uni-MASK models reach reward around two point seven three on both behavior cloning and reward conditioning, compared to just one point one three and one point four nine for the Decision Transformer, and around one point five to one point seven for a feedforward network. These results are averaged over five seeds and one thousand rollouts. And critically, a single Uni-MASK model handles behavior cloning, reward conditioning, dynamics modeling, and goal and waypoint conditioning all at once.
+
+## Takeaway
+**Necessary:** Casting sequential-decision tasks as masking schemes lets one masked-prediction model do the job of many specialized models, and random-mask pretraining plus fine-tuning generally beats task-specific training.
+**Additional:** BERT-style backbones excel at short contexts but struggle with longer-sequence generation, pointing to GPT-plus-random-masking as promising future work.
+**Audio script:** The lasting takeaway is simple and powerful: many seemingly distinct sequential-decision tasks are just different maskings of the same trajectory, so a single masked-prediction model can replace a zoo of specialized ones. And training on many masking schemes, then fine-tuning, generally does better than training on any single task alone, even when you only care about that one task. The main caveat is architectural, BERT-style models shine at short contexts but struggle to generate over longer sequences, suggesting that combining GPT-style backbones with random masking is a promising next step.

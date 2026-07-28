@@ -1,0 +1,1 @@
+Suppose a model learned two simple tasks in-context, capitalizing certain words and swapping others. Given an input needing both, can it combine the skills? For humans this is trivial, yet even GPT-4 and Claude 3 often fail.

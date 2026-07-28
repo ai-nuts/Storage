@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A trajectory is tokenized into per-timestep state, action, and property (return-to-go) tokens; a masking scheme specifies which input tokens are shown and which outputs must be predicted, and a bidirectional BERT-style transformer encoder predicts the masked tokens.
+
+Supporting detail: Four training regimes are compared: single-task, multi-task (random scheme per snippet), random-mask (arbitrary token masking), and fine-tune (random-mask pretraining then task-specific fine-tuning). Positional encoding replaces timestep encoding and only the first RTG token is fed in.
+
+Narration: Uni-MASK represents a trajectory as a sequence of per-timestep tokens: a state, an action, and optionally a property token such as return-to-go, the sum of future rewards. A masking scheme specifies two things: which input tokens are visible to the model, and which output tokens the model must predict and be scored on. Different schemes recover different tasks. Behavior cloning conditions on past states and actions and predicts the next action; goal conditioning additionally reveals a future state; reward conditioning reveals return-to-go. The model itself is a bidirectional BERT-style transformer encoder that stacks each timestep's state, action, and property into one vector and predicts the masked tokens. The authors compare four training regimes: single-task, multi-task with a random scheme per snippet, fully random masking, and random-mask pretraining followed by task-specific fine-tuning.

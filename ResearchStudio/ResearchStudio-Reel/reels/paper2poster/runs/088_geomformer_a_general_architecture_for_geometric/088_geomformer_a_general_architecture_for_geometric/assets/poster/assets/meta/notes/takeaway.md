@@ -1,0 +1,7 @@
+# Takeaway
+
+Core claim: Two standard Transformer streams, one invariant and one equivariant, bridged by cross-attention, form a single general architecture that learns both representation types and beats specialized geometric models across the board.
+
+Supporting detail: Because prior architectures emerge as special cases, GeoMFormer offers a unifying, scalable design principle for geometric molecular representation learning.
+
+Narration: The lasting message of this work is that you do not need bespoke, heuristic modules to model molecules under physical constraints. By running two standard Transformer streams in parallel, one for invariant and one for equivariant features, and connecting them with simple cross-attention, GeoMFormer learns both kinds of representation at once and outperforms specialized architectures on a wide range of tasks. Because many earlier models are special cases of this framework, GeoMFormer offers a clean, general, and scalable design principle for geometric molecular representation learning.

@@ -1,0 +1,1 @@
+The scale sweep is the key ablation. On separable tasks accuracy rises with scale; on compose-by-step tasks it stays flat or degrades. Swapping simple-task demos for composite ones recovers performance, isolating composition, not capability, as the bottleneck.

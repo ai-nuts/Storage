@@ -1,0 +1,1 @@
+The suite pairs simple building blocks. Linguistic tasks include capitalization, swapping, and translations like phrase recombination and passive-to-active. Logical tasks combine arithmetic with word operations. Tasks split into separable composites, acting on different input parts, and compose-by-step composites requiring chained reasoning.

@@ -1,0 +1,58 @@
+---
+title: [Re] Graph Edit Networks
+authors: Vid Stropnik¹, Maruša Oražem¹
+institutes: ¹Faculty of Computer and Information Science, University of Ljubljana
+venue: ReScience C 2022
+paper_url: https://doi.org/10.5281/zenodo.6574701
+code_url: https://github.com/MarusaOrazem/reproducibility_challenge
+title_audio_script: This is a reproducibility study of Graph Edit Networks, a novel output layer for graph neural networks that predicts how a graph changes over time by emitting a sequence of interpretable graph edits. The reproduction re-implements the model, rigorously re-examines the synthetic data generators it was tested on, and checks the original paper's four experimental claims. It confirms most of them, but pushes back on the claim that the model's backward passes scale linearly, and it raises pointed concerns about whether the chosen benchmarks really test what the authors intended.
+---
+
+## Problem
+**Necessary:** Predicting how a graph evolves over time is hard: most graph neural networks output node or edge scores, not the explicit, interpretable sequence of structural changes needed to turn one graph into the next.
+**Additional:** Graph Edit Networks (GEN) address this with an output layer that emits edit scripts, but the original claims rest on lightly-described synthetic benchmarks and untested scaling arguments.
+**Audio script:** Graph time-series prediction asks a model to forecast the next graph in a sequence, not just a label. Standard graph neural networks emit node or edge probabilities, which don't naturally express the structural operations, inserting a node, deleting an edge, relabelling a vertex, that actually transform one graph into the next. Graph Edit Networks were proposed to close this gap by predicting an explicit, human-readable edit script. This reproduction asks whether that idea, and the evidence behind it, hold up under independent scrutiny.
+
+## Motivation
+**Necessary:** The original GEN paper reports strong wins over baselines and favourable sub-quadratic and linear scaling, but the synthetic data generators and runtime claims were never described in enough detail to verify independently.
+**Additional:** Reproducibility matters most exactly where results look impressive on small, custom benchmarks whose difficulty is hard to judge from the paper alone.
+**Audio script:** The original work makes appealing claims: the graph edit network beats its baselines on every task, reaches perfect accuracy on tree-structured problems, and scales gracefully to large real-world graphs. But these claims rest on custom data-generating processes that the paper described only briefly, and on scaling arguments the authors did not fully expose. That combination, strong results on under-documented benchmarks, is precisely where an independent reproduction adds the most value, both to confirm what holds and to surface what the headline numbers hide.
+
+## Contribution
+**Necessary:** The authors re-implement and re-run GEN, exhaustively document the five synthetic data-generating processes, propose an alternative risk-estimation protocol with proper train/test separation, and critically evaluate whether the benchmarks actually test the model's expressive power.
+**Additional:** They also debug and help fix a section of the original authors' code and contribute a more rigorous scaling analysis of forward and backward passes.
+**Audio script:** This reproduction contributes on four fronts. First, it re-implements and re-runs the graph edit network and its baseline, checking each experimental claim directly. Second, it provides the thorough description of the synthetic data generators that the original paper lacked, a resource useful to anyone reusing these benchmarks. Third, it introduces an alternative risk-estimation setup that properly separates training and test series, and repeats the experiments under it. Finally, it critically examines whether the chosen benchmarks genuinely stress the model, uncovering that several of them let the model succeed by memorising transitions it has already seen.
+
+## Method
+**Necessary:** GEN is an output layer for GNNs that, given the current graph and a teaching signal derived from a reference mapping, predicts an edit script, a finite sequence of node insertions, deletions, replacements and edge insertions/deletions, that transforms the current graph into the next under a Markovian assumption.
+**Additional:** Reference pair mappings are obtained via graph-edit-distance approximators (exact distance is NP-hard), then converted into per-node teaching signals; the reproduction trains GEN variants with adapted hinge and cross-entropy losses, plus flexible and fixed edge filtering for large graphs, against a modified Variational Graph Autoencoder baseline.
+**Key equation:** `$G_{t+1} = \psi_t(G_t);\quad \psi_t := \delta_t^1 \circ \delta_t^2 \circ \cdots \circ \delta_t^n;\quad \forall \delta_t^i \in \bar{\delta}_t$`
+**Audio script:** A graph edit network attaches to a standard graph neural network backbone and, instead of scoring nodes or edges, predicts a script of graph edits. Each edit is one of a small vocabulary: insert, delete or replace a node, or insert or delete an edge. Applying the script in sequence maps the current graph to the next one, which is exactly the Markovian assumption the method relies on. Training signals come from reference mappings between time-adjacent graphs, obtained through graph-edit-distance approximators because the exact distance is NP-hard. The reproduction trains two loss variants, an adapted hinge loss and an adapted cross-entropy loss, and for large citation graphs adds edge-filtering schemes that cap how many edge edits each node may propose.
+
+## Dataset / Benchmark
+**Necessary:** Five synthetic data-generating processes are used: Edit Cycles, Degree Rules and Game of Life (dynamical graph systems), plus Boolean Formulae and Peano Addition (tree dynamical systems); scaling is tested on the arXiv HEP-Th citation network of 27,700 papers.
+**Additional:** From the citation network, 1554 rolling-window sub-graphs with node counts NG ∈ [100, 2786] are extracted; the DGPs admit widely differing numbers of unique graphs (9 for Edit Cycles up to 34,353 for Peano Addition).
+**Audio script:** The benchmarks fall into three families. The dynamical graph systems, Edit Cycles, Degree Rules and a Conway's Game of Life process, generate small evolving graphs. The tree dynamical systems, Boolean Formulae simplification and Peano addition, generate tree-structured graphs with richer one-hot node attributes. For scaling, the authors turn to the arXiv high-energy-physics theory citation network of roughly twenty-seven thousand papers, from which a rolling time window carves out fifteen hundred sub-graphs ranging from one hundred to nearly three thousand nodes. The reproduction documents each generator in detail and counts how many distinct graphs each can actually produce.
+
+## Key Result
+**Necessary:** The reproduction confirms claims (i)–(iii): GEN out-performs the modified VGAE on all three dynamical graph DGPs, reaches near-perfect accuracy on the tree DGPs, and forward passes scale sub-quadratically. It refutes claim (iv): backward passes do not scale linearly.
+**Additional:** Most reproduced metrics fall within a standard deviation of the originally reported values; the largest deviation was an increase in VGAE deletion precision and insertion recall on the Edit Cycles task, which did not overturn GEN's win.
+**Audio script:** Across the reproduced experiments, three of the four original claims stand. The graph edit network beats the variational-autoencoder baseline on every dynamical graph task, it reaches essentially perfect accuracy on the tree-structured tasks, and its forward-pass runtime grows sub-quadratically with graph size. The fourth claim does not survive: the authors had reported that backward passes scale approximately linearly, but the reproduction finds the fitted growth exponent is well above one for every filtering scheme. The backward passes remain sub-quadratic, but they are clearly super-linear, so the linear-scaling claim is not supported.
+
+## Ablation Study
+**Necessary:** Swapping random-graph initialisation for the Erdős–Rényi and Configuration models leaves all metrics within 0.05 of the reported values, and the stricter risk-estimation protocol with a 100-graph held-out test set shifts scores only by δ ∈ [−0.1, 0.05].
+**Additional:** A diagnostic sampling study shows the tree DGPs rarely produce simplifiable trees, only 13% for Boolean Formulae and 26% for Peano Addition, casting doubt on how much the benchmarks actually test the model.
+**Audio script:** Two robustness checks probe whether the results depend on experimental shortcuts. Replacing the ad-hoc random initialisation with established Erdős–Rényi and configuration-model graph generators barely moves any metric, staying within five hundredths of the reported numbers. Introducing a proper held-out test set of one hundred graphs, to prevent the model from being evaluated on transitions it saw in training, lowers scores only slightly. But a deeper diagnostic exposes a weakness in the tree benchmarks: the generators overwhelmingly produce trees that cannot be simplified at all, only thirteen percent of Boolean-formula samples and twenty-six percent of Peano samples are usable, which undercuts how demanding those perfect-accuracy tasks really are.
+
+## Headline Numbers
+**Necessary:**
+- Forward-pass log-log scaling slopes: 1.38 ± 0.02 (flexible filtering), 1.31 ± 0.02 (constant filtering) — sub-quadratic.
+- Backward-pass log-log scaling slopes: 1.30 ± 0.01 (flexible), 1.69 ± 0.10 (constant) — super-linear, refuting the linear claim.
+**Additional:**
+- Boolean Formulae accuracy 0.98 ± 0.02; Peano Addition perfect (1.0).
+- Probability of sampling a simplifiable tree: 0.13 ± 0.003 (Boolean), 0.26 ± 0.002 (Peano), over 300,000 samples.
+
+## Takeaway
+**Necessary:** Graph Edit Networks reproduce well and are genuinely elegant and interpretable, but their backward passes scale super-linearly rather than linearly, and several benchmarks reward memorisation more than true expressive power.
+**Additional:** The reproduction's careful documentation of the data generators is arguably as valuable as its verdict on the claims.
+**Audio script:** The bottom line is nuanced. Graph edit networks are reproducible, elegant and interpretable, and most of the original claims hold up under independent testing. Yet the study corrects one scaling claim, backward passes are super-linear, not linear, and it argues that several of the synthetic benchmarks let the model win by revisiting transitions it already learned, rather than by generalising. The authors call for more rigorous, practical evaluation of this otherwise promising architecture, and their detailed write-up of the data generators is a lasting contribution in its own right.

@@ -1,0 +1,1845 @@
+                                                                       GeoMFormer: A General Architecture for
+                                                                      Geometric Molecular Representation Learning
+
+
+                                                        Tianlang Chen * 1 Shengjie Luo * 2 Di He 2 Shuxin Zheng 3 Tie-Yan Liu 3 Liwei Wang 2 4
+
+                                                                    Abstract                                    1. Introduction
+                                                                                                                Deep learning approaches have emerged as a powerful tool
+arXiv:2406.16853v1 [cs.LG] 24 Jun 2024
+
+
+
+
+                                                 Molecular modeling, a central topic in quantum
+                                                                                                                for a wide range of tasks (He et al., 2016; Devlin et al., 2019;
+                                                 mechanics, aims to accurately calculate the prop-
+                                                                                                                Brown et al., 2020). Recently, researchers have started in-
+                                                 erties and simulate the behaviors of molecular sys-
+                                                                                                                vestigating whether the power of neural networks could help
+                                                 tems. The molecular model is governed by phys-
+                                                                                                                solve problems in physics and chemistry, such as predicting
+                                                 ical laws, which impose geometric constraints
+                                                                                                                the property of molecules with 3D coordinates and simu-
+                                                 such as invariance and equivariance to coordinate
+                                                                                                                lating how each atom moves in Euclidean space (Schütt
+                                                 rotation and translation. While numerous deep
+                                                                                                                et al., 2018; Gasteiger et al., 2020b; Satorras et al., 2021).
+                                                 learning approaches have been developed to learn
+                                                                                                                These molecular modeling tasks require the learned model
+                                                 molecular representations under these constraints,
+                                                                                                                to satisfy general physical laws, such as the invariance and
+                                                 most of them are built upon heuristic and costly
+                                                                                                                equivariance conditions: The model’s prediction should
+                                                 modules. We argue that there is a strong need
+                                                                                                                react physically when the input coordinates change accord-
+                                                 for a general and flexible framework for learning
+                                                                                                                ing to the transformation of the coordinate system, such as
+                                                 both invariant and equivariant features. In this
+                                                                                                                rotation and translation.
+                                                 work, we introduce a novel Transformer-based
+                                                 molecular model called GeoMFormer to achieve                   A variety of methods have been proposed to design neural
+                                                 this goal. Using the standard Transformer mod-                 architectures that intrinsically satisfy the invariance or
+                                                 ules, two separate streams are developed to main-              equivariance conditions (Thomas et al., 2018; Schütt et al.,
+                                                 tain and learn invariant and equivariant representa-           2021; Batzner et al., 2022). To satisfy the invariant condi-
+                                                 tions. Carefully designed cross-attention modules              tion, several approaches incorporate invariant features, such
+                                                 bridge the two streams, allowing information fu-               as the relative distance between each atom pair, into classic
+                                                 sion and enhancing geometric modeling in each                  neural networks (Schütt et al., 2018; Shi et al., 2022). How-
+                                                 stream. As a general and flexible architecture,                ever, this may hinder the model from effectively extracting
+                                                 we show that many previous architectures can be                the molecular structural information (Pozdnyakov et al.,
+                                                 viewed as special instantiations of GeoMFormer.                2020; Joshi et al., 2023). For example, computing dihedral
+                                                 Extensive experiments are conducted to demon-                  angles from coordinates is straightforward but requires
+                                                 strate the power of GeoMFormer. All empirical                  much more operations using relative distances (Schütt
+                                                 results show that GeoMFormer achieves strong                   et al., 2021). To satisfy the equivariant condition, several
+                                                 performance on both invariant and equivariant                  works design neural networks with equivariant operation
+                                                 tasks of different types and scales. Code and mod-             only, such as tensor product between irreducible representa-
+                                                 els will be made publicly available at https:                  tions (Thomas et al., 2018; Fuchs et al., 2020; Batzner et al.,
+                                                 //github.com/c-tl/GeoMFormer.                                  2022) and vector operations (Satorras et al., 2021; Schütt
+                                                                                                                et al., 2021; Thölke & De Fabritiis, 2022). However, the
+                                                                                                                number of such operations are limited due to the equivariant
+                                             *
+                                             Equal contribution 1 School of EECS, Peking University             constraints, which are either costly to scale or lead to
+                                         2
+                                           National Key Laboratory of General Artificial Intelligence,          fairly complex network architecture designs to guarantee
+                                         School of Intelligence Science and Technology, Peking University
+                                         3
+                                           Microsoft Research AI4Science 4 Center for Machine Learning          sufficient expressive power. More importantly, many
+                                         Research, Peking University. Correspondence to: Shengjie Luo           real-world applications require a model that can effectively
+                                         <luosj@stu.pku.edu.cn>, Di He <dihe@pku.edu.cn>, Liwei Wang            perform both invariant and equivariant prediction with
+                                         <wanglw@pku.edu.cn>.                                                   strong performance at the same time. While some recent
+                                                                                                                works study this direction (Schütt et al., 2021; Thölke &
+                                         Proceedings of the 41 st International Conference on Machine
+                                         Learning, Vienna, Austria. PMLR 235, 2024. Copyright 2024 by           De Fabritiis, 2022), most proposed networks are designed
+                                         the author(s).                                                         heuristically and lack general design principles.
+
+                                                                                                            1
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+We argue that developing a general and flexible architec-             our architecture can precisely forecast the positions (equiv-
+ture that can effectively learn both invariant and equiv-             ariant) for a set of particles controlled by physical rules.
+ariant representations of high quality and simultaneously             Ablation study further shows benefits brought by each de-
+achieve strong performance on both tasks is essential. In             sign choice of our framework. All the empirical results
+this work, we introduce GeoMFormer to achieve this goal.              highlight the generality and effectiveness of GeoMFormer.
+GeoMFormer uses a standard Transformer-based architec-
+ture (Vaswani et al., 2017) but with two streams. An invari-          2. Related Works
+ant stream learns invariant representations, and an equivari-
+ant stream learns equivariant representations. Each stream
+                                                                      Invariant Representation Learning. In recent years, in-
+is composed of invariant/equivariant self-attention and feed-
+                                                                      variance has been recognized as one of the fundamental prin-
+forward layers. The key design in GeoMFormer is to use
+                                                                      ciples guiding the development of molecular models. To de-
+cross-attention mechanisms between the two streams, let-
+                                                                      scribe the properties of a molecular system, the model’s pre-
+ting each stream incorporate the information from the other
+                                                                      diction should remain unchanged if we conduct any rotation
+and enhance itself. In each layer of the invariant stream,
+                                                                      or translation actions on the coordinates of the whole system.
+we develop an invariant-to-equivariant cross-attention mod-
+                                                                      Previous works usually rely on relative structural signals
+ule, where the invariant representations are used to query
+                                                                      from the coordinates, which intrinsically preserve the in-
+key-value pairs in the equivariant stream. An equivariant-
+                                                                      variance. In SchNet (Schütt et al., 2018), the interatomic
+to-invariant cross-attention module is designed similarly in
+                                                                      distances are encoded via radial basis functions, which serve
+the equivariant stream. We show that the design of all self-
+                                                                      as the weights of the developed continuous-filter convolu-
+attention and cross-attention modules is flexible and how to
+                                                                      tional layers. PhysNet (Unke & Meuwly, 2019) similarly
+satisfy the invariant/equivariant conditions effectively.
+                                                                      incorporated both atomic features and interatomic distances
+Our proposed architecture has several advantages com-                 in its interaction blocks. Graphormer-3D (Shi et al., 2022)
+pared to previous works. GeoMFormer decomposes the                    developed a Transformer-based model by encoding the rela-
+invariant/equivariant representation learning through self-           tive distance as attention bias terms, which perform well on
+attention and cross-attention modules. By interacting the             large-scale datasets (Chanussot et al., 2021).
+two streams using cross-attention modules, the invariant
+                                                                      Beyond the interatomic distance, other works further in-
+stream receives more structural signals (from the equivariant
+                                                                      corporate high-order invariant signals. Based on PhysNet,
+stream), and the equivariant stream obtains more non-linear
+                                                                      DimeNet/DimeNet++ (Gasteiger et al., 2020b;a) addition-
+transformation (from the invariant stream), which allows
+                                                                      ally encode the bond angle information using Fourier-Bessel
+simultaneously and completely modeling interatomic inter-
+                                                                      basis functions. Moreover, GemNet/GemNet-OC (Gasteiger
+actions within/across feature spaces in a unified manner.
+                                                                      et al., 2021; 2022) carefully studied the connections between
+Furthermore, we demonstrate that the proposed decomposi-
+                                                                      spherical representations and directional information, which
+tion is general by showing that many existing methods can
+                                                                      inspired to leverage the dihedral angles, i.e., angles between
+be regarded as special cases in our framework. For example,
+                                                                      planes formed by bonds. SphereNet (Liu et al., 2022b)
+PaiNN(Schütt et al., 2021) and TorchMD-NET(Thölke &
+                                                                      and ComENet (Wang et al., 2022) consider the torsional
+De Fabritiis, 2022) can be formulated as a special instanti-
+                                                                      information to augment the molecular models. During the
+ation by following the design philosophy of GeoMFormer
+                                                                      development in the literature, more complex features are
+and using proper instantiations of key building components.
+                                                                      incorporated due to the lossy structural information when
+From this perspective, we believe our model can offer many
+                                                                      purely learning invariant representations, while largely in-
+different options in diverse scenarios in real applications.
+                                                                      creasing the costs. Besides, these invariant models are gener-
+We conduct experiments covering diverse data modalities,              ally unable to directly perform equivariant prediction tasks.
+scales and tasks with both invariant and equivariant targets.
+On the Open Catalyst 2020 (OC20) dataset (Chanussot et al.,           Equivariant Representation Learning. Instead of build-
+2021), which contains large atomic systems composed of                ing invariant blocks only, there are various works that aim to
+adsorbate-catalyst pairs, our model is able to predict the sys-       learn equivariant representations. In real-world applications,
+tem’s energy (invariant) and relaxed structure (equivariant)          there are also many molecular tasks that require the model
+with high accuracy. Additionally, our architecture achieves           to perform equivariant predictions, e.g., predicting the force,
+state-of-the-art performance for predicting homo-lumo en-             position, velocity, and other tensorized properties in dy-
+ergy gap (invariant) of a molecule on PCQM4Mv2 (Hu et al.,            namic simulation tasks. If a rotation action is performed
+2021) and Molecule3D (Xu et al., 2021) datasets, both of              on each position, then these properties should also corre-
+which consist of molecules collected from the chemical                spondingly rotate. One classical approach (Thomas et al.,
+database (Maho, 2015; Nakata & Shimazaki, 2017). More-                2018; Fuchs et al., 2020; Batzner et al., 2022; Musaelian
+over, we conduct an N-body simulation experiment where                et al., 2023) to encoding the equivariant constraints is using
+
+                                                                  2
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+irreducible representations (irreps) via spherical harmon-            theory (Cotton, 1991; Cornwell, 1997; Scott, 2012).
+ics (Goodman & Wallach, 2000). With equivariant convolu-
+                                                                      Formally, let ϕ : X → Y denote a function mapping be-
+tions based on tensor products between irreps, each block
+                                                                      tween vector spaces. Given a group G, let ρX and ρY denote
+of the model preserves the equivariance. However, their
+                                                                      its group representations. A function ϕ : X → Y is said to
+operations are in general costly (Schütt et al., 2021; Satorras
+                                                                      be equivariant/invariant if it satisfies the following condi-
+et al., 2021; Frank et al., 2022; Luo et al., 2024), which
+                                                                      tions respectively:
+largely hinders the model from deploying on large-scale
+                                                                        Equivariance: ρY (g)[ϕ(x)] = ϕ ρX (g)[x] , for all g ∈ G, x ∈ X
+                                                                                                                
+molecular systems. Besides, these models also do not al-
+ways significantly outperform invariant models on invariant              Invariance:         ϕ(x) = ϕ ρX (g)[x] , for all g ∈ G, x ∈ X
+                                                                                                                
+tasks (Liu et al., 2022b).                                                                                                      (1)
+On the other hand, several recent works maintain both                 Intuitively, an equivariant function mapping transforms the
+invariant and equivariant representations. The invariant              output predictably in response to transformations on the
+representations in EGNN (Satorras et al., 2021) encode type           input, whereas an invariant function mapping produces an
+information and relative distance, and are further used in vec-       output that remains unchanged by transformations applied
+tor scaling functions to transform the equivariant representa-        to the input. For further details on the background of group
+tions. PaiNN (Schütt et al., 2021) extended this framework            theory, we refer readers to the appendix of (Thomas et al.,
+to include the Hardamard product operation to transform               2018; Anderson et al., 2019; Fuchs et al., 2020).
+the equivariant representations. Based on the operations of           Molecular systems are naturally located in the three-
+PaiNN, TorchMD-Net (Thölke & De Fabritiis, 2022) further              dimensional Euclidean space, and the group related to trans-
+proposed a modified version of the self-attention modules             lations and rotations is known as SE(3). For each element
+to update invariant representations and achieved better               g in the SE(3) group, its representation on R3 can be pa-
+performance on invariant tasks. Allegro (Musaelian et al.,            rameterized by pairs of translation vectors t ∈ R3 and or-
+2023) instead uses tensor product operations to update                thogonal transformation matrices R ∈ R3×3 , det(R) = 1,
+equivariant features and interacts equivariant and invariant          i.e., g = (t, R). Given a vector x ∈ R3 , we have
+features by using weight-generation modules. In contrast,                3
+                                                                      ρR (g)[x] := Rx + t. For molecular modeling, it is es-
+our GeoMFormer aims to achieve strong performance                     sential to learn molecular representations that encode the
+on both invariant and equivariant tasks at the same time,             rotation equivariance and translation invariance constraints.
+which motivates a general design philosophy to learn both             Formally, let VM denote the space of molecular systems, for
+invariant and equivariant representations of high quality, en-        each atom i, we define equivariant representation ϕE and
+abling simultaneously and completely modeling interatomic             invariant representation ϕI if ∀ g = (t, R) ∈ SE(3), M =
+interactions within/across feature spaces in a unified manner         (X, R) ∈ VM , the following conditions are satisfied:
+(Sec 4.1). We refer interested readers to Appendix C.3 for
+more discussions and Appendix D for more related works.                ϕE : VM → R3×d ,
+                                                                          RϕE (X, {r1 , ..., rn }) = ϕE (X, {Rr1 , ..., Rrn })
+3. Preliminary                                                         ϕE : VM → R3×d ,
+                                                                                                                                      (2)
+3.1. Notations & Geometric Constraints                                    ϕE (X, {r1 , ..., rn }) = ϕE (X, {r1 + t, ..., rn + t})
+
+We denote a molecular system as M, which is made up of a               ϕI : V M → R d ,
+collection of atoms held together by attractive forces. Let               ϕI (X, {r1 , ..., rn }) = ϕI (X, {Rr1 + t, ..., Rrn + t})
+X ∈ Rn×d denote the atoms with features, where n is the
+number of atoms, and d is the feature dimension. Given                3.2. Attention module
+atom i, we use ri ∈ R3 to denote its cartesian coordinate
+                                                                      The attention module lies at the core of the Transformer
+in the three-dimensional Euclidean space. We define M =
+                                                                      architecture (Vaswani et al., 2017), and it is formu-
+(X, R), where R = {r1 , ..., rn }.
+                                                                      lated as querying a dictionary with key-value pairs, e.g.,
+                                                                                                             T
+In nature, molecular systems are subject to physical laws             Attention(Q, K, V ) = softmax( QK    √ )V , where d is the
+                                                                                                            d
+that impose geometric constraints on their properties and             hidden dimension, and Q (Query), K (Key), V (Value) are
+behaviors. For instance, if the position of each atom in              specified as the hidden features of the previous layer. The
+a molecular system is translated by a constant vector in              multi-head variant of the attention module is widely used,
+Euclidean space, the total energy of the system remains               as it allows the model to jointly attend to information from
+unchanged. If a rotation is applied to each position, the             different representation subspaces. It is defined as follows:
+direction of the force on each atom will also rotate. Math-
+ematically, these geometric constraints are directly related          Multi-head(Q, K, V ) = Concat(head1 , · · · , headH )W O
+to the concepts of invariance and equivariance in group                                headk = Attention(QWkQ , KWkK , V WkV ),
+
+                                                                  3
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+where WkQ ∈ Rd×dH , WkK ∈ Rd×dH , WkV ∈ Rd×dH , and                    red) and equivariant (colored in blue) representations are
+W O ∈ RHdH ×d are learnable matrices, H is the number of               updated in the following manner:
+heads. dH is the dimension of each attention head.                      
+                                                                         Z′ I,l
+                                                                                 = ZI,l + Inv-Self-Attn(QI,l , KI,l , VI,l )
+Serving as a generic building block, the attention module               
+                                                                          Z′′I,l  = Z′ I,l + Inv-Cross-Attn(QI,l , KI _E,l , VI _E,l )
+can be used in various ways. On the one hand, the self-                 
+                                                                         ZI,l+1
+                                                                        
+                                                                                  = Z′′I,l + Inv-FFN(Z′′ I,l ), Invariant Stream
+attention module specifies Query, Key, and Value as the                
+                                                                           ′ E,l
+same hidden representation, thereby extracting contextual               Z
+                                                                       
+                                                                                = ZE,l + Equ-Self-Attn(QE,l , KE,l , VE,l )
+information for the input. It has been one of the key com-               Z ′′E,l
+                                                                                 = Z′ E,l + Equ-Cross-Attn(QE,l , KE _I,l , VE _I,l )
+                                                                       
+                                                                        ZE,l+1 = Z′′E,l + Equ-FFN(Z′′E,l ), Equivariant Stream
+                                                                       
+ponents in Transformer-based foundation models across
+various domains (Devlin et al., 2019; Brown et al., 2020;                                                                           (3)
+Dosovitskiy et al., 2021; Liu et al., 2021; Ying et al., 2021a;        where l denotes the layer index. In this framework, the self-
+Jumper et al., 2021; Ji et al., 2023). On the other hand,              attention modules and feed-forward networks are used to
+the cross-attention module specifies the hidden representa-            iteratively update representations in each stream. The cross-
+tion from one space as Query, and the representation from              attention modules use representations from one stream to
+the other space as Key-Value pairs, e.g. encoder-decoder               query Key-Value pairs from the other stream. By using this
+attention for sequence-to-sequence learning. As the cross-             mechanism, a bidirectional bridge is established between
+attention module bridges two spaces, it has been also widely           invariant and equivariant streams. Besides the contextual
+used beyond Transformer for information fusion and improv-             information from the invariant stream itself, the invariant
+ing representations (Lee et al., 2018; Huang et al., 2019;             representations can freely attend to more geometrical sig-
+Jaegle et al., 2021; 2022).                                            nals from the equivariant stream. Similarly, the equivari-
+                                                                       ant representations can benefit from using more non-linear
+4. GeoMFormer                                                          transformations in the invariant representations. With the
+                                                                       cross-attention modules, the expressiveness of both invariant
+In this section, we introduce GeoMFormer, a novel                      and equivariant representation learning is largely improved,
+Transformer-based molecular model for learning invariant               which allows simultaneously and completely modeling in-
+and equivariant representations of high quality. We begin by           teratomic interactions within/across feature spaces in a uni-
+elaborating on the key designs of GeoMFormer, which form               fied manner. In this regard, as highlighted by different
+a general framework to guide the development of geometric              colors, the Query, Key, and Value in the self-attention mod-
+molecular models (Sec 4.1), Next we thoroughly discuss the             ules (Inv-Self-Attn,Equ-Self-Attn) and the cross-attention
+implementation details of GeoMFormer (Sec 4.2).                        modules (Inv-Cross-Attn,Equ-Cross-Attn) are differ-
+                                                                       ently specified, which should carefully encode the geometric
+4.1. A General Design Philosophy                                       constraints mentioned in Section 3.1, as introduced below.
+As previously stated, several existing works learned invari-
+ant representations using invariant features, e.g., distance in-       Desiderata for Invariant Self-Attention. Given the in-
+formation, which may have difficulty in extracting other use-          variant representation ZI , the Query, Key and Value
+ful structural signals and cannot directly perform equivariant         in Inv-Self-Attn are calculated via a function mapping
+tasks. Some other works developed equivariant models via               ψ I : Rn×d → Rn×d , i.e., QI = ψQ               I
+                                                                                                                         (ZI ), KI =
+                                                                         I
+equivariant operations, which are either heuristic or costly           ψK  (ZI ), VI = ψVI (ZI ). Essentially, the attention module
+and do not guarantee better performance on invariant tasks             linearly transforms the Value VI , with the weights being
+compared to invariant models. Instead, we aim to develop a             calculated from the dot product between the Query and Key
+general design principle, which guides the development of              (i.e., attention scores). In this regard, if both VI and the
+a model that addresses the disadvantages aforementioned in             attention scores preserve the invariance, then the output
+both invariant and equivariant representation learning.                satisfies the invariant constraint, i.e., ψ I is required to be
+                                                                       invariant. Under this condition, it is easy to check the output
+We call our model GeoMFormer, which is a two-stream
+                                                                       representation of this module keeps the invariance, which is
+Transformer model to encode invariant and equivariant infor-
+                                                                       proved in Appendix B.1.
+mation. Each stream is built up using stacked Transformer
+blocks, each of which consists of a self-attention module
+                                                                       Desiderata for Equivariant Self-Attention. Similarly,
+and a cross-attention module, followed by a feed-forward
+                                                                       given the equivariant input ZE , the Query, Key and Value
+network. For each atom k ∈ [n], we use zIk ∈ Rd and
+                                                                       in Equ-Self-Attn are calculated via a function mapping
+zE
+ k ∈ R
+        3×d
+             to denote its invariant and equivariant repre-
+                                           ⊤        ⊤                  ψ E : Rn×3×d → Rn×3×d , i.e., QE = ψQ        E
+                                                                                                                      (ZE ), KE =
+sentations respectively. Let ZI = [zI1 ; ...; zIn ] ∈ Rn×d               E   E      E     E    E                 E
+                                                                       ψK (Z ), V = ψV (Z ). Similarly, ψ is required to be
+and ZE = [zE           E
+             1 ; ...; zn ] ∈ R
+                               n×3×d
+                                     , the invariant (colored in
+                                                                       equivariant. However, this still cannot guarantee the module
+
+                                                                   4
+                      GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+to be equivariant if standard attention is used. We modified                        4.2. Implementation Details of GeoMFormer
+       Pd                        ⊤
+αij = k=1 QE [i,:,k] KE [j,:,k] , where QE [i,:,k] ∈ R3 de-                         Following the design guidance in Section 4.1, we pro-
+notes the k-th dimension of the atom i’s Query. It is straight-                     pose Geometric Molecular Transformer (GeoMFormer).
+forward to check the equivariance is preserved, which is                            The overall architecture of GeoMFormer is shown in Fig-
+proved in Appendix B.1.                                                             ure 1, which is composed of stacked GeoMFormer blocks
+                                                                                    (Eqn.(4)). We introduce the instantiations of the self-
+Desiderata for Cross-attentions between the two Streams.                            attention, cross-attention and FFN modules below and prove
+In each stream, the cross-attention module is used to                               the properties they satisfy in Appendix B.2. We also incor-
+leverage information from the other stream. We call                                 porate widely used modules like Layer Normalization (Ba
+the cross attention in the invariant stream invariant-cross-                        et al., 2016) and Structural Encodings (Shi et al., 2022) for
+equivariant attention, and call the cross attention in the                          better empirical performance. Due to the space limits, we
+equivariant stream equivariant-cross-invariant attention,                           refer readers to Appendix A for further details.
+i.e., Inv-Cross-Attn and Equ-Cross-Attn. The difference
+between the two cross attention lies in how the Query, Key,
+                                                                                    Instantiation of Self-Attention. In GeoMFormer, the lin-
+Value are specified:
+                                                                                    ear function is used to implement both ψ I : Rn×d → Rn×d
+Invariant-cross-Equivariant Attention      (Inv-Cross-Attn)                         and ψ E : Rn×3×d → Rn×3×d :
+                           I _E
+QI _E = ψQ
+         I
+           (ZI ), KI _E = ψK    (ZI , ZE ), VI _E = ψVI _E (ZI , ZE )
+                                                                                       QI = ψQ
+                                                                                             I
+                                                                                                (ZI ) = ZI WQI
+                                                                                                               ,    QE = ψQ
+                                                                                                                          E
+                                                                                                                             (ZE ) = ZE WQE
+                                                                                                                                            ,
+Equivariant-cross-Invariant Attention      (Equ-Cross-Attn)                            KI = ψKI
+                                                                                                (ZI ) = ZI WKI
+                                                                                                                ,   KE = ψKE
+                                                                                                                             (ZE ) = ZE WKE
+                                                                                                                                            ,   (5)
+Q   E _I      E   E
+           = ψ (Z ), K
+              Q
+                         E _I    E _I
+                                =ψ
+                                 K
+                                          E   I
+                                        (Z , Z ), V   E _I    E _I
+                                                             =ψ
+                                                              V
+                                                                       E   I
+                                                                     (Z , Z )          VI = ψVI (ZI ) = ZI WVI      VE = ψVE (ZE ) = ZE WVE
+                                                           (4)
+                                                                                             {I,E}
+First, for Query QI_E and QE_I , the requirement to ψ I                             where W{Q,K,V } are learnable parameters.
+and ψ E remains the same as previously stated. Moreover,
+as distinguished by different colors, the Key-Value pairs                           Instantiation of Cross-Attention. As previously stated,
+and the Query are calculated in different ways, for which                           both ψ I_E and ψ E_I in the cross-attention modules fuse
+the requirement should be separately considered. Note that                          representations from different spaces (invariant & equivari-
+both VI_E and VE_I are still linearly transformed by the                            ant) into target spaces. In the Invariant-cross-Equivariant
+cross-attention modules. If VI_E preserves the invariance                           attention module (Inv-Cross-Attn), to obtain the Key-
+and VE_I preserves the equivariance, then the remaining                             Value pairs, the equivariant representations are mapped to
+condition is to keep the invariance of the attention score                          the invariant space. For the sake of simplicity, we use
+calculation. That is to say, for the Inv-Cross-Attn, both ψ I                       the dot-product operation < ·, · > to instantiate ψ I_E .
+and ψ I_E are required to be invariant. It is similar to the                        Given X, Y ∈ Rn×3×d , Z =< X, Y >∈ Rn×d , where
+Equ-Cross-Attn that both ψ E and ψ E_I are required to be                           Z[i,k] = X[i,:,k] ⊤ Y[i,:,k] . Then the Key-Value pairs in
+equivariant. In this way, the outputs of both cross-attention                       Inv-Cross-Attn are calculated as:
+modules are under the corresponding geometric constraints,
+                                                                                         KI_E = ψKI_E
+                                                                                                      (ZI , ZE ) =< ZE WK,1
+                                                                                                                        I_E
+                                                                                                                            , ZE WK,2
+                                                                                                                                  I_E
+                                                                                                                                      >,
+which is proved in Appendix B.1.                                                           I_E    I_E   I    E       E  I_E    E  I_E           (6)
+                                                                                         V     = ψV (Z , Z ) =< Z WV,1 , Z WV,2 >
+Discussion. The carefully designed blocks outlined above                                      I_E     I_E      I_E     I_E
+                                                                                    where WK,1    , WK,2  , WV,1   , WV,2  ∈ Rd×dH for Key and
+provide a general design philosophy for encoding the ge-
+                                                                                    Value are learnable parameters. On the other hand, the
+ometric constraints and bridging the invariant and equiv-
+                                                                                    invariant representations are mapped to the equivariant
+ariant molecular representations, which lie at the core of
+                                                                                    space in the Equivariant-cross-Invariant attention mod-
+our framework. Note that the translation invariance can be
+                                                                                    ule (Equ-Cross-Attn). To achieve this goal, we use
+easily preserved by encoding relative structure signals of the
+                                                                                    the scalar product ⊙ to instantiate ψ E_I . Given X ∈
+input. It is also worth pointing out that we do not restrict the
+                                                                                    Rn×3×d , Y ∈ Rn×d , Z = X ⊙ Y ∈ Rn×3×d , where
+specific instantiation of each component, and various design
+                                                                                    Z[i,j,k] = X[i,j,k] · Y[i,k] . Using this operation, the Key-
+choices can be adopted as long as they meet the require-
+                                                                                    Value pairs in Equ-Cross-Attn are calculated as:
+ments mentioned above. Moreover, we prove that our frame-
+work can include many previous models as an instantiation,                                KE_I = ψKE_I
+                                                                                                       (ZE , ZI ) = ZE WK,1
+                                                                                                                        E_I
+                                                                                                                            ⊙ ZI WK,2
+                                                                                                                                  E_I
+                                                                                                                                      ,
+                                                                                            E_I    E_I   E    I      E  E_I    I  E_I           (7)
+e.g., PaiNN (Schütt et al., 2021) and TorchMD-Net (Thölke                                 V     = ψV (Z , Z ) = Z WV,1 ⊙ Z WV,2
+& De Fabritiis, 2022), can be extended to encode additional
+                                                                                           E_I    E_I    E_I    E_I
+geometric constraints (Cornwell, 1997), which are presented                         where WK,1 , WK,2 , WV,1 , WV,2 ∈ Rd×dH are learnable.
+in Appendix B.1. In this work, we present a simple yet effec-
+tive model instance that implements this design philosophy,                         Instantiation of Feed-Forward Networks. Besides the
+which we will thoroughly introduce in the next subsection.                          attention modules, the feed-forward networks also play
+
+                                                                                5
+                    GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+
+
+            GeoMFormer Block                              Inv-Self-Attn                               Inv-Cross-Attn
+                                                               ZI                      ZI                                       ZE
+                ZI, l          ZE, l                                                                                                 𝐼𝐼_𝐸𝐸
+                                                𝑊𝑊𝑄𝑄𝐼𝐼      𝑊𝑊𝐾𝐾𝐼𝐼   𝑊𝑊𝑉𝑉𝐼𝐼      𝑊𝑊𝑄𝑄𝐼𝐼_𝐸𝐸         𝐼𝐼_𝐸𝐸
+                                                                                                   𝑊𝑊𝐾𝐾,1              𝐼𝐼_𝐸𝐸
+                                                                                                                    𝑊𝑊𝐾𝐾,2      𝑊𝑊𝑉𝑉,1             𝐼𝐼_𝐸𝐸
+                                                                                                                                                 𝑊𝑊𝑉𝑉,2
+                                                                                                                                                                          Inv-FFN
+                                                 Q             K          V                             <,>                             <,>
+                                                                                                                                                                          ZI
+         Inv        Inv     Equ        Equ
+                                                 Invariant Attention
+                                                                                      Q                         K                                V
+         Self      Cross   Cross       Self                                                                                                                         GELU(𝑊𝑊1𝐼𝐼 )𝑊𝑊2𝐼𝐼
+                                                                                       Invariant Attention
+         Attn      Attn    Attn        Attn     AttnProb                  ×
+                                                                                                 AttnProb                                        ×
+                                                           Invariant Output                                          Invariant Output                             Invariant Output
+
+                                                               ZE                       ZE                      ZE                   ZI                            ZE            ZI
+
+                                                𝑊𝑊𝑄𝑄𝐸𝐸      𝑊𝑊𝐾𝐾𝐸𝐸   𝑊𝑊𝑉𝑉𝐸𝐸       𝑊𝑊𝑄𝑄𝐸𝐸_𝐼𝐼         𝐸𝐸_𝐼𝐼
+                                                                                                    𝑊𝑊𝐾𝐾,1
+                                                                                                                        𝐸𝐸_𝐼𝐼
+                                                                                                                    𝑊𝑊𝐾𝐾,2
+                                                                                                                                         𝐸𝐸_𝐼𝐼
+                                                                                                                                     𝑊𝑊𝑉𝑉,1
+                                                                                                                                                         𝐸𝐸_𝐼𝐼
+                                                                                                                                                     𝑊𝑊𝑉𝑉,2     𝑊𝑊1𝐸𝐸     GELU(𝑊𝑊2𝐼𝐼 )
+
+             Inv-FFN         Equ-FFN                                                                           ⊙                            ⊙                             ⊙
+                                                 Q            K           V             Q                       K                            V                          𝑊𝑊3𝐸𝐸
+
+                                                Equivariant Attention                                                                                            Equivariant Output
+                                                                                       Equivariant Attention
+                                                  AttnProb                ×                                     AttnProb                     ×                            Equ-FFN
+                                                      Equivariant Output                                                Equivariant Output
+
+             ZI, l+1         ZE, l+1                      Equ-Self-Attn                              Equ-Cross-Attn
+
+
+
+                                   Figure 1. An illustration of our GeoMFormer model architecture.
+
+important roles in refining contextual representations. In                        5. Experiments
+the invariant stream, the feed-forward network is kept
+unchanged from the standard Transformer model, i.e.,                              In this section, we empirically investigate our GeoMFormer
+              I                  I
+Inv-FFN(Z′′ ) = GELU(Z′′ W1I )W2I , where W1I ∈                                   on extensive tasks. In particular, we carefully design several
+Rd×r , W2I ∈ Rr×d and r denotes the hidden dimension                              experiments covering different types of tasks (invariant &
+of the FFN layer. In the equivariant stream, it is worth                          equivariant), data (simple molecules & adsorbate-catalyst
+noting that commonly used non-linear activation functions                         complexes & particle systems), and scales, as shown in
+break the equivariant constraints. In our GeoMFormer, we                          Table 1. We also conduct an ablation study to thoroughly
+use the invariant representations as a gating function to                         verify the effectiveness of each design choice of our Ge-
+non-linearly activate the equivariant representations, i.e.,                      oMFormer. Due to space limits, we present more results
+               E          E                   I
+Equ-FFN(Z′′ ) = (Z′′ W1E ⊙ GELU(Z′′ W2I ))W3E ,                                   (MD17, Ablation Study) in Appendix E.
+where W1E , W1I ∈ Rd×r , W2E ∈ Rr×d .
+                                                                                  5.1. OC20 Performance (Invariant & Equivariant)
+Input Layer. Given a molecular system M = (X, R),
+                                                                                  The Open Catalyst 2020 (OC20) dataset (Chanussot et al.,
+we set the invariant representation at the input as ZI,0 =
+                                                                                  2021) was created for catalyst discovery and optimization,
+X, where Xi ∈ Rd is a learnable embedding vector in-
+                                                                                  which is one of the largest molecular modeling benchmarks
+dexed by the atom i’s type. For the equivariant repre-
+                                              ⊤                                   and has great significance to advance renewable energy
+sentation, we set ZE,0i     = r̂′i g(||r′i ||) ∈ R3×d , where
+                                       ′                                          processes for crucial social and energy challenges. Each
+we consider both the direction r̂i ∈ R3 and the scale
+                                                                                  data is in the form of the adsorbate-catalyst complex.
+g(||r′i ||) ∈ Rd of the each atom’s mean-centered posi-
+                                                                                  Given the initial structure of a complex, Density Functional
+tion r′i . g : R → Rd is instantiated by the Gaussian
+                                                                                  Theory (DFT) tools are used to accurately simulate the
+Basis Kernel, i.e., g(||r′i ||)                    1      d ⊤
+                             = ψi W , ψi = [ψi2;...; ψi ] ,                   relaxation process until achieving equilibrium. In practical
+                 1                   γ ∥r′ ∥+β −µk
+ψik = − √2π|σ      k|
+                       exp − 12 i i |σk |i             ,k =                       scenarios, the relaxed energy and structure of the complex
+                                                                                  are of great interest for catalyst discovery. In this regard,
+1, ..., d, where W ∈ Rd×d is learnable, γi , βi are learnable                     we focus on two significant tasks: Initial Structure to
+scalars indexed by the atom type, and µk , σ k are learnable                      Relaxed Energy (IS2RE) and Initial Structure to Relaxed
+kernel center and scaling factor of the k-th Kernel. Note that                    Structure (IS2RS), which require a model to directly
+our GeoMFormer is not restricted to these choices, which                          predict the relaxed energy and structure given the initial
+can encode additional features if the constraints are satisfied,
+as discussed in Appendix B.2.
+
+                                                                              6
+                     GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+
+                                           Table 1. Summarization of empirical evaluation setup.
+ Dataset                                   Task Description                             Task Type Data Type                    Training set size
+ OC20, IS2RE (Chanussot et al., 2021)      Equilibrium Energy Prediction (Sec 5.1.1) Invariant      Adsorbate-Catalyst complex 460,328
+ OC20, IS2RS (Chanussot et al., 2021)      Equilibrium Structure Prediction (Sec 5.1.2) Equivariant Adsorbate-Catalyst complex 460,328
+ PCQM4Mv2 (Hu et al., 2021)                HOMO-LUMO Gap Prediction (Sec 5.2)           Invariant   Simple molecule            3,378,606
+ Molecule3D (Wang et al., 2022)            HOMO-LUMO Gap Prediction (Sec 5.3)           Invariant   Simple molecule            2,339,788
+ N-Body Simulation (Satorras et al., 2021) Position Prediction (Sec 5.4)                Equivariant Particle System            3,000
+ MD17 (Chmiela et al., 2017)               Force Field Modeling (Sec E.6)               Inv & Equ Simple molecule              950
+ Ablation Study                            Energy/Force/Position Prediction (Sec E.7) Inv & Equ -                              -
+
+
+Table 2. Results on OC20 IS2RE val set. We report the official results of baselines from the original paper. Bold values denote the best.
+                                                    Energy MAE (eV) ↓                       EwT (%) ↑
+   Model                                 ID OOD Ads. OOD Cat. OOD Both Average ID OOD Ads. OOD Cat. OOD Both Average
+   CGCNN (Xie & Grossman, 2018)        0.6203 0.7426     0.6001   0.6708 0.6585 3.36  2.11   3.53     2.29    2.82
+   SchNet (Schütt et al., 2018)        0.6465 0.7074     0.6475   0.6626 0.6660 2.96  2.22   3.03     2.38    2.65
+   DimeNet++ (Gasteiger et al., 2020a) 0.5636 0.7127     0.5612   0.6492 0.6217 4.25  2.48    4.4     2.56    3.42
+   GemNet-T (Gasteiger et al., 2021)   0.5561 0.7342     0.5659   0.6964 0.6382 4.51  2.24   4.37     2.38    3.38
+   SphereNet (Liu et al., 2022b)       0.5632 0.6682     0.5590   0.6190 0.6024 4.56  2.70   4.59     2.70    3.64
+   Graphormer-3D (Shi et al., 2022)    0.4329 0.5850     0.4441   0.5299 0.4980   -     -      -        -       -
+   GNS (Pfaff et al., 2020)             0.47   0.51       0.48      0.46 0.4800   -     -      -        -       -
+   Equiformer (Liao & Smidt, 2023)     0.4156 0.4976     0.4165   0.4344 0.4410 7.47  4.64   7.19     4.84    6.04
+   GeoMFormer (ours)                   0.3883 0.4562     0.4037   0.4083 0.4141 11.26 6.70   9.97     6.42    8.59
+
+
+structure as input respectively1 . The training set for both                 Table 3. Results on OC20 IS2RS validation set. All models are
+tasks is composed of over 460,328 catalyst-adsorbate                         trained and evaluated under the direct prediction setting. Bold
+complexes. To better evaluate the model’s performance, the                   values indicate the best.
+                                                                                                                                    ADwT (%) ↑
+validation and test sets consider the in-distribution (ID) and                Model                                      ID OOD Ads OOD Cat OOD Both Average
+out-of-distribution settings which uses unseen adsorbates                     PaiNN (Schütt et al., 2021)               3.29   2.37  3.10       2.33   2.77
+(OOD-Ads), catalysts (OOD-Cat) or both (OOD-Both),                            TorchMD-Net (Thölke & De Fabritiis, 2022) 3.32   3.35  2.94       2.89   3.13
+                                                                              Spinconv (Shuaibi et al., 2021)           5.81   4.88  5.63       4.84   5.29
+containing approximately 200,000 complexes in total.                          GemNet-dT (Gasteiger et al., 2021)        6.87   7.10  6.03       7.08   6.77
+                                                                              GemNet-OC (Gasteiger et al., 2022)        11.31 12.20  4.40       5.55  8.36
+5.1.1. IS2RE P ERFORMANCE (I NVARIANT )                                       GeoMFormer (ours)                         11.45 10.52  9.94      10.78  10.67
+
+
+As an energy prediction task, the IS2RE task evaluates                       significant considering the challenging task. The results
+how well the model learns invariant representations. We                      indeed demonstrate the effectiveness of our GeoMFormer
+follow the experimental setup of Graphormer-3D (Shi et al.,                  framework on learning invariant representations.
+2022). The metric of the IS2RE task is the Mean Absolute
+Error (MAE) and the percentage of data instances in which                    5.1.2. IS2RS P ERFORMANCE (E QUIVARIANT )
+the predicted energy is within a 0.02 eV threshold (EwT).
+                                                                             Furthermore, we use the IS2RS task to evaluate the model’s
+We choose several strong baselines covering geometric
+                                                                             ability to perform the equivariant prediction task. The
+molecular models using different approaches. Due to
+                                                                             metric of the IS2RS task is the Average Distance within
+space limits, the detailed description of training settings
+                                                                             Threshold (ADwT) across different thresholds. The Dis-
+and baselines is presented in Appendix E.1. The results
+                                                                             tance within Threshold is computed as the percentage of
+are shown in Table 2. Our GeoMFormer outperforms the
+                                                                             structures with the atom position MAE below the threshold.
+compared baselines significantly, achieving impressive
+                                                                             We re-implement several competitive baselines under the
+performance especially on the out-of-distribution validation
+                                                                             direct prediction setting for comparison. We refer the read-
+sets, e.g., 42.2% relative EwT improvement on average
+                                                                             ers to Appendix E.2 for more details on the settings. From
+compared to the best baseline. In particular, the improve-
+                                                                             Table 3, we can see that the IS2RS task under the direct
+ment on the Energy within Threshold (EwT) metric is also
+                                                                             prediction setting is rather difficult. The compared baseline
+   1
+     Instead of using the iterative relaxation setting that requires         models consistently achieve low ADwT. Our GeoMFormer
+massive single-point structure-to-energy-force data to training a            achieves the best (e.g., 27.6% relative ADwT improvement
+force-field model (Chanussot et al., 2021), we focus on the direct           on average compared to the best baseline), which indeed
+prediction setting that only uses initial-relaxed structure pairs data
+as the input and label, which is efficient while more challenging.           verifies the superior ability of our GeoMFormer framework
+                                                                             to perform equivariant molecular tasks.
+
+                                                                         7
+                        GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+
+Table 4. Results on PCQM4Mv2. The evaluation metric is the                             Table 6. Results on N-body System Simulation. We report the
+Mean Absolute Error (MAE). We report the official results of                           official results of baselines. Bold values indicate the best.
+baselines. ∗ indicates the best performance achieved by models                                Model                                        MSE ↓
+with the same complexity (n denotes the number of atoms).                                     SE(3) Transformer (Fuchs et al., 2020)       0.0244
+ Model                                                  Complexity   Valid MAE ↓              Tensor Field Network (Thomas et al., 2018)   0.0155
+ MLP-Fingerprint (Hu et al., 2021)                                      0.1735                Graph Neural Network (Gilmer et al., 2017)   0.0107
+ GINE-VN (Brossard et al., 2020; Gilmer et al., 2017)                   0.1167                Radial Field (Köhler et al., 2019)           0.0104
+ GCN-VN (Kipf & Welling, 2017; Gilmer et al., 2017)       O(n)          0.1153                EGNN (Satorras et al., 2021)                 0.0071
+ GIN-VN (Xu et al., 2019; Gilmer et al., 2017)                          0.1083
+ DeeperGCN-VN (Li et al., 2020; Gilmer et al., 2017)                    0.1021*               GeoMFormer (ours)                            0.0047
+ TokenGT (Kim et al., 2022)                                             0.0910
+ EGT (Hussain et al., 2022)                                             0.0869
+ GRPE (Park et al., 2022)                                               0.0867
+ Graphormer (Ying et al., 2021a; Shi et al., 2022)        O(n2 )        0.0864         From Table 4. Our GeoMFormer achieves the lowest MAE
+ GraphGPS (Rampášek et al., 2022)                                       0.0858         among the quadratic models, e.g., 6.7% relative MAE re-
+ GPS++ (Masters et al., 2022)                                           0.0778
+ Transformer-M (Luo et al., 2023)                                       0.0787         duction compared to the previous best model. Besides,
+ GEM-2 (Liu et al., 2022a)
+                                                          O(n3 )
+                                                                        0.0793         compared to the best model Uni-Mol+ (Lu et al., 2023),
+ Uni-Mol+ (Lu et al., 2023)                                             0.0708*
+ GeoMFormer (ours)                                        O(n2 )        0.0734*        our GeoMFormer achieves competitive performance while
+                                                                                       keeping the efficiency (O(n2 ) complexity), which can be
+                                                                                       more broadly applied to large molecular systems. Overall,
+Table 5. Results on Molecule3D for both random and scaffold
+                                                                                       the results further verify the effectiveness of GeoMFormer
+splits. We report the official results of baselines. Bold values
+                                                                                       on invariant representation learning.
+denote the best.
+                                                             MAE ↓
+     Model                                              Random Scaffold                5.3. Molecule3D Performance (Invariant)
+     GIN-Virtual (Hu et al., 2021)                      0.1036   0.2371
+     SchNet (Schütt et al., 2018)                       0.0428   0.1511                Molecule3D (Xu et al., 2021) is a newly proposed large-
+     DimeNet++ (Gasteiger et al., 2020a)                0.0306   0.1214
+     SphereNet (Liu et al., 2022b)                      0.0301   0.1182                scale dataset curated from the PubChemQC project (Maho,
+     ComENet (Wang et al., 2022)                        0.0326   0.1273                2015; Nakata & Shimazaki, 2017). Each molecule has the
+     PaiNN (Schütt et al., 2021)                        0.0311   0.1208
+     TorchMD-Net (Thölke & De Fabritiis, 2022)          0.0303   0.1196                DFT-calculated equilibrium geometric structure. The task is
+     GeoMFormer (ours)                                  0.0252   0.1045                to predict the HOMO-LUMO energy gap, which is the same
+                                                                                       as PCQM4Mv2. The dataset contains 3,899,647 molecules
+                                                                                       in total and is split into training, validation, and test sets
+5.2. PCQM4Mv2 Performance (Invariant)                                                  with the splitting ratio 6 : 2 : 2. In particular, both random
+PCQM4Mv2 is one of the largest quantum chemical prop-                                  and scaffold splitting methods are adopted to thoroughly
+erty datasets from the OGB Large-Scale Challenge (Hu                                   evaluate the in-distribution and out-of-distribution perfor-
+et al., 2021). Given a molecule, its HOMO-LUMO energy                                  mance of geometric molecular models. Following (Wang
+gap of the equilibrium structure is required to predict, evalu-                        et al., 2022), we compare our GeoMFormer with several
+ating the model’s ability of invariant prediction. This prop-                          competitive baselines. Detailed descriptions of the train-
+erty is highly related to reactivity, photoexcitation, charge                          ing settings and baselines are presented in Appendix E.4.
+transport, and other real applications. DFT tools are used                             It can be easily seen from Table 5 that our GeoMFormer
+to calculate the HOMO-LUMO gap for ground-truth labels.                                consistently outperforms all baselines on both random and
+The total number of training samples is around 3.37 million.                           scaffold split settings, e.g., 16.3% and 11.6% relative MAE
+                                                                                       reduction compared to the previous best model respectively.
+In a practical setting, the DFT-calculated equilibrium geo-
+metric structure of each training sample is provided, while
+                                                                                       5.4. N-Body Simulation Performance (Equivariant)
+only initial structures can be generated by efficient but inac-
+curate tools (e.g., RDKit (Landrum, 2016)) for each valida-                            Simulating dynamical systems consisting of a set of geo-
+tion sample. In this regard, we adopt one recent approach                              metric objects interacting under physical laws is crucial in
+(Uni-Mol+ (Lu et al., 2023)) to handle this task. During                               many applications, e.g. molecular dynamic simulation. Fol-
+training, the model receives RDKit-generated initial struc-                            lowing Fuchs et al. (2020); Satorras et al. (2021), we use a
+tures as the input, and predicts both the HOMO-LUMO                                    synthetic n-body system simulation task as an extension of
+energy gap and the equilibrium structure by using both in-                             molecular modeling tasks. This task requires the model to
+variant and equivariant representations. After training, the                           forecast the positions of a set of particles, which are mod-
+model can be used to predict the HOMO-LUMO gap target                                  eled by simple interaction rules, yet can exhibit complex
+by only using the initial structure, which meets the require-                          dynamics. Thus, the model’s ability to perform equivariant
+ment of the settings. We compare various baselines in the                              prediction tasks is carefully evaluated. In this dataset, the
+leaderboard for comparison. More details of the settings are                           simulated system consists of 5 particles, each of which car-
+presented in Appendix E.3.                                                             ries a positive or negative charge and has an initial position
+
+                                                                                   8
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+and velocity in the three-dimensional Euclidean space. The            There also exist some limitations to our work. Serving as
+system is controlled by physical rules involving attractive           a general architecture, the ability to scale up both the model
+and repulsive forces. The dataset contains 3.000 trajectories         and dataset sizes is of considerable interest to the commu-
+for training, 2.000 trajectories for validation, and 2.000 tra-       nity, which has been partially explored in our extensive
+jectories for testing. We compare several strong baselines            experiment. Additionally, our model can also be extended to
+following Satorras et al. (2021). Due to space limits, the            encompass additional downstream invariant and equivariant
+details of the data generation, training settings and baselines       tasks, which we have earmarked for future research.
+are presented in Appendix E.5. The results are shown in Ta-
+ble 6. Our GeoMFormer achieves the best performance com-              References
+pared to all baselines. In particular, the significant 33.8%
+MSE reduction indeed demonstrates the GeoMFormer’s                    Anderson, B., Hy, T. S., and Kondor, R. Cormorant: Co-
+superior ability on learning equivariant representations.              variant molecular neural networks. Advances in neural
+                                                                        information processing systems, 32, 2019.
+6. Conclusion                                                         Ba, J. L., Kiros, J. R., and Hinton, G. E. Layer normalization.
+In this paper, we propose a general and flexible architec-              arXiv preprint arXiv:1607.06450, 2016.
+ture, called GeoMFormer, for learning geometric molecular
+representations. Using the standard Transformer backbone,             Batzner, S., Musaelian, A., Sun, L., Geiger, M., Mailoa,
+two streams are developed for learning invariant and equiv-             J. P., Kornbluth, M., Molinari, N., Smidt, T. E., and
+ariant representations respectively. In particular, the cross-          Kozinsky, B. E (3)-equivariant graph neural networks for
+attention mechanism is used to bridge these two streams,                data-efficient and accurate interatomic potentials. Nature
+letting each stream leverage contextual information from the            communications, 13(1):2453, 2022.
+other stream and enhance its representations. This simple
+yet effective design significantly boosts both invariant and          Brandstetter, J., Hesselink, R., van der Pol, E., Bekkers,
+equivariant modeling. Within the newly proposed frame-                  E. J., and Welling, M. Geometric and physical quan-
+work, many existing methods can be regarded as special                  tities improve e(3) equivariant message passing. In
+instances, showing the generality of our method. All the                International Conference on Learning Representations,
+empirical results show that our GeoMFormer can achieve                  2022. URL https://openreview.net/forum?
+strong performance in different scenarios. The potential of             id=_xwr8gOBeV1.
+our GeoMFormer can be further explored in a broad range
+of applications in molecular modeling.                                Brossard, R., Frigo, O., and Dehaene, D. Graph convolu-
+                                                                        tions that can finally model local structure. arXiv preprint
+                                                                        arXiv:2011.15069, 2020.
+Acknowledgements
+                                                                      Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D.,
+We thank all the anonymous reviewers for the very care-
+                                                                        Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G.,
+ful and detailed reviews as well as the valuable sugges-
+                                                                        Askell, A., et al. Language models are few-shot learners.
+tions. Their help has further enhanced our work. Di He
+                                                                        Advances in neural information processing systems, 33:
+is supported by National Key R&D Program of China
+                                                                        1877–1901, 2020.
+(2022ZD0160300) and National Science Foundation of
+China (NSFC62376007). Liwei Wang is supported by Na-
+                                                                      Chanussot, L., Das, A., Goyal, S., Lavril, T., Shuaibi, M.,
+tional Science Foundation of China (NSFC62276005).
+                                                                        Riviere, M., Tran, K., Heras-Domingo, J., Ho, C., Hu, W.,
+                                                                        et al. Open catalyst 2020 (oc20) dataset and community
+Impact Statement                                                        challenges. Acs Catalysis, 11(10):6059–6072, 2021.
+This work newly proposes a general framework to learn
+                                                                      Chmiela, S., Tkatchenko, A., Sauceda, H. E., Poltavsky, I.,
+geometric molecular representations, which has great sig-
+                                                                        Schütt, K. T., and Müller, K.-R. Machine learning of ac-
+nificance in molecular modeling. Our model has demon-
+                                                                        curate energy-conserving molecular force fields. Science
+strated considerable positive potential for various physical
+                                                                        advances, 3(5):e1603015, 2017.
+and chemical applications, such as catalyst discovery and op-
+timization, which can significantly contribute to the advance-        Cornwell, J. F. Group theory in physics: An introduction.
+ment of renewable energy processes. However, it is essential            Academic press, 1997.
+to acknowledge the potential negative impacts including the
+development of toxic drugs and materials. Thus, stringent             Cotton, F. A. Chemical applications of group theory. John
+measures should be implemented to mitigate these risks.                 Wiley & Sons, 1991.
+
+                                                                  9
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. Bert:              J., and Battaglia, P. Simple GNN regularisation for
+  Pre-training of deep bidirectional transformers for lan-              3d molecular property prediction and beyond. In In-
+  guage understanding. In Proceedings of the 2019 Confer-               ternational Conference on Learning Representations,
+  ence of the North American Chapter of the Association for             2022. URL https://openreview.net/forum?
+  Computational Linguistics: Human Language Technolo-                   id=1wVvweK3oIb.
+  gies, Volume 1 (Long and Short Papers), pp. 4171–4186,
+  2019.                                                               Goodman, R. and Wallach, N. R. Representations and
+                                                                        invariants of the classical groups. Cambridge University
+Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,                Press, 2000.
+  D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer,
+                                                                      He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learn-
+  M., Heigold, G., Gelly, S., Uszkoreit, J., and Houlsby,
+                                                                        ing for image recognition. In Proceedings of the IEEE
+  N. An image is worth 16x16 words: Transformers for
+                                                                        conference on computer vision and pattern recognition,
+  image recognition at scale. In International Conference
+                                                                        pp. 770–778, 2016.
+  on Learning Representations, 2021. URL https://
+  openreview.net/forum?id=YicbFdNTTy.                                 Hu, W., Fey, M., Zitnik, M., Dong, Y., Ren, H., Liu, B.,
+                                                                        Catasta, M., and Leskovec, J. Open graph benchmark:
+Frank, T., Unke, O., and Müller, K.-R. So3krates: Equiv-                Datasets for machine learning on graphs. Advances in
+  ariant attention for interactions on arbitrary length-scales          neural information processing systems, 33:22118–22133,
+  in molecular systems. Advances in Neural Information                  2020.
+  Processing Systems, 35:29400–29413, 2022.
+                                                                      Hu, W., Fey, M., Ren, H., Nakata, M., Dong, Y., and
+Fuchs, F., Worrall, D., Fischer, V., and Welling, M. Se                 Leskovec, J. OGB-LSC: A large-scale challenge for
+  (3)-transformers: 3d roto-translation equivariant attention           machine learning on graphs. In Thirty-fifth Conference
+  networks. Advances in Neural Information Processing                   on Neural Information Processing Systems Datasets and
+  Systems, 33:1970–1981, 2020.                                         Benchmarks Track (Round 2), 2021. URL https:
+                                                                       //openreview.net/forum?id=qkcLxoC52kL.
+Gasteiger, J., Giri, S., Margraf, J. T., and Günnemann,
+  S. Fast and uncertainty-aware directional message                   Huang, W., Han, J., Rong, Y., Xu, T., Sun, F., and Huang, J.
+  passing for non-equilibrium molecules. arXiv preprint                 Equivariant graph mechanics networks with constraints.
+  arXiv:2011.14115, 2020a.                                              In International Conference on Learning Representations,
+                                                                        2022. URL https://openreview.net/forum?
+Gasteiger, J., Groß, J., and Günnemann, S. Direc-
+                                                                        id=SHbhHHfePhP.
+  tional message passing for molecular graphs. In In-
+  ternational Conference on Learning Representations,                 Huang, Z., Wang, X., Huang, L., Huang, C., Wei, Y., and
+  2020b. URL https://openreview.net/forum?                              Liu, W. Ccnet: Criss-cross attention for semantic segmen-
+  id=B1eWbxStPH.                                                        tation. In Proceedings of the IEEE/CVF international
+                                                                        conference on computer vision, pp. 603–612, 2019.
+Gasteiger, J., Becker, F., and Günnemann, S. Gemnet: Uni-
+  versal directional graph neural networks for molecules.             Hussain, M. S., Zaki, M. J., and Subramanian, D. Global
+  Advances in Neural Information Processing Systems, 34:                self-attention as a replacement for graph convolution. In
+  6790–6802, 2021.                                                     Proceedings of the 28th ACM SIGKDD Conference on
+                                                                       Knowledge Discovery and Data Mining, pp. 655–665,
+Gasteiger, J., Shuaibi, M., Sriram, A., Günnemann, S.,                  2022.
+  Ulissi, Z. W., Zitnick, C. L., and Das, A. Gemnet-
+  OC: Developing graph neural networks for large and                  Jaegle, A., Gimeno, F., Brock, A., Vinyals, O., Zisserman,
+  diverse molecular simulation datasets. Transactions                   A., and Carreira, J. Perceiver: General perception with it-
+  on Machine Learning Research, 2022. ISSN 2835-                        erative attention. In International conference on machine
+  8856. URL https://openreview.net/forum?                               learning, pp. 4651–4664. PMLR, 2021.
+  id=u8tvSxm4Bs.                                                      Jaegle, A., Borgeaud, S., Alayrac, J.-B., Doersch, C.,
+Gilmer, J., Schoenholz, S. S., Riley, P. F., Vinyals, O., and           Ionescu, C., Ding, D., Koppula, S., Zoran, D., Brock,
+  Dahl, G. E. Neural message passing for quantum chem-                  A., Shelhamer, E., Henaff, O. J., Botvinick, M., Zisser-
+  istry. In International conference on machine learning,               man, A., Vinyals, O., and Carreira, J. Perceiver IO: A
+  pp. 1263–1272. PMLR, 2017.                                            general architecture for structured inputs & outputs. In
+                                                                        International Conference on Learning Representations,
+Godwin, J., Schaarschmidt, M., Gaunt, A. L., Sanchez-                   2022. URL https://openreview.net/forum?
+  Gonzalez, A., Rubanova, Y., Veličković, P., Kirkpatrick,            id=fILj7WpI-g.
+
+                                                                 10
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+Ji, G.-P., Zhuge, M., Gao, D., Fan, D.-P., Sakaridis, C.,            Liao, Y.-L., Wood, B., Das, A., and Smidt, T.
+   and Gool, L. V. Masked vision-language transformer in               Equiformerv2: Improved equivariant transformer for scal-
+   fashion. Machine Intelligence Research, 20(3):421–434,              ing to higher-degree representations. In The Twelfth
+   2023.                                                               International Conference on Learning Representations,
+                                                                       2024. URL https://openreview.net/forum?
+Joshi, C. K., Bodnar, C., Mathis, S. V., Cohen, T., and                id=mCOBKZmrzD.
+  Lio, P. On the expressive power of geometric graph
+  neural networks. In Krause, A., Brunskill, E., Cho, K.,            Liu, L., He, D., Fang, X., Zhang, S., Wang, F., He, J., and
+  Engelhardt, B., Sabato, S., and Scarlett, J. (eds.), Pro-            Wu, H. Gem-2: Next generation molecular property
+  ceedings of the 40th International Conference on Ma-                 prediction network by modeling full-range many-body
+  chine Learning, volume 202 of Proceedings of Machine                 interactions, 2022a.
+  Learning Research, pp. 15330–15355. PMLR, 23–29 Jul
+  2023. URL https://proceedings.mlr.press/                           Liu, Y., Wang, L., Liu, M., Lin, Y., Zhang, X., Oztekin,
+  v202/joshi23a.html.                                                  B., and Ji, S. Spherical message passing for 3d molec-
+                                                                       ular graphs. In International Conference on Learning
+Jumper, J., Evans, R., Pritzel, A., Green, T., Figurnov, M.,           Representations (ICLR), 2022b.
+  Ronneberger, O., Tunyasuvunakool, K., Bates, R., Žídek,
+  A., Potapenko, A., et al. Highly accurate protein structure        Liu, Y., Cheng, J., Zhao, H., Xu, T., Zhao, P., Tsung, F.,
+  prediction with alphafold. Nature, 596(7873):583–589,                Li, J., and Rong, Y. SEGNO: Generalizing equivariant
+  2021.                                                                graph neural networks with physical inductive biases.
+                                                                       In The Twelfth International Conference on Learning
+Kim, J., Nguyen, D. T., Min, S., Cho, S., Lee, M., Lee, H.,            Representations, 2024. URL https://openreview.
+  and Hong, S. Pure transformers are powerful graph learn-             net/forum?id=3oTPsORaDH.
+  ers. In Oh, A. H., Agarwal, A., Belgrave, D., and Cho,
+  K. (eds.), Advances in Neural Information Processing               Liu, Z., Lin, Y., Cao, Y., Hu, H., Wei, Y., Zhang, Z., Lin,
+  Systems, 2022. URL https://openreview.net/                           S., and Guo, B. Swin transformer: Hierarchical vision
+  forum?id=um2BxfgkT2_.                                                transformer using shifted windows. In Proceedings of the
+                                                                       IEEE/CVF International Conference on Computer Vision
+Kipf, T. N. and Welling, M. Semi-supervised classi-                    (ICCV), pp. 10012–10022, October 2021.
+  fication with graph convolutional networks. In In-
+  ternational Conference on Learning Representations,                Lu, S., Gao, Z., He, D., Zhang, L., and Ke, G. Highly
+  2017. URL https://openreview.net/forum?                              accurate quantum chemical property prediction with uni-
+  id=SJU4ayYgl.                                                        mol+, 2023.
+
+Köhler, J., Klein, L., and Noé, F. Equivariant flows: sam-           Luo, S., Li, S., Zheng, S., Liu, T.-Y., Wang, L., and He, D.
+  pling configurations for multi-body systems with sym-                Your transformer may not be as powerful as you expect.
+  metric energies. arXiv preprint arXiv:1910.00753, 2019.              In Koyejo, S., Mohamed, S., Agarwal, A., Belgrave, D.,
+                                                                       Cho, K., and Oh, A. (eds.), Advances in Neural Infor-
+Landrum, G.     Rdkit: Open-source cheminformat-                       mation Processing Systems, volume 35, pp. 4301–4315.
+  ics software.   Github, 2016.    URL https:                          Curran Associates, Inc., 2022.
+  //github.com/rdkit/rdkit/releases/
+  tag/Release_2016_09_4.                                             Luo, S., Chen, T., Xu, Y., Zheng, S., Liu, T.-Y., Wang, L.,
+                                                                       and He, D. One transformer can understand both 2d & 3d
+Lee, K.-H., Chen, X., Hua, G., Hu, H., and He, X. Stacked              molecular data. In The Eleventh International Conference
+  cross attention for image-text matching. In Proceedings              on Learning Representations, 2023. URL https://
+  of the European conference on computer vision (ECCV),                openreview.net/forum?id=vZTp1oPV3PC.
+  pp. 201–216, 2018.
+                                                                     Luo, S., Chen, T., and Krishnapriyan, A. S. Enabling effi-
+Li, G., Xiong, C., Thabet, A., and Ghanem, B. Deep-                    cient equivariant operations in the fourier basis via gaunt
+  ergcn: All you need to train deeper gcns. arXiv preprint             tensor products. In The Twelfth International Confer-
+  arXiv:2006.07739, 2020.                                              ence on Learning Representations, 2024. URL https:
+                                                                       //openreview.net/forum?id=mhyQXJ6JsK.
+Liao, Y.-L. and Smidt, T. Equiformer: Equivariant graph
+  attention transformer for 3d atomistic graphs. In The              Maho, N. The pubchemqc project: A large chemical
+  Eleventh International Conference on Learning Represen-             database from the first principle calculations. In AIP
+  tations, 2023. URL https://openreview.net/                          conference proceedings, volume 1702, pp. 090058. AIP
+  forum?id=KwmPfARgOTD.                                               Publishing LLC, 2015.
+
+                                                                11
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+Masters, D., Dean, J., Klaser, K., Li, Z., Maddrell-                    Schütt, K., Unke, O., and Gastegger, M. Equivariant mes-
+ Mander, S., Sanders, A., Helal, H., Beker, D., Ram-                      sage passing for the prediction of tensorial properties
+ pavsek, L., and Beaini, D. Gps++: An optimised hy-                       and molecular spectra. In International Conference on
+ brid mpnn/transformer for molecular property prediction.                 Machine Learning, pp. 9377–9388. PMLR, 2021.
+ ArXiv, abs/2212.02229, 2022.
+                                                                        Schütt, K. T., Sauceda, H. E., Kindermans, P.-J.,
+Musaelian, A., Batzner, S., Johansson, A., Sun, L., Owen,                 Tkatchenko, A., and Müller, K.-R. Schnet–a deep learn-
+ C. J., Kornbluth, M., and Kozinsky, B. Learning local                    ing architecture for molecules and materials. The Journal
+ equivariant representations for large-scale atomistic dy-                of Chemical Physics, 148(24):241722, 2018.
+ namics. Nature Communications, 14(1):579, 2023.
+                                                                        Scott, W. R. Group theory. Courier Corporation, 2012.
+Nakata, M. and Shimazaki, T. Pubchemqc project: a large-
+  scale first-principles electronic structure database for data-        Shi, Y., Zheng, S., Ke, G., Shen, Y., You, J., He, J.,
+  driven chemistry. Journal of chemical information and                   Luo, S., Liu, C., He, D., and Liu, T.-Y. Benchmarking
+  modeling, 57(6):1300–1308, 2017.                                        graphormer on large-scale molecular modeling datasets.
+                                                                          arXiv preprint arXiv:2203.04810, 2022.
+Park, W., Chang, W.-G., Lee, D., Kim, J., et al. Grpe:
+  Relative positional encoding for graph transformer. In                Shuaibi, M., Kolluru, A., Das, A., Grover, A., Sriram, A.,
+  ICLR2022 Machine Learning for Drug Discovery, 2022.                     Ulissi, Z., and Zitnick, C. L. Rotation invariant graph
+                                                                          neural networks using spin convolutions. arXiv preprint
+Passaro, S. and Zitnick, C. L. Reducing SO(3) convo-                      arXiv:2106.09575, 2021.
+  lutions to SO(2) for efficient equivariant GNNs. In
+  Krause, A., Brunskill, E., Cho, K., Engelhardt, B.,                   Thölke, P. and De Fabritiis, G. Torchmd-net: equivariant
+  Sabato, S., and Scarlett, J. (eds.), Proceedings of                     transformers for neural network based molecular poten-
+  the 40th International Conference on Machine Learn-                     tials. arXiv preprint arXiv:2202.02541, 2022.
+  ing, volume 202 of Proceedings of Machine Learn-
+  ing Research, pp. 27420–27438. PMLR, 23–29 Jul                        Thomas, N., Smidt, T., Kearnes, S., Yang, L., Li, L.,
+  2023. URL https://proceedings.mlr.press/                                Kohlhoff, K., and Riley, P. Tensor field networks:
+  v202/passaro23a.html.                                                   Rotation-and translation-equivariant neural networks for
+                                                                          3d point clouds. arXiv preprint arXiv:1802.08219, 2018.
+Pfaff, T., Fortunato, M., Sanchez-Gonzalez, A., and
+  Battaglia, P. W. Learning mesh-based simulation with                  Unke, O. T. and Meuwly, M. Physnet: A neural network for
+  graph networks. arXiv preprint arXiv:2010.03409, 2020.                  predicting energies, forces, dipole moments, and partial
+                                                                          charges. Journal of chemical theory and computation, 15
+Pozdnyakov, S. N., Willatt, M. J., Bartók, A. P., Ort-                    (6):3678–3693, 2019.
+  ner, C., Csányi, G., and Ceriotti, M. Incompleteness
+  of atomic structure representations. Phys. Rev. Lett.,                Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+  125:166001, Oct 2020. doi: 10.1103/PhysRevLett.125.                     L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Atten-
+  166001. URL https://link.aps.org/doi/10.                                tion is all you need. In Advances in Neural Information
+  1103/PhysRevLett.125.166001.                                            Processing Systems, pp. 6000–6010, 2017.
+
+Rampášek, L., Galkin, M., Dwivedi, V. P., Luu, A. T., Wolf,             Wang, L., Liu, Y., Lin, Y., Liu, H., and Ji, S. Comenet:
+  G., and Beaini, D. Recipe for a general, powerful, scal-               Towards complete and efficient message passing for 3d
+  able graph transformer. Advances in Neural Information                 molecular graphs. Advances in Neural Information Pro-
+  Processing Systems, 35:14501–14515, 2022.                              cessing Systems, 35:650–664, 2022.
+
+Satorras, V. G., Hoogeboom, E., and Welling, M. E (n)                   Wang, Y. and Chodera, J. Spatial attention kinetic net-
+  equivariant graph neural networks. In International Con-               works with e(n)-equivariance. In The Eleventh In-
+  ference on Machine Learning, pp. 9323–9332. PMLR,                      ternational Conference on Learning Representations,
+  2021.                                                                  2023. URL https://openreview.net/forum?
+                                                                         id=3DIpIf3wQMC.
+Scholkopf, B., Sung, K.-K., Burges, C. J., Girosi, F., Niyogi,
+  P., Poggio, T., and Vapnik, V. Comparing support vector               Xie, T. and Grossman, J. C. Crystal graph convolutional
+  machines with gaussian kernels to radial basis function                 neural networks for an accurate and interpretable predic-
+  classifiers. IEEE transactions on Signal Processing, 45                 tion of material properties. Physical review letters, 120
+  (11):2758–2765, 1997.                                                   (14):145301, 2018.
+
+                                                                   12
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+Xiong, R., Yang, Y., He, D., Zheng, K., Zheng, S., Xing,
+  C., Zhang, H., Lan, Y., Wang, L., and Liu, T. On layer
+  normalization in the transformer architecture. In Inter-
+  national Conference on Machine Learning, pp. 10524–
+  10533. PMLR, 2020.
+Xu, K., Hu, W., Leskovec, J., and Jegelka, S. How powerful
+  are graph neural networks? In International Conference
+  on Learning Representations, 2019. URL https://
+  openreview.net/forum?id=ryGs6iA5Km.
+Xu, Z., Luo, Y., Zhang, X., Xu, X., Xie, Y., Liu, M., Dicker-
+  son, K., Deng, C., Nakata, M., and Ji, S. Molecule3d: A
+  benchmark for predicting 3d geometries from molecular
+  graphs. arXiv preprint arXiv:2110.01717, 2021.
+Ying, C., Cai, T., Luo, S., Zheng, S., Ke, G., He, D., Shen, Y.,
+  and Liu, T.-Y. Do transformers really perform badly for
+  graph representation? Advances in Neural Information
+  Processing Systems, 34:28877–28888, 2021a.
+
+Ying, C., Yang, M., Zheng, S., Ke, G., Luo, S., Cai, T.,
+  Wu, C., Wang, Y., Shen, Y., and He, D. First place
+  solution of kdd cup 2021 & ogb large-scale challenge
+  graph prediction track. arXiv preprint arXiv:2106.08279,
+  2021b.
+
+Zhang, B., Luo, S., Wang, L., and He, D. Rethinking
+  the expressive power of GNNs via graph biconnectivity.
+  In The Eleventh International Conference on Learning
+  Representations, 2023. URL https://openreview.
+  net/forum?id=r9hNv76KoT3.
+
+Zitnick, C. L., Das, A., Kolluru, A., Lan, J., Shuaibi, M.,
+  Sriram, A., Ulissi, Z. W., and Wood, B. M. Spheri-
+  cal channels for modeling atomic interactions. In Oh,
+  A. H., Agarwal, A., Belgrave, D., and Cho, K. (eds.),
+  Advances in Neural Information Processing Systems,
+  2022. URL https://openreview.net/forum?
+  id=5Z3GURcqwT.
+
+
+
+
+                                                                   13
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+A. Implementation Details of GeoMFormer
+Layer Normalizations. Being a Transformer-based model, GeoMFormer also adopts the layer normalization (LN) (Ba
+et al., 2016) module for training stability. In the invariant stream, the LN module remains unchanged from the standard
+design (Ba et al., 2016; Xiong et al., 2020). In particular, we specialized the LN module as Equ-LN in the equivariant
+stream to satisfy the geometric constraints. Formally, given the equivariant representation zE i ∈ R
+                                                                                                     3×d
+                                                                                                          of the atom i,
+                             ⊤                    1
+                                                    Pd
+Equ-LN(zi ) = U(zi − µ1 ) ⊙ γ, where µ = d k=1 Z[i,:,k] ∈ R , γ ∈ R is a learnable vector, and U ∈ R3×3 denotes
+            E         E                                      E         3      d
+                                                                            ⊤        ⊤ ⊤
+                                                                     (zE        E
+                                                                       i −µ1 )(zi −µ1 )
+the inverse square root of the covariance matrix, i.e., U−2 =                 d          .
+
+Structural Encodings. We follow (Shi et al., 2022) to incorporate the 3D structural encoding, which serves as the bias
+term in the softmax attention module. In particular, we consider the Euclidean distance ||ri − rj || between atom i and
+j. The Gaussian Basis Kernel function (Scholkopf et al., 1997) is used to encode the interatomic distance, i.e., bk(i,j) =
+    1                 γ  ||ri −rj ||+β(i,j) −µk 2
+− √2π|σ k|
+           exp(− 21 ( (i,j)    |σ k |
+                                               ) ), k = 1, ..., K, where K is the number of Gaussian Basis kernels. The 3D
+                                                                1    2                                          ⊤
+structural encoding is obtained by Bij = GELU(b(i,j) WD           )WD  , where b(i,j) = [b1(i,j) ; ...; bK          1
+                                                                                                         (i,j) ] , WD ∈ R
+                                                                                                                          K×K    2
+                                                                                                                              , WD ∈
+  K×1                                                                                                                 k k
+R      are learnable parameters. γ(i,j) , β(i,j) are learnable scalars indexed by the pair of atom types, and µ , σ are learnable
+kernel center and learnable scaling factor of the k-th Gaussian Basis Kernel. Denote B as the matrix form of the 3D distance
+                                                                                                ⊤
+encoding, whose shape is n × n. Then the attention probability is calculated by softmax( QK  √
+                                                                                               d
+                                                                                                  + B), where Q and K are
+the query and key introduced in Section 3.
+
+B. Proof of Geometric Constraints
+In this section, we provide thorough proof of the aforementioned conditions in Section 4 that satisfy the geometric
+constraints. For the sake of convenience, we restate the notations and geometric constraints here. Formally, let VM denote
+the space of molecular systems, for each atom i, we define equivariant representation ϕE and invariant representation ϕI if
+∀ g = (t, R) ∈ SE(3), M = (X, R) ∈ VM , the following conditions are satisfied:
+             ϕE : VM → R3×d ,                                    RϕE (X, {r1 , ..., rn }) = ϕE (X, {Rr1 , ..., Rrn })          (8a)
+               E              3×d                                E                        E
+             ϕ : VM → R             ,                           ϕ (X, {r1 , ..., rn }) = ϕ (X, {r1 + t, ..., rn + t})          (8b)
+               I              d                             I                         I
+             ϕ : VM → R ,                                 ϕ (X, {r1 , ..., rn }) = ϕ (X, {Rr1 + t, ..., Rrn + t})              (8c)
+
+where t ∈ R3 , R ∈ R3×3 , det(R) = 1 and X ∈ Rn×d denotes the atoms with features, R = {r1 , ..., rn }, ri ∈ R3
+denotes the cartesian coordinate of atom i. We present the proof of the General Design Philosophy (Section B.1) and our
+GeoMFormer model (Section B.2) respectively.
+
+B.1. Proof of the General Design Philosophy.
+Given invariant and equivariant representations ZI,0 ∈ Rn×d , ZE,0 ∈ Rn×3×d at the input, we prove that the update rules
+shown in Eqn.(3) satisfy the above constraints in proper conditions. In particular, we first separately study each component
+of the block, i.e., Inv-Self-Attn, Equ-Self-Attn, Inv-Cross-Attn, Equ-Cross-Attn, and then check the properties of the
+whole framework.
+                                                                                     I,l                  I,l
+Invariant Self-Attention. Given invariant representation ZI,l ∈ Rn×d , QI,l = ψQ         (ZI,l ), KI,l = ψK   (ZI,l ), VI,l =
+ψVI,l (ZI,l ), as stated in Section 4.1, where ψ I,l : Rn×d → Rn×d is invariant. In this regard, ∀g = (t, R) ∈ SE(3),
+QI,l , KI,l , VI,l remain unchanged, which means that Inv-Self-Attn(QI,l , KI,l , VI,l ) also remains unchanged. Then the
+invariance of the output representations is preserved.
+                                                                                                      E,l
+Equivariant Self-Attention. Given equivariant representation ZE,l ∈ Rn×3×d , QE,l = ψQ                    (ZE,l ), KE,l =
+  E,l                  E,l
+ψK (ZE,l ), VE,l = ψV (ZE,l ), as stated in Section 4.1, where ψ E,l : Rn×3×d → Rn×3×d is equivariant. Be-
+                                                   Pd        E       E       ⊤            E             3
+sides, the attention score is modified as αij =       k=1 Q [i,:,k] K [j,:,k] , where Q [i,:,k] ∈ R denotes the k-
+th dimension of the atom i’s Query. First, we check the rotation equivariance of the Equ-Self-Attn. Given
+                                                                                    Pd                                ⊤
+any orthogonal transformation matrix R ∈ R3×3 , det(R) = 1, we have                           E            E
+                                                                                       k=1 Q [i,:,k] R(K [j,:,k] R)       =
+Pd       E          ⊤ E      ⊤   P  d     E        E       ⊤                                              E,l
+   k=1 Q [i,:,k] RR K [j,:,k] =     k=1 Q [i,:,k] K [j,:,k] = αij , which preserves the invariance. As ψ      is equivariant,
+
+                                                                  14
+                     GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+we have ψ E,l ([RZE,l            E,l
+                  1 ; , ..., ; RZn ]) = [Rψ
+                                            E,l
+                                                (ZE,l )1 ; , ..., ; Rψ E,l (ZE,l )n ]. Since the output equivariant representation
+                                           Pn          exp(αij )                         Pn        exp(αij )
+of atom i preserves the equivariance, i.e., j=1 Pn′ exp(α            ′)
+                                                                        RVjE,l = R( j=1 Pn′ exp(α            ′)
+                                                                                                                VjE,l ), the rotation
+                                                               j =1         ij                             j =1       ij
+
+equivariance is satisfied. Moreover, since the equivariant representation ZE,l preserves the translation invariance (Eqn.(8b)),
+the output equivariant representation of Equ-Self-Attn naturally satisfies this constraint.
+
+Cross-Attention modules. As stated in Section 4.1, the Query, Key, and Value of Inv-Cross-Attn are specified
+                     I,l                        I_E,l
+as QI_E,l = ψQ           (ZI,l ), KI_E,l = ψK         (ZI,l , ZE,l ), VI_E,l = ψVI_E,l (ZI,l , ZE,l ), where ψ I,l , ψ I_E,l are invari-
+ant. That is to say, ∀g = (t, R) ∈ SE(3), QI_E,l , KI_E,l , VI_E,l remain unchanged. Then the invariance
+of its output representations is preserved as in Inv-Self-Attn. On the other hand, the Query, Key, and Value of
+                                                     E,l                        E_I,l
+Equ-Cross-Attn are specified as QE_I,l = ψQ              (ZE,l ), KE_I,l = ψK         (ZE,l , ZI,l ), VE_I,l = ψVE_I,l (ZE,l , ZI,l ), where
+ψ E,l , ψ E_I,l are equivariant, i.e., ψ E_I,l ([RZE,l                E,l   I,l
+                                                      1 ; , ..., ; RZn ], Z ) = [Rψ
+                                                                                         E_I,l
+                                                                                               (ZE,l , ZI,l )1 ; , ..., ; Rψ E,l (ZE,l , ZI,l )n ]
+        E,l      E,l              E,l          E,l    E,l               E,l   E,l
+and ψ ([RZ1 ; , ..., ; RZn ]) = [Rψ (Z )1 ; , ..., ; Rψ (Z )n ]. As stated in Equ-Self-Attn, the output equivari-
+ant representations of Equ-Cross-Attn preserve the rotation equivariance. Similarly, the translation invariance property is
+also naturally satisfied.
+
+Feed-Forward Networks. As Inv-FFN and Equ-FFN satisfy the invariance and equivariance constraints re-
+spectively, we can directly obtain that ∀g = (t, R) ∈ SE(3), the output of Inv-FFN remains un-
+changed, and the output of Equ-FFN preserves the rotation equivariance, i.e., Equ-FFN([RZE,l                   E,l
+                                                                                                1 ; , ..., ; RZn ]) =
+               E,l                    E,l
+[R Equ-FFN(Z )1 ; , ..., ; R Equ-FFN(Z )n ]. The translation invariance is also naturally preserved by Equ-FFN.
+With the above analysis, the update rules stated in Eqn.(3) satisfy the geometric constraints (Eqn.(8a), Eqn.(8b) and Eqn.(8c)).
+As our model is composed of stacked blocks, the invariant and equivariant output representations of the whole model also
+preserve the constraints.
+
+B.2. Proof of the GeoMFormer
+Next, we provide proof of the instantiation of our GeoMFormer in Section 4.2 that satisfies the geometric constraints.
+Similarly, we separately check the properties of each component as our GeoMFormer is composed of stacked GeoMFormer
+blocks. Once the constraints are satisfied by each component, the output invariant and equivariant representations of the
+whole model naturally satisfy the geometric constraints (Eqn.(8a), Eqn.(8b) and Eqn.(8c)).
+
+Input layer. As stated in Section 4.2, the invariant representation at the input is set as ZI,0 = X, where Xi ∈ Rd
+is a learnable embedding vector indexed by the atom i’s type. Since ZI,0 does not contain any information from R =
+{r1 , ..., rn }, it naturally satisifies the invariance constraint (Eqn.(8c)). The equivariant representation at the input is set
+                              ⊤                                                                                        Pn
+as ZE,0
+      i     = r̂′i g(||r′i ||) ∈ R3×d , where r′i denotes the mean-centered position of atom i, i.e., r′i = ri − n1 k=1 rk ,
+        r′
+r̂′i = ||ri′ || , and g : R → Rd is instantiated by the Gaussian Basis Kernel function. First, the translation invariance constraint
+           i
+                                                                                 Pn                            Pn
+(Eqn.(8b)) is satisfied. Given any translation vector t ∈ R3 , ri + t − n1 k=1 (rk + t) = ri − n1 k=1 rk , and ZE,0             i
+remains unchanged. Second, the rotation equivariance (Eqn.(8a)) is also preserved. Given any orthogonal transformation
+                                                                                                                     Pn
+matrix R P      ∈ R3×3 , det(R) = 1, we have ||Rr′i || = ||r′i ||. With Rri as the input, we have Rri − n1 k=1 Rrk =
+             1     n           ′              ′          ′
+R(ri − n k=1 rk ) = Rri and g(||Rri ||) = g(||ri ||), which means that the rotation equivariance constraint is satisfied.
+
+Self-Attention modules. For Inv-Self-Attn and Equ-Self-Attn, we use the linear function to implement both ψ I and ψ E ,
+i.e., QI = ψQI
+               (ZI ) = ZI WQI , KI = ψKI
+                                          (ZI ) = ZI WKI
+                                                         , VI = ψVI (ZI ) = ZI WVI and QE = ψQ  E
+                                                                                                  (ZE ) = ZE WQE , KE =
+  E    E       E    E    E      E   E       E    E
+ψK (Z ) = Z WK , V = ψV (Z ) = Z WV . It is straightforward that the conditions mentioned in Section B.1 are
+satisfied. The linear function keeps the invariance of ZI (Eqn.(8c)) and the rotation equivariance of ZE (Eqn.(8a)), e.g.,
+∀R ∈ R3×3 , det(R) = 1, (RZE         E          E  E          E                                        E
+                                i )WQ = R(Zi WQ ) = RZi . Note that the translation invariance of Z (Eqn.(8b)) is not
+changed by the linear function.
+                                                                                               I
+Cross-Attention modules. For Inv-Cross-Attn, we use the linear function to implement ψQ          , which satisfies
+                                                                  I_E         I_E     I_E       I_E
+the constraints as previously stated. Besides, we instantiate K        and V      as K    = ψK (ZI , ZE ) =<
+  E   I_E     E   I_E      I_E        I_E    I   E      E    I_E   E    I_E
+Z WK,1 , Z WK,2 >, V             = ψV (Z , Z ) =< Z WV,1 , Z WV,2 >. Here we prove that such instantia-
+tion preserve the invariance. First, given any orthogonal transformation matrix R ∈ R3×3 , det(R) = 1, we have
+                        I_E                        I_E           I_E        I_E
+< ([RZE             E             E           E              E         E
+        1 ; ...; RZn ])WK,1 , ([RZ1 ; ...; RZn ])WK,2 >=< Z WK,1 , Z WK,2 >. The reason is that given X, Y ∈
+
+
+                                                                       15
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+Rn×3×d , Z =< X, Y >∈ Rn×d , where Z[i,k] = X[i,:,k] ⊤ Y[i,:,k] = X[i,:,k] ⊤ R⊤ RY[i,:,k] = (RX[i,:,k] )⊤ (RY[i,:,k] ). The
+translation invariance of ZE is also preserved.
+                                                                          E
+For Equ-Cross-Attn, we also use the linear function to implement ψQ         , which satisfies the constraints as previously stated.
+                                                              E_I                   E_I          E_I
+Besides, we instantiate K     E_I
+                                  and V   E_I
+                                                as K  E_I
+                                                          = ψK (Z , Z ) = ZE WK,1
+                                                                    E  I
+                                                                                        ⊙ ZI WK,2    , VE_I = ψVE_I (ZE , ZI ) =
+      E_I             E_I                                                                                                   E_I
+Z WV,1 ⊙ Z WV,2 . First, given any orthogonal transformation matrix R ∈ R , we have ([RZE
+  E             I                                                                     3×3                             E
+                                                                                                           1 ; ...; RZn ])WK,1 ⊙
+      E_I                 E_I          E_I                   E_I       E_I
+ZI WK,2   = [R(ZE WK,1        ⊙ ZI WK,2    )1 ; ...; R(ZE WK,1   ⊙ ZI WK,2 )n ], which preserves the rotation equivariance. The
+                                      n×3×d             n×d
+reason lies in that given X ∈ R              ,Y ∈ R         , Zi = RXi ⊙ Yi ∈ R3×d , where Z[i,:,k] = (RX[i,:,k] ) · Y[i,k] =
+R(X[i,:,k] · Y[i,k] ). Additionally, the translation invariance of both KE_I and VE_I is preserved because of the translation
+invariance of ZE and ZI . In this way, the instantiations of cross-attention modules satisfy the geometric constraints.
+
+
+                                                      I                    I
+Feed-Forward Networks. For Inv-FFN(Z′′ ) = GELU(Z′′ W1I )W2I , the invariance constraint (Eqn. 8c) is naturally
+                           E         E                     I
+preserved. For Equ-FFN(Z′′ ) = (Z′′ W1E ⊙ GELU(Z′′ W2I ))W3E , the rotation equivariance constraint is also similarly
+                                                                                  E
+preserved as in Equ-Cross-Attn. Besides, the translation invariance of Equ-FFN(Z′′ ) is also preserved with the property
+    ′′ E       ′′ I
+of Z and Z .
+
+
+Layer Normalizations. As introduced in Section A, we use the layer normalization modules for both invariant and
+equivariant streams. For the invariant stream, the layer normalization remains unchanged, and the invariance con-
+straint is naturally preserved. For the equivariant stream, given the equivariant representation zE
+                                                                                                  i ∈ R
+                                                                                                        3×d
+                                                                                                            of the
+                    E          E      ⊤                    1
+                                                             Pd      E         3         d
+atom i, Equ-LN(zi ) = U(zi − µ1 ) ⊙ γ, where µ = d k=1 Z[i,:,k] ∈ R , γ ∈ R is a learnable vector, and
+                                                                                    ⊤        ⊤ ⊤
+                                                                            (zE         E
+                                                                              i −µ1 )(zi −µ1 )
+U ∈ R3×3 denotes the inverse square root of the covariance matrix, i.e., U−2 =        d          . First, given any
+                                                               ⊤            ⊤ ⊤                ⊤             ⊤ ⊤
+                                      3×3            (RzE            E
+                                                        i −Rµ1 )(Rzi −Rµ1 )          (RzE            E
+                                                                                         i −Rµ1 )(Rzi −Rµ1 )
+orthogonal transformation matrix R ∈ R , det(R) = 1,             d               =                d              =
+         ⊤        ⊤ ⊤
+  (zE         E
+    i −µ1 )(zi −µ1 )     ⊤        −2 ⊤        −1 ⊤     −1 ⊤             ⊤ −2                                  E
+R           d         R = RU R = RU R RU R = (RUR ) , then we have Equ-LN(Rzi ) =
+RUR⊤ (RzE   i  − Rµ1 ⊤
+                       ) ⊙ γ = R(U(zE     ⊤                E
+                                    i − µ1 )) = R Equ-LN(zi ), which preserves the rotation equivariance (Eqn.(8a)).
+                              E
+The translation invariance of Z is also preserved.
+
+
+Structural Encodings. As introduced in Section A, the structural encodings serve as the bias term in the softmax attention
+module. Since only the relative distance ||ri − rj ||, ∀i, j ∈ [n] is used, the invariance constraint is preserved, i.e., given
+∀g = (t, R) ∈ SE(3), ||Rri + t − Rrj + t|| = ||ri − rj ||.
+
+C. Discussions
+C.1. Connections to Previous Approaches
+In this section, we present a detailed discussion of how previous models (PaiNN (Schütt et al., 2021) and TorchMD-
+Net (Thölke & De Fabritiis, 2022)) can be viewed as special instantiations by extending the design philosophy described
+in Section 4.1. Without loss of generality, we omit the cutoff conditions used in these works for readability, which can be
+naturally included in our framework.
+
+
+                                                                                ⊤              ⊤
+PaiNN (Schütt et al., 2021). Both invariant representations ZI = [zI1 ; ...; zIn ] ∈ Rn×d and equivariant representations
+ZE = [zE          E
+        1 ; ...; zn ] ∈ R
+                          n×3×d
+                                are maintained in PaiNN, where zIi ∈ Rd and zE    i ∈R
+                                                                                        3×d
+                                                                                             are the invariant and equivariant
+representations for atom i, respectively. In each layer, the representations are updated as follows:
+
+                                             I,l
+                                        Z′         = ZI,l + Message-Block-Inv(ZI,l )
+                                            E,l
+                                       Z′          = ZE,l + Message-Block-Equ(ZI,l , ZE,l )
+                                                          I,l                           I,l          E,l
+                                                                                                                               (9)
+                                      ZI,l+1 = Z′               + Update-Block-Inv(Z′         , Z′         )
+                                                          E,l                            I,l          E,l
+                                     ZE,l+1 = Z′                + Update-Block-Equ(Z′          , Z′            )
+
+                                                                      16
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+In the message block, the invariant and equivariant representations are updated in the following manner. For brevity, we
+omit the layer index l.
+
+                                                                      X
+                                 Message-Block-Inv(zIi ) =                 ϕs (zIj ) ◦ Ws (||ri − rj ||)
+                                                                       j
+                                                                      X E                                  
+                            Message-Block-Equ(zIi , zE
+                                                     i ) =             zj ⊙ ϕvv (zIj ) ◦ Wvv (||ri − rj ||)                       (10)
+                                                                       j
+
+                                                                        ri − rj                 ′
+                                                                                                                   ⊤
+                                                                  +                ϕvs (zIj ) ◦ Wvs (||ri − rj ||)
+                                                                      ||ri − rj ||
+
+
+The scalar product ⊙ is defined the same way as in Section 4.2, i.e., given x ∈ R3×d , y ∈ Rd , z = x ⊙ y ∈ R3×d , where
+z[i,j] = x[i,k] · y[k] . ◦ denotes the element-wise product, ϕs , ϕvv , ϕvs : Rd → Rd are all 2-layer MLP with the SiLU
+                           ′                                                                   r −r
+activation, Ws , Wvv , Wvs    : R → Rd are instantiated by learnable radial basis functions. ||rii −rjj || ∈ R3 denotes the relative
+direction between atom i’s and j’s positions.
+In the update block, the invariant and equivariant representations are updated in the following manner:
+
+
+                       Update-Block-Inv(zIi , zE           I      E              I      E           E     E
+                                               i ) = ass (zi , ||zi V||) + asv (zi , ||zi V||) ◦ < zi U, zi V >
+
+                      Update-Block-Equ(zIi , zE           I      E          E
+                                              i ) = avv (zi , ||zi V||) ⊙ (zi U)
+
+
+
+
+V, U ∈ Rd×d are learnable parameters. < ·, · > is defined the same way as in Section 4.2, i.e., given x, y ∈ R3×d , z =<
+x, y >∈ Rd , where z[k] = x[:,k] ⊤ y[:,k] . Norm || · || : R3×d → Rd is calculated along the spatial dimension, i.e.,
+|| · || =< ·, · >. ◦ denotes the element-wise product. ⊙ is also defined the same as in Section 4.2. a(·, ·) : Rd × Rd → Rd
+first concatenates the two inputs along the feature dimension and then apply a 2-layer MLP with SiLU activation.
+We prove that both the invariant and equivariant message blocks can be viewed as special instances by extending the invariant
+self-attention module and the equivariant cross-attention module of our framework respectively. In particular, we extend
+ψVI , ψVE_I introduced in the Section 4.1 to be query-dependent, i.e., ψVI,i , ψVE_I,i that depends on the atom i’s representations.
+Concretely, in the invariant self-attention module, we set ψVI, i (zIj ) = ϕs (zIj ) ⊙ Ws (||ri − rj ||). Similarly, in the equivariant
+                                                                                                             ′   ri −rj
+cross-attention module, we set ψVE_I, i (zIj , zE      E           I                                  I
+                                                j ) = zj ⊙ ϕvv (zj ) · Wvv (||ri − rj ||) + ϕvs (zj ) · Wvs ||ri −rj || . In such way,
+the invariant self-attention module and the equivariant cross-attention module can express the invariant and equivariant
+message blocks respectively, e.g., the parameters to transform Query and Key are trained/initialized to zero, and the number
+of atoms can be equipped by initialization, which is necessary to express the sum operator by using the attention as shown
+in (Ying et al., 2021a).
+Moreover, we prove that the update blocks can also be viewed as special instances by extending the FFN blocks in
+                                                    I           I      E              I      E         E      E
+our framework. In particular, we set Inv-FFN(z
+                                                   i ) = ass (zi , ||zi V||) + asv (zi , ||zi V||) < zi U, zi V > and
+             E             I   E        E
+Equ-FFN(zi ) = avv (zi , ||zi V||) zi U , then both Inv-FFN and Equ-FFN can express the update blocks. Note
+that the parameters of the remaining blocks (Inv-Cross-Attn, Equ-Self-Attn) can be trained/initialized to be zero. In such
+way, the PaiNN model can be instantiated through our design philosophy introduced in Section 4.1.
+
+
+                                                                                                                        ⊤        ⊤
+TorchMD-Net (Thölke & De Fabritiis, 2022). Similarly to PaiNN, both invariant representations ZI = [zI1 ; ...; zIn ] ∈
+Rn×d and equivariant representations ZE = [zE             E
+                                                1 ; ...; zn ] ∈ R
+                                                                  n×3×d
+                                                                        are maintained in TorchMD-Net, where zIi ∈ Rd and
+ E     3×d
+zi ∈ R      are the invariant and equivariant representations for atom i, respectively. In each layer, the representations are
+updated as follows:
+
+                                               I,l
+                                          Z′         = ZI,l + TorchMD-Inv-Block-1(ZI,l )
+                                                          I,l                                     I,l
+                                      ZI,l+1 = Z′               + TorchMD-Inv-Block-2(Z′                , ZE,l )                  (11)
+                                          E,l+1           E,l                                   I,l     E,l
+                                      Z              =Z         + TorchMD-Equ-Block(Z , Z                     )
+
+                                                                           17
+                   GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+The invariant representations in TorchMD-Inv-Block-1 and TorchMD-Inv-Block-2 are updated as follows. For brevity,
+we omit the layer index l.
+                                                                                               (1)
+                                                       Qi = W Q zIi , Kj = W K zIj , Vj               = W V (1) zIj
+                                                                                    
+                                                       αij = SiLU Q⊤            K
+                                                                       i Kj ◦ Dij
+                                                                                                      !
+                                                                    X               (1)       V (1)
+                           TorchMD-Inv-Block-1(zIi ) = O1                 αij · Vj        ◦ Dij                                             (12)
+                                                                     j
+                                                                                                      !
+                                                                    X            (1)  V (1)
+                      TorchMD-Inv-Block-2(zIi , zE
+                                                 i ) = O2                 αij · Vj ◦ Dij                  ◦ < zE       E
+                                                                                                               i U1 , zi U2 >
+                                                                     j
+
+                                                                                                                                    V (1)
+WQ , WK , WV (1) , U1 , U2 ∈ Rd×d are learnable parameters. ◦ denotes the element-wise product. DK            ij , Dij    : R → Rd
+takes ||ri −rj || as input and uses radial basis functions followed by a non-linear activation to transform it. O1 , O2 : Rd → Rd
+are learnable linear transformations. < ·, · > is defined the same way as in Section 4.2, i.e., given x, y ∈ R3×d , z =<
+x, y >∈ Rd , where z[k] = x[:,k] ⊤ y[:,k] . On the other hand, the equivariant representations are updated as follows:
+                                                (2)                      (3)
+                                             Vj       = WV (2) zIj , Vj        = WV (3) zIj
+
+                                                        X                                          ri − rj
+                                                                                                                                
+                                                                                                              (V ◦ Dij )⊤
+                                                                (2)  V (2)                                      (3) V (3)
+                  TorchMD-Equ-Block(zIi , zE
+                                           i ) =              (Vj ◦ Dij ) ⊙ zE
+                                                                             j +                                                            (13)
+                                                          j
+                                                                                                  ||ri − rj || j
+                                                                                            !
+                                                              X           (1)  V (1)
+                                                      + O3         αij · Vj ◦ Dij               ⊙ zE
+                                                                                                   i U3
+                                                               j
+
+
+WV (2) , WV (3) , U3 ∈ Rd×d are learnable parameters. ◦ denotes the element-wise product. ⊙ is defined the same way as in
+                                                                                                     (2)     (3)
+Section 4.2, i.e., given x ∈ R3×d , y ∈ Rd , z = x ⊙ y ∈ R3×d , where z[i,j] = x[i,k] · y[k] . DVij , DVij : R → Rd takes
+||ri − rj || as input and use radial basis functions followed by a non-linear activation to transform it. O3 : Rd → Rd is a
+                                    r −r
+learnable linear transformation. ||rii −rjj || ∈ R3 denotes the relative direction between atom i’s and j’s positions.
+We prove that the TorchMD-Inv-Block-1 and TorchMD-Inv-Block-2 can be viewed as special instances by extending
+the invariant self-attention module and invariant cross-attention module of our framework respectively.   Concretely,   in the  
+                                          I  I        Q I     I, i I          K I      K    I, i I            V (1) I        (1)
+invariant self-attention module, we set ψQ (zi ) = W zi , ψK (zj ) = W zj ◦ Dij , ψV (zj ) = O1 W                  zj ◦ DVij
+and use SiLU instead of Softmax for calculating attention
+                                                                      By rewriting TorchMD-Inv-Block-1 in the equivalent
+                                                           probability.
+                                I                      (1)      V (1)
+                                      P
+form TorchMD-Inv-Block-1(zi ) = j αij · O1 Vj ◦ Dij                    , the invariant self-attention module can express it by
+equipping the number of atoms for expressing the sum operation using the attention.
+                                                    I                      I_E, i I                            I_E, i I
+In the invariant cross-attention module, we set ψQ    (zIi ) = W Q zIi , ψK      (zj , zE      K I        K
+                                                                                        j ) = W zj ◦ Dij , ψV        (zj , zE
+                                                                                                                            j ) =
+         (1)          (1)
+                           
+        V      I    V                E       E
+O2 W          zj ◦ Dij       ◦ < U1 zi , U2 zi >, and use SiLU instead of Softmax for calculating attention probability.
+                                                                                                    
+                                                                                          (1)  V (1)
+By using the equivalent form TorchMD-Inv-Block-2(zIi , zE                                              ◦ < U 1 zE       E
+                                                                      P
+                                                               i ) =      j αij · O2 Vj ◦ Dij                   i , U2 zi >, the
+invariant cross-attention module can express it by equipping the number of atoms.
+Moreover, we prove that the TorchMD-Equ-Block can be viewed as a special instance by extending the equivari-
+                                                                                                           V (2) I           (2)
+ant cross-attention module of our framework. In particular, we set ψVE_I, i (zIj , zE       j ) = (W            zj ◦ DVij ) ⊙ zE     j +
+                                                                  
+  ri −rj       V (3) I      V (3) ⊤             V (1) I      V (1)           E
+||ri −rj || (W      zj ◦ Dij ) + αij · O3 W          zj ◦ Dij         ⊙ U3 zi . By rewriting TorchMD-Equ-Block in the
+                                                                                                                           P
+                                                                (2)     V (2)              ri −rj       (3)       V (3) ⊤
+equivalent form TorchMD-Equ-Block(zIi , zE                                          E
+                                                      P
+                                             i )  =     j   (V  j    ◦ Dij    ) ⊙ z j +  ||ri −rj || (V j   ◦  D  ij   )      + j αij ·
+                                                                                                                                       !
+                                                                                                                           
+          (1)     V (1)         E
+                                    P  (2)     V (2)     E      ri −rj     (3)     V (3) ⊤                    (1)       V (1)        E
+O3 Vj ◦ Dij               ⊙U3 zi = j (Vj ◦Dij )⊙zj + ||ri −rj || (Vj ◦Dij ) +αij ·O3 Vj ◦ Dij                                   ⊙U3 zi ,
+
+it is straightforward that the equivariant cross-attention module can express the TorchMD-Equ-Block, e.g., the parameters
+to transform Query and Key are trained/initialized to zero, and the number of atoms can be equipped by initialization. Note
+that the parameters of the remaining blocks (Equ-Self-Attn, Inv-FFN, Equ-FFN) can be trained/initialized to be zero. In
+such ways, the TorchMD-Net model can be instantiated through our design philosophy introduced in Section 4.1.
+
+                                                                     18
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+C.2. Extension to Other Geometric Constraints
+In this subsection, we showcase how to extend our framework to encode other geometric constraints. In particular, we
+consider the E(3) group, which comprises translation, rotation and reflection. Formally, let VM denote the space of
+molecular systems, for each atom i, we define equivariant representation ϕE and invariant representation ϕI if ∀ g =
+(t, R) ∈ E(3), M = (X, R) ∈ VM , the following conditions are satisfied:
+
+           ϕE : VM → R3×d ,                        RϕE (X, {r1 , ..., rn }) + t1⊤ = ϕE (X, {Rr1 + t, ..., Rrn + t})      (14a)
+           ϕI : VM → Rd ,                                    ϕI (X, {r1 , ..., rn }) = ϕI (X, {Rr1 + t, ..., Rrn + t})   (14b)
+
+where t ∈ R3 is a translation vector, R ∈ R3×3 , det(R) = ±1 is an orthogonal transformation matrix and X ∈ Rn×d
+denotes the atoms with features, R = {r1 , ..., rn }, ri ∈ R3 denotes the cartesian coordinate of atom i. In particular, the
+additional requirement is to encode the translation and reflection equivariance of the equivariant representations, which can
+be achieved by modifying the conditions of our framework (Eqn.(3)).
+With the invariant representation ZI and the equivariant representation ZE that satisfy the constraints (Eqn.(14a) and
+Eqn.(14b)), we separately redefine the conditions of each component. It is worth noting that the reflection invariance
+is directly satisfied (RR⊤ = R⊤ R = I) from the analysis in Section B.1 and Section B.2, which is required in (1) the
+calculation of attention probability in Equ-Self-Attn, Equ-Cross-Attn; (2) the calculation of KI_E and VI_E . Thus, we
+only need to encode the translation equivariance constraint. Given the update rules (Eqn.(3)), it can be achieved by simply
+setting each component (Inv-Self-Attn, Inv-Cross-Attn, Equ-Self-Attn, Equ-Cross-Attn, Inv-FFN, Equ-FFN) to be
+translation-invariant. In this way, the output equivariant representation can preserve the equivariance to the E(3) group.
+We extend our framework to achieve this goal, which is introduced below:
+Self-Attention modules. For Inv-Self-Attn, the condition remains unchanged. For Equ-Self-Attn, the additional condition
+is that ψ E should keep the translation invariance. Here we give a simple instantiation: QE = ψQ    E
+                                                                                                      (ZE ) = (ZE −
+                                                                                                    Pn
+µZE )WQ , K = ψK (Z ) = (Z − µZE )WK , V = ψV (Z ) = (Z − µZE )WV , where µZE ,i = d k=1 ZE [i,:,k] 1⊤ .
+        E    E     E   E        E            E   E      E   E       E           E                 1
+
+
+Cross-Attention modules. For Inv-Cross-Attn, the condition for ψ I remains unchanged, while ψ I_E should keep the
+translation invariance. For Equ-Cross-Attn, both ψ E and ψ E_I are required to be translation-invariant. Here we give an
+instantiation: QE = ψQ E
+                         (ZE ) = (ZE − µZE )WQE , and
+
+          KI_E =< (ZE − µZE )WK,1
+                              I_E
+                                  , (ZE − µZE )WK,2
+                                                I_E
+                                                    >,            VI_E =< (ZE − µZE )WV,1
+                                                                                       I_E
+                                                                                           , (ZE − µZE )WV,2
+                                                                                                         I_E
+                                                                                                             >
+           E_I     E         E_I     I  E_I                         E_I     E        E_I      I  E_I                      (15)
+          K    = (Z − µZE )WK,1 ⊙ Z WK,2 ,                        V     = (Z − µZE )WV,1 ⊙ Z WV,2
+
+
+Feed-Forward Networks. Similarly, the condition for Inv-FFN remains unchanged. For Equ-FFN, it also should keep
+                                             E         E                     I
+the translation invariance, e.g., Equ-FFN(Z′′ ) = ((Z′′ − µZE )W1E ⊙ GELU(Z′′ W2I ))W3E .
+Remark. With the above additional conditions, our framework can additionally be extended to encode geometric constraints
+towards E(3) group. Note that the design of the input layer should also encode the constraints (Eqn.(14a) and Eqn.(14b)).
+For example, the invariant representation remains unchanged as ZI,0 = X. while the equivariant representation can be
+directly set as ZE,0
+                 i   = ri . In this way, the geometric constraints are well satisfied.
+
+C.3. Further Discussion on the Design Philosophy of the Cross-Attention Module
+In this subsection, we further elucidate the disparity between invariant and equivariant representations in terms of the
+information they encapsulate, substantiated by additional supporting evidence. Specifically, the advantages of invariant
+and equivariant representations complement each other, prompting us to bridge them and combine their strengths through
+cross-attention modules.
+From the perspective of neural network design, equivariant representations preserve more complete structural information
+in a straightforward way, but the equivariant constraints restrict the choice of operations that can be used. On the other
+hand, invariant representations offer more flexibility for non-linear operations, but introduce potential risks of structural
+information loss or inefficient utilization.
+First, we provide more explanations and supporting evidence on why equivariant representations preserve more complete
+structural information in a straightforward way. In the literature, existing invariant models commonly use invariant features
+of molecules (e.g., interatomic distances, bond angles, dihedral/torsion angles, improper angles, and so on) which are
+
+                                                             19
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+extracted from the raw 3D geometric structures of molecules (the position of each atom in the molecule). Although these
+invariant features are important to describe the properties of molecules, the mapping from raw geometric structures to
+invariant features may introduce information loss or inefficiency:
+
+  • In a recent study on the expressive power of geometric graph neural networks (Joshi et al., 2023), the authors provided
+    a thorough theoretical analysis of the expressive power of invariant layers and equivariant layers commonly used in
+    geometric graph neural networks by leveraging the Geometric Weisfeiler-Lehman test. Each invariant layer in geometric
+    graph neural networks corresponds to the proposed Invariant Geometric Weisfeiler-Lehman test (IGWL). In their
+    framework, previously mentioned invariant features can be categorized into different classes in terms of the least number
+    of nodes (atoms in the context of molecular modeling) that are involved in computing it. For example, interatomic
+    distances involve two atoms, while bond angles involve three atoms. These features are then called k-body scalars.
+    Based on this framework, the authors carefully characterized the expressive power of invariant layers and proved that
+    "any number of iterations of IGWL cannot distinguish any 1-hop identical geometric graphs G1 and G2 and where the un-
+    derlying attributed graphs are isomorphic" and "GWL (corresponds to equivariant layer) can distinguish by propagating
+    information from the geometric structure", which indeed indicates the information loss from raw geometric structures
+    to invariant features (e.g., using interatomic distances or bond angles). Although adding more complex features like
+    dihedral angles could mitigate this issue, it also brings inefficiency due to the high complexity of such features.
+
+  • In PaiNN (Schütt et al., 2021), the authors also provided intuition on the point that there exist limits of invariant
+    representations. Firstly, the authors demonstrated that to express enough information (like bond angles of all neighbors
+    of an atom), using invariant representations would require computations with higher complexity than using equivariant
+    representations (see the analysis of Table 1 in (Schütt et al., 2021)). Moreover, the authors also showed that equivariant
+    representations allow the propagation of crucial geometrical information beyond the neighborhood, which is not
+    possible in the invariant case (see the analysis of Figure 1 in (Schütt et al., 2021)). This evidence motivated the authors
+    to develop models based on equivariant representations.
+
+Second, we also demonstrate that invariant representations allow more flexibility for non-linear operations while the
+equivariant constraints restrict the choice of equivariant operations that can be used. For invariant representations, there
+exist no constraints on the operations that can be used. The invariant constraints are naturally satisfied once the invariant
+features are extracted. Hence, we can freely choose different operation designs with arbitrary non-linearity to increase the
+model capacity and incorporate priors for targeted tasks. However, it is not the same for equivariant representations. To
+satisfy the equivariant constraints, operation classes that are qualified to correctly process equivariant representations are
+restricted, and non-linear transformations commonly used in neural networks would break the constraints on equivariant
+representations. That is to say, although equivariant representations contain more complete information, it is restricted for
+models to well process and transform this information:
+
+  • Most existing works use (1) vector operations; and (2) tensor products of irreducible representations to develop
+    equivariant operations. For the former one, the non-linearity is constrained. For the latter one, the computational
+    complexity is high which impedes the deployment to large 3D systems.
+
+  • Empirically, previous equivariant models cannot consistently achieve superior performance on invariant tasks compared
+    to invariant models, due to the restricted non-linearity or computational complexity. For example, previous invariant
+    models are still dominant in invariant prediction tasks on PCQM4Mv2 and Molecule3D (Table 4 and 5). Moreover, the
+    model capacity of existing equivariant models is thus limited, and the ability to scale the model size up is also restricted.
+    In our preliminary experiments on previous models like PaiNN/TorchMD-Net, it is hard to train these models with
+    larger model sizes, on which we observed the training instability issues.
+
+Based on the above explanations and evidence, we can see that invariant and equivariant representations play indeed
+different roles. Compared to invariant representations, equivariant representations contain more complete information on the
+geometrical structures. Compared to equivariant representations, the information contained by invariant representations
+can be better transformed and processed with more flexible design choices of operations. From these perspectives, the
+advantages of invariant and equivariant representations complement each other, which motivates us to bridge them and
+combine their power via the cross-attention modules, bringing the unified framework of our GeoMFormer.
+
+                                                              20
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+D. More Related Works
+Instead of sticking to the standard tensor product operation, SCN (Zitnick et al., 2022) used a rotation trick to encode the
+atomic environment by using the irreps. Note that SCN does not strictly obey the equivariance constraint. eSCN (Passaro &
+Zitnick, 2023) presented an interesting observation that the spherical harmonics filters have specific sparsity patterns if a
+proper rotation acts on the input spherical coordinates. Combined with patterns of the Clebsch-Gordan coefficients, eSCN
+proposed an efficient equivariant convolution to reduce SO(3) tensor products to SO(2) linear operations, achieving efficient
+computation. Built upon the eSCN convolution, EquiformerV2 (Liao et al., 2024) developed a scalable Transformer-based
+model that can be applied to the domain of 3D atomistic systems.
+EGNN (Satorras et al., 2021) proposed a simple yet effective equivariant graph neural network framework. Based on EGNN,
+GMN (Huang et al., 2022) further develops multi-channel equivariant modeling using forward kinematics information in
+physical system. SEGNN (Brandstetter et al., 2022) generalizes the node and edge features to include vectors or tensors,
+and incorporates geometric and physical information by using the tensor product operations. SAKE (Wang & Chodera,
+2023) proposed spatial attention mechanism that uses neurally parametrized linear combinations of edge vectors to achieve
+equivariance, which is less computationally intensive than traditional spherical harmonics-based methods. Using GMN as
+its backbone, SEGNO (Liu et al., 2024) integrated Neural ODE to approximate continuous trajectories between states and
+incorporated second-order motion equations to update the position and velocity in physical simulation.
+
+E. Experimental Details
+E.1. OC20 IS2RE
+Baselines. We compare our GeoMFormer with several competitive baselines for learning geometric molecular representa-
+tions. Crystal Graph Convolutional Neural Network (CGCNN) (Xie & Grossman, 2018) developed novel approaches to
+modeling periodic crystal systems with diverse features as node embeddings. SchNet (Schütt et al., 2018) leveraged the
+interatomic distances encoded via radial basis functions, which serve as the weights of continuous-filter convolutional layers.
+DimeNet++ (Gasteiger et al., 2020a) introduced the directional message passing that encodes both distance and angular
+information between triplets of atoms.
+GemNet (Gasteiger et al., 2021) embedded all atom pairs within a given cutoff distance based on interatomic directions,
+and proposed three forms of interaction to update the directional embeddings: Two-hop geometric message passing (Q-MP),
+one-hop geometric message passing (T-MP), and atom self-interactions. An efficient variant named GemNet-T is proposed
+to use cheaper forms of interaction.
+SphereNet (Liu et al., 2022b) used the spherical coordinate system to represent the relative location of each atom in the
+3D space and proposed the spherical message passing. GNS (Pfaff et al., 2020) is a framework for learning mesh-based
+simulations using graph neural networks and can handle complex physical systems. Graphormer-3D (Shi et al., 2022)
+extended Graphormer(Ying et al., 2021a) to learn geometric molecular representations, which encodes the interatomic
+distance as attention bias terms and performed well on large-scale datasets. Equiformer (Liao & Smidt, 2023) uses the
+tensor product operations to build a new scalable equivariant Transformer architecture and outperforms strong baselines on
+the large-scale OC20 dataset (Chanussot et al., 2021).
+
+Settings. As introduced in Section 5.1.1, we follow the experimental setup of Graphormer-3D (Shi et al., 2022) for a
+fair comparison. Our GeoMFormer model consists of 12 layers. The dimension of hidden layers and feed-forward layers
+is set to 768. The number of attention heads is set to 48. The number of Gaussian Basis kernels is set to 128. We use
+AdamW as the optimizer and set the hyper-parameter ϵ to 1e-6 and (β1 , β2 ) to (0.9,0.98). The gradient clip norm is set to
+5.0. The peak learning rate is set to 2e-4. The batch size is set to 128. The dropout ratios for the input embeddings, attention
+matrices, and hidden representations are set to 0.0, 0.1, and 0.0 respectively. The weight decay is set to 0.0. The model is
+trained for 1 million steps with a 60k-step warm-up stage. After the warm-up stage, the learning rate decays linearly to zero.
+Following Liao & Smidt (2023), we also use the noisy node data augmentation strategy (Godwin et al., 2022) to improve the
+performance. The model is trained on 16 NVIDIA Tesla V100 GPUs.
+
+E.2. OC20 IS2RS
+Baselines. In this experiment, we choose several competitive baselines that perform well on equivariant prediction tasks
+for molecules. PaiNN (Schütt et al., 2021) built upon the framework of EGNN (Satorras et al., 2021) to maintain both
+
+                                                              21
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+invariant and equivariant representations and further used the Hardamard product operation to transform the equivariant
+representations. Specialized tensor prediction blocks were also developed for different molecular properties. TorchMD-
+Net (Thölke & De Fabritiis, 2022) developed an equivariant Transformer architecture by using similar Hardamard product
+operations and achieved strong performance on various tasks.
+SpinConv (Shuaibi et al., 2021) encoded angular information with a local reference frame defined by two atoms and used
+a spin convolution on the spherical representation to capture rich angular information while maintaining rotation invariance.
+An additional prediction head is used to perform the equivariant prediction task, GemNet-dT (Gasteiger et al., 2021) is
+a variant of GemNet-T that can directly perform force prediction and other equivariant tasks, e.g., the relaxed positions
+in this experiment. GemNet-OC (Gasteiger et al., 2022) is an extension of GemNet by using more efficient components
+and achieved better performance on OC20 tasks.
+Settings. As introduced in Section 5.1.2, we adopt the direct prediction setting for comparing the ability to perform
+equivariant prediction tasks on OC20 IS2RS. In particular, we re-implemented the baselines and carefully trained these
+models for a fair comparison. Our GeoMFormer model consists of 12 layers. The dimension of hidden layers and feed-
+forward layers is set to 768. The number of attention heads is set to 48. The number of Gaussian Basis kernels is set to 128.
+We use AdamW as the optimizer and set the hyper-parameter ϵ to 1e-6 and (β1 , β2 ) to (0.9,0.98). The gradient clip norm is
+set to 5.0. The peak learning rate is set to 2e-4. The batch size is set to 64. The dropout ratios for the input embeddings,
+attention matrices, and hidden representations are set to 0.0, 0.1, and 0.0 respectively. The weight decay is set to 0.0. The
+model is trained for 1 million steps with a 60k-step warm-up stage. After the warm-up stage, the learning rate decays
+linearly to zero. The model is trained on 16 NVIDIA Tesla V100 GPUs.
+
+E.3. PCQM4Mv2
+Baselines. We compare our GeoMFormer with several competitive baselines from the leaderboard of OGB Large-Scale
+Challenge (Hu et al., 2021). First, we compare several message-passing neural network (MPNN) variants. Two widely used
+models, GCN (Kipf & Welling, 2017) and GIN (Xu et al., 2019) are compared along with their variants with virtual node
+(VN) (Gilmer et al., 2017; Hu et al., 2020). Besides, we compare GINE-VN (Brossard et al., 2020) and DeeperGCN-VN (Li
+et al., 2020). GINE is the multi-hop version of GIN. DeeperGCN is a 12-layer GNN model with carefully designed
+aggregators. The result of MLP-Fingerprint (Hu et al., 2021) is also reported. The complexity of these models is generally
+O(n), where n denotes the number of atoms.
+Additionally, we compare with a family of strong architectures, Graph Transformer (Ying et al., 2021a; Luo et al., 2022;
+2023; Zhang et al., 2023), whose computational complexity is O(n2 ). TokenGT (Kim et al., 2022) purely used node and
+edge representations as the input and adopted the standard Transformer architecture without graph-specific modifications.
+EGT (Hussain et al., 2022) used global self-attention as an aggregation mechanism and utilized edge channels to capture
+structural information. GRPE (Park et al., 2022) considered both node-spatial and node-edge relations and proposed a graph-
+specific relative positional encoding. Graphormer (Ying et al., 2021a) developed graph structural encodings and integrated
+them into a standard Transformer model, which achieved impressive performance across several world competitions (Ying
+et al., 2021b; Shi et al., 2022). GraphGPS (Rampášek et al., 2022) proposed a framework to integrate the positional and
+structural encodings, local message-passing mechanism, and global attention mechanism into the Transformer model. All
+these models are designed to learn 2D molecular representations.
+There also exist several models capable of utilizing the 3D geometric structure information in the training set of PCQM4Mv2.
+Transformer-M (Luo et al., 2023) is a Transformer-based Molecular model that can take molecular data of 2D or 3D formats as
+input and learn molecular representations, which was widely adopted by the winners of the 2nd OGB Large-Scale Challenge.
+GPS++ (Masters et al., 2022) is a hybrid MPNN and Transformer model built on the GraphGPS framework (Rampášek et al.,
+2022). It follows Transformer-M to utilize 3D atom positions and auxiliary tasks to win first place in the large-scale challenge.
+Last, we include two complex models with O(n3 ) complexity. GEM-2 (Liu et al., 2022a) used multiple branches to encode
+the full-range interactions between many-body objects and designed an axial attention mechanism to efficiently approximate
+the interaction with low computational cost. Uni-Mol+ (Lu et al., 2023) proposed an iterative prediction framework to
+achieve accurate quantum property prediction. It first generated 3D geometric structures from the 2D molecular graph using
+fast yet inaccurate methods, e.g., RDKit (Landrum, 2016). Given the inaccurate 3D structure as the input, the model is
+required to predict the equilibrium structure in an iterative manner. The predicted equilibrium structure is used to predict the
+quantum property. Uni-Mol+ simultaneously maintain both atom representations and pair representations, which induce the
+triplet complexity when updating the pair representations. With the carefully designed training strategy, Uni-Mol+ achieves
+
+                                                              22
+                  GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+state-of-the-art performance on PCQM4Mv2 while yielding high computational costs.
+
+Settings. As previously stated, DFT-calculated equilibrium geometric structures are provided for molecules in the training
+set. The molecules in the validation set do not have such information. We follow Uni-Mol+ (Lu et al., 2023) to train our
+GeoMFormer. In particular, our model takes the RDKit-generated geometric structures as the input and is required to predict
+both the HOMO-LUMO energy gap and the equilibrium structure by leveraging invariant and equivariant representations
+respectively. After training, the model is able to predict the HOMO-LUMO gap using the RDKit-generated geometric
+structures. We refer the readers to Uni-Mol+ (Lu et al., 2023) for more details on the training strategies.
+Our GeoMFormer model consists of 8 layers. The dimension of hidden layers and feed-forward layers is set to 512. The
+number of attention heads is set to 32. The number of Gaussian Basis kernels is set to 128. We use AdamW as the optimizer,
+and set the hyper-parameter ϵ to 1e-8 and (β1 , β2 ) to (0.9,0.999). The gradient clip norm is set to 5.0. The peak learning
+rate is set to 2e-4. The batch size is set to 1024. The dropout ratios for the input embeddings, attention matrices, and hidden
+representations are set to 0.0, 0.1, and 0.1 respectively. The weight decay is set to 0.0. The model is trained for 1.5 million
+steps with a 150k-step warm-up stage. After the warm-up stage, the learning rate decays linearly to zero. Other hyper-
+parameters are kept the same as the Uni-Mol+ for a fair comparison. The model is trained on 16 NVIDIA Tesla V100 GPUs.
+
+E.4. Molecule3D
+Baselines. We follow (Wang et al., 2022) to use several competitive baselines for comparison including GIN-Virtual (Hu
+et al., 2021), SchNet (Schütt et al., 2018), DimeNet++ (Gasteiger et al., 2020a), SphereNet (Liu et al., 2022b) which have
+already been introduced in previous sections. ComENet (Wang et al., 2022) proposed a message-passing layer that operates
+within the 1-hop neighborhood of atoms and encoded the rotation angles to fulfill global completeness. We also implement
+both PaiNN (Schütt et al., 2021) and TorchMD-Net (Thölke & De Fabritiis, 2022) for comparisons.
+
+Settings. Following (Wang et al., 2022), we evaluate our GeoMFormer model on both random and scaffold splits. Our
+GeoMFormer model consists of 12 layers. The dimension of hidden layers and feed-forward layers is set to 768. The
+number of attention heads is set to 48. The number of Gaussian Basis kernels is set to 128. We use AdamW as the optimizer,
+and set the hyper-parameter ϵ to 1e-8 and (β1 , β2 ) to (0.9,0.999). The gradient clip norm is set to 5.0. The peak learning rate
+is set to 3e-4. The batch size is set to 1024. The dropout ratios for the input embeddings, attention matrices, and hidden
+representations are set to 0.0, 0.1, and 0.1 respectively. The weight decay is set to 0.0. The model is trained for 1 million
+steps with a 60k-step warm-up stage. After the warm-up stage, the learning rate decays linearly to zero. The model is trained
+on 16 NVIDIA V100 GPUs.
+
+E.5. N-Body Simulation
+Baselines. Following (Satorras et al., 2021), we choose several competitive baselines for comparison. Radial Field (Köhler
+et al., 2019) developed theoretical tools for constructing equivariant flows and can be used to perform equivariant prediction
+tasks. Tensor Field Network (Thomas et al., 2018) embedded the position of an object in the Cartesian space into higher-order
+representations via products between learnable radial functions and spherical harmonics. In SE(3)-Transformer (Fuchs et al.,
+2020), the standard attention mechanism was adapted to equivariant features using operations in the Tensor Field Network
+model. EGNN (Satorras et al., 2021) proposed a simple framework. Its invariant representations encode type information
+and relative distance, and are further used in vector scaling functions to transform the equivariant representations.
+
+Settings. The input of the model includes initial positions p0 = {p01 , . . . , p05 } ∈ R5×3 of five objects, and their initial
+velocities v0 = {v10 , . . . , v50 } ∈ R5×3 and respective charges c = {c1 , . . . , c5 } ∈ { − 1, 1}5 . We encode positions and
+velocities via separate equivariant streams, and updated them with separate invariant representations via cross-attention
+modules. The equivariant prediction is based on both equivariant representations.
+We follow the settings in (Satorras et al., 2021) for a fair comparison. Our GeoMFormer model consists of 4 layers. The
+dimension of hidden layers and feed-forward layers is set to 80. The number of attention heads is set to 8. The number of
+Gaussian Basis kernels is set to 64. We use Adam as the optimizer, and set the hyper-parameter ϵ to 1e-8 and (β1 , β2 ) to
+(0.9,0.999). The learning rate is fixed to 3e-4. The batch size is set to 100. The dropout ratios for the input embeddings,
+attention matrices, activation functions, and hidden representations are all set to 0.4, and the drop path probability is set to
+0.4. The model is trained for 10,000 epochs. The number of training samples is set to 3.000. The model is trained on 1
+NVIDIA V100 GPUs.
+
+                                                               23
+                       GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+
+Table 7. Results on MD trajectories from the MD17 dataset. Scores are given by the MAE of energy predictions (kcal/mol) and forces
+(kcal/mol/Å). NequIP does not provide errors on energy, for PaiNN we include the results with lower force error out of training only on
+forces versus on forces and energy. Benzene corresponds to the dataset originally released in Chmiela et al. (2017), which is sometimes
+left out from the literature. Our results are averaged over three random splits.
+                  Molecule                         SchNet     PhysNet        DimeNet    PaiNN      NequIP     TorchMD-Net        GeoMFormer
+                                         energy     0.37       0.230          0.204     0.167         -           0.123             0.118
+                  Aspirin
+                                         forces     1.35       0.605          0.499     0.338       0.348         0.253             0.171
+                                         energy     0.08         -            0.078        -          -           0.058             0.052
+                  Benzene
+                                         forces     0.31         -            0.187        -        0.187         0.196             0.146
+                                         energy     0.08       0.059          0.064     0.064         -           0.052             0.047
+                  Ethanol
+                                         forces     0.39       0.160          0.230     0.224       0.208         0.109             0.062
+                                         energy     0.13       0.094          0.104     0.091         -           0.077             0.071
+                  Malondialdehyde
+                                         forces     0.66       0.319          0.383     0.319       0.337         0.169             0.133
+                                         energy     0.16       0.142          0.122     0.116         -           0.085             0.081
+                  Naphthalene
+                                         forces     0.58       0.310          0.215     0.077       0.097         0.061             0.040
+                                         energy     0.20       0.126          0.134     0.116         -           0.093             0.099
+                  Salicylic Acid
+                                         forces     0.85       0.337          0.374     0.195       0.238         0.129             0.098
+                                         energy     0.12       0.100          0.102     0.095         -           0.074             0.078
+                  Toluene
+                                         forces     0.57       0.191          0.216     0.094       0.101         0.067             0.041
+                                         energy     0.14       0.108          0.115     0.106         -           0.095             0.095
+                  Uracil
+                                         forces     0.56       0.218          0.301     0.139       0.173         0.095             0.068
+
+
+E.6. MD17
+MD17 (Xu et al., 2021) consists of molecular dynamics trajectories of several small organic molecules. Each molecule has
+its geometric structure along with the corresponding energy and force. The task is to predict both the energy and force of
+the molecule’s geometric structure in the current state. To evaluate the performance of models in a limited data setting, all
+models are trained on only 1,000 samples from which 50 are used for validation. The remaining data is used for evaluation.
+For each molecule, we train a separate model on data samples of this molecule only. We set the model parameter budget the
+same as Thölke & De Fabritiis (2022). Following (Thölke & De Fabritiis, 2022), we compare our GeoMFormer with several
+competitive baselines: (1) SchNet (Schütt et al., 2018); (2) PhysNet (Unke & Meuwly, 2019); (3) DimeNet (Gasteiger et al.,
+2020b); (4) PaiNN (Schütt et al., 2021); (5) NequIP (Batzner et al., 2022); (6) TorchMD-Net (Thölke & De Fabritiis, 2022).
+The results are presented in Table 7. It can be easily seen that our GeoMFormer achieves competitive performance on the
+energy prediction task (5 best and 1 tie out of 8 molecules) and consistently outperforms the best baselines by a significantly
+large margin on the force prediction task, i.e., 30.6% relative force MAE reduction in average.
+
+E.7. Ablation Study
+
+Table 8. Impact of the attention modules on MD17 energy prediction task. All other hyperparameters are the same for a fair comparison.
+ Inv-Self-Attn   Inv-Cross-Attn   Equ-Self-Attn   Equ-Cross-Attn   Aspirin   Benzene   Ethanol   Malondialdehyde   Naphthalene   Salicylic Acid   Toluene   Uracil
+      ✓                ✓               ✓               ✓            0.118     0.052     0.047         0.071           0.081           0.099        0.078    0.095
+      ×                ✓               ✓               ✓            0.156     0.063     0.058         0.085          0.092           0.115         0.090    0.102
+      ✓                ×               ✓               ✓            0.161     0.062     0.060         0.086          0.111           0.113         0.094    0.101
+      ✓                ✓               ×               ✓            0.131     0.059     0.052         0.081          0.084           0.104         0.085    0.097
+      ✓                ✓               ✓               ×            0.143     0.056     0.051         0.078          0.097           0.106         0.081    0.099
+      ✓                ×               ×               ✓            0.169     0.062     0.061         0.087          0.113           0.115         0.094    0.103
+      ✓                ×               ✓               ×            0.172     0.064     0.061         0.086          0.112           0.116         0.095    0.103
+      ×                ✓               ×               ✓            0.184     0.069     0.064         0.094          0.121           0.124         0.102    0.107
+      ×                ✓               ✓               ×            0.181     0.071     0.067         0.093          0.118           0.121         0.101    0.109
+      ✓                ×               ×               ×            0.193     0.076     0.071         0.097          0.126           0.129         0.105    0.113
+
+In this subsection, we conduct comprehensive experiments for ablation study on each building component of
+our GeoMFormer model, including self-attention modules (Inv-Self-Attn,Equ-Self-Attn), cross-attention modules
+(Inv-Cross-Attn,Equ-Cross-Attn), feed-forward networks (Inv-FFN,Equ-FFN), layer normalizations (Inv-LN,Equ-LN)
+and the structural encoding. All the results show that each design choice consistently contribute to the overall performance
+of GeoMFormer, strongly supporting the motivation of our design philosophy.
+
+Impact of the Attention Modules. As stated in Section 4, our GeoMFormer model consists of four attention modules.
+Without loss of generality, we conduct the experiments on the MD17 task and the N-body Simulation task to evaluate
+the contribution of these attention modules to the overall performance. In particular, we consider all possible ablation
+
+                                                                                24
+                       GeoMFormer: A General Architecture for Geometric Molecular Representation Learning
+
+
+Table 9. Impact of the attention modules on MD17 forces prediction task. All other hyperparameters are the same for a fair comparison.
+ Inv-Self-Attn   Inv-Cross-Attn   Equ-Self-Attn   Equ-Cross-Attn    Aspirin   Benzene      Ethanol   Malondialdehyde   Naphthalene   Salicylic Acid   Toluene   Uracil
+      ✓                ✓               ✓               ✓             0.171     0.146        0.062         0.133          0.040           0.098         0.041    0.068
+      ×                ✓               ✓               ✓             0.223     0.152        0.086         0.162          0.051           0.117         0.062    0.079
+      ✓                ×               ✓               ✓             0.257     0.159        0.104         0.178          0.063           0.126         0.076    0.091
+      ✓                ✓               ×               ✓             0.292     0.167        0.143         0.311          0.079           0.203         0.096    0.134
+      ✓                ✓               ✓               ×             0.281     0.160        0.167         0.272          0.094           0.185         0.081    0.113
+      ×                ✓               ✓               ×             0.313     0.164        0.196         0.319          0.134           0.191         0.105    0.195
+      ✓                ×               ✓               ×             0.366     0.187        0.212         0.352          0.159           0.264         0.161    0.237
+      ×                ✓               ×               ✓             0.324     0.173        0.189         0.331          0.129           0.237         0.127    0.167
+      ✓                ×               ×               ✓             0.358     0.182        0.219         0.337          0.172           0.272         0.134    0.241
+      ×                ×               ✓               ×             0.411     0.194        0.227         0.361          0.188           0.289         0.173    0.258
+
+
+Table 10. Impact of the attention modules on the N-body Simulation task. All other hyperparameters are the same for a fair comparison.
+                                          Inv-Self-Attn   Inv-Cross-Attn   Equ-Self-Attn    Equ-Cross-Attn   Performance Drop
+                                               ✗                ✓               ✓                 ✓                -8.5%
+                                               ✓                ✗               ✓                 ✓                -8.5%
+                                               ✓                ✓               ✗                 ✓               -19.1%
+                                               ✓                ✓               ✓                 ✗               -14.9%
+                                               ✗                ✓               ✓                 ✗               -14.9%
+                                               ✓                ✗               ✓                 ✗               -21.3%
+                                               ✗                ✓               ✗                 ✓               -17.0%
+                                               ✓                ✗               ✗                 ✓               -21.3%
+                                               ✗                ✗               ✓                 ✗               -25.5%
+
+
+
+
+configurations that involve ablating one or more of the four modules. Note that for an equivariant prediction task (N-
+body simulation task and MD17 forces prediction task), the preservation of at least one equivariant attention module is
+necessary. Similarly, for an invariant prediction task (MD17 energy prediction task), at least one invariant attention module
+should be preserved. The results are presented in Table 8 , Table 9 and Table 10. All the results consistently indicate
+that all four attention modules significantly contribute to boosting the model’s performance. Specifically, the inclusion
+of the cross-attn modules (Inv-Cross-Attn, Equ-Cross-Attn) consistently yields notably significant improvements on
+both invariant and equivariant prediction tasks. In the MD17 energy prediction task (invariant), there is an 18.7% relative
+improvement for Inv-Cross-Attn, a 9.8% relative improvement for Equ-Cross-Attn, and a 20.8% relative improvement
+when both Inv-Cross-Attn and Equ-Cross-Attn are utilized. For the MD17 force prediction task (equivariant), the relative
+improvements are 28.0% for Inv-Cross-Attn, 43.9% for Equ-Cross-Attn, and an impressive 60.8% for the combined use
+of Inv-Cross-Attn and Equ-Cross-Attn. In the N-body simulation task (equivariant), the relative improvements are 7.8%
+for Inv-Cross-Attn, 13.0% for Equ-Cross-Attn, and 17.5% for both Inv-Cross-Attn and Equ-Cross-Attn.
+
+
+Table 11. Impact of the FFN modules on Ge- Table 12. Impact of the LN modules on GeoM- Table 13. Impact of structural encod-
+oMFormer. All other hyperparameters are kept Former. All other hyperparameters are kept the ing on GeoMFormer. All other hy-
+the same for a fair comparison.              same for a fair comparison.                    perparameters are kept the same for
+  Inv-FFN Equ-FFN Performance Drop             Inv-LN Equ-LN Performance Drop               a fair comparison.
+      ✗           ✓             -4.26%            ✗           ✓           -8.51%              Structural Encoding Performance Drop
+     ✓            ✗             -17.0%            ✓           ✗           -63.8%                       ✗               -53.2%
+      ✗           ✗             -21.3%            ✗           ✗           -55.3%
+
+
+Impact of the FFN. We perform ablation study on the N-body Simulation task to ascertain the contribution of both
+invariant and equivariant FFN modules to the model’s performance. Specifically, we examine all possible settings involving
+the ablation of one or both of the FFN modules. The results are presented in Table 11, which demonstrates that both FFN
+modules positively contribute to enhancing performance.
+Impact of the LN. We employ invariant and equivariant LN to stabilize training. To investigate whether the invariant and
+equivariant LN modules improve performance, we conduct ablation study on the N-body Simulation task that encompass all
+possible settings of ablating one or both LN modules. The results are displayed in Table 12, demonstrating that both LN
+modules consistently help to enhance performance.
+Impact of the Structural Encoding. We incorporate the structural encoding as a bias term when calculating attention
+probability in our GeoMFormer, as described in Section A. We conduct ablation study on the N-body Simulation task to see
+if it helps boost performance. Results are shown in Table 13. It can be seen that the introduction of structural encoding leads
+to improved performance.
+
+                                                                                  25
+

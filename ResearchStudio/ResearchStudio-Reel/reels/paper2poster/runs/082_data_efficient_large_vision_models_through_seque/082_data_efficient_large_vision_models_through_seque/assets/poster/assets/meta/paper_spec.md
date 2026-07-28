@@ -1,0 +1,56 @@
+---
+title: Data-efficient Large Vision Models through Sequential Autoregression
+authors: Jianyuan Guo¹, Zhiwei Hao², Chengcheng Wang³, Yehui Tang³, Han Wu¹, Han Hu², Kai Han³, Chang Xu¹
+institutes: ¹University of Sydney; ²Beijing Institute of Technology; ³Huawei Noah's Ark Lab
+venue: ICML 2024
+paper_url: https://arxiv.org/abs/2402.04841
+code_url: https://github.com/ggjy/DeLVM
+title_audio_script: Large vision models trained by autoregression promise a single generalist model for many visual tasks, but today's versions demand billions of parameters and hundreds of billions of visual tokens to train. This ICML 2024 paper, DeLVM, asks whether we really need all that. The authors show that two simple, classical ideas, data augmentation and knowledge distillation, let a compact autoregressive vision model reach strong performance on a limited dataset, cutting both the parameter footprint and the training data requirement dramatically.
+---
+
+## Problem
+**Necessary:** Autoregressive large vision models (LVMs) generalize across tasks but rely on colossal models (3B+ parameters) and enormous visual corpora (~400B tokens, 1.64B images), making them costly and hard to deploy.
+**Additional:** Vision tasks follow a long-tailed distribution, so naively mixing benchmarks lets data-rich tasks (segmentation) swamp data-poor ones (keypoint detection), which the model then fails to learn.
+**Audio script:** In language modeling, autoregressive models like GPT thrive on a universal token interface. Recent work extends this idea to vision, treating images and annotations as visual sentences. But the leading large vision model needs over three billion parameters and roughly four hundred billion visual tokens drawn from more than a billion images. That scale is expensive and impractical for edge deployment. Worse, the visual world is long-tailed: some tasks like segmentation have abundant data while others like pose estimation are starved, and training on the raw mixture leaves the model unable to learn the rare tasks at all.
+
+## Motivation
+**Necessary:** Vision lacks the massive uniform corpora that NLP enjoys, so the one-epoch, data-abundant training recipes of large language models cannot transfer directly to data-limited vision tasks.
+**Additional:** Prior LVM work chases ever-larger models and datasets; the compression techniques (augmentation, distillation) routine elsewhere in vision remain unexplored for autoregressive LVMs.
+**Audio script:** Language models are typically trained for a single epoch over vast corpora to avoid overfitting. Computer vision rarely has that luxury: many tasks have only tiny datasets, so the language training schedule does not carry over. At the same time, the community keeps scaling model and dataset size, while classical remedies for scarce and imbalanced data, namely data augmentation and knowledge distillation, have barely been tried in the autoregressive vision setting. This paper closes that gap.
+
+## Contribution
+**Necessary:** The paper introduces DeLVM, a data-efficient autoregressive vision model, and shows that (1) data augmentation rebalances long-tailed multi-task data as effectively as adding new data, and (2) knowledge distillation transfers a large teacher's ability into a compact student LVM for both single- and multi-task settings.
+**Additional:** It further demonstrates a practical 80M-parameter model that, with augmentation plus distillation, even reaches 83% top-1 accuracy on ImageNet classification, hinting that generation and understanding can be learned jointly.
+**Audio script:** The authors make three main contributions. First, they show that simple data augmentation, random crop and flip, rebalances long-tailed multi-task data and improves an autoregressive vision model just as effectively as collecting more real samples. Second, they bring knowledge distillation to autoregressive large vision models for the first time, using a LLaMA one-billion teacher to lift a compact three-hundred-million student across single-task and multi-task benchmarks. Third, they build a practical eighty-million-parameter model that, combining both techniques, surprisingly reaches eighty-three percent top-one accuracy on ImageNet, suggesting generation and understanding can be learned together.
+
+## Method
+**Necessary:** Images are tokenized by an off-the-shelf VQGAN into 256 discrete tokens per image and assembled into visual sentences; a causal LLaMA transformer is trained by next-token prediction. Data augmentation (random crop/flip, tokenized and mixed in) rebalances scarce tasks, and knowledge distillation guides a small student LLaMA-300M/80M with a LLaMA-1B teacher.
+**Additional:** At inference, several input-output image pairs form a prompt that defines the task; concatenated with a tokenized test image, the model autoregressively generates the next 256 tokens, which the VQGAN decoder turns back into an image.
+**Key equation:** `$s_i = \{x_1, x_2, \ldots, x_{L-1}, x_L\}$`, `$s_o = \{x_2, x_3, \ldots, x_L, \varnothing\}$`, `$\mathcal{L} = \mathrm{CrossEntropy}(s_o, \hat{s}_o)$`
+
+## Dataset / Benchmark
+**Necessary:** Training and evaluation span three vision tasks, image segmentation (subsets of SA-1B), human pose estimation (COCO-Pose), and image deraining (Rain13K), plus foreground segmentation on Pascal-5i and image classification on ImageNet.
+**Additional:** Held-out SA-1B subsets, MPII, and Test2800 serve as validation sets; metrics include validation loss, pixel accuracy, perplexity, and mIoU. The VQGAN encoder is trained on Laion.
+**Audio script:** Experiments cover three core tasks. Image segmentation uses subsets of SA-1B ranging from one to ten percent; human pose estimation uses the full COCO-Pose dataset; image deraining uses Rain13K. Validation relies on held-out SA-1B splits together with MPII and Test2800. The distilled models are also benchmarked on Pascal five-i foreground segmentation using mean intersection-over-union, and the practical eighty-million model is evaluated on ImageNet classification. Throughout, the VQGAN tokenizer is trained on the Laion dataset and used off the shelf.
+
+## Key Result
+**Necessary:** Balancing the three-task mixture by augmentation gives the best overall performance, and knowledge distillation consistently improves the compact student on every task in both single-task and multi-task settings; the distilled LLaMA-300M outperforms its from-scratch counterpart on Pascal-5i foreground segmentation.
+**Additional:** Increasing SA-1B data from 1% to 10% (0.34B to 3.43B tokens) cuts validation loss by 0.19 and perplexity by 22.4; augmentation reproduces this trend without any new data.
+**Audio script:** The results consistently favor the proposed recipe. On the mixed three-task benchmark, balancing the data through augmentation beats both the raw unbalanced mixture and naive re-sampling, which actually collapses on the scarce tasks. Knowledge distillation then improves the compact student on segmentation, pose estimation, and deraining, in both single-task and multi-task training. On the Pascal five-i foreground segmentation benchmark, the distilled and fine-tuned three-hundred-million model clearly surpasses the same model trained from scratch. And scaling data on segmentation from one to ten percent lowers validation loss by nearly two tenths and perplexity by over twenty-two points, an effect augmentation reproduces with no new data at all.
+
+## Ablation Study
+**Necessary:** Prompt background color strongly shapes outputs (black-background prompts ease post-processing); without data shuffling the model catastrophically forgets, performing well only on its most recently trained task; and distillation helps even at 80M parameters.
+**Additional:** Table 5 shows continual (unshuffled) training drives perplexity on earlier tasks to 1000+, confirming catastrophic forgetting; Table 6 shows the LLaMA-80M student improves on all three tasks with KD.
+**Audio script:** Several ablations sharpen the picture. Changing the prompt background color changes the generated background, and using black-background prompts makes a simple grayscale-threshold post-processing step reliable. Training without shuffling the task data triggers catastrophic forgetting: the model becomes proficient only on its most recently seen task, with perplexity on earlier tasks exploding into the thousands, underscoring that shuffling is essential for multi-task LVMs. Finally, even at just eighty million parameters, knowledge distillation still improves validation perplexity across segmentation, pose estimation, and deraining.
+
+## Headline Numbers
+**Necessary:**
+- Compact student **LLaMA-300M / 80M** vs. the ~**3B**-parameter, ~**400B**-token LVM baseline.
+- **83.04%** ImageNet top-1 accuracy from the practical LLaMA-80M (augmentation + KD).
+- SA-1B 1%→10%: validation loss **−0.19**, perplexity **−22.4**.
+- Distilled + fine-tuned LLaMA-300M Pascal-5i mIoU: **18.58 / 21.32 / 19.90 / 21.08** across splits 0–3.
+
+## Takeaway
+**Necessary:** Classical data augmentation and knowledge distillation make autoregressive large vision models data- and parameter-efficient, delivering strong multi-task performance from compact models trained on limited data.
+**Additional:** A tiny 80M model reaching 83% ImageNet accuracy suggests a promising path toward unified, deployable generalist vision models that jointly learn generation and understanding.
+**Audio script:** The takeaway is refreshingly simple. You do not need a three-billion-parameter model and hundreds of billions of tokens to build a capable autoregressive vision model. Two classical techniques, data augmentation to rebalance long-tailed tasks and knowledge distillation to compress a large teacher, together let compact models trained on limited data perform strongly across segmentation, pose estimation, and deraining. That an eighty-million-parameter version even reaches eighty-three percent accuracy on ImageNet points toward efficient, deployable generalist vision models that unify generation and understanding.

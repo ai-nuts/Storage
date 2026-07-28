@@ -1,0 +1,951 @@
+                                                Data-efficient Large Vision Models through Sequential Autoregression
+
+
+                                               Jianyuan Guo * 1 Zhiwei Hao * 2 Chengcheng Wang * 3 Yehui Tang 3 Han Wu 1 Han Hu 2 Kai Han 3
+                                                                                        Chang Xu 1
+                                                    jianyuan guo@outlook.com; {haozhw,hhu}@bit.edu.cn; {wangchengcheng11,yehui.tang}@huawei.com;
+
+
+                                                                 Abstract                                      vision community. In the realm of contemporary natural lan-
+arXiv:2402.04841v1 [cs.CV] 7 Feb 2024
+
+
+
+
+                                                                                                               guage processing (NLP), large language models trained via
+                                             Training general-purpose vision models on purely
+                                                                                                               autoregression, such as GPT (Brown et al., 2020; Achiam
+                                             sequential visual data, eschewing linguistic in-
+                                                                                                               et al., 2023), have demonstrated the remarkable ability to
+                                             puts, has heralded a new frontier in visual un-
+                                                                                                               comprehend and generate natural language text, particularly
+                                             derstanding. These models are intended to not
+                                                                                                               excelling in complex and nuanced contexts. These models
+                                             only comprehend but also seamlessly transit to
+                                                                                                               leverage language sequences as a universal interface, facil-
+                                             out-of-domain tasks. However, current endeav-
+                                                                                                               itating rapid adaptation to a variety of language-centered
+                                             ors are hamstrung by an over-reliance on colos-
+                                                                                                               tasks with minimal prompting and examples.
+                                             sal models, exemplified by models with upwards
+                                             of 3B parameters, and the necessity for an ex-                    However, the landscape of computer vision is markedly dif-
+                                             tensive corpus of visual data, often comprising                   ferent. Unlike the uniformity of input-output structures in
+                                             a staggering 400B tokens (Bai et al., 2023). In                   language tasks, visual tasks exhibit a rich diversity in their
+                                             this paper, we delve into the development of an                   formats, posing significant challenges to the development
+                                             efficient, autoregression-based vision model, in-                 of comparable generalist models. Recently, advances in
+                                             novatively architected to operate on a limited                    LVM (Bai et al., 2023) have redefined ‘visual sentences’,
+                                             dataset. We meticulously demonstrate how this                     enabling the representation of both raw images and anno-
+                                             model achieves proficiency in a spectrum of vi-                   tated data without requiring meta-knowledge beyond the
+                                             sual tasks spanning both high-level and low-level                 pixel level. This paradigm shift opens a new vista for the
+                                             semantic understanding during the testing phase.                  evolution of generalist models within the visual domain.
+                                             Our empirical evaluations underscore the model’s
+                                                                                                               Nevertheless, while the capability of LVM is bolstered by
+                                             agility in adapting to various tasks, heralding a
+                                                                                                               the employment of large-scale datasets, such as 1.64 billion
+                                             significant reduction in the parameter footprint,
+                                                                                                               images, this reliance simultaneously engenders complex-
+                                             and a marked decrease in training data require-
+                                                                                                               ities in the training process of LVM. One obstacle arises
+                                             ments, thereby paving the way for more sustain-
+                                                                                                               from the imbalance of datasets across different tasks. Our
+                                             able and accessible advancements in the field of
+                                                                                                               visual world naturally exhibits a long-tailed distribution of
+                                             generalist vision models. The code is available at
+                                                                                                               different tasks. The model performance on tasks with lim-
+                                             https://github.com/ggjy/DeLVM.
+                                                                                                               ited data representation is substantially impaired when there
+                                                                                                               is an uneven distribution of data across tasks, with certain
+                                                                                                               tasks having an abundance of data and others suffering from
+                                        1. Introduction
+                                                                                                               a deficiency. For example, the segmentation benchmark
+                                        Training a generalist model capable of executing diverse               SA-1B (Kirillov et al., 2023), containing 11 million images,
+                                        tasks simultaneously—and with the agility to tackle new                provides a wealth of data compared to the keypoint detec-
+                                        tasks given just few examples—represents a pivotal stride              tion benchmark COCO (Lin et al., 2014), containing only
+                                        toward artificial general intelligence within the computer             0.2 million images. Direct training on the combined dataset
+                                           *
+                                                                                                               of these two benchmarks results in the model’s inability to
+                                             Equal contribution 1 School of Computer Science, Faculty of       learn keypoint detection due to the overwhelming amount
+                                        Engineering, University of Sydney, Sydney, Australia 2 School
+                                        of information and Electronics, Beijing Institute of Technology,       of segmentation data, as iilustrated in Figure 1. This ob-
+                                        Beijing, China 3 Huawei Noah’s Ark Lab, Beijing, China. Cor-           servation underpins our simple data augmentation strategy
+                                        respondence to: Kai Han <kai.han@huawei.com>, Chang Xu                 that automatically enrich the dataset of relatively small size
+                                        <c.xu@sydney.edu.au>.                                                  and achieve equilibrium among disparate tasks. Specifi-
+                                                                                                               cally,we enhance the tail datasets by randomly augmenting
+                                        Preprint.
+
+                                                                                                           1
+                                       Data-efficient Large Vision Models through Sequential Autoregression
+
+      Next token prediction
+                                                                             # Images
+
+                                                         Output “sentence”        400M
+                                                                                                                                                                 4696G
+                                          VQGAN Decoder                                                                                    LlaMa-1B
+                                                                                                                                                                  6.2s
+                                                                                         100M
+                                                                                                5M
+                                                                                                                                                Distillation
+                                                                                                      0.1M   0.01M    0.01M
+                                                                                                                              # Tasks
+       Causal transformer                                                         Laion Seg Video Keypoint Deraining Deblurring
+                                                                                                                                                                1191G
+                                                                                                                                          LlaMa-300M
+                                                                             # Images                                                                            2.1s
+                                                                                                     Data Augmentation
+                                                                                  400M
+         VQGAN Encoder
+                                                                                                                                                                                Seg Keypoint Deraining
+
+                                          VQGAN Encoder                                  100M
+                                                                                                5M     5M     5M       5M               Train from scratch
+                                                                                                                                                                1191G
+                                                                                                                              # Tasks     LlaMa-300M             2.1s
+                                                                                  Laion Seg Video Keypoint Deraining Deblurring
+
+         Visual sentence                 Task prompt      Test “sentence”
+
+
+(a) Autoregressive model training   (b) Autoregressive model inference              (c) Data augmentation strategy                                  (d) Distillation strategy
+
+Figure 1. An overview of our framework. We follow the autoregressive setting proposed in LVM (Bai et al., 2023), which encodes input
+images into a 1D sequence. We further explore the data-efficient LVMs via data augmentation and knowledge distillation strategy.
+
+the training samples, which we find yield stronger perfor-                                             els specifically tailored for vision tasks. An outstanding
+mance compared with traditional re-sampling strategies.                                                breakthrough in this domain, referred to as the LVM (Bai
+                                                                                                       et al., 2023), transforms visual data into visual sentences,
+The significant performance gain brought by the proposed
+                                                                                                       thereby enabling the uniform modeling of diverse vision
+data augmentation compels us to contemplate: Given that
+                                                                                                       tasks. A typical LVM consists of two key modules: (1)
+a substantial reduction in the volume of data required for
+                                                                                                       a VQGAN (Esser et al., 2021) for input image tokeniza-
+training does not adversely affect model efficacy, could
+                                                                                                       tion; (2) a transformer model (Touvron et al., 2023a) for
+there potentially exist superfluousness within the model’s
+                                                                                                       sequential autoregressive prediction.
+parameterization? We resort to knowledge distillation (KD)
+methods to enhance the performance of compact LVMs.                                                    VQGAN tokenizer. The initial step of modeling images
+In our study, we demonstrate the effectiveness of KD in                                                via a transformer-based autoregressive approach involves
+autoregressive LVMs. While models with larger capacity                                                 converting original images into discrete tokens. A VQ-
+initially exhibit superior performance and surpasses the stu-                                          GAN (Esser et al., 2021) is utilized for this tokenization pro-
+dent model trained from scratch by a substantial margin, the                                           cess, composed of three main components: an encoder, a de-
+incorporation of KD significantly narrows the performance                                              coder, and a trainable codebook. When training a VQGAN
+gap and shed light on building efficient LVMs.                                                         model, the encoder takes an image as input and projects it
+                                                                                                       into a grid of features, which are then mapped to specific
+In general, this paper explores the development of data-
+                                                                                                       codes in the codebook. The decoder is used to reconstruct
+efficient autoregressive large vision models (LVMs). Our
+                                                                                                       the original image based on the grid of codes. A pretrained
+study focuses on data augmentation strategy, especially in
+                                                                                                       VQGAN model is capable of converting the input image into
+scenarios with long-tail distributions across different tasks.
+                                                                                                       a sequence of tokens following the scan-line order, which
+We demonstrate that simple data augmentation techniques
+                                                                                                       can be modeled by an autoregressive model.
+yield satisfactory results compared to re-sampling baselines.
+We also leverage KD to create more compact and efficient                                               Autoregressive model. After tokenization, visual sen-
+LVMs, which leads to a significant reduction in validation                                             tences are constructed by concatenating tokens from mul-
+loss, with improvement in accuracy and decrease in perplex-                                            tiple images and fed into a causal transformer model
+ity. This highlights the potential of KD to bridge the perfor-                                         which is employed for autoregressive prediction. The goal
+mance gap and enhance the capabilities of autoregressive                                               of the causal transformer is to predict the next token at
+LVMs. Our work aims to advance the understanding and                                                   each position, using cross-entropy as the loss function.
+construction of more efficient autoregressive vision models                                            Specifically, considering an input sentence of length L as
+capable of simultaneously addressing various vision tasks.                                             si = {x1 , x2 , ..., xL−1 , xL }, where xl represents the l-th
+                                                                                                       token, the objective of the causal transformer is to predict
+2. Autoregressive Large Vision Models                                                                  so = {x2 , x3 , ..., xL , ∅}.
+                                                                                                       Prompted inference. After training, LVM is capable of per-
+Inspired by the achievements of LLMs (Brown et al., 2020;
+                                                                                                       forming inference on downstream tasks via vision prompt-
+Touvron et al., 2023b; Chowdhery et al., 2023), various
+                                                                                                       ing. Firstly, several input-output image pairs are converted
+endeavors have been made to develop autoregressive mod-
+                                                                                                       into a visual sentence, which serves as a task definition.
+
+
+                                                                                                 2
+                                                      Data-efficient Large Vision Models through Sequential Autoregression
+
+                          Image Segmentation (SA-1B)                           Image Segmentation (SA-1B)
+                                                                                                                      3.1. Single Task
+                                                                             125
+               4.80                                                                                                   We initiate our study by conducting experiments on a single
+ Validation loss
+
+
+
+                                                                             120
+                                                                                                                      task. It is intuitive that the introduction of new training
+
+
+
+
+                                                                Perplexity
+               4.75
+                                                                             115                                      data enhances overall model performance. To delve deeper
+               4.70                                                          110
+                                                                                                                      into this effect, we proceed to train the model on an im-
+                                                                                                                      age segmentation task using varying amounts of available
+               4.65                                                          105                                      data. Following the configuration of LVM (Bai et al., 2023),
+                              0.7   1.4   2.1   2.8   3.5                           0.7   1.4   2.1   2.8   3.5       we employ a causal LLaMA model (Touvron et al., 2023a)
+                              Training tokens (B)                                    Training tokens (B)              with 300M parameters for autoregressive modeling. For
+                            Pose Estimation (COCO)                                 Pose Estimation (COCO)
+                      5.3                                                    200                                      tokenization, we utilize an off-the-shelf VQGAN trained
+                                                                                                                      by Chang et al. (Chang et al., 2023), which translates each
+                                                                                                                      image into 256 discrete tokens. The VQGAN has a code-
+        Validation loss
+
+
+
+
+                      5.2
+                                                                Perplexity
+
+
+
+
+                                                                             180
+                                                                                                                      book size of 8192, with each code in the codebook having a
+                      5.1                                                                                             dimension of 64. To align the dimension of the code with
+                                                                             160                                      that of the transformer model, we insert a learnable linear
+                      5.0                                                                                             layer between these two modules. Regarding the dataset, we
+                                                                                                                      utilize various subsets of the SA-1B (Kirillov et al., 2023),
+                             0.5 1.0 1.5 2.0 2.5 3.0                               0.5 1.0 1.5 2.0 2.5 3.0
+                          Augmented training tokens (B)                        Augmented training tokens (B)          spanning from 1% to 10%. The training steps for all models
+                                                                                                                      remain fixed at 12K. Cross-entropy loss and perplexity on a
+                                                            1
+
+Figure 2. Data augmentation yields a similar effect to the intro-                                                     withheld subset of SA-1B (equivalent to 1% of the dataset)
+duction of new data. We train a LLaMA-300M model on subsets                                                           serve as the metrics. The top two figures in Figure 2 illus-
+of SA-1B and augmented COCO-Pose datasets with a fixed 12K                                                            trate the impact of available data on model performance.
+training steps. In segmentation task with ample available data,                                                       Obviously, as more new data is introduced during training,
+enhanced model performance is observed upon introducing more                                                          there is a significant increase in model performance. For
+training data. Conversely, for human pose estimation task with                                                        instance, when the utilized data from SA-1B increases from
+limited data, augmenting the dataset has a comparable impact to                                                       1% to 10% (0.34B tokens to 3.43B tokens), the validation
+the introduction of new training data. The original COCO-Pose                                                         loss decreases by 0.19, and perplexity decreases by 22.4.
+dataset contains approximately 0.03 billion tokens.
+                                                                                                                      However, in certain tasks, such as human pose estimation,
+                                                                                                                      the availability of data is constrained, making it challenging
+                                                                                                                      to enhance model performance by introducing new sam-
+                                                                                                                      ples. To bridge this gap, we employ data augmentation
+This sentence is then combined with the test image, which                                                             techniques to augment the existing dataset. Specifically,
+is also tokenized via the VQGAN encoder. Based on the                                                                 for each sample in the dataset, we apply random crop and
+concatenated sentence, the model generates output tokens                                                              random flip operations to generate several augmented ver-
+based on the input sequential tokens. The final predicted                                                             sions. These augmented samples are then tokenized by the
+image is then obtained by decoding above generated tokens                                                             VQGAN model and incorporated into training alongside the
+using the decoder of the VQGAN model.                                                                                 tokenized original dataset. We assess the impact of augmen-
+                                                                                                                      tation by varying the augmentation range from 10 to 100
+                                                                                                                      times. As depicted in the bottom two figures in Figure 2,
+3. Data Augmentation                                                                                                  expanding the data scale through data augmentation also
+In common practices of training highly proficient LLMs,                                                               contributes to improved model performance. The decreas-
+the training duration is often restricted to just one epoch to                                                        ing trend observed in validation loss and perplexity as the
+mitigate the risk of overfitting (Brown et al., 2020; Touvron                                                         augmentation times increase mirrors the pattern observed
+et al., 2023a;b). In contrast to the NLP field, where numer-                                                          when introducing new samples. This outcome underscores
+ous large-scale corpora are readily available, many computer                                                          that data augmentation has a comparable effect to acquir-
+vision tasks encounter a scarcity of extensive datasets. The                                                          ing more new data, offering a straightforward approach to
+scarcity makes it impractical to directly transfer the training                                                       effectively train LVMs in data-limited scenarios.
+schedule settings from language tasks to vision tasks. For-
+tunately, various data augmentation techniques commonly                                                               3.2. Multiple Tasks
+employed in traditional computer vision tasks can be lever-                                                           In practical scenarios, the goal is to train a versatile LVM ca-
+aged to enhance the training data for LVMs. We initiate the                                                           pable of handling multiple tasks. However, data imbalance
+examination of data augmentation effectiveness by training                                                            poses a challenge, with some tasks having ample data while
+LVM on various vision tasks.
+
+                                                                                                                  3
+                                  Data-efficient Large Vision Models through Sequential Autoregression
+
+
+Table 1. Balancing datasets across multiple tasks through augmentation enhances performance. We train a LLaMA-300M on a
+mixed dataset involving three tasks. Three configurations for handling the unbalanced dataset are compared. Compared to directly training
+on the unbalanced dataset, mitigating the long-tail distribution through re-sampling led to inferior results. Conversely, achieving balance
+through dataset augmentation yielded the best overall performance. “-” indicates collapsed results (larger than 108 ).
+
+                                        Image Segmentation              Pose Estimation                Image Deraining
+                                   (10% of SA-1B: 3.434B tokens)   (COCO-Pose: 0.029B tokens)      (Rain13K: 0.007B tokens)
+ Dataset configuration            loss ↓ accuracy ↑ perplexity ↓ loss ↓ accuracy ↑ perplexity ↓ loss ↓ accuracy ↑ perplexity ↓
+ Unbalanced                       4.48        20.32            88.59    4.95        19.86        141.91    5.69      11.89          279.88
+ Balanced by re-sampling          5.01        16.68           151.66   16.11        15.75          -      21.73       4.53            -
+ Balanced by augmentation         4.68        18.79           107.77    4.94        20.24        140.39    5.64      11.57          269.04
+
+
+
+
+                           Task prompt                                         Test case 1                          Test case 2
+           Test sentence            Unbalanced data trained model       Re-sampled data trained model       Augmented data trained model
+
+
+Figure 3. Visualization of inference results generated by models trained on datasets with different balancing schemes. The model trained
+on an unbalanced dataset exhibits biased performance, excelling primarily in the image segmentation task. Rectifying this data imbalance
+through re-sampling have unfortunately led to a decrease in performance. Conversely, employing augmentation to balance the dataset
+results in improved visualization outcomes.
+
+
+
+others have limited data. Training directly with this unbal-                worse performance, particularly evident in the human pose
+anced mixture of data from various tasks hinders overall                    estimation and image deraining tasks with repeated samples.
+model performance. To address this issue, the re-sampling                   By contrast, the model trained on the augmented dataset
+scheme (Zhang et al., 2023) repeat samples from minority                    achieves better performance, notably excelling in the human
+classes to rebalance the classes. Following this approach,                  pose estimation and image deraining tasks. Notably, the use
+we balance the data amount of different tasks by repeating                  of unbalanced data yields the best quantitative results on the
+samples from tasks with limited data. Additionally, we ex-                  image segmentation task, likely because the majority of the
+plore the effectiveness of using data augmentation to achieve               training data belongs to this specific task.
+balanced task data. To conduct multitask experiments, we
+                                                                            To closely examine the impact of various dataset process-
+focus on three distinct vision tasks: image segmentation,
+                                                                            ing schemes in the multitask scenario, we visualize the
+human pose estimation, and image deraining. The train-
+                                                                            inference results of the trained models in Figure 3. When
+ing data for these tasks comprises a subset of the SA-1B
+                                                                            trained with unbalanced data, the model excels in the im-
+dataset (approximately 10% of the entire dataset) (Kirillov
+                                                                            age segmentation task. However, for tasks of human pose
+et al., 2023), the complete COCO-Pose dataset (Lin et al.,
+                                                                            estimation and image deraining, where there is less training
+2014), and the entire Rain13K dataset (Jiang et al., 2020).
+                                                                            data, its performance is subpar. For instance, in test case 2
+In each data setting, the model undergoes a fixed total of
+                                                                            of the deraining task, the model seems to be confused by
+35K iterations during the training process. To evaluate the
+                                                                            the abundance of segmentation samples in the training data,
+performance of our trained model, we use a withheld subset
+                                                                            resulting in a segmentation output despite the presence of
+of SA-1B, along with the MPII dataset (Andriluka et al.,
+                                                                            deraining prompts. This emphasizes that the direct use of
+2014) and the Test2800 dataset (Fu et al., 2017).
+                                                                            unbalanced data for training cannot yield excellent LVMs.
+Table 1 lists the validation results. In comparison to training             When the model is trained with task data balanced by re-
+on the direct mixture of data from the three tasks, training                sampling, it achieves even poorer performance. In the image
+the model on data balanced by re-sampling even results in                   segmentation and deraining tasks, the model can only pro-
+
+
+                                                                        4
+                               Data-efficient Large Vision Models through Sequential Autoregression
+
+duce tolerable inference results in test case 1 while failing              loss, accuracy, and perplexity. This underscores the efficacy
+to provide informative outputs in test case 2. Moreover, in                of KD in the single-task scenario.
+the deraining task in both cases, it yields disordered results.
+                                                                           Correspondingly, the inference outcomes of all the models
+Conversely, when employing data augmentation to achieve
+                                                                           trained for both tasks are illustrated in Figure 4. The vi-
+data balance, the trained model demonstrates proficiency in
+                                                                           sual results align with the quantitative data, demonstrating
+all three tasks and outperforms the other two models.
+                                                                           that the LLaMA-1B models, serving as the teacher models,
+                                                                           present superior visualizations with a higher level of detail
+4. Knowledge Distillation                                                  in the output images. On the other hand, the LLaMA-300M
+                                                                           models, when trained from scratch (without the guidance
+                                                                           of KD), yield inference results that are less detailed, and
+Table 2. KD proves beneficial in enhancing the single-task per-
+formance of LVMs. We employ a LLaMA-1B model as the
+                                                                           these are evidently surpassed by those models that have
+teacher to train a student model LLaMA-300M using KD. In com-              been trained utilizing the KD approach.
+parison to training the student model from scratch, the introduction       We expand our investigation to encompass multi-task sce-
+of KD significantly improves performance on both the image seg-            narios. By adhering to the experimental settings previously
+mentation and human pose estimation tasks.
+                                                                           outlined, we employ a LLaMA-1B teacher to impart its
+                                                                           knowledge to a LLaMA-300M student. This knowledge
+ Model              KD      loss ↓   accuracy ↑     perplexity ↓           transfer occurs through the utilization of a combination
+ Image Segmentation (10% of SA-1B)                                         of three datasets, all balanced via data augmentation tech-
+ LLaMA-1B          -    4.50       20.18                90.04              niques. The validation outcomes for this multi-task scenario
+ LLaMA-300M       ✗     4.64       19.17               103.24              are summarized in Table 3. Upon comparing the perfor-
+ LLaMA-300M       ✓     4.59       19.48                98.72
+                                                                           mance of the distilled model with that of the model trained
+ Pose Estimation (COCO-Pose)                                               from scratch, we observe that the former exhibits superior
+ LLaMA-1B          -    4.90            20.96          134.07
+                                                                           results. This observation highlights the efficacy of KD in
+ LLaMA-300M        ✗    4.97            20.46          144.08
+ LLaMA-300M        ✓    4.91            20.80          135.91              enhancing the performance of LVMs, even within the more
+                                                                           practical and complex context of multi-task scenarios.
+
+In the quest for efficient and compact models, knowledge                   In addition, we conduct a quantitative evaluation of our
+distillation (KD) stands out as a prevalent technique used                 distilled models on a foreground segmentation task. The
+to bolster model performance, as highlighted in (Hinton                    objective is to binary-segment a given query image into
+et al., 2015). KD capitalizes on a pre-trained, larger teacher             foreground and background components. The task prompt
+model to guide a smaller, more efficient student model to                  consists of three example image pairs, followed by a test
+emulate the teacher’s outputs. Yet, the majority of KD                     (query) image. We prompt our model to generate the next
+applications have been predominantly associated with CNN                   256 tokens, which are then decoded into the output image.
+and Transformer, leaving a noticeable void in the exploration              For benchmarking, we utilize the Pascal-5i dataset estab-
+of KD for autoregerssive LVMs. Addressing this oversight,                  lished in (Shaban et al., 2017), following the methodologies
+our work delves into the feasibility of applying KD in the                 of (Bai et al., 2023; Bar et al., 2022). This dataset encom-
+training of LVMs, aiming to extend the benefits of KD to                   passes four distinct image splits, each containing between
+these streamlined models.                                                  346 and 725 images alongside corresponding segmentation
+                                                                           masks. Each class in the dataset is represented by sev-
+We begin our investigation by examining the impact of KD                   eral image-mask pairs and is supplemented with held-out
+in single-task settings. For the teacher models, we utilize                image queries for evaluation. We report our results using
+LLaMA-1B (Touvron et al., 2023a), training them on spe-                    the mean Intersection Over Union (mIOU) metric. We ex-
+cific tasks such as image segmentation and human pose                      amine the performance of our models in both a zero-shot
+estimation. Subsequently, we train LLaMA-300M as the                       setting and after finetuning. As illustrated in Table 4, the
+student models, adhering to the KD framework initially                     distilled LLaMA-300M model outperforms its counterparts
+proposed by Hinton et al. (Hinton et al., 2015). All addi-                 that were trained from scratch. Despite our model being
+tional experimental setting are maintained as described in                 trained on the SAM dataset, where object colors are random-
+the preceding section, ensuring consistency in our study.                  ized, and our use of prompt images with black backgrounds,
+The results of single-task KD are summarized in Table 2.                   our generated images still exhibit some randomness in color.
+LLaMA-1B teacher models, boasting the highest number of                    This randomness make it challenging to separate the binary
+model parameters, demonstrates superior performance on                     segments through post-processing. To address this, we fine-
+both tasks, outperforming LLaMA-300M by a significant                      tuned the model using the training split of Pascal-5i, which
+margin. Nevertheless, with the incorporation of KD, the                    features uniformly black backgrounds. After finetuning, we
+performance gap markedly diminishes in terms of validation
+
+                                                                       5
+                               Data-efficient Large Vision Models through Sequential Autoregression
+
+                               Image Segmentation                                                Pose Estimation
+
+
+
+
+               Test sentence                  LLaMA-1B                LLaMA-300M (w/o KD)                      LLaMA-300M (w/ KD)
+Figure 4. Visualization of the inference results of single-task trained models. The LLaMA-1B teacher model produces the best outcomes,
+and the LLaMA-300M model trained with KD exhibits greater similarity to the teacher model compared to the model trained from scratch.
+
+Table 3. KD also helps enhance the multi-task performance of LVMs. We assess the effectiveness of KD with balanced data for three
+tasks using augmentation. KD demonstrates its usefulness by improving the performance of the student model across all tasks.
+                              Image Segmentation                    Pose Estimation                     Image Deraining
+  Model           KD loss ↓ accuracy ↑ perplexity ↓ loss ↓ accuracy ↑ perplexity ↓ loss ↓ accuracy ↑ perplexity ↓
+ LLaMA-1B           -     4.55        19.72          94.75    4.86        20.77         129.95          5.53        12.20          245.33
+ LLaMA-300M         ✗     4.68        18.79         107.76    4.94        20.24         140.39          5.63        11.57          271.38
+ LLaMA-300M         ✓     4.67        18.84         106.81    4.93        20.32         139.27          5.62        11.93          269.04
+
+
+observed a significant boost in the mIOU scores.
+                                                                       Table 4. Results on Foreground Segmentation. † indicates we fine-
+It is important to highlight that both LVM (Bai et al., 2023)          tune the autogressive model to generate black background.
+and Visual Prompting (Bar et al., 2022) have retrained their            Model                                     Foreground Segmentation ↑
+VQGAN encoders on custom datasets, resulting in more                                                             Split 0 Split 1 Split 2 Split 3
+satisfactory mIoU scores. Attaining a higher mIoU is not                BEiT (IN-21k) (Bao et al., 2021)           0.38 0.93       0.90    0.95
+                                                                        VQGAN (IN-1k) (Esser et al., 2021)         6.96 10.55      9.59    9.43
+the primary goal of this paper; hence, we have chosen to                MAE-VQGAN (IN-1k) (Bar et al., 2022)       2.22 7.07       5.48    6.28
+use the encoder trained on the Laion dataset (Schuhmann                 BEiT (Figures) (Bar et al., 2022)       5.38 3.94 3.20 3.29
+et al., 2022) directly. We believe that a better encoder and            VQGAN (Figures) (Bar et al., 2022)     12.56 17.51 14.27 15.06
+decoder would yield improved results.                                   MAE-VQGAN (Figures) (Bar et al., 2022) 27.83 30.44 26.15 24.25
+                                                                        LVM-3B (Figures) (Bai et al., 2023)    48.94 51.29 47.66 50.82
+                                                                        LLaMA-300M (Laion)                         12.46 16.92 12.99 15.76
+5. Ablation Study                                                       Distilled LLaMA-300M (Laion)               14.72 17.91 14.55 17.13
+                                                                        Distilled LLaMA-300M (Laion)†              18.58 21.32 19.90 21.08
+Influence of Different Prompts. In this section, we in-
+vestigate the influence of different input prompts on the
+generated outputs in the context of foreground segmenta-               low threshold to produce a binary mask.
+tion task. Our training dataset, SA-1B, features ground
+truth where each object is composed of random colors. As               Furthermore, we finetune1 our model using the training
+shown in Figure 5(a), the segmentation ground truth for                split of foreground segmentation benchmarks to focus more
+example image pairs includes a pink background. In these               on the primary objects while disregarding background ele-
+cases, the model tends to generate outputs with a similar              ments such as grass and sky. As evident from Figure 5(d),
+pink background. Conversely, if we use a prompt with a                 the output of the model after fine-tuning is more concise
+black background, as illustrated in Figure 5(b), the result-           and refined. This demonstrates the potent capability of au-
+ing image is likely to have a black background. A simple                   1
+                                                                             Given the limited number of training images-only a few hun-
+post-processing step can be applied to the output image by             dred—we resampled these images 100 times to construct sequen-
+converting it to a grayscale image and then applying a very            tial data akin to what was used during training. The entire fine-
+                                                                       tuning process was completed in approximately 5 minutes.
+
+                                                                  6
+                                  Data-efficient Large Vision Models through Sequential Autoregression
+
+toregressive vision models to transfer learning effectively                              ence of its last-trained task for the given inputs, seemingly
+through a pretrain-then-finetune strategy.                                               disregarding the guidance provided by the task prompts.
+                                                                                         These outcomes underscore the significance of the shuffle
+                    Task Prompt                 Test Image   Output   Post Process
+                                                                                         operation in the multi-task training of LVMs. Essentially,
+                                                                                         LVMs face challenges related to catastrophic forgetting in
+                                                                                         continual learning scenarios.
+
+
+              (a) LLaMA-300M trained from scratch.
+                    Task Prompt                 Test Image   Output   Post Process       Table 5. LVM suffers from catastrophic forgetting in continual
+                                                                                         learning scenarios. We train a LLaMA-300M without shuffling
+                                                                                         training data. The model exhibited proficient result exclusively on
+                                                                                         the task corresponding to the most recently used training data.
+                                                                                                                      Validation perplexity ↓
+                                                                                           Data order         Segmentation Pose Estimation Deraining
+                                                                                           SA-1B                 102.06          243.09          1165.21
+                                                                                           COCO-Pose             416.21          134.12          2633.08
+              (b) LLaMA-300M trained from scratch.                                         Rain13K              1449.42         1285.80           287.79
+                    Task Prompt                 Test Image   Output   Post Process
+
+
+
+
+                                                                                              Training order:       SA-1B      COCO-Pose         Rain13K
+
+
+
+
+                    (c) Distilled LLaMA-300M.
+
+
+
+
+                (d) Finetuned distilled LLaMA-300M.
+Figure 5. Generated output and the corresponding foreground seg-
+mentation results after our post processing. Task prompt contains
+a sequence of images interleaved with annotations, followed by a
+test image. Prompts in (a) are with a pink background, in (b) (c)
+(d) are with a black background.
+
+
+Continual learning. In our preceding experiments, LVMs
+are trained with shuffled data to address multiple tasks. To
+investigate the impact of the data shuffle operation, we train
+a LLaMA-300M model using an ordered concatenation of
+multi-task data. Specifically, the training data follow the
+sequence of SA-1B, COCO-Pose, and Rain13K. Upon com-
+pleting the training for each task, we evaluate the perplexity
+of the model across all three tasks and present the results in
+Table 5. The results reveal that the model attains low per-
+plexity exclusively on the most recently encountered task,                                     Data source:     Segmentation   Pose Estimation   Deraining
+
+exhibiting subpar performance on the other tasks, regardless                             Figure 6. Visualization of inference results at different training
+of whether it has undergone training for those specific tasks.                           stages. Task prompt is the same as in previous visualizations.
+                                                                                         The model’s proficiency is focused solely on the most recently
+We present visualizations of model inference results in Fig-
+                                                                                         encountered training task, regardless of the provided prompt.
+ure 6, employing the same task prompts as in previous
+sections. Notably, the model tends to prioritize the infer-
+
+                                                                                     7
+                             Data-efficient Large Vision Models through Sequential Autoregression
+
+                                                                      Despite the trend, much of the existing literature primarily
+Table 6. Comparison of validation perplexity between LLaMA-
+                                                                      focuses on the advantages of up-scaling model (El-Nouby
+80M models trained with and without KD.
+                                                                      et al., 2024; Kolesnikov et al., 2019) and dataset sizes (He
+                         Validation perplexity ↓                      et al., 2022; Bai et al., 2023). While larger models exhibit
+Model          KD Segmentation Pose Estimation Deraining
+                                                                      superior performance, their heavy architectures demand
+LLaMA-1B  -             88.33         111.95       230.94             extensive computational resources, thereby limiting their
+LLaMA-80M ✗            156.19         164.57       264.56
+LLaMA-80M ✓            147.78         159.78       256.65             deployment on computation-constrained edge devices. Ad-
+LLaMA-80M ✓                ImageNet Top-1 Acc: 83.04                  dressing this gap, our paper proposes a strategy aimed at
+                                                                      crafting a more compact AR model that leverages data-
+6. Practical LLaMA-80M                                                efficient training techniques, offering a balance between
+                                                                      performance and computational practicality.
+To delve deeper into the performance capabilities of efficient
+LVMs, we augment our exploration by training LLaMA-                   In-context based Multi-task Learning. Learning to per-
+80M models using both data augmentation and KD. To pro-               form multiple tasks simultaneously is a longstanding chal-
+cure a powerful LLaMA-1B teacher, additional unlabeled                lenge in computer vision. Moving beyond earlier multi-
+image and video data are integrated into the training process.        task learning frameworks that depend on fixed task proto-
+Table 6 lists the validation perplexity results of the trained        cols (Doersch & Zisserman, 2017; Sener & Koltun, 2018),
+models, revealing that the LLaMA-80M model trained with               there are innovative attempts to integrate various vision
+KD surpasses its counterpart trained from scratch.                    tasks under a unified model. For example, Pix2Seq (Chen
+                                                                      et al., 2021) pioneered this direction by treating various
+We also evaluate the image understanding abilities of                 task outputs as elements in a discrete space. Approaches
+LLaMA-80M on ImageNet. Following the self-supervised                  like Unified-IO (Lu et al., 2022), OFA (Wang et al., 2022),
+MAE framework (He et al., 2022), we replace the VQGAN                 UViM (Kolesnikov et al., 2022), and Painter (Wang et al.,
+encoder with a patch embedding layer and incorporate an               2023) further streamlined this process by converting diverse
+average pooling layer followed by a fully connected layer             inputs and outputs into sequences of tokens.
+to perform the image classification task. Surprisingly, our
+LLaMA-80M achieves an impressive top-1 accuracy of 83%                Building on this, newer methods draw inspiration from in-
+on ImageNet. Although this accuracy is lower compared                 context learning in large language models, eliminating the
+to some Masked Image Modeling-based methods, it outper-               task-specific paradigm altogether. These models deduce
+forms training from scratch approaches. This suggests that            tasks directly from the input prompt, with (Pathak et al.,
+there may be a potential for simultaneous learning of both            2016) predicting missing sections of images and (Bar et al.,
+generation and understanding tasks, indicating a promising            2022) merging task examples with a query image to generate
+relationship between these two aspects.                               outputs via inpainting. LVM (Bai et al., 2023) extends this
+                                                                      concept, allowing for an expanded input sample set.
+
+7. Related Works                                                      Learning from Long-tail distribution. The long-tailed dis-
+                                                                      tribution of sample classes is a prevalent and taxing issue in
+Autoregressive Models. Autoregressive (AR) models are                 computer vision (Zhang et al., 2023). Models trained under
+central to sequence prediction and have undergone signifi-            skewed distributions experience a marked performance drop
+cant evolution. In the realm of natural language processing           due to the imbalance in class representation. A straightfor-
+(NLP), LSTM networks emerged as foundational AR mod-                  ward approach to mitigate this issue is to re-balance the train-
+els, adept at managing long-range dependencies crucial for            ing dataset such that each class is equally represented (Kang
+tasks such as language modeling. The advent of the trans-             et al., 2019). Unlike previous scenarios where imbalances
+former architecture (Vaswani et al., 2017) marked a pivotal           manifest across individual classes, our focus shifts to the
+change in AR modeling. Its self-attention mechanisms fa-              disparity in the volume of data across various tasks. As a
+cilitated a more efficient and parallel processing approach,          foundational strategy, we employ simple re-sampling tech-
+which in turn, catalyzed the advancement of generative pre-           niques. We further explore traditional data augmentation
+training methodologies (Dai & Le, 2015; Brown et al., 2020)           methods and demonstrate that they not only contribute to a
+that predict segments of text based on preceding ones. Cap-           more equitable distribution of training samples among tasks,
+italizing on their triumph in NLP, AR models have been                but also yield compelling results.
+tailored for generative image modeling tasks (Uria et al.,
+2013; Van Den Oord et al., 2016; Parmar et al., 2018). And            Knowledge distillation. Knowledge Distillation (KD) has
+many transformer-based AR vision models (Chen et al.,                 emerged as a prominent model compression technique over
+2020; Bai et al., 2023; Bar et al., 2022; Yu et al., 2021) have       the past decade. The core idea of KD involves leveraging
+achieved notable comprehension outcomes, thus validating              the soft predictions generated by a pre-trained teacher model
+the efficacy of AR principles for vision-related applications.        to guide the training of a more compact student model (Hin-
+
+                                                                  8
+                              Data-efficient Large Vision Models through Sequential Autoregression
+
+ton et al., 2015). Additional loss functions have been pro-                 scalable learning for large vision models.       arXiv preprint
+posed in subsequent studies to further enhance KD (Zhao                     arXiv:2312.00785, 2023.
+et al., 2022; Huang et al., 2022). Beyond focusing solely
+                                                                          Bao, H., Dong, L., Piao, S., and Wei, F. Beit: Bert pre-training of
+on the final output, KD can integrate intermediate features                 image transformers. arXiv preprint arXiv:2106.08254, 2021.
+through techniques such as pixel-level matching (Romero
+et al., 2014; Zhang et al., 2020), attention alignment (Ko-               Bar, A., Gandelsman, Y., Darrell, T., Globerson, A., and Efros,
+modakis & Zagoruyko, 2017), relation matching (Peng et al.,                 A. Visual prompting via image inpainting. Advances in Neural
+                                                                            Information Processing Systems, 2022.
+2019; Park et al., 2019), or contrastive learning (Tian et al.,
+2020). While the success of KD has been validated across                  Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J. D.,
+various applications, its applicability to LVMs remains rela-               Dhariwal, P., Neelakantan, A., Shyam, P., Sastry, G., Askell,
+tively unexplored. Our work fills this gap and confirms the                 A., et al. Language models are few-shot learners. Advances in
+efficacy of KD within the domain of LVMs.                                   neural information processing systems, 2020.
+
+                                                                          Chang, H., Zhang, H., Barber, J., Maschinot, A., Lezama, J., Jiang,
+8. Conclusion and Discussion                                                L., Yang, M.-H., Murphy, K., Freeman, W. T., Rubinstein, M.,
+                                                                            et al. Muse: Text-to-image generation via masked generative
+This paper researches on developing efficient autoregression-               transformers. arXiv preprint arXiv:2301.00704, 2023.
+based general-purpose vision model, oriented towards the                  Chen, M., Radford, A., Child, R., Wu, J., Jun, H., Luan, D., and
+over-reliance on colossal models and extensive balanced                     Sutskever, I. Generative pretraining from pixels. In Interna-
+data. Our observation of impaired results when the model                    tional conference on machine learning, 2020.
+faces unevenly-distributed data across tasks underpins our
+data augmentation strategy to automatically enrich the lim-               Chen, T., Saxena, S., Li, L., Fleet, D. J., and Hinton, G. Pix2seq:
+                                                                            A language modeling framework for object detection. arXiv
+ited datasets and boost the overall performance of LVMs.                    preprint arXiv:2109.10852, 2021.
+Furthermore,our findings demonstrate the potential of KD to
+bridge performance and efficiency for autoregressive LVMs.                Chowdhery, A., Narang, S., Devlin, J., Bosma, M., Mishra, G.,
+This work serves to advance understanding into autoregres-                  Roberts, A., Barham, P., Chung, H. W., Sutton, C., Gehrmann,
+                                                                            S., et al. Palm: Scaling language modeling with pathways.
+sive LVMs and provide a basis for designing more efficient
+                                                                            Journal of Machine Learning Research, 2023.
+generalist vision models.
+                                                                          Dai, A. M. and Le, Q. V. Semi-supervised sequence learning.
+Limitation and future direction. While it is now possi-                     Advances in neural information processing systems, 2015.
+ble to generate outputs for various vision tasks using cor-
+responding prompts at test time, the conversion of visual                 Doersch, C. and Zisserman, A. Multi-task self-supervised visual
+results into quantifiable outputs warrants further exploration.             learning. In Proceedings of the IEEE international conference
+For instance, post-processing techniques can generate fore-                 on computer vision, 2017.
+ground segmentation outputs, and in theory, color mapping                 El-Nouby, A., Klein, M., Zhai, S., Bautista, M. A., Toshev, A.,
+can produce COCO-pose compatible outputs for keypoint                        Shankar, V., Susskind, J. M., and Joulin, A. Scalable pre-
+detection. However, when faced with more complex tasks,                      training of large autoregressive image models. arXiv preprint
+it is difficult to generate quantifiable outputs from output                 arXiv:2401.08541, 2024.
+images. Addressing this challenge represents a valuable                   Esser, P., Rombach, R., and Ommer, B. Taming transformers
+research direction. Finding effective ways to derive quan-                  for high-resolution image synthesis. In Proceedings of the
+tifiable outputs for different tasks from VQGAN-decoded                     IEEE/CVF conference on computer vision and pattern recogni-
+images is an area that requires further study.                              tion, 2021.
+
+                                                                          Fu, X., Huang, J., Zeng, D., Huang, Y., Ding, X., and Paisley, J.
+References                                                                  Removing rain from single images via a deep detail network.
+                                                                            In Proceedings of the IEEE conference on computer vision and
+Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I., Aleman,          pattern recognition, pp. 3855–3863, 2017.
+  F. L., Almeida, D., Altenschmidt, J., Altman, S., Anadkat, S.,
+  et al. Gpt-4 technical report. arXiv preprint arXiv:2303.08774,         He, K., Chen, X., Xie, S., Li, Y., Dollár, P., and Girshick, R.
+  2023.                                                                     Masked autoencoders are scalable vision learners. In Proceed-
+                                                                            ings of the IEEE/CVF conference on computer vision and pat-
+Andriluka, M., Pishchulin, L., Gehler, P., and Schiele, B. 2d human         tern recognition, 2022.
+  pose estimation: New benchmark and state of the art analysis.
+  In Proceedings of the IEEE Conference on computer Vision and            Hinton, G. E., Vinyals, O., and Dean, J. Distilling the knowledge
+  Pattern Recognition, pp. 3686–3693, 2014.                                 in a neural network. arXiv preprint arXiv: 1503.02531, 2015.
+
+                                                                          Huang, T., You, S., Wang, F., Qian, C., and Xu, C. Knowledge
+Bai, Y., Geng, X., Mangalam, K., Bar, A., Yuille, A., Darrell,              distillation from a stronger teacher. In Advances in Neural
+  T., Malik, J., and Efros, A. A. Sequential modeling enables               Information Processing Systems, 2022.
+
+                                                                      9
+                               Data-efficient Large Vision Models through Sequential Autoregression
+
+Jiang, K., Wang, Z., Yi, P., Chen, C., Huang, B., Luo, Y., Ma, J.,          Shaban, A., Bansal, S., Liu, Z., Essa, I., and Boots, B. One-
+   and Jiang, J. Multi-scale progressive fusion network for single            shot learning for semantic segmentation. arXiv preprint
+   image deraining. In Proceedings of the IEEE/CVF conference                 arXiv:1709.03410, 2017.
+   on computer vision and pattern recognition, pp. 8346–8355,
+   2020.                                                                    Team, I. Internlm: A multilingual language model with progres-
+                                                                              sively enhanced capabilities, 2023.
+Kang, B., Xie, S., Rohrbach, M., Yan, Z., Gordo, A., Feng, J.,
+  and Kalantidis, Y. Decoupling representation and classifier               Tian, Y., Krishnan, D., and Isola, P. Contrastive representation
+  for long-tailed recognition. arXiv preprint arXiv:1910.09217,                distillation. In IEEE/CVF International Conference on Learning
+  2019.                                                                       Representations, 2020.
+
+Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson,        Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux, M.-A.,
+  L., Xiao, T., Whitehead, S., Berg, A. C., Lo, W.-Y., et al. Seg-            Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al.
+  ment anything. arXiv preprint arXiv:2304.02643, 2023.                       Llama: Open and efficient foundation language models. arXiv
+                                                                              preprint arXiv:2302.13971, 2023a.
+Kolesnikov, A., Zhai, X., and Beyer, L. Revisiting self-supervised
+  visual representation learning. In Proceedings of the IEEE/CVF            Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi, A.,
+  conference on computer vision and pattern recognition, 2019.                Babaei, Y., Bashlykov, N., Batra, S., Bhargava, P., Bhosale, S.,
+                                                                              et al. Llama 2: Open foundation and fine-tuned chat models.
+Kolesnikov, A., Susano Pinto, A., Beyer, L., Zhai, X., Harmsen, J.,           arXiv preprint arXiv:2307.09288, 2023b.
+  and Houlsby, N. Uvim: A unified modeling approach for vision
+  with learned guiding codes. Advances in Neural Information                Uria, B., Murray, I., and Larochelle, H. Rnade: The real-valued
+  Processing Systems, 2022.                                                   neural autoregressive density-estimator. Advances in Neural
+                                                                              Information Processing Systems, 2013.
+Komodakis, N. and Zagoruyko, S. Paying more attention to at-
+  tention: improving the performance of convolutional neural                Van Den Oord, A., Kalchbrenner, N., and Kavukcuoglu, K. Pixel
+  networks via attention transfer. In International Conference on             recurrent neural networks. In International conference on ma-
+  Learning Representations, 2017.                                             chine learning, 2016.
+Lin, T.-Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan,         Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L.,
+  D., Dollár, P., and Zitnick, C. L. Microsoft coco: Common                  Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Attention is all
+  objects in context. In Computer Vision–ECCV 2014: 13th                      you need. Advances in neural information processing systems,
+  European Conference, Zurich, Switzerland, September 6-12,                   2017.
+  2014, Proceedings, Part V 13, 2014.
+                                                                            Wang, P., Yang, A., Men, R., Lin, J., Bai, S., Li, Z., Ma, J., Zhou,
+Lu, J., Clark, C., Zellers, R., Mottaghi, R., and Kembhavi, A.                C., Zhou, J., and Yang, H. Ofa: Unifying architectures, tasks,
+  Unified-io: A unified model for vision, language, and multi-                and modalities through a simple sequence-to-sequence learning
+  modal tasks. arXiv preprint arXiv:2206.08916, 2022.                         framework. In International Conference on Machine Learning,
+Park, W., Kim, D., Lu, Y., and Cho, M. Relational knowledge                   2022.
+  distillation. In IEEE/CVF Conference on Computer Vision and
+                                                                            Wang, X., Wang, W., Cao, Y., Shen, C., and Huang, T. Images
+  Pattern Recognition, 2019.
+                                                                              speak in images: A generalist painter for in-context visual learn-
+Parmar, N., Vaswani, A., Uszkoreit, J., Kaiser, L., Shazeer, N., Ku,          ing. In Proceedings of the IEEE/CVF Conference on Computer
+  A., and Tran, D. Image transformer. In International conference            Vision and Pattern Recognition, 2023.
+  on machine learning, 2018.
+                                                                            Yu, Y., Zhan, F., Wu, R., Pan, J., Cui, K., Lu, S., Ma, F., Xie, X.,
+Pathak, D., Krahenbuhl, P., Donahue, J., Darrell, T., and Efros,              and Miao, C. Diverse image inpainting with bidirectional and
+  A. A. Context encoders: Feature learning by inpainting. In                  autoregressive transformers. In Proceedings of the 29th ACM
+  Proceedings of the IEEE conference on computer vision and                   International Conference on Multimedia, 2021.
+  pattern recognition, 2016.
+                                                                            Zhang, L., Shi, Y., Shi, Z., Ma, K., and Bao, C. Task-oriented fea-
+Peng, B., Jin, X., Liu, J., Li, D., Wu, Y., Liu, Y., Zhou, S., and            ture distillation. In Advances in Neural Information Processing
+  Zhang, Z. Correlation congruence for knowledge distillation.                Systems, 2020.
+  In International Conference on Computer Vision, 2019.
+                                                                            Zhang, Y., Kang, B., Hooi, B., Yan, S., and Feng, J. Deep long-
+Romero, A., Ballas, N., Kahou, S. E., Chassang, A., Gatta, C., and            tailed learning: A survey. IEEE Transactions on Pattern Analy-
+  Bengio, Y. Fitnets: Hints for thin deep nets. arXiv preprint                sis and Machine Intelligence, 2023.
+  arXiv:1412.6550, 2014.
+                                                                            Zhao, B., Cui, Q., Song, R., Qiu, Y., and Liang, J. Decoupled
+Schuhmann, C., Beaumont, R., Vencu, R., Gordon, C., Wightman,                 knowledge distillation. In IEEE/CVF Conference on Computer
+  R., Cherti, M., Coombes, T., Katta, A., Mullis, C., Wortsman,               Vision and Pattern Recognition, 2022.
+  M., et al. Laion-5b: An open large-scale dataset for training next
+  generation image-text models. Advances in Neural Information
+  Processing Systems, 2022.
+Sener, O. and Koltun, V. Multi-task learning as multi-objective op-
+  timization. Advances in neural information processing systems,
+  2018.
+
+                                                                       10
+                              Data-efficient Large Vision Models through Sequential Autoregression
+
+A. Training Configurations
+A.1. Model architecture
+In our main paper, we employ three LVMs with different parameters. These models are structured based on LLaMA (Touvron et al.,
+2023a). The detailed architecture configurations are outlined in Table 7.
+
+
+                                           Table 7. Detailed configurations of used models.
+                                  Model             Hidden dim.     MLP dim.       #heads     #layers
+                                  LLaMA-1B              2048             5504          16         22
+                                  LLaMA-300M            1024             2688           8         22
+                                  LLaMA-80M              768             3072          12         12
+
+
+
+A.2. Training details
+Our training strategy adheres to the implementation of LVM (Bai et al., 2023), with slight adjustments made for efficient training with
+8-16 A100 GPUs. Our models are trained based on the InternLM framework (Team, 2023). The optimization details are summarized in
+Table 8. Table 9 presents the time consumption and memory requirements for training each model.
+
+
+Table 8. Detailed configurations for training efficient LVMs. We attain a consistent equivalent batch size across different models by
+adjusting the number of employed GPUs, mini-batch size, and gradient accumulation steps.
+
+                                        Config                            Value
+                                        optimizer                         AdamW
+                                        learning rate                     1.5e-4
+                                        weight decay                      0.1
+                                        optimizer momentum                β1 , β2 =0.9, 0.95
+                                        equivalent batch size (tokens)    262144
+                                        learning rate schedule            cosine
+                                        warmup steps                      #total steps * 0.0056
+                                        final learning rate               1.5e-5
+                                        context length                    2048
+                                        data augmentation                 RandomResizedCrop
+
+
+
+
+Table 9. Training time and memory requirements of each LVM. The equivalent batch size is calculated as the product of the number of
+utilized GPUs, mini-batch size, and gradient accumulation steps, resulting in a uniform value of 262144 across various models.
+
+      Model             Teacher        #GPUs      Mini batch (tokens)      #gradient accum.       Time (hours)   Memory (GB)
+      LLaMA-1B          -                 16              32768                    4                    324             70
+      LLaMA-300M        -                 16              65536                    2                    126             70
+      LLaMA-300M        LLaMA-1B          16              65536                    2                    235             80
+      LLaMA-80M         -                 8              131072                    2                    65              69
+      LLaMA-80M         LLaMA-1B          8               65536                    4                    82              49
+
+
+
+A.3. Dataset
+Our full training involves diverse datasets, including Rain13K, SA-1B, COCO-pose, HDvila-100m, and LAION datasets. To ensure data
+balance, data augmentation is applied to extend the Rain13K and COCO-pose datasets.
+Rain13K (16.96%; 14.02 billion tokens). Rain13K serves as the most commonly utilized training dataset for rain removal, consisting of
+five distinct rain removal datasets. The original dataset comprises 13,712 clean-rain image pairs. We filtered the data and generated a
+subset for training.
+SA-1B (12.92%; 10.68 billion tokens). SA-1B is a large-scale multimodal dataset designed for training general-purpose object
+segmentation models. It comprises 1.1 billion high-resolution, diverse, and privacy-protected images, along with corresponding high-
+quality segmentation masks. We selected a portion of the data for training.
+
+                                                                  11
+                                Data-efficient Large Vision Models through Sequential Autoregression
+
+COCO-Pose (35.05%; 28.97 billion tokens). COCO-Pose is a dataset for human pose detection. The original version is a subset of
+COCO dataset and has 250K images, with annotations for 17 human keypoints, such as eyes, hands, legs, foots, etc. COCO keypoints
+dataset can be used to train and evaluate various human pose detection models.
+HDvila-100m (1.25%; 1.03 billion tokens). HDvila-100m is a large-scale video-language multimodal dataset containing 100 million
+high-resolution, diverse, and video clips and 100 million automatically generated text descriptions. The dataset covers a wide range of
+topics and includes both video segments and corresponding text captions. The video segments are 10 seconds long, the text captions are
+produced by an automatic speech recognition system. We exclusively utilized a subset of the video data to endow our model with the
+capability for continuous inference.
+LAION-400M (33.83%; 27.96 billion tokens). LAION-400M is a large-scale multimodal dataset containing 400 million English
+image-text pairs. It covers a wide range of topics and includes both text descriptions and corresponding images. We adopt a subset of this
+dataset in our experiments.
+
+
+B. Continual Learning.
+B.1. Additional results
+In our ablation study on data shuffling, we observe catastrophic forgetting in LVMs within an ordered data setting. To further investigate,
+we assess the impact of rescaling the learning rate at the beginning of each task, a configuration more aligned with the standard continual
+learning setting. The summarized training configurations are presented in Table 10.
+Table 11 presents quantitative results for both scenarios—without and with learning rate rescaling—while Figure 7 showcases the
+corresponding visualizations. In both settings, the results indicate the presence of catastrophic forgetting in LVMs during continual
+learning scenarios. Moreover, the adoption of learning rate rescaling results in improved performance on the last-trained task but
+exacerbates forgetting of other tasks.
+
+
+Table 10. Learning rate configuration for the continual learning setting. The setup labeled as “w/o learning rate rescaling” corresponds to
+the experiment detailed in the main paper.
+
+                                                               Learning rate scale at task #
+                      Learning rate configuration Task 1 (SA-1B) Task 2 (COCO-Pose) Task 3 (Rain13K)
+                      w/o learning rate rescaling        1.5e-4∼8e-5           8e-5∼5e-5             5e-5∼1.5e-5
+                      w/ learning rate rescaling        1.5e-4∼1.5e-5        1.5e-4∼1.5e-5          1.5e-4∼1.5e-5
+
+
+
+
+Table 11. Performance of LVMs in continual learning scenarios. We train LLaMA-300M models without shuffling the training data. Two
+distinct learning rate scheduling schemes were employed. Under each scheme, the LVM exhibits signs of catastrophic forgetting.
+
+                              Loss ↓                         Accuracy ↑                       perplexity ↓
+  Data           Segmentation Pose Est. Deraining Segmentation Pose Est. Deraining Segmentation Pose Est. Deraining
+  w/o learning rate rescaling
+  SA-1B               4.62          5.49        7.07          19.17         16.54        1.42          102.06        243.09     1165.21
+  COCO-Pose           6.02          4.89        7.88          10.29         20.69        0.57          416.21        134.12     2633.08
+  Rain13K             7.28          7.16        5.70           4.45          5.99       11.79         1449.42       1285.80      287.79
+  w/ learning rate rescaling
+  SA-1B               4.62          5.48        7.11          19.29         16.65        1.34          101.52        241.59     1213.27
+  COCO-Pose           6.22          4.88        7.98           9.23         20.84        0.54          510.03        132.78     2880.20
+  Rain13K             7.98          7.78        5.67           2.88          3.92       11.91         2925.92       2403.03      281.81
+
+
+
+B.2. Offline training
+In Figure 8, we compare the inference results of the offline trained LLaMA-1B model on the entire dataset using different prompts but the
+same inputs. In contrast to the continual learning scenario, the model trained with shuffled data demonstrates successful recognition of the
+given prompts. These results underscore the ability of the model to adeptly handle multi-task scenarios with distinct prompts.
+
+
+C. Full Results of LLaMA-80M.
+We train an LLaMA-80M model employing KD and present its performance in terms of perplexity in the main paper.
+
+                                                                      12
+                              Data-efficient Large Vision Models through Sequential Autoregression
+
+
+                               SA-1B           COCO-Pose           Rain13K              SA-1B          COCO-Pose             Rain13K
+
+
+
+
+                                       w/o learning rate rescale                                  w/ learning rate rescale
+                                    Segmentation                    Pose Estimation               Deraining
+
+Figure 7. Visualization of inference results of model at various training stages. Catastrophic forgetting is evident in scenarios with and
+without learning rate rescaling.
+
+
+
+Figure 9 provides additional visualization of the generated images. The efficient 80M model exhibits significant potential in handling
+prompted image autoregressive tasks, and the performance is further enhanced when KD is applied. We posit that by incorporating more
+high-quality data and extending the training schedule, these efficient models can achieve practical success in the future.
+
+
+
+             Table 12. Comparison of validation performance between LLaMA-80M models trained with and without KD.
+                                 Loss ↓                         Accuracy ↑                      perplexity ↓
+ Data            KD Segmentation Pose Est. Deraining Segmentation Pose Est. Deraining Segmentation Pose Est. Deraining
+ LLaMA-1B        -         4.48         4.71        5.47           19.89      21.45       12.46          88.33       111.95     230.94
+ LLaMA-80M       ✗         5.04         5.10        5.60           16.08      19.03       12.05         156.19       164.57     264.56
+ LLaMA-80M       ✓         4.99         5.07        5.57           16.30      19.04       12.13         147.78       159.78     256.65
+
+
+
+
+                                                                    13
+                              Data-efficient Large Vision Models through Sequential Autoregression
+
+        Prompt type:       Seg.          Pose est.      Deraining                             Seg.           Pose est.      Deraining
+
+
+
+
+                                   Data source:       Segmentation        Pose Estimation       Deraining
+
+                 Figure 8. Visualization of inference results of LLaMA-1B with different prompts on the same inputs.
+
+
+D. Single-image Inpainting
+Figure 10 illustrates the visualization of single-image inpainting. For each input sequence, comprised of 256 tokens representing a single
+image, the last 128 tokens are removed. Pretrained LVMs are then employed to predict the removed tokens. Subsequently, the generated
+tokens are concatenated with the initial 128 tokens, and the VQGAN decoder is utilized to obtain the inpainted image.
+
+
+
+
+                                                                    14
+                              Data-efficient Large Vision Models through Sequential Autoregression
+
+
+
+
+                            LLaMA-1B      LLaMA-80M LLaMA-80M                              LLaMA-1B       LLaMA-80M LLaMA-80M
+                Input                                                          Input
+                             (Teacher)     (w/o KD)   (w/ KD)                               (Teacher)      (w/o KD)   (w/ KD)
+
+
+  Seg.
+
+
+
+
+  Pose est.
+
+
+
+
+  Derain
+
+
+
+
+                          Figure 9. Visualization of inference results from the efficient LLaMA-80M model.
+
+
+
+
+   Original
+
+
+
+
+   Masked
+
+
+
+
+ LLaMA-1B
+
+
+
+
+LLaMA-300M
+
+
+
+
+LLaMA-300M
+  Distilled
+
+
+
+
+Figure 10. Visualization of image inpainting results. Input of the top half of each image to LVMs to generate the inpainted bottom half.
+
+
+
+
+                                                                  15
+

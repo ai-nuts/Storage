@@ -1,0 +1,150 @@
+{
+  "title": "A Model That Knows When It's Guessing: Uncertainty as Data Compression",
+  "subtitle": "ICML 2024, from CMU, Princeton, and Sony CSL. The Distance Aware Bottleneck (DAB) gives a single deterministic model calibrated, distance-aware uncertainty from just one forward pass.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "When you put a deep model into production, the number that keeps you up at night usually isn't test accuracy. It's what the model does when it meets an input unlike anything it trained on: a corrupted image, an off-distribution sensor reading, a class it has never seen. A standard neural network will happily return an answer, often with high confidence, because it has almost no sense of how far the current input sits from the data it actually learned."
+    },
+    {
+      "type": "paragraph",
+      "text": "Probabilistic models get this for free. A Gaussian Process (GP) widens its predictive variance as you move away from the training points, so \"far from the data\" and \"high uncertainty\" are the same thing by construction. Reproducing that behavior efficiently in deep learning has been the hard part. Deep ensembles and Bayesian networks are genuinely distance-aware, but they need many forward passes, which is expensive to serve at scale."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICML 2024 paper reframes the problem through rate-distortion theory. The idea is to compress the entire training set into a small codebook, and then measure how far a new input lands from that codebook. The farther away, the higher the uncertainty, and the whole thing is computed in a single forward pass. The authors call the resulting method the Distance Aware Bottleneck (DAB)."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 1. DAB on a noisy regression task. The blue line is the predicted mean, gray is the ground-truth curve, and the pink band is DAB's uncertainty. Where training points (dark dots) are dense, the band is tight; as the input moves away from the data toward the tails of the curve, the band widens sharply. That is exactly how a distance-aware model should behave.",
+      "width_inches": 4.7
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2406.10775"
+    },
+    {
+      "type": "paragraph",
+      "text": "Code: https://github.com/ifiaposto/Distance_Aware_Bottleneck"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why deep networks aren't distance-aware"
+    },
+    {
+      "type": "paragraph",
+      "text": "A trustworthy model should grow cautious as it drifts away from what it has seen. A GP manages this because its uncertainty is built directly on the Euclidean distance from an input to the training points. An ordinary neural network has no such constraint on its feature space, and can even suffer feature collapse: semantically very different inputs get mapped to nearly identical features, so the model loses any ability to tell the familiar from the strange."
+    },
+    {
+      "type": "paragraph",
+      "text": "Most of today's single-pass Deterministic Uncertainty Methods (DUMs) fight feature collapse with architectural tricks such as spectral normalization. Those constraints can quietly hurt calibration, and they are awkward to bolt onto a large pre-trained model after the fact. The question the paper asks is whether a single deterministic model can be distance-aware without leaning on those architectural constraints at all."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: compress the training set into a codebook"
+    },
+    {
+      "type": "paragraph",
+      "text": "DAB starts from the Information Bottleneck, but swaps its rate term for an achievable rate drawn from rate-distortion theory with finite cardinality. Instead of compressing each sample's code on its own, the model learns a small set of representative codes: each code is a distribution (a centroid) in feature space, and together they form a codebook that quantizes the encodings of all the training points."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 2. The training set can be seen as a cloud of points in a high-dimensional space R^d. What DAB does is compress that cloud into a handful of representative distributional codes (just 10 in the paper's CIFAR-10 experiments), then score a new input by its distance to those codes.",
+      "width_inches": 3.0
+    },
+    {
+      "type": "paragraph",
+      "text": "The interesting part is how \"distance\" is defined. DAB does not use Euclidean distance; it uses a statistical distance between distributions, here the Kullback-Leibler divergence. The uncertainty of a test input is its expected statistical distance from the whole codebook: uncertainty(x) = E[ D( p(z | x), q(z) ) ], where p(z | x) is the encoder's distribution for the input and q(z) is a code in the book. The farther an input is from every code, the larger that expected distance, and the higher the uncertainty. It all comes from one forward pass."
+    },
+    {
+      "type": "paragraph",
+      "text": "This construction maps cleanly onto a Gaussian Process: the codebook plays the role of the GP's inducing points, and statistical distance replaces Euclidean distance. DAB is, in effect, a way to reimplement GP-style distance-based uncertainty in a form that is differentiable and trainable inside a deep network. Training alternates between two updates: gradient steps on the encoder and decoder, and closed-form updates of the soft assignments and centroids, the latter echoing the classic Blahut-Arimoto alternating scheme."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Results: one forward pass, matching or beating ensembles"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors take CIFAR-10 as the in-distribution data, with SVHN as a far out-of-distribution (OOD) set and the harder CIFAR-100 as a near-OOD set. It is worth stressing that DAB uses a narrow 8-dimensional latent bottleneck and only 10 distributional codes. Even so, it reaches AUROC 0.986 and AUPRC 0.994 on CIFAR-10 versus SVHN, and AUROC 0.922 and AUPRC 0.915 on the harder CIFAR-10 versus CIFAR-100, beating every baseline on both tasks, including a five-model deep ensemble. And it does this in a single forward pass with about 36.5M parameters (the ensemble uses roughly 182M), at a comparable 95.9% accuracy."
+    },
+    {
+      "type": "paragraph",
+      "text": "A sharper test of whether a model knows it is about to be wrong is misclassification prediction: treat \"the model will make a mistake\" as the positive label, and see whether its uncertainty score flags it in advance. Here DAB reaches a calibration AUROC of 0.930, nearly closing the gap to the five-model deep ensemble (0.951) while leaving the other single-pass deterministic methods far behind (SNGP at 0.897, DUQ at 0.889, DUE at 0.856, and DDU at 0.632). The table below collects the CIFAR-10 numbers."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Calibration AUROC for misclassification prediction on CIFAR-10 (higher is better). Above the line are ensemble methods that need many forward passes; below it are single-pass DUMs. DAB clearly leads among single-pass methods and approaches the expensive ensemble.",
+      "headers": [
+        "Method",
+        "Type",
+        "Calibration AUROC"
+      ],
+      "rows": [
+        [
+          "Deep Ensemble (5 models)",
+          "Ensemble / multi-pass",
+          "0.951"
+        ],
+        [
+          "DAB (ours)",
+          "Single-pass",
+          "0.930"
+        ],
+        [
+          "SNGP",
+          "Single-pass",
+          "0.897"
+        ],
+        [
+          "DUQ",
+          "Single-pass",
+          "0.889"
+        ],
+        [
+          "DUE",
+          "Single-pass",
+          "0.856"
+        ],
+        [
+          "DDU",
+          "Single-pass",
+          "0.632"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "You can also inspect what the codebook actually learns. The authors count, over training, how many CIFAR-10 test points of each class get assigned to each centroid (a point goes to the code with the smallest statistical distance from its encoding). As training proceeds, each centroid gradually attracts points of a single class, and every centroid ends up with a non-zero share of test points, evidence that the codes represent the data meaningfully rather than collapsing onto a few."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. Qualitative view of the codebook. The horizontal axis is the class label (0-9), the vertical axis is the 10 centroids, and color encodes how many test points of that class landed on each centroid. From Epoch 1 to Epoch 200 the dark cells settle into a sparse, near one-to-one pattern: each centroid mostly attracts a single class, showing that the codebook captures the class structure of the data.",
+      "width_inches": 6.4
+    },
+    {
+      "type": "paragraph",
+      "text": "The approach also scales. On ImageNet-1K, built on a fine-tuned ResNet-50, DAB edges out the five-model ensemble on misclassification prediction (0.868 vs 0.861) and clearly leads on separating ImageNet-O from ImageNet (AUROC 0.743 vs 0.642), all with only about 36.6M trainable parameters against the ensemble's roughly 117.7M. In fairness, DAB's classification accuracy in this setting (76.1%) is slightly below the ensemble's (78.4%); what it buys with that is markedly more reliable uncertainty and a much smaller model."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "DAB's core contribution is to recast uncertainty as the problem of compressing training data into a learned codebook. Once that codebook exists, a single deterministic network can measure its own uncertainty as \"how far is this input from the codebook,\" reaching or beating the reliability of ensembles at a fraction of the cost. Because the distance is statistical rather than geometric, DAB gives a unified, GP-like view of uncertainty that applies to both classification and regression."
+    },
+    {
+      "type": "paragraph",
+      "text": "The boundaries are worth keeping in mind. DAB still introduces a codebook and a rate-distortion constraint during training (the paper offers a post-hoc variant that attaches to a pre-trained feature extractor to soften this), and on large tasks like ImageNet it trades a little top-line accuracy for better uncertainty and a smaller model. For deployments that genuinely care about when a model should not be trusted, that is usually a trade worth making."
+    }
+  ]
+}

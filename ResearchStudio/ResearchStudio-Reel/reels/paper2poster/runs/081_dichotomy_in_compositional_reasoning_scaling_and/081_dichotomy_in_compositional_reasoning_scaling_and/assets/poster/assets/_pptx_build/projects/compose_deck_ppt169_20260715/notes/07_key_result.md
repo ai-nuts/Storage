@@ -1,0 +1,1 @@
+A sharp split. On separable composite tasks, models compose well and improve with scale, approaching the gold standard. On compose-by-step tasks they collapse: Llama solves each simple task near ninety percent, but the composite drops below twenty percent, and scaling doesn't help.

@@ -1,0 +1,3 @@
+# Title
+
+Large vision models trained by autoregression promise a single generalist model for many visual tasks, but today's versions demand billions of parameters and hundreds of billions of visual tokens to train. This ICML 2024 paper, DeLVM, asks whether we really need all that. The authors show that two simple, classical ideas, data augmentation and knowledge distillation, let a compact autoregressive vision model reach strong performance on a limited dataset, cutting both the parameter footprint and the training data requirement dramatically.

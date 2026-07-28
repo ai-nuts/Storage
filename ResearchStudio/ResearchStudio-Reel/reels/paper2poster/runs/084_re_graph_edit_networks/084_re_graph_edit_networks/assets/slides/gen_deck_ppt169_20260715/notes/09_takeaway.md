@@ -1,0 +1,1 @@
+The verdict is nuanced: Graph Edit Networks are reproducible, elegant and interpretable, and most claims hold. But one scaling claim is wrong, backward passes are super-linear, and several benchmarks reward memorising seen transitions rather than genuine generalisation.

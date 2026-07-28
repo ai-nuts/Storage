@@ -1,0 +1,1 @@
+Graph Edit Networks close this gap by predicting an explicit, human-readable edit script. The original work claims it beats every baseline, reaches perfect accuracy on trees, and scales to large graphs, but those claims rest on briefly-described benchmarks, where independent reproduction adds value.

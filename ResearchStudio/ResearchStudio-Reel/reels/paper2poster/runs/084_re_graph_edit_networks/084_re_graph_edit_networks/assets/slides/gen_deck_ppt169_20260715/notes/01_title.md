@@ -1,0 +1,1 @@
+This is a reproducibility study of Graph Edit Networks, a graph neural network output layer that predicts how a graph changes over time as a sequence of interpretable edits. The reproduction re-implements the model and re-tests the paper's four experimental claims.

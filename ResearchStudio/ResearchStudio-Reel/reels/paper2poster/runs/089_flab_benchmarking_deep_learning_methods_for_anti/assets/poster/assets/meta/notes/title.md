@@ -1,0 +1,3 @@
+# Title
+
+Machine learning promises to accelerate therapeutic antibody design, but only if models can accurately read the sequence-to-function fitness landscape. This paper introduces FLAb, the Fitness Landscape for Antibodies, the largest therapeutic antibody benchmark to date. It gathers experimental measurements for six developability properties and uses them to stress-test six widely used deep learning protein models against physics-based Rosetta. The headline finding is sobering: no single model correlates well with all six properties, and performance swings sharply across datasets of the same property, revealing how far the field still has to go.

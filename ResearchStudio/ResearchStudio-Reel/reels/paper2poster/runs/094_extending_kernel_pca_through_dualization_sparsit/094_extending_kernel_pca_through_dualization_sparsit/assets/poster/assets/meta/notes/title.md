@@ -1,0 +1,3 @@
+# Title
+
+This paper, from KU Leuven and presented at ICML 2023, revisits Kernel Principal Component Analysis through the lens of convex duality. The authors reformulate Kernel PCA as a difference of convex functions problem, then dualize it. This single move unlocks three things at once: gradient-based solvers that avoid the expensive cubic singular value decomposition of the Gram matrix, a flexible framework that swaps in robust or sparse objectives through Moreau envelopes, and significant speedups on real benchmarks. It is a clean example of how the right optimization viewpoint can extend a classical method in several directions simultaneously.

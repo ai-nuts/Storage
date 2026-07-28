@@ -1,0 +1,1033 @@
+                             Extending Kernel PCA through Dualization:
+                              Sparsity, Robustness and Fast Algorithms
+
+
+                   Francesco Tonin * 1 Alex Lambert * 1 Panagiotis Patrinos 1 Johan A.K. Suykens 1
+
+
+                          Abstract                                   of linear PCA exist (see (Gemp et al., 2021) and references
+      The goal of this paper is to revisit Kernel Principal          therein), but they cannot deal with infinite-dimensional fea-
+      Component Analysis (KPCA) through dualization                  ture spaces.
+      of a difference of convex functions. This allows               From an optimization standpoint, the KPCA problem can be
+      to naturally extend KPCA to multiple objective                 formulated as variance maximization under orthonormality
+      functions and leads to efficient gradient-based al-            constraints. Such problem belongs to the wider family of
+      gorithms avoiding the expensive SVD of the Gram                differences of convex functions (DC) problems, which has
+      matrix. Particularly, we consider objective func-              received a great deal of attention in multiple applications
+      tions that can be written as Moreau envelopes,                 (e.g., see (Tao & An, 1997)). In particular, in (Beck &
+      demonstrating how to promote robustness and                    Teboulle, 2021), PCA was investigated as a DC problem,
+      sparsity within the same framework. The pro-                   but only in the case of linear PCA, i.e., not considering (po-
+      posed method is evaluated on synthetic and real-               tentially infinite-dimensional) feature mappings, and only
+      world benchmarks, showing significant speedup                  for the simpler problem of finding the first component where
+      in KPCA training time as well as highlighting the              the orthogonality constraints become void.
+      benefits in terms of robustness and sparsity.
+                                                                     Enforcing desirable properties to the solution, such as spar-
+                                                                     sity or robustness, is a long-standing open problem in KPCA.
+1. Introduction                                                      While many works have investigated robust/sparse KPCA
+                                                                     (e.g., robust KPCA in (Nguyen & Torre, 2008; Kim & Klab-
+Kernel Principal Components Analysis (KPCA, Schölkopf               jan, 2020; Wang & Tanaka, 2020a; Fan & Chow, 2020) and
+et al. (1998)) stands as one of the most widely used tools for       sparse KPCA in (Wang & Tanaka, 2016; Guo et al., 2019b;
+unsupervised learning, with applications to dimensionality           Tipping, 2000; Smola et al., 2002)), they use several dif-
+reduction, denoising, or features extraction. By embedding           ferent ad-hoc approaches or heuristics such as weighting
+the data in some higher dimensional space thanks to a fea-           schemes (Alzate & Suykens, 2008), leading to a multitude
+ture map, KPCA aims at finding orthogonal directions in              of different optimization problems. In (Thiao et al., 2010),
+the feature space that allow to best reconstruct the empirical       a DC program for the specific problem of sparse linear PCA
+covariance operator.                                                 was explained, but is not extended to also handle robust
+The classical way to solve the KPCA problem is to com-               losses within the same framework; notably, it does not deal
+pute the singular values decomposition (SVD) of the Gram             with nonlinear feature maps nor with more than one com-
+matrix, a costly O(n3 ) operation whose complexity scales            ponent. The idea of using infimal convolution to design
+cubicly with respect to the number n of datapoints. This pre-        sparse or robust losses is exploited notably in Sangnier et al.
+vents KPCA from being used in large-scale scenarios, and,            (2017); Laforgue et al. (2020) for regression problems, and
+while some solutions exist, they mostly boil down to sub-            is known to work well in duality settings.
+sampling in fixed-size schemes to approximate the nonlinear          In this paper, we derive a general dual-based formulation
+mapping (Langone & Suykens, 2017) or focus on the online             for KPCA leading to a difference of convex function objec-
+learning setting (Günter et al., 2007; Chin & Suter, 2007;          tive which encompasses both the variance and robust/sparse
+Honeine, 2012). Works on speeding up the simpler problem             objective functions in the same framework. We derive effi-
+  *
+   Equal contribution        1
+                               ESAT-STADIUS, KU Leu-                 cient optimization algorithms showing significant speedups
+ven, Belgium.      Correspondence to:    Francesco Tonin             compared to the standard SVD solvers for KPCA. In par-
+<francesco.tonin@esat.kuleuven.be>.                                  ticular, our approach allows to solve infinite-dimensional
+                                                                     KPCA problems in the dual. We focus on objectives that
+Proceedings of the 40 th International Conference on Machine         can be written as Moreau envelopes, which include the Hu-
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright
+2023 by the author(s).                                               ber and ϵ-insensitive losses, inducing robustness and spar-
+
+                                                                 1
+                                          Extending Kernel PCA through Dualization
+
+sity, respectively. We show how the resulting optimization            The Stiefel manifold over Hilbert spaces: Given a fea-
+problems can be tackled with efficient algorithms for each            ture space H and a positive integer s, we introduce the
+objective.                                                            Stiefel manifold of orthonormal s-frames in H as
+The paper is structured as follows. In Section 2, we formu-                        SsH := {W ∈ Hs | G(W ) = Is }.
+late the general KPCA problem as a difference of convex
+functions, which leads to a flexible framework that can be            When H = Rd is endowed with the Euclidean scalar
+extended to other loss functions beyond the square loss. We           product, the Stiefel manifold corresponds to the usual set
+                                                                      of matrices SsRd = M ∈ Md,s (R)|M ⊤ M = Is . We
+                                                                                            
+present in Section 3 a gradient-based optimization algorithm
+able to efficiently solve the standard KPCA problem through           define Γ : Hs → Rn×s as the linear operator such that
+dualization. Later, in Section 4 we exploit the flexibility           for all (i, j) ∈ [n × s] and W = (w1 , . . . , ws ) ∈ Hs ,
+of the proposed DC framework by modifying the objective               [ΓW ]ij = ⟨ϕ(xi ), wj ⟩. The KPCA problem then reduces to
+function to promote robustness and sparsity. Finally, numer-                                      1      2
+ical experiments on both synthetic and real-world bench-                                       sup  ∥ΓW ∥F .                    (1)
+                                                                                           W ∈SsH 2
+marks are presented in Section 5, showing faster training
+times and illustrating the promotion of sparsity and robust-          While the constraint W ∈ SsH is not convex, it can be
+ness induced in the solution. All proofs are deferred to the          relaxed to the convex hull of the Stiefel manifold as the so-
+appendix.                                                             lutions necessarily lie on the boundary (Uschmajew (2010),
+                                                                      Lemma 2.7) which justifies the fact that we consider the
+                                                                      constraint convex in what follows.
+2. Problem Formulation
+Notation: Given a symmetric real matrix M ∈ Rn×n ,                    Kernel PCA from SVD: The usual way to solve the
+λ(M ) ∈ Rn is the vector of its eigenvalues ordered decreas-          KPCA problem is to express the directions W = [wj ]sj=1 as
+ingly. For a linear operator Γ between Hilbert spaces, Γ♯             linear combinations of the features, introducing coefficients
+denotes its adjoint. When w ∈ H is a vector, w♯ refers to the         (αij )n,s
+                                                                            i,j=1 ∈ R
+                                                                                      n×s
+                                                                                          such that
+linear form x 7→ ⟨w, x⟩. Is is the identity matrix of size s×s.                                      n
+ϕ : X → H is a mapping to a Hilbert space H. ϕ induces a
+                                                                                                     X
+                                                                                          wj =             αij ϕ(xi ).
+positive definite kernel function k : X × X → R with associ-                                         i=1
+ated RKHS Hk . Given a vector W = (w1 , . . . , ws ) ∈ Hs ,
+we denote by G(W ) ∈ Rs×s the Gram matrix such that                   Quick algebraic manipulations then ensure that the solu-
+G(W )ij = ⟨wi , wj ⟩. ∥·∥F denotes the Frobenius norm. For            tion to Problem 1 can be obtained by taking the coeffi-
+a convex set C, ιC (·) is its indicator function: 0 on C and          cients α to be the top-s eigenvectors of the Gram matrix
++∞ otherwise. The infimal convolution is denoted □, and               G = [k(xi , xj )]ni,j=1 , rescaled so that the directions have
+the Fenchel-Legendre transform of a function f is f ⋆ .               unit norm. Thus KPCA is solved by performing the SVD of
+                                                                      some n × n matrix, an operation scaling as O(n3 ) and quite
+Let X be some input space, and (xi )ni=1 ∈ Xn n datapoints            slow even for moderate sizes of datasets. Throughout this
+in it. These datapoints are embedded in a feature space H by          paper we make the assumption that G is full rank, which
+means of a feature map Pϕn : X → H. Up to some recentering            typically happens when the feature space is infinite dimen-
+of ϕ, we assume that i=1 ϕ(xi ) = 0. The KPCA problem                 sional (e.g. Gaussian kernel) and the data does not contain
+consists in finding orthogonal directions in the feature space        any duplicate. This assumption is critical to the derivation
+that allow for the best low rank approximation of some                of the gradient in Section 3.
+empirical version of the covariance operator
+                                                                      Difference of convex functions: The KPCA optimization
+                       n
+                  1X                                                  problem can be cast into the minimization of a difference of
+             Σ :=       ϕ(xi )ϕ(xi )♯ ∈ L(H).                         convex functions of the form
+                  n i=1
+                                                                                         inf     g(W ) − f (ΓW ).               (2)
+                                                                                        W ∈Hs
+Given a desired number of components s, KPCA can be
+reformulated as finding s directions in the Hilbert space H                                                      2
+                                                                      Indeed, plugging back f = 12 ∥·∥F and g = ιSsH (·) into
+that maximize the variance under orthonormal conditions.              Problem 2 one gets back the original formulation from Prob-
+When H is some finite dimensional Rp space, and denoting              lem 1. One of the advantages of this formulation is that
+Φ ∈ Rn×p the row-wise concatenations of the [ϕ(xi )]ni=1 ,            it becomes possible to slightly modify the loss function f
+this reduces to                                                       so as to enforce specific properties such as robustness or
+                                                                      sparsity for the solution.
+                             2
+               sup    ∥ΦW ∥F s.t. W ⊤ W = Is .
+            W ∈Rp×s                                                   The goal of this work is two-fold:
+
+                                                                  2
+                                          Extending Kernel PCA through Dualization
+
+   • Exploit gradient-based optimization schemes to solve             Remark 3.3. In the proof, we first show that g ⋆ (Γ♯ H) =
+     KPCA without using the SVD of G, resulting in com-                  1
+                                                                       G2 H         where ∥·∥S1 is the Schatten 1-norm, i.e. the nu-
+     putational advantages (see Section 3).                                    S1
+                                                                      clear norm. While the dependency in H makes this easier
+   • Extend the KPCA problem to a larger set of objective             to handle from an optimization standpoint, the dependency
+                                                                           1
+     functions, with the benefit of enforcing robust or sparse        in G 2 would require to perform the
+                                                                                                        √ SVD that we want to
+     solutions (see Section 4).                                       avoid, leaving us to work with Tr H ⊤ GH.
+                                                                                                             √
+                                                                      In what follows, we define π(H) := Tr H ⊤ GH and build
+3. Solving Kernel PCA with Gradient Descent                           on Lewis (1996) to give a gradient expression for π used in
+In this section, we use duality principles to derive suitable         subsequent optimization algorithms.
+optimization algorithms to solve the KPCA problem intro-              Proposition 3.4. If all eigenvalues of H ⊤ GH are positive
+duced in Problem 1. We begin by a general proposition                 then π is differentiable at H with gradient
+performing the dualization of problems that can be written                                                          !
+as the minimization of a difference of two convex functions.                                   ⊤              1
+                                                                            ∇π(H) = GHU diag p                        U,     (5)
+The proof is similar to Toland (1979), with an additional                                                 λ(H ⊤ GH)
+care given to handling the operator Γ.
+                                                                      where U ∈ Rs×s is an orthogonal matrix satisfying
+Proposition 3.1 (Dual of difference of convex functions).
+                                                                      H ⊤ GH = U ⊤ diag λ(H ⊤ GH) U .
+                                                                                                 
+Let U, K be two Hilbert spaces, g : U → R̄ and f : K → R̄
+be two convex lower semi-continuous functions and Γ ∈                 To compute the gradient given in Equation (5), one needs
+L(U, K). The problem                                                  to perform the SVD of the matrix H ⊤ GH ∈ Rs×s . In the
+                    inf g(W ) − f (ΓW )                               context of a (relatively) small number of components, this
+                   W ∈U                                               SVD is computationally cheap. This motivates the use of
+admits the dual formulation                                           gradient-based method to obtain the dual solution faster than
+                                                                      by exploiting the SVD of the n × n matrix G.
+                  inf f ⋆ (H) − g ⋆ (Γ♯ H),                (3)
+                 H∈K                                                  More precisely, the computational complexity associated to
+and strong duality holds.                                             the computation of this gradient can be bounded by the sum
+                                                                      of
+The main motivation for going from the primal problem to
+the dual in the KPCA case is that the dual variable H is a               • Computation of H ⊤ GH in O(sn2 )
+finite dimensional matrix, suitable to gradient-based opti-
+                                                                         • SVD of H ⊤ GH in O(s3 )
+mization schemes. However this comes at the cost of having
+to handle the term g ⋆ (Γ♯ H) which encodes information re-              • Computation of Equation (5) in O(ns2 +s3 ) by reusing
+lated to the Stiefel manifold. In Section 3.1, we show that                the precomputed GH.
+this term is related to the nuclear norm of some low dimen-
+sional matrix and derive a gradient for it, before exploring          Remark 3.5. Due to the dependency of the gradient in
+in Section 3.2 the link between the critical points of the dual       √ 1⊤      , it is not Lipschitz continuous in H, which
+                                                                        λ(H GH)
+function and those of the reconstruction cost associated to           prevents the use of fixed stepsizes schemes in classical opti-
+the Gram matrix. Finally in Section 3.3, we show how to               mization algorithms.
+compute the projections associated to new points without
+having to compute the primal solution.                                3.2. Critical Points of the Dual Problem
+
+3.1. Nuclear Norm Gradient Computation                                Overall, the dual problem to KPCA reads
+                                                                                               1
+The following proposition instantiates the term g ⋆ (Γ♯ H) for                           inf       Tr(H ⊤ H) − π(H).            (6)
+                                                                                      H∈Rn×s 2
+the KPCA problem.
+Proposition 3.2. Let g be the indicator function of the               Solving this nonconvex problem can be challenging, as local
+Stiefel manifold and Γ as in Problem 1. Then for all H ∈              minima or saddle points phenomena can occur. Typically,
+Rn×s ,                          √                                     algorithms such as the DC algorithm (Tao & An, 1997) en-
+                 g ⋆ (Γ♯ H) = Tr H ⊤ GH                    (4)        sure convergence towards a critical point, that is a point H
+                                                                      at which the gradient is nullified. In the following proposi-
+We
+√ recognize in Equation (4) the nuclear norm of the matrix            tion, we explicit the link between critical points of the dual
+  H ⊤ GH, which is well-defined since G is a Gram matrix              function and those of the reconstruction cost associated to
+associated to a positive definite kernel.                             the Gram matrix.
+
+                                                                  3
+                                          Extending Kernel PCA through Dualization
+                                                 2
+Proposition 3.6. Let J(H) = 14 G − HH ⊤ F . Let Ĥ be                H. The idea is based on using objectives obtained from infi-
+a critical point of Problem 6. Then ∇J(Ĥ) = 0.                      mal convolution with the squared norm, known as Moreau
+                                                                     envelopes (Moreau, 1965). We focus on variance-like objec-
+The characterization of the critical points of J is given in         tives of the form
+(Wright & Ma, 2022). We solve the dual problem (6) using
+the L-BFGS optimization algorithm, which in practice we                                           1    2
+                                                                                           f=       ∥·∥F □ Ψ,
+observe always avoids sub-optimal critical points. More                                           2
+details on the optimization algorithm are given in Section 5.
+                                                                     where Ψ : Rn×s → R̄ is a well-chosen function enforcing
+                                                                     desirable properties. Compatibility between the Fenchel-
+3.3. Exploiting the Dual Solution
+                                                                     Legendre transform and the infimal convolution operator
+Assume that solving Problem 6 has produced an optimal                then allows to write the dual to Problem 2 as
+dual solution that we denote Ĥ. In general, finding the cor-
+responding directions in the feature space (primal variables)                             1    2
+                                                                                   inf      ∥H∥F + Ψ⋆ (H) − π(H).               (9)
+involves solving the optimization problem                                       H∈Rn×s    2
+
+            Ŵ ∈ arg min g(W ) − ⟨Ĥ, ΓW ⟩.                (7)       The section is organized as follows: we begin in Section 4.1
+                   W ∈Hs                                             by expliciting some choices of Ψ that give rise to the Huber
+This optimization problem is non-trivial when we do not              and ϵ-insensitive objectives (known to respectively promote
+have more information about the solution Ĥ. However,                robustness and sparsity) before exploiting their Moreau en-
+when Ĥ is obtained by the SVD of G, there is a linear               velope structure to design dedicated optimization schemes
+dependency between the directions in the feature space and           in Section 4.2.
+the dual variables. This is exemplified in the following
+proposition where we show that the SVD of G allows to                4.1. Huber and ϵ-insensitive Objectives
+pick an optimal dual solution.                                       In what follows, let ∥·∥ be a norm on Rn×s and ∥·∥⋆ be its
+Proposition 3.7. Let G = U ⊤ ΣU be the SVD of G with                 dual norm. Given t ≥ 0, the balls of radius t for these norms
+U ∈ Rn×n √   being orthonormal and Σ being diagonal. Let             are respectively denoted as Bt and Bt⋆ .
+H svd = Us⊤ Σs where Us ∈ Rs×n gathers the top-s eigen-
+                                                                     Definition 4.1 (Huber). Let κ > 0. The Huber objective
+vectors of G and Σs ∈ Rs×s the top-s eigenvalues. Then
+                                                                     with parameter κ is defined as
+H svd is a solution to Problem 6.
+
+In our case, we do not have access to such an optimal solu-                                       1    2
+                                                                                         Hκ :=      ∥·∥F □ κ ∥·∥ .
+tion and must find a way to compute the projections with                                          2
+the only knowledge of Ĥ. It turns out that recovering the
+projection on the principal components is possible using the         The Huber objective can be understood as the Moreau en-
+kernel trick, as proposed in the following.                          velope of κ ∥·∥ with parameter 1. This case corresponds to
+Proposition 3.8. Let x ∈ X and Gx = [k(x, xi )]ni=1 ∈ Rn .           Ψ = κ ∥·∥ and Ψ⋆ = ιBκ⋆ . The additional term in Problem 9
+                                                                     constrains the dual variable H to pertain to the ball of radius
+Let Ŵ ∈ Hs be a solution to Problem 1 and Ĥ ∈ Rn×s be
+                                                                     κ for the norm ∥·∥⋆ , thus inducing robustess. While the
+a solution to Problem 6. The projections of ϕ(x) onto the
+                                                                     choice ∥·∥ = ∥·∥F recovers the classical version of the Hu-
+principal components are given by
+                                                                     ber objective, it is to be noted that varying choices of norms
+                                                  − 12             allow to capture different notions of robustness (Lambert
+   [⟨ϕ(x), ŵj ⟩]sj=1 = G⊤
+                         x ĤU ⊤
+                                 diag   λ(Ĥ ⊤
+                                               GĤ)      U           et al., 2022).
+                                                          (8)
+                                                                     Definition 4.2 (ϵ-insensitive). Let ϵ > 0. The ϵ-insensitive
+where U is obtained from the SVD of Ĥ ⊤ GĤ as in Propo-
+                                                                     objective with parameter ϵ is defined as
+sition 3.4.
+
+Note that the expression in Equation (8) does not directly                                        1    2
+                                                                                          ℓϵ :=     ∥·∥F □ ιBϵ .
+involves the directions in the feature space encoded in Ŵ .                                      2
+
+
+4. Beyond Variance Maximization                                      The ϵ-insensitive objective is the Moreau envelope of some
+                                                                     indicator function of a ball, corresponding to Ψ = ιBϵ and
+In this section, we propose to modify the variance objective         Ψ⋆ = ϵ ∥·∥⋆ . Depending on the choice of the norm, the
+used in the original KPCA problem to promote desirable               additional term in Problem 9 can behave like a Lasso or
+properties such as sparsity or robustness in the dual variable       group Lasso penalty, inducing sparsity in the iterates.
+
+                                                                 4
+                                          Extending Kernel PCA through Dualization
+
+Table 1: Proximal operators for Huber and ϵ-insensitive               collection of dimensionality reduction tasks.
+objectives.
+                                                                      First, we evaluate the efficiency of the resulting LBFGS-
+                                                                      based optimization algorithm for KPCA on multiple
+       Objective      Ψ       Ψ⋆        proxΨ⋆ (Y )
+                                                                      datasets, with comparisons to other standard KPCA solvers.
+       Hκ           κ ∥·∥     ιBκ⋆      ProjBκ⋆ (Y )                  We apply the proposed algorithm to problems of different
+       ℓϵ            ιBϵ     ϵ ∥·∥⋆   Y − ProjBϵ (Y )                 sizes, and we also study the effect on performance of the
+                                                                      decay of the eigenspectrum of G.
+Algorithm 1 DCA for Moreau envelope objectives                        Then, we quantify the robustness of the Huber losses on data
+input : Gram matrix G                                                 contaminated with outliers depending on the noise level, and
+init   :H (0) ∈ Rn×s , Y = 0                                          we study the influence of the loss parameters. Regarding the
+for epoch t from 0 to T − 1 do                                        ϵ-insensitive losses, we study the accuracy-sparsity tradeoff
+  // alternating gradient steps                                       w.r.t. the ϵ parameter and the number of components s.
+   Y = ∇π(H (t) ) from Equation (5)
+   H (t+1) = proxψ⋆ (Y )                                              Experiments are implemented in Python 3.10 on a ma-
+return H (T )                                                         chine with a 3.7GHz Intel i7-8700K processor and 64GB
+                                                                      RAM. The code is available at https://github.com/
+                                                                      taralloc/dc-kpca.
+4.2. Solving with DC Algorithm
+We propose to solve Problem 9 using the well-known dif-               Datasets. We evaluate our approach on synthetic and
+ference of convex functions algorithm (DCA) (Tao & An,                real-world datasets. Synth 1 (n = 7000, d = 10000) is
+1997). The point of DCA is to search for a critical point of          a high-dimensional synthetic dataset where samples are
+the problem, that is some H ∈ Rn×s such that                          drawn randomly from a multivariate normal distribution
+                                                                      with zero mean and fixed covariance matrix. For real-world
+                      1   2                                           data, we consider datasets from LIBSVM (Chang & Lin,
+            ∂π(H) ∩ ∂( ∥·∥F + Ψ⋆ )(H) ̸= ∅.
+                      2                                               2011), UCI (Dua & Graff, 2017), and common deep learn-
+                                                                      ing benchmarks: Iris (n = 150, d = 4), the bioinformatics
+The search is performed sequentially in the subgradient of π,
+                                                                      dataset Protein (n = 14895, d = 357), the text catego-
+and in the subgradient of the Fenchel-Legendre transform of
+     2                                                                rization dataset RCV1 (n = 20242, d = 47236), and the
+2 ∥·∥F + Ψ , which is f . As f was chosen to be a Moreau
+1           ⋆
+                                                                      outputs of the second to last layer of a ResNet18 (He et al.,
+envelope, its gradient is always defined as for all Y ∈ Rn×s ,
+                                                                      2016) trained on the computer vision dataset CIFAR-10
+                                                                      (n = 60000, d = 512).
+                          
+              1    2
+         ∇      ∥·∥F □ Ψ (Y ) = Y − proxΨ (Y ).
+              2
+                                                                      Experimental setups. Regarding optimization for KPCA
+According to Moreau decomposition (Moreau, 1962), it
+                                                                      with the square loss, we employ the LBFGS algorithm with
+moreover holds that for all Y ∈ Rn×s ,
+                                                                      backtracking linesearch using the strong Wolfe conditions
+              Y − proxΨ (Y ) = proxΨ⋆ (Y ).                           with initialization from the standard normal distribution. For
+                                                                      the Moreau envelopes, i.e. Huber and ϵ-insensitive losses,
+Thus the DCA algorithm can be applied as long as the                  we employ the DC algorithm; for faster convergence second
+computation of proxΨ⋆ is possible. The correspondence                 order optimization algorithms for this problem with com-
+between the choice of objective and the resulting proximal            posite smooth + non-smooth structure can also be employed,
+operator is gathered in Table 1. In particular, one can note          e.g. (Stella et al., 2017). For the square loss, the accuracy
+that tractability of the DCA algorithm requires that the pro-         of a dual iterate Hk from our solver at each iteration k is
+jection on the balls for the dual norm ∥·∥⋆ is possible in            chosen as the relative difference η = |d(Hk ) − dq opt |/dopt be-
+the Huber case, whereas for ϵ-insensitive objectives what
+matters is being able to project on the balls for the norm            tween the dual cost d(Hk ) = 12 Tr Hk⊤ Hk − Tr      Hk⊤ GHk
+                                                                                                                          Ps
+∥·∥. This requirement drives the choice of the norm used in           at iteration k and the optimal dual cost dopt = − 2 i=1 λi ,
+                                                                                                                        1
+
+the definition of the objectives, as projecting on balls can be       with λi being the i-th largest eigenvalue of G. In fact, the
+obtained in closed-form when the norm is a 2-norm or an               optimalPprimal cost is the highest variance in s components,
+                                                                                s
+∞-norm. The DCA is summarized in Algorithm 1.                         i.e., 12 i=1 λi , and strong duality holds in our dualization.
+                                                                      For all used solvers, we use the same stopping criterion
+5. Numerical Experiments                                              based on achieving a target tolerance. For the other convo-
+                                                                      luted losses, we stop the DCA when the absolute variation
+Through numerical evaluations, we show the efficiency and             of the loss is less than machine precision with at most 1000
+flexibility of the proposed KPCA dualization on a diverse             iterations.
+
+                                                                  5
+                                          Extending Kernel PCA through Dualization
+
+Table 2: KPCA Training Time. Runtime for multiple KPCA problems with higher tolerance. Speedup factor w.r.t. RSVD.
+
+                                                            Time (s) for δ = 10−2               Speedup
+                           Task             n
+                                                    SVD       Lanczos       RSVD       Ours      Factor
+                           Synth 1        7000      96.73          0.85       1.97     0.53       3.72
+                           Protein       14895     868.64          3.46       6.70     1.07       6.25
+                           RCV1          20242        -            6.04      12.50     2.12       5.90
+                           CIFAR-10      60000        -           48.10     123.89     13.51      9.17
+
+               Table 3: KPCA Training Time. Runtime for multiple KPCA problems with lower tolerance.
+
+                                                            Time (s) for δ = 10−4               Speedup
+                           Task             n
+                                                    SVD       Lanczos       RSVD       Ours      Factor
+                           Synth 1        7000      96.73          4.78       1.97     0.56       3.52
+                           Protein       14895     868.64          3.51       6.95     1.07       6.59
+                           RCV1          20242        -           19.72      12.75     3.78       3.38
+                           CIFAR-10      60000        -           48.15     122.58     29.26      4.19
+
+
+
+                               LBFGS Iterations                       following relative dual cost residual:
+       80
+                               RSVD Oversamples                                                p
+       60                                                                             η = d(Û Ŝ) − dopt /dopt ,               (10)
+
+       40                                                             where for RSVD Ŝ is the diagonal matrix of the largest s
+                                                                      singular values of G and corresponding computed singular
+       20                                                             vectors Û , V̂ , while for the eigendecomposition solver Ŝ is
+                                                                      the diagonal matrix of the largest s eigenvalues of G and
+        0                                                             corresponding eigenvectors Û = V̂ found by the Lanczos
+              0.02      0.04      0.06     0.08                       solver. Full SVD is run to machine precision for comparison.
+                                  c                                   For a given tolerance δ, we stop training when η < δ. In
+                                                                      particular, for RSVD, the number of required oversamples
+Figure 1: Varying eigenspectrum. Additional computa-                  is found by increasing the number of oversamples until the
+tional burden when the spectrum of G changes (larger c                target tolerance is reached.
+corresponds to spectra with faster decay). Blue: our LBGS-
+                                                                      The kernel is chosen to be the Laplace √ kernel k(z, y) =
+based algorithm, red: randomized SVD.
+                                                                      exp − ∥z − y∥2 /(2σ 2 ) with σ = 0.1 dσx and σx the
+                                                                      variance of the training data. For the KPCA dimensionality
+                                                                      reduction task, it is common to assume that the given high-
+5.1. More Efficient KPCA                                              dimensional data can be expressed over a small number of
+                                                                      principal components; therefore, in these experiments, we
+This subsection demonstrates the performance of the pro-
+                                                                      use s = 20. The experiments are averaged over 5 runs.
+posed LBFGS-based algorithm to solve the KPCA prob-
+lem (1). We compare our method with three common                      Table 2 and 3 show the training times on different KPCA
+KPCA solvers: full SVD (SVD), Implicitly Restarted Lanc-              tasks for multiple tolerance levels δ = 10−2 , 10−4 ; lowest
+zos Method (Lehoucq et al., 1998), and randomized SVD                 training times are in bold. The time to compute the full
+(RSVD) (Halko et al., 2011). The Lanczos solver finds                 SVD to machine precision is given for reference in the SVD
+the first s eigenvalues and corresponding eigenvectors of             column, where “-” indicates that SVD took longer than
+the symmetric matrix G, while randomized SVD finds the                30 minutes. The speedup factor is t(RSVD) /t(LBFGS) , where
+truncated singular value decomposition of G by random                 t(RSVD) , t(LBFGS) is the training time using the RSVD solver
+projections. These solvers rely on different stopping
+                                                    √ criteria.       and our LBFGS-based solver, respectively. For tolerance
+To make a fair comparison, note that dopt = d(U S), with              δ = 10−2 , our solver is faster than all other KPCA solvers
+G = U SV ⊤ being the SVD of G. Therefore, the accu-                   and at least 3 times faster than RSVD. For the lowest tol-
+racy of an approximate solution Û , Ŝ, V̂ is measured by the        erance δ = 10−4 , our solver is the fastest with generally
+
+                                                                  6
+                                                         Extending Kernel PCA through Dualization
+
+smaller speedup factor. Since our solver is second order, it                     Table 4: Robustness. MSE on contaminated Iris dataset.
+can reach higher accuracy quickly, with subsequent itera-
+tions giving relatively lower improvement, which explains                                τ           1
+                                                                                                     2 ∥·∥
+                                                                                                          2
+                                                                                                                     Hκ2       Hκ1
+why the speedup is more apparent at higher tolerances. All
+                                                                                         10       7.591059       6.833484    7.381284
+solvers can achieve high accuracy; however, in some tasks
+                                                                                         25       7.910846       7.182663    7.687518
+(e.g., CIFAR-10 and Protein) the Lanczos method cannot
+                                                                                         50       8.691805       8.045477    8.430957
+take significant advantage of higher tolerance requirements.
+                                                                                         75       9.782740       9.259353    9.465706
+A solver’s performance depends on the properties of the                                  100     11.183650      10.824293   10.791766
+given data and kernel. For instance, it is known that RSVD
+requires more oversamples for matrices whose eigenspec-
+trum decays slowly (Halko et al., 2011), which is often the                              16
+case in real-world problems. On the other hand, our LBGS-                                                                            Hκ2
+based solver does not suffer from such issue. To further                                                                             Hκ1
+illustrate this point, we construct G from random data X as                              14
+
+
+
+
+                                                                                   MSE
+G = 0.01(X + X ⊤ ) + U DU ⊤ , where U is any orthogonal
+matrix and D is a diagonal matrix s.t. Dii = exp(−ci).
+Varying c controls how quickly the spectrum of G decays,                                12
+                                                                                     1
+with lower c corresponding to slower decays. In Fig. 1,                                ∥·∥
+                                                                                          2
+
+we vary c and show the additional computational cost for                             2
+RSVD and for our solver when the spectrum of G changes.                                  10
+For RSVD, the red line shows the additional required over-                                     0.4    0.5     0.6    0.7 0.8   0.9         1.0
+samples needed to achieve tolerance δ = 10−4 w.r.t. the                                                             κ/κmax
+experiment with lowest number of oversamples. The blue
+line shows the additional LBFGS iterations required by our                      Figure 3: Robustness. Effect of κ for the loss Hκ2 and Hκ1 .
+solver to achieve the same tolerance. While RSVD requires
+significantly more oversamples to reach a fixed accuracy as
+c decreases, our solver takes a similar number of iterations,                   5.2. Huber Losses
+showing that our solver is mostly unaffected by this type of
+change in the eigenspectrum of G.                                               We now present numerical experiments to illustrate the flex-
+                                                                                ibility of the KPCA dualization framework applied to the
+The influence of s on training time is studied in Figure 2                      Huber loss. We consider the Huber losses associated to dif-
+on random data with n = 15000: higher s leads to longer                         ferent norms: Hκ1 is the Moreau envelope of H 7→ κ ∥H∥1
+training times for both LBFGS and RSVD, with LBFGS                              and Hκ2 is the Moreau envelope of H 7→ maxi∈[n] ∥hi ∥2 .
+maintaining performance advantage. Very high s impacts                          Both cases are optimized with the same DC algorithm.
+LBFGS’s training time as it needs to compute the SVD of a
+s × s matrix at every iteration.                                                We first investigate the robustness induced by the Huber
+                                                                                losses on the Iris dataset. We contaminate the data in the
+                                                                                following way: to corrupt data {xi }ni=1 , we first draw a
+                                                                                set I ⊂ {0, ..., n} s.t. |I| = ⌊ωn⌋, with ω ∈ [0, 1] being
+                                 LBFGS                                          the proportion of corrupted samples. Then, we introduce
+                        60       RSVD                                           outliers using multiplicative Gaussian noise with zero mean
+    Training Time (s)
+
+
+
+
+                                                                                and τ standard deviation: for i ∈ I, xi is replaced by
+                        40                                                      bi xi , where bi is drawn from N (0, τ 2 ). We evaluate per-
+                                                                                formance by reconstruction error (MSE) in input space of
+                                                                                non-contaminated test samples: higher MSE means that
+                        20                                                      the learned subspace is influenced by the outliers, while
+                                                                                lower MSE corresponds to more robust models. We com-
+                        0                                                       pute pre-images using the technique of (Bakır et al., 2004).
+                             0   200     400       600     800   1000           As discussed in Section 3, as κ grows, the constraint on the
+                                               s                                dual variables becomes void and we recover the square loss
+                                                                                KPCA problem. Therefore, we set κ = 0.6κmax , 0.8κmax
+                 Figure 2: KPCA Training Time. Effect of s.                     for Hκ1 , Hκ2 , respectively.
+                                                                                The resulting test MSE values are given in Table 4 for ω =
+                                                                                8% on a 20% test split. We employ a Gaussian kernel
+
+                                                                            7
+                                                           Extending Kernel PCA through Dualization
+
+                                                                        s                                                              ϵ
+                                                                            10
+                                   1.5                                                              100                                    0.3
+                                                                            9
+                 Rec. Err. Ratio
+                                                                                                    80
+
+
+
+
+                                                                                     Sparsity (%)
+                                   1.4
+                                   1.3                                      8                       60                                     0.2
+                                   1.2                                      7                       40
+                                   1.1                                                              20                                     0.1
+                                                                            6
+                                     1                                                               0
+                                                                            5                                                              0
+                                          0    20 40 60          80                                       5   6   7       8   9   10
+                                                 Sparsity (%)                                                         s
+
+                                         Figure 4: Sparsity. Reconstruction error for the ℓ2ϵ loss for multiple ϵ and s.
+
+                                                                        s                                                              ϵ
+                                                                            10                                                             0.001
+                                                                                                    100
+                                1.6                                         9                                                              0.0008
+              Rec. Err. Ratio
+
+
+
+
+                                                                                                    80
+
+
+
+                                                                                     Sparsity (%)
+                                1.4                                         8                       60                                     0.0006
+                                                                            7                       40                                     0.0004
+                                1.2
+                                                                            6                       20                                     0.0002
+                                    1                                                                0
+                                                                            5                                                              0
+                                         0      20      40      60                                        5   6   7       8   9   10
+                                                 Sparsity (%)                                                         s
+
+
+                                                                                           ϵ loss for multiple ϵ and s.
+                                         Figure 5: Sparsity. Reconstruction error for the ℓ∞
+
+                          
+                       2
+k(z, y) = exp − ∥z − y∥2 /2 for all models. The Huber                                    particular, for the dual norms ∥H∥⋆ = ∥H∥1 and ∥H∥⋆ =
+                                                                                            n
+                                                                                            i=1 ∥hi ∥2 , we obtain respectively the losses ℓϵ , ℓϵ . The
+                                                                                                                                            ∞    2
+                                                                                         P
+losses Hκ1 , Hκ2 are more robust to outliers for all noise levels.
+                                                                                         former promotes unstructured sparsity as the associated
+Particularly, Hκ1 show greater robustness at the highest noise
+                                                                                         proximal step involves coordinate-wise soft-thresholding,
+level, while lower noise levels favor Hκ2 . Overall, these
+                                                                                         the latter promotes block sparsity as the associated proximal
+results show that the learned principal components are more
+                                                                                         step involves block soft-thresholding. The use of convoluted
+robust to the introduced outliers.
+                                                                                         losses makes it possible to cast both the robustness and
+The influence of κ is studied in Fig. 3 with τ = 100. The                                sparsity losses in the same duality framework. Accordingly,
+Huber losses (blue and green lines) can be distinctively                                 as for the Huber loss family, we address this optimization
+more robust to outliers than the square loss (red dashed line).                          problem through the DC algorithm.
+When κ becomes closer to κmax , the robustness effect is void
+                                                                                         The study of the role of ϵ and s for the ℓ2ϵ loss is shown in
+and the MSE converges to the one from the standard KPCA.
+                                                                                         Fig. 4, where we consider a random data matrix X with
+With small κ, the constraint on the dual variables is too
+                                                                                         n = 1000, d = 20 and the kernel is chosen to be Gaussian.
+strict to learn meaningful principal components, as the size
+                                                                                         The reconstruction error ratio is the ratio between the re-
+of the projection ball becomes insufficient. Accordingly,
+                                                                                         construction error using the components learned with the
+the MSE grows quickly in the small κ region. A balanced
+                                                                                         ℓ2ϵ loss and the reconstruction error from the square loss.
+choice of κ results in lower MSE, i.e., reduces the influence
+                                                                                         Here, sparsity is in terms of percentage of zero rows in H.
+of the outliers and therefore learns more robust principal
+                                                                                         In fact, typically the dual solution from KPCA is dense and
+components.
+                                                                                         all training points, corresponding to the rows of H, con-
+                                                                                         tribute. Block sparsity therefore induces a representation
+5.3. ϵ-insensitive Losses
+                                                                                         in a fraction of the training points. We can see that setting
+The ϵ-insensitive losses induce sparsity on H. The choice                                ϵ = 0 recovers the square loss case. As ϵ grows, H becomes
+of the ball used to define the Moreau envelope determines                                sparser. We also expect that, as ϵ grows, the performance
+the sparsity type through the dual norm and ϵ affects the                                declines in terms of reconstruction error, demonstrating a
+sparsity level, where ϵ = 0 recovers the square loss case. In                            trade-off between sparsity and accuracy of the learned repre-
+
+
+                                                                                 8
+                                          Extending Kernel PCA through Dualization
+
+sentation. Such compromise depends on the requirements of             Chang, C.-C. and Lin, C.-J. LIBSVM: a library for sup-
+specific applications. In the example of Fig. 4, with s = 5             port vector machines. ACM Transactions on Intelligent
+principal components, one can obtain 40% sparsity with just             Systems and Technology (TIST), 2(3):1–27, 2011.
+a 10% increase in reconstruction error. Increasing s with
+fixed ϵ usually leads to a slight decrease in sparsity, meaning       Chin, T.-J. and Suter, D. Incremental kernel principal com-
+that a higher ϵ is needed to achieve a similar sparsity level.          ponent analysis. IEEE Transactions on Image Processing,
+The ℓ2ϵ performance relative to the square loss declines with           16(6):1662–1674, 2007.
+higher s for a fixed sparsity level. Similar conclusions can
+                                                                      Dua, D. and Graff, C. UCI machine learning repository,
+be drawn for the ℓ∞ ϵ loss from Fig. 5, where sparsity is in
+                                                                        2017. URL http://archive.ics.uci.edu/ml.
+terms of zero entries of H.
+                                                                      Fan, J. and Chow, T. W. S. Exactly Robust Kernel Princi-
+6. Conclusion                                                           pal Component Analysis. IEEE Transactions on Neural
+                                                                        Networks and Learning Systems, 31(3):749–761, 2020.
+This work presents a duality framework for the kernel PCA               ISSN 2162-2388.
+problem seen as a difference of convex functions. The
+generalized family of objectives with Moreau envelopes                Gemp, I., McWilliams, B., Vernade, C., and Graepel, T.
+structure allows to extend the variance maximization prob-              Eigengame: PCA as a nash equilibrium. In International
+lem to a wider choice of objectives, inducing robust and                Conference on Learning Representations, 2021.
+sparse estimators. The resulting gradient-based algorithm
+for standard KPCA shows important speedups in training                Günter, S., Schraudolph, N. N., and Vishwanathan, S. V. N.
+time compared to the SVD solvers. Future work could fo-                 Fast iterative kernel principal component analysis. Jour-
+cus on convergence properties of the DC algorithm towards               nal of Machine Learning Research, 8(66):1893–1918,
+optimal critical points.                                                2007.
+
+                                                                      Guo, L., Wu, P., Gao, J., and Lou, S. Sparse kernel principal
+Acknowledgements                                                        component analysis via sequential approach for nonlin-
+This work is jointly supported by ERC Advanced Grant                    ear process monitoring. IEEE Access, 7:47550–47563,
+E-DUALITY (787960), iBOF project Tensor Tools for                       2019a.
+Taming the Curse (3E221427), Research Council KU Leu-
+                                                                      Guo, L., Wu, P., Gao, J., and Lou, S. Sparse kernel principal
+ven: Optimization framework for deep kernel machines
+                                                                        component analysis via sequential approach for nonlin-
+C14/18/068, KU Leuven Grant CoE PFV/10/002, and Grant
+                                                                        ear process monitoring. IEEE Access, 7:47550–47563,
+FWO G0A4917N, EU H2020 ICT-48 Network TAILOR
+                                                                        2019b.
+(Foundations of Trustworthy AI - Integrating Reasoning,
+Learning and Optimization), and the Flemish Government                Halko, N., Martinsson, P. G., and Tropp, J. A. Finding
+(AI Research Program), and Leuven.AI Institute. This                    structure with randomness: Probabilistic algorithms for
+work was also supported by the Research Foundation Flan-                constructing approximate matrix decompositions. SIAM
+ders (FWO) research projects G086518N, G086318N, and                    Review, 53(2):217–288, 2011.
+G0A0920N; Fonds de la Recherche Scientifique — FNRS
+and the Fonds Wetenschappelijk Onderzoek — Vlaanderen                 He, K., Zhang, X., Ren, S., and Sun, J. Deep residual
+under EOS Project No. 30468160 (SeLMA).                                 learning for image recognition. In IEEE Conference on
+                                                                        Computer Vision and Pattern Recognition (CVPR), 2016.
+References                                                            Honeine, P. Online kernel principal component analysis: A
+Alzate, C. and Suykens, J. A. Kernel component anal-                    reduced-order model. IEEE Transactions on Pattern Anal-
+  ysis using an epsilon-insensitive robust loss function.               ysis and Machine Intelligence, 34(9):1814–1826, 2012.
+  IEEE Transactions on Neural Networks, 19(9):1583–
+  1598, 2008.                                                         Kim, C. and Klabjan, D. A simple and fast algorithm for L1-
+                                                                        Norm Kernel PCA. IEEE Transactions on Pattern Analy-
+Bakır, G. H., Weston, J., and Schölkopf, B. Learning to find           sis and Machine Intelligence, 42(8):1842–1855, 2020.
+  pre-images. Advances in Neural Information Processing
+  Systems, 16:449–456, 2004.                                          Laforgue, P., Lambert, A., Brogat-Motte, L., and d’Alché
+                                                                        Buc, F. Duality in RKHSs with infinite dimensional out-
+Beck, A. and Teboulle, M. Dual randomized coordinate de-                puts: Application to robust losses. In International Con-
+  scent method for solving a class of nonconvex problems.               ference on Machine Learning (ICML), pp. 5598–5607,
+  SIAM Journal on Optimization, 31(3):1877–1896, 2021.                  2020.
+
+                                                                  9
+                                          Extending Kernel PCA through Dualization
+
+Lambert, A., Bouche, D., Szabo, Z., and D’Alché-Buc, F.               Tipping, M. Sparse kernel principal component analysis.
+  Functional output regression with infimal convolution:                 Advances in Neural Information Processing Systems, 13,
+  Exploring the huber and epsilon-insensitive losses. In                 2000.
+  International Conference on Machine Learning, 2022.
+                                                                       Toland, J. F. On subdifferential calculus and duality in non-
+Langone, R. and Suykens, J. A. K. Fast kernel spectral                   convex optimization. Bull. Soc. Math. France, Mémoire,
+  clustering. Neurocomputing, 268:27–33, December 2017.                  60:177–183, 1979.
+
+Lehoucq, R. B., Sorensen, D. C., and Yang, C. ARPACK                   Uschmajew, A. Well-posedness of convex maximization
+  users’ guide: solution of large-scale eigenvalue problems              problems on stiefel manifolds and orthogonal tensor prod-
+  with implicitly restarted Arnoldi methods. SIAM, 1998.                 uct approximations. Numerische Mathematik, 115(2):
+                                                                         309–331, 2010.
+Lewis, A. S. Derivatives of spectral functions. Mathematics            Wang, D. and Tanaka, T. Sparse kernel principal component
+  of Operations Research, 21(3):576–588, 1996.                          analysis based on elastic net regularization. In 2016 Inter-
+                                                                        national Joint Conference on Neural Networks (IJCNN),
+Moreau, J. J. Fonctions convexes duales et points proxi-
+                                                                        pp. 3703–3708, 2016.
+ maux dans un espace hilbertien. Comptes rendus hebdo-
+ madaires des séances de l’Académie des sciences, 255:               Wang, D. and Tanaka, T. A robust method for kernel princi-
+ 2897–2899, 1962.                                                       pal component analysis. 2020 International Conference
+                                                                        on Artificial Intelligence in Information and Communica-
+Moreau, J.-J. Proximité et dualité dans un espace hilbertien.         tion (ICAIIC), pp. 294–297, 2020a.
+ Bulletin de la Société mathématique de France, 93:273–
+ 299, 1965.                                                            Wang, D. and Tanaka, T. Robust kernel principal component
+                                                                        analysis with ℓ2,1 -regularized loss minimization. IEEE
+Nguyen, M. and Torre, F. Robust kernel principal compo-                 Access, 8:81864–81875, 2020b.
+  nent analysis. Advances in Neural Information Process-
+  ing Systems, 21, 2008.                                               Wright, J. and Ma, Y. High-Dimensional Data Analysis
+                                                                        with Low-Dimensional Models: Principles, Computation,
+Sangnier, M., Fercoq, O., and d’Alché-Buc, F. Data sparse              and Applications. Cambridge University Press, 2022.
+  nonparametric regression with ϵ-insensitive losses. In
+  Asian Conference on Machine Learning (ACML), pp. 192–
+  207, 2017.
+
+Schölkopf, B., Smola, A., and Müller, K.-R. Nonlinear
+  Component Analysis as a Kernel Eigenvalue Problem.
+  Neural Computation, 10(5):1299–1319, July 1998. ISSN
+  0899-7667.
+
+Smola, A. J., Mangasarian, O. L., and Schölkopf, B. Sparse
+  kernel feature analysis. In Gaul, W. and Ritter, G. (eds.),
+  Classification, Automation, and New Media, pp. 167–178,
+  Berlin, Heidelberg, 2002. Springer Berlin Heidelberg.
+
+Stella, L., Themelis, A., Sopasakis, P., and Patrinos, P. A
+  simple and efficient algorithm for nonlinear model pre-
+  dictive control. In 2017 IEEE 56th Annual Conference
+  on Decision and Control (CDC), pp. 1939–1944, 2017.
+
+Tao, P. D. and An, L. T. H. Convex analysis approach to
+  DC programming: Theory, algorithms and applications.
+  Acta mathematica vietnamica, 22(1):289–355, 1997.
+
+Thiao, M., Dinh, T. P., and Thi, H. A. L. A DC program-
+  ming approach for sparse eigenvalue problem. In In-
+  ternational Conference on International Conference on
+  Machine Learning, 2010.
+
+                                                                  10
+                                             Extending Kernel PCA through Dualization
+
+A. Proofs
+A.1. Proof of Proposition 3.1
+Proof. Since f is proper closed convex, it holds that f = f ∗∗ , so equivalently we can write Problem 2 as
+                   inf g(W ) − sup {⟨V, ΓW ⟩ − f ∗ (V )} = inf g(W ) + inf {f ∗ (V ) − ⟨V, ΓW ⟩}                        (11)
+                  W ∈U            V ∈K                                     W ∈U                 V ∈K
+
+                                                                      =          inf      g(W ) + f ∗ (V ) − ⟨V, ΓW ⟩   (12)
+                                                                           W ∈U ,V ∈K
+
+                                                                      = inf f ∗ (V ) − sup {⟨Γ♯ V, W ⟩ − g(W )}         (13)
+                                                                           V ∈K                  W ∈U
+
+                                                                      = inf f ∗ (V ) − g (Γ V ).  ∗   ♯
+                                                                                                                        (14)
+                                                                           V ∈K
+
+
+
+
+A.2. Proof of Proposition 3.2
+We begin by expliciting a formula for Γ♯ .
+Lemma A.1. Let H ∈ Rn×s . Then                             " n                   #s
+                                                            X
+                                                  ♯
+                                                ΓH=                hij ϕ(xi )            ∈ Hs .
+                                                             i=1                   j=1
+
+
+Proof. Let W = [wj ]sj=1 ∈ Hs and H ∈ Rn×s . It holds that
+                                                               n X
+                                                               X s
+                                       ⟨H, ΓW ⟩Rn×s =                      hij [ΓW ]ij
+                                                               i=1 j=1
+                                                               Xn X s
+                                                           =               hij ⟨ϕ(xi ), wj ⟩H
+                                                               i=1 j=1
+                                                               s
+                                                                 * n                             +
+                                                               X  X
+                                                           =                 hij ϕ(xi ), wj
+                                                               j=1     i=1                            H
+                                                               *" n                     #s            +
+                                                                 X
+                                                           =               hij ϕ(xi )           ,W
+                                                                     i=1                  j=1             Hs
+which conludes the proof.
+                                                      √         
+We are now ready to prove that g ⋆ (Γ♯ H) = Tr             H ⊤ GH .
+
+Proof. Let W = [wj ]sj=1 ∈ Hs and H ∈ Rn×s .
+                                                                                 s
+                                                                                 X             n
+                                                                                               X
+                                   sup ⟨Γ♯ H, W ⟩Hs =                 sup              ⟨wj ,         hij ϕ(xi )⟩H
+                                 G(W )⋞Is                          G(W )⋞Is j=1                i=1
+                                                                ⊤
+Since H = Span ({ϕ(xi )}ni=1 )       (Span ({ϕ(xi )}ni=1 )) and using orthogonality properties, we can parameterize W using
+                                 L
+a matrix A ∈ Rn×s so that
+                                                                           n
+                                                                           X
+                                                      ∀j ∈ [s], wj =             aij ϕ(xi ).
+                                                                           i=1
+Then
+                                                          s X
+                                                          X   n             n
+                                                                            X
+                                         ♯
+                                     ⟨Γ H, W ⟩    Hs    =   ⟨   hij ϕ(xi ),   alj ϕ(xl )⟩H
+                                                            j=1 i=1                     l=1
+
+                                                        = Tr A⊤ GH.
+
+                                                                      11
+                                          Extending Kernel PCA through Dualization
+
+Moreover, G(W ) = A⊤ GA. We thus fall back on the problem
+
+                                                        sup        Tr A⊤ GH.
+                                                    A⊤ GA⋞Is
+
+                                               1
+By performing the change of variable B = G 2 A (possible since G is full rank), the problem becomes
+                                                                              1
+                                                        sup       Tr B ⊤ G 2 H.
+                                                    B ⊤ B⋞I   s
+
+
+
+We recognize the Fenchel-Legendre transform of the indicator of the convex hull of the unit ball for the spectral norm, which
+is known to be the Schatten 1-norm (also known as nuclear norm) that we denote ∥·∥S1 in what follows. We have thus
+proven that
+                                                                         1
+                                                   g ⋆ (Γ♯ H) = G 2 H                  .
+                                                                                  S1
+
+A simple application of the SVD decomposition then suffices to see that
+
+                                                    1
+                                                                         √
+                                                   G2 H           = Tr       H ⊤ GH,
+                                                          S1
+
+
+which conludes.
+
+A.3. Proof of Proposition 3.4
+                                                                                 √
+Proof. We begin√ by rewriting
+                        Ps p π(H) = R ◦ c(H) where R(X) = Tr X and c(H) = H GH. Note that
+                                                                                                        ⊤
+
+R(X) = P    Tr X =       i=1     λi (X), with λi (x) the i-th largest eigenvalue of X. Also, R(X) = r(λ(X)), with
+             s   √
+r(z) =       i=1 zi , where zi indicates the i-th component of z and λ(X) is the eigenvalues function defined as
+λ(X) = [λ1 (X), λ2 (X), . . . , λs (X)]⊤ . Note that r is symmetric to permutations, so R is a symmetric spectral func-
+tion over the set of symmetric matrices Ss . Therefore, the gradient of R is (see Theorem 1.1 in (Lewis, 1996)):
+
+                                             ∇R(X) = U ⊤ diag(∇r(λ(X)))U,                                               (15)
+
+with U any orthogonal matrix such that X = U ⊤ diag(λ(X))U . The gradient of r is
+
+                                                                1
+                                                        ∇r(z) = √ ,                                                     (16)
+                                                               2 z
+
+for z > 0 (which is the case for G positive definite and H full rank). Moreover
+
+                                                        ∇c(H) = 2GH.                                                    (17)
+
+Finally by the chain rule we have
+
+                                                                 1
+                                         ∇π(H) = 2GHU ⊤ diag( p          )U,                                            (18)
+                                                             2 λ(H ⊤ GH)
+
+where U ∈ Rs×s is any orthogonal matrix satisfying
+
+                                            H ⊤ GH = U ⊤ diag λ(H ⊤ GH) U.                                              (19)
+                                                                       
+
+
+Therefore,
+                                                   ∇π(H) = GHU ⊤ DU,                                                    (20)
+                                   
+with D = diag       √      1
+                                     .
+                        λ(H ⊤ GH)
+
+
+                                                                  12
+                                        Extending Kernel PCA through Dualization
+
+A.4. Proof of Proposition 3.7
+                                         √
+Proof. Writing the dual cost with H = Ur⊤ Σr , we get
+                1                             1
+                                 p                p         p         qp           p
+                  Tr(H ⊤ H) − Tr( (H ⊤ GH)) = Tr( Σr Ur Ur⊤ Σr ) − Tr(   Σr Ur GUr⊤ Σr )
+                2                             2
+                                              1            p
+                                            = Tr (Σr ) − Tr Σ2r
+                                              2
+                                                1
+                                            = − Tr (Σr ).
+                                                2
+As this quantity correspond to (minus) the primal cost and srong duality holds, then H is a dual solution.
+
+A.5. Proof of Proposition 3.6
+Proof. First remark that for all H ∈ Rn×s ,
+
+                                                 ∇J(H) = HH ⊤ H − GH.
+
+Let Ĥbe a critical point of the
+                                dual function, we denote by Ĥ GĤ = U SU the SVD of Ĥ GĤ. The condition
+                                                               ⊤       ⊤                ⊤
+                     2
+0 ∈ ∂ H 7→ 21 ∥H∥F − π(H) (Ĥ) implies that
+                                                                         1
+                                                      Ĥ = GĤU ⊤ S − 2 U
+
+Thus
+                                                                                 1
+                                                 Ĥ ⊤ Ĥ = Ĥ ⊤ GĤU ⊤ S − 2 U
+                                                                             1
+                                                        = U ⊤ SU U ⊤ S − 2 U
+                                                                   1
+                                                        = U ⊤ S 2 U,
+
+so that
+                                                       Ĥ Ĥ ⊤ Ĥ = GĤ,
+showing that ∇J(Ĥ) = 0, which concludes the proof.
+
+A.6. Proof of Proposition 3.8
+Proof. Let Ĥ be a solution to the dual problem. We know that the primal solution satisfies
+
+                                               Ŵ ∈      arg max        ⟨W, Γ♯ Ĥ⟩.
+                                                      W ∈Hs ,G(W )=Is
+                            Pn
+We can express each ŵj =     i=1 âij ϕ(xi ), and the problem becomes
+
+                                              max ⟨A, GĤ⟩ s.t. A⊤ GA = Is .
+                                             A∈Rn×s
+                                         1
+By doing the change of variables B = G 2 A, we want to solve
+                                                              1
+                                               max
+                                                 n×s
+                                                     ⟨B, G 2 Ĥ⟩ s.t. B ⊤ B = Is                             (21)
+                                              B∈R
+       1                                                  1
+Let G 2 Ĥ = V ⊤ SU be the SVD decomposition of G 2 Ĥ. We have that B̂ = V ⊤ U maximizes 21, which in turn gives
+         1
+Â = G− 2 V ⊤ U .
+We can now express Â using Ĥ, as
+                                                        1
+                                               Ĥ = G− 2 V ⊤ SU
+implies that
+                                                       ĤU ⊤ S −1 U = Â.
+Remarking that Ĥ ⊤ GĤ = U ⊤ S 2 U is the SVD of Ĥ ⊤ GĤ allows to conclude the proof.
+
+                                                                  13
+                                            Extending Kernel PCA through Dualization
+
+B. More Experimental Results
+B.1. Kernel Choice
+Numerical evaluations are conducted to assess the effect of different kernel functions. In fact, different kernels give different
+eigenspectra of the Gram matrix. In general, numerical algebra solvers’ accuracy and required number of iterations may
+depend on the eigenspectrum of G. For example, Randomized SVD (RSVD) is known to be less accurate with data matrices
+whose eigenspectrum decays slowly (Halko et al., 2011), which is often the case with real-world noisy data. On the other
+hand, in the main body we show that our method is mostly unaffected by the shape of the eigenspectrum of G.
+We conduct further experiments to verify that our method is effective when we use other kernels as well. The results in
+Table 5 below show the KPCA training time with Gaussian kernel, while in Table 2 in the main body the kernel was set as
+the Laplacian. The speedups are clear also with the Gaussian kernel.
+
+             Table 5: KPCA Training Time with Gaussian kernel for δ = 10−2 . Speedup factor w.r.t. RSVD.
+
+                                                                    Time (s)                   Speedup
+                          Task               n
+                                                    SVD      Lanczos      RSVD          Ours   Factor
+                          Synth 1         7000      87.33      1.05         3.04    0.56         5.41
+                          Protein        14895     979.84      3.86        10.61    1.08         9.81
+                          RCV1           20242        -       21.03        19.69    3.76         5.23
+                          CIFAR-10       60000        -       47.94       197.99    13.47       14.70
+
+Moreover, the results in Table 6 below show the test MSE on the corrupted Iris dataset used in Section 5.2 in the main body
+with Laplacian kernel, while in the main body was set as the Gaussian. The Huber loss shows improved robustness also with
+the Laplacian kernel.
+
+                    Table 6: MSE on contaminated Iris dataset using Huber loss with Laplacian kernel.
+
+                                                   1    2
+                                        τ          2 ∥·∥            Hκ2           Hκ1
+                                        10        3.024668     2.862165         2.762514
+                                        25        4.580805     4.415508         4.337033
+                                        50        8.998080     8.824152         8.808865
+                                        75       15.695008    15.507481        15.590248
+                                        100      24.671558    24.671039        24.671153
+
+
+B.2. Comparative Analysis
+We conduct comparative experiments between our sparse/robust KPCA with recent sparse/robust KPCA methods. First,
+we compare with ℓ2,1 -RKPCA (Wang & Tanaka, 2020b) and with L1-KPCA (Kim & Klabjan, 2020), which are recent
+relevant robust KPCA methods from the literature that have been shown experimentally to exhibit good robustness for this
+task. The hyperparameter in (Wang & Tanaka, 2020b), which controls the importance of the ℓ2,1 -norm penalization term,
+is selected in the range suggested by the authors in their paper. In Table 7, we report reconstruction error (MSE) for the
+Iris data, contaminated as described in Section 5.2 in the main body for multiple noise levels. Higher MSE means that the
+learned subspace is influenced by the outliers, while lower MSE corresponds to more robust models.
+Additionally, we compare with SSKPCA (Guo et al., 2019a) and with SKPCA (Wang & Tanaka, 2016), which are recent
+relevant sparse KPCA methods from the literature. In Table 8, the reconstruction error ratio is the ratio between the
+reconstruction error using the components learned with the corresponding sparse KPCA method and the reconstruction error
+from the dense problem. Ratios closer to 1 are better. The settings and dataset are the ones from Section 5.3 in the main
+body. The sparsity parameter λ in SKPCA and γ in SSKPCA are selected to obtain a fixed sparsity percentage in the matrix
+of coefficients.
+The robust KPCA in (Kim & Klabjan, 2020) uses L1-norm KPCA, i.e., maximizing variance with respect to the L1-norm,
+while we consider variance-like objectives with infimal convolution with the squared norm, so we can recover the standard
+
+                                                               14
+                                        Extending Kernel PCA through Dualization
+
+                           Table 7: Robust KPCA comparison. MSE on contaminated Iris dataset.
+
+                                                                      2
+                       τ       ℓ2,1 -RKPCA      L1-KPCA          1
+                                                                 2 ∥·∥            Hκ2             Hκ1
+                       10         6.965341       6.829537     7.591059       6.833484        7.381284
+                       25         7.437400       7.598856     7.910846       7.182663        7.687518
+                       50         8.113397       8.085395     8.691805       8.045477        8.430957
+                       75         9.734140       9.547392     9.782740       9.259353        9.465706
+                       100       10.934794      10.855314    11.183650      10.824293       10.791766
+
+                              Table 8: Sparse KPCA comparison. Reconstruction error ratio.
+
+                                 Sparsity (%)   SKPCA       SSKPCA          ℓ2ϵ           ℓ∞
+                                                                                           ϵ
+
+                                 10             1.19053     1.17019       1.04675       1.01685
+                                 20             1.67440     1.18649       1.06966       1.03824
+                                 30             1.83307     1.18794       1.08153       1.04247
+                                 40             2.30358     1.20480       1.09440       1.06308
+                                 50             2.75248     1.22205       1.10164       1.08127
+
+
+KPCA as a special case. The method in (Wang & Tanaka, 2020b) introduces extra variables and multiple ℓ2,1 -norm
+penalizations in the objective and consequently multiple penalty hyperparameters which makes it harder to tune than our
+proposed method with a single parameter κ; the optimization is performed with alternating updates with three additional
+optimization subproblems, which require to compute the SVD of an n × s matrix at each iteration. SKPCA (Wang & Tanaka,
+2016) and SSKPCA (Guo et al., 2019a) relax and modify KPCA to use ElasticNet optimization for promoting sparsity. To
+get sparsity, SKPCA make use of the matrix G−1/2 , which requires computing the full SVD of G, and SSKPCA’s iterative
+algorithm is initialized with the top s eigenvectors of G, requiring to compute the truncated SVD of G. In comparison, we
+get sparsity without performing such costly operation, as our modelling considers the SVD of the much smaller s × s matrix
+H ⊤ GH. Overall, our formulation performs similarly without having to compute the full SVD.
+
+
+
+
+                                                            15
+

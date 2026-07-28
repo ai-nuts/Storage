@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: The paper introduces a semantics-aware notion of adversarial robustness for node classification and defines over-robustness, unwanted robustness against perturbations that have already changed the ground-truth label.
+
+Supporting detail: Using Contextual Stochastic Block Models it quantifies how often common threat models violate semantics, shows all tested GNNs are over-robust, demonstrates that label propagation reduces over-robustness, and proves there is no robustness-accuracy tradeoff for inductively classifying a newly added node.
+
+Narration: The paper makes four contributions. First, it defines a semantics-aware notion of adversarial robustness for node-level predictions, and with it a brand new concept for the graph domain called over-robustness, which is robustness against admissible perturbations whose ground-truth label has already changed. Second, using Contextual Stochastic Block Models it shows that common perturbation sets contain a large fraction of graphs with changed semantics and that every examined GNN is significantly over-robust, with matching patterns on real-world graphs. Third, it shows that folding the known label structure into inference through label propagation significantly reduces over-robustness with no cost to accuracy or adversarial robustness. Fourth, it proves that classifying an inductively sampled node carries no robustness-accuracy tradeoff.

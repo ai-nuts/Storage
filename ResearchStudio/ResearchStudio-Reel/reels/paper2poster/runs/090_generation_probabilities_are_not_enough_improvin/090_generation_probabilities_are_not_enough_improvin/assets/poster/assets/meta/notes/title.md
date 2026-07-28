@@ -1,0 +1,3 @@
+# Title
+
+AI code assistants like Copilot suggest completions, but they make mistakes, and programmers have to catch those mistakes before they turn into bugs. One popular idea is to highlight the tokens the model was least confident about, so a person knows where to look. This paper asks a sharp question: are those generation probabilities actually the right thing to highlight? Through a preregistered study with thirty programmers, the authors compare highlighting low-probability tokens against a new edit model that instead predicts which tokens a person is likely to change. The edit model wins on speed, precision of edits, and user preference, showing that generation probabilities alone are not enough.

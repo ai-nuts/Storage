@@ -1,0 +1,1 @@
+Two halves. Empirically, each composite task is tested in four settings with ten in-context examples: each simple task alone, a composite test with simple-task demos, and an all-composite gold standard. Theoretically, a linear self-attention model shows composition succeeds under confined support.

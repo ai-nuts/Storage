@@ -1,0 +1,1 @@
+Can large language models combine skills they already know? This COLM 2024 paper tests whether models solve an unseen composite task by fusing two simple tasks seen separately. Across Llama and GPT, a sharp dichotomy emerges.
