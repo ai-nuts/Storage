@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A table-biased transformer encoder (using a row-column visibility matrix and within-cell positional encoding) produces context-sensitive token representations, and a classification decoder assigns IO NER tags over the entity types TAG, EQ, QUANT, and UoM. Pool-based active learning then iteratively selects batches of the most informative cells for an oracle to label.
+
+Supporting detail: Four cell-level acquisition functions are compared: MNLP (pure uncertainty via maximized normalized log-probability), MNLP+ (MNLP plus a forced round-robin maximum-table-diversity constraint), BADGE (k-MEANS++ over per-cell gradient embeddings for batch diversity), and Rand (uniform random cells) as a baseline.
+
+Narration: The model is a tabular language model: a transformer encoder that swaps vanilla attention for a row-column visibility matrix with within-cell positional encoding, so every token is aware of the whole table. A decoder tags each token over four entity types: equipment tags, equipment names, physical quantities, and units. On top sits pool-based active learning, repeatedly picking the most informative cells for an expert to label. Four acquisition functions compete: MNLP scores normalized log-probability uncertainty; MNLP-plus forces round-robin table diversity; BADGE clusters per-cell gradient embeddings with k-means-plus-plus for uncertain, diverse batches; and Rand samples uniformly.

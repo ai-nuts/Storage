@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Given rewards R, an ε-optimal expert policy πϵ, and batch data D, the method builds constraints (from the closed-form Bellman equations) requiring that expert actions out-value never-taken actions, so any T satisfying them recovers the expert's "ε-ball" structure. It places a Dirichlet-Multinomial posterior P(T|D) over the dynamics and uses rejection sampling to keep only samples that satisfy the constraints, giving the clipped posterior P(T|D, πϵ).
+
+Supporting detail: Separate constraint sets handle a fully optimal expert and a sub-optimal (stochastic-policy) expert; a tunable slack δ per state-action enforces the ε-ball property even where action non-linearity would otherwise break it (Algorithm 1).
+
+Narration: Given the rewards, an epsilon optimal expert policy, and the batch data, we use the closed form Bellman equations to write constraints that demand the value of actions the expert takes exceed the value of actions the expert never took. Any dynamics satisfying these constraints recovers what we call the expert's epsilon ball structure. We then place a Dirichlet multinomial posterior over the dynamics and use rejection sampling, keeping only the samples that satisfy the constraints. The surviving samples form a clipped posterior that respects the expert's knowledge. Separate constraint sets handle a fully optimal expert and a partially uncertain one, with a tunable slack term that enforces the structure even where action non linearity would otherwise break it.

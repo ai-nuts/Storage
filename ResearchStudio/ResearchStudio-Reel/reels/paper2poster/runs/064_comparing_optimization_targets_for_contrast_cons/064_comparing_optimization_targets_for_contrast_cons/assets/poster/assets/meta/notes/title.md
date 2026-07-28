@@ -1,0 +1,3 @@
+# Title
+
+Contrast-Consistent Search, or CCS, is an unsupervised probe that reads a language model's sense of truth from its activations. But what does CCS actually optimize? This paper explains its target and derives a new loss, Midpoint-Displacement, that matches CCS and can beat it.

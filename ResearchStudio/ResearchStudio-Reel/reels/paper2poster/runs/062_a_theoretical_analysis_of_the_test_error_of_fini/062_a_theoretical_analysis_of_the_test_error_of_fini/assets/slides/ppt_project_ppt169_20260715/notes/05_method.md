@@ -1,0 +1,1 @@
+The method starts from the kernel-ridge estimator and splits the test error into a bias term and a variance term, each bounded with high probability. The key ingredients: careful algebra on the ridge terms, a sub-Gaussian covariance concentration inequality, and a Neumann-series expansion. That lets the bounds hold for any ridge value.

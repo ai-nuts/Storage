@@ -1,0 +1,1 @@
+This work sharply analyzes the test error of finite-rank kernel ridge regression, the model behind tuning a frozen network's last layer. It derives matching upper and lower bounds that stay tight for any regularization.

@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Automatic clipping replaces Abadi's clipping factor min(R/||g||, 1) with a pure normalization R/||g||, called AUTO-V. To preserve gradient magnitude and escape the resulting "lazy region," AUTO-S divides by ||g|| + gamma with a small stability constant gamma. Because any constant R rescales into the learning rate, R is fixed to 1, leaving a threshold-free optimizer.
+
+Supporting detail: AUTO-V maximizes dot-product similarity between the private and true gradient but is scale-invariant, so small gradients cannot vanish; the gamma in AUTO-S restores magnitude so clipped gradients approach g/gamma as g -> 0, enabling convergence to zero gradient norm.
+
+Narration: The idea starts from a simple observation: when the threshold is small, Abadi's clipping factor, the minimum of R over the gradient norm and one, is almost always just R over the gradient norm. So the authors drop the minimum entirely and normalize every per-sample gradient, a variant they call AUTO-V for vanilla. This maximizes alignment between the private and true gradient, but it makes all gradients the same size, creating a lazy region where updates stall. To fix this they add a small stability constant gamma in the denominator, giving AUTO-S: R divided by the gradient norm plus gamma. This preserves relative magnitudes, letting small gradients shrink toward zero. Finally, because any constant threshold simply rescales the learning rate, they fix R to one, and set gamma to a default of zero point zero one, leaving a fully threshold-free optimizer.

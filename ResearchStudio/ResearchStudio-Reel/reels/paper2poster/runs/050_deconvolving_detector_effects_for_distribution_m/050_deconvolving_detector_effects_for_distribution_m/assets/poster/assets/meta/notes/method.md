@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Each synthetic event is a pair (X_T, X_D) of pre-detector 'generation' and post-detector 'simulation'. A generator g reweights the generation so that, after detector emulation, the reweighted simulation becomes statistically indistinguishable from the observed data, as judged by a discriminator d trained on a weighted binary cross-entropy loss.
+
+Supporting detail: g is parametrized as the exponential of a degree-n polynomial with only n trainable parameters {λ_i} identified with the moments; d has three hidden layers of 50 ReLU nodes with a sigmoid output. The generator maximizes the loss while the discriminator minimizes it, mirroring a GAN, and detector emulation is run only once because reweighting changes importance weights rather than features.
+
+Narration: The method borrows Boltzmann's idea of building the distribution that maximizes entropy subject to fixed moments. Concretely, the generator is written as the exponential of a polynomial in the observable, so its coefficients, the lambdas, are the moments being unfolded. This generator reweights the simulated events, and a discriminator neural network tries to tell the reweighted simulation apart from the real data. The two are trained against each other on a weighted binary cross-entropy loss: the discriminator minimizes it while the generator maximizes it. Because the reweighting only changes importance weights and not the event features, the expensive detector emulation runs a single time.

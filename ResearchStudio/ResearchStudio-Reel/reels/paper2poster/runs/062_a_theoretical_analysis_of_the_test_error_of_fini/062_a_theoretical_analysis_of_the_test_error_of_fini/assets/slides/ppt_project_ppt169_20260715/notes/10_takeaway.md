@@ -1,0 +1,1 @@
+The takeaway: finite-rank kernel ridge regression, behind last-layer fine-tuning, has sharp bounds, matching upper and lower, tight for any regularization including none. The key idea, working in the eigenfunction basis to separate spectrum from sampling noise, is a template others can borrow.

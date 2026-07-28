@@ -1,0 +1,3 @@
+# Title
+
+Social navigation robots have to move safely through crowds, and that means perceiving and predicting the paths of the people around them. This paper introduces the SiT dataset, short for Socially Interactive Pedestrian Trajectory. Unlike earlier trajectory datasets captured from fixed rooftop cameras or from cars driving on separate roads, SiT was recorded by a mobile robot navigating densely populated indoor and outdoor spaces in downtown Seoul, capturing genuine human-robot interaction up close. It ships synchronized LiDAR, camera, IMU, and RTK data with 2D and 3D annotations, semantic maps, and a full benchmark spanning 3D detection, tracking, trajectory prediction, and end-to-end motion forecasting.

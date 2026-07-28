@@ -1,0 +1,1 @@
+Safely deploying capable models means catching confident falsehoods, and probes that read a model's own truth representation could help, but only if we understand them. CCS was explained through clustering activations and learning probabilities. The authors argue both pictures mislead, motivating a cleaner account of its target.

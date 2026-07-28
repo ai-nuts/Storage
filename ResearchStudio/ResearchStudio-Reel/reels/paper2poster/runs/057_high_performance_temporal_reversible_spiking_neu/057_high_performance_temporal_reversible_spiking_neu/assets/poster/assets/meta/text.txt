@@ -1,0 +1,1181 @@
+                                             High-Performance Temporal Reversible Spiking Neural Networks with O(L)
+                                                           Training Memory and O(1) Inference Cost
+
+
+                                             Jiakui Hu∗ 1 Yao Man∗ 2 Xuerui Qiu 3 Yuhong Chou 4 Yuxuan Cai 5 Ning Qiao 6 Yonghong Tian 1 7 Bo Xu 2
+                                                                                         Guoqi Li† 2 8
+
+                                                                     Abstract                                   1. Introduction
+arXiv:2405.16466v1 [cs.NE] 26 May 2024
+
+
+
+
+                                                  Multi-timestep simulation of brain-inspired Spik-             Spiking Neural Networks (SNNs) are promised to be a low-
+                                                  ing Neural Networks (SNNs) boost memory re-                   power alternative to Artificial Neural Networks (ANNs),
+                                                  quirements during training and increase inference             thanks to their brain-inspired neuronal dynamics and spike-
+                                                  energy cost. Current training methods cannot si-              based communication (Roy et al., 2019; Schuman et al.,
+                                                  multaneously solve both training and inference                2022). Spiking neurons fuse spatio-temporal information
+                                                  dilemmas. This work proposes a novel Temporal                 through intricate dynamics and fire binary spikes as outputs
+                                                  Reversible architecture for SNNs (T-RevSNN) to                when their membrane potential crosses the threshold (Maass,
+                                                  jointly address the training and inference chal-              1997). Spike-based communication enables the event-driven
+                                                  lenges by altering the forward propagation of                 computational paradigm of SNNs and has extremely high
+                                                  SNNs. We turn off the temporal dynamics of most               power efficiency in neuromorphic chips such as TrueNorth
+                                                  spiking neurons and design multi-level temporal               (Merolla et al., 2014), Loihi (Davies et al., 2018), Tianjic
+                                                  reversible interactions at temporal turn-on spik-             (Pei et al., 2019), and Speck (Yao et al., 2024b).
+                                                  ing neurons, resulting in a O(L) training memory.
+                                                                                                                By discretizing the nonlinear differential equation of spiking
+                                                  Combined with the temporal reversible nature, we
+                                                                                                                neurons into iterative versions (Wu et al., 2018; Neftci et al.,
+                                                  redesign the input encoding and network organi-
+                                                                                                                2019), SNNs can be trained directly using BackPropagation
+                                                  zation of SNNs to achieve O(1) inference energy
+                                                                                                                Through Time (BPTT) and surrogate gradient (Wu et al.,
+                                                  cost. Then, we finely adjust the internal units and
+                                                                                                                2018; Neftci et al., 2019). Multi-timestep simulation re-
+                                                  residual connections of the basic SNN block to
+                                                                                                                quires a memory of O(L × T ) for SNN training, where L is
+                                                  ensure the effectiveness of sparse temporal infor-
+                                                                                                                the layer and T is the timestep. In particular, in static vision
+                                                  mation interaction. T-RevSNN achieves excellent
+                                                                                                                tasks, such as image classification, it is common practice
+                                                  accuracy on ImageNet, while the memory effi-
+                                                                                                                (Wu et al., 2019; Deng et al., 2020; Kim et al., 2022; Yao
+                                                  ciency, training time acceleration, and inference
+                                                                                                                et al., 2023d; Rathi & Roy, 2023) to exploit the dynamics of
+                                                  energy efficiency can be significantly improved
+                                                                                                                SNNs by repeating the inputs to achieve high performance.
+                                                  by 8.6×, 2.0×, and 1.6×, respectively. This work
+                                                                                                                In this case, the inference energy is O(T ).
+                                                  is expected to break the technical bottleneck of
+                                                  significantly increasing memory cost and train-               As an example, training spiking ResNet-19 with 10 timestep
+                                                  ing time for large-scale SNNs while maintaining               takes about 20× more memory than ResNet-19 (Fang et al.,
+                                                  high performance and low inference energy cost.               2023). Numerous efforts have been made to solve the mem-
+                                                  Source code and models are available at: https:               ory dilemma. The mainstream idea is to decouple the train-
+                                                  //github.com/BICLab/T-RevSNN.                                 ing of SNNs from the timestep, e.g., modify the way the
+                                                                                                                BPTT in the temporal (Xiao et al., 2022; Meng et al., 2023;
+                                              *
+                                              Equal contribution 1 Peking University, Beijing, China            Eshraghian et al., 2023), training with T = 1 and fine-tune
+                                         2
+                                           Institute of Automation, Chinese Academy of Sciences, Bei-           to multiple timesteps (Lin et al., 2022; Yao et al., 2023d).
+                                         jing, China 3 School of Future Technology, University of Chinese       With respect to scaling down timesteps during inference,
+                                         Academy of Sciences 4 Department of Computing, The Hong Kong           one idea is to fine-tune a trained multi-timestep model to a
+                                         Polytechnic University, HongKong, China 5 01.AI, Beijing, China
+                                         6                                                                      single timestep (Chowdhury et al., 2021), or employ addi-
+                                           SynSense AG Corporation, Zurich, Switzerland 7 Peng Cheng Lab-
+                                         oratory, Shenzhen, Guangzhou, China 8 Key Laboratory of Brain          tional controllers to adjust inference timesteps adaptively
+                                         Cognition and Brain-inspired Intelligence Technology, Beijing,         (Yao et al., 2021; Li et al., 2023; Ding et al., 2024).
+                                         China. Correspondence to: Guoqi Li <guoqi.li@ia.ac.cn>.
+                                                                                                                However, none of them can simultaneously achieve cheap
+                                         Proceedings of the 41 st International Conference on Machine           training memory and low inference energy because they
+                                         Learning, Vienna, Austria. PMLR 235, 2024. Copyright 2024 by           tend to optimize only in one direction. In this work, we
+                                         the author(s).
+
+                                                                                                            1
+                                                                                                       Encode
+         Spatial Forward Propagation         Temporal Forward Propagation
+                                                                                                        Layer
+                                 Temporal                                                                                      𝑡=𝑇
+                                                                                       𝑡=1                    𝑡=2
+                                                                                         Sub-             Sub-              Sub-
+          Input        Spatial                                                         network 1        network 2         network T       𝑡
+
+
+
+
+                                                                                   …
+
+
+
+
+                                                                                                   …
+
+
+
+
+                                                                                                                                      …
+                                  …
+
+
+
+
+                                               …
+
+
+
+
+                                                                 …
+    …
+
+
+
+
+                                         …
+
+
+
+
+                                                     …
+
+
+
+
+                                                             …
+                                                         …
+                                                                                                                      …
+
+
+
+
+                                                                                                   +
+
+
+
+
+                                                                                                                                      +
+                 Unfold along
+                 the temporal
+                  dimension
+
+
+
+
+                                                                                   …
+
+
+
+
+                                                                                                   …
+
+
+
+
+                                                                                                                                      …
+    …
+
+
+
+
+                                  …
+
+
+
+
+                                               …
+
+
+
+
+                                                                 …
+                                         …
+
+
+
+
+                                                     …
+
+
+
+
+                                                             …
+                                                         …
+                                                                                                                      …
+
+
+
+
+                                                                                                   +
+
+
+
+
+                                                                                                                                      +
+                                                                                   …
+
+
+
+
+                                                                                                   …
+
+
+
+
+                                                                                                                                      …
+                                  …
+
+
+
+
+                                               …
+
+
+
+
+                                                                 …
+    …
+
+
+
+
+                                         …
+
+
+
+
+                                                     …
+
+
+
+
+                                                             …
+                                                         …
+
+        Output                                                                                                        …
+
+
+
+
+                                                                                                   +
+
+
+
+
+                                                                                                                                      +
+                                   (a)                                                                          (b)
+Figure 1. Illustration of the temporal forward of vanilla SNN and T-RevSNN. (a) Vanilla SNNs unfold along the temporal, reusing all
+parameters at each timestep. All spiking neurons accomplish the temporal dynamics. In the image classification task, images are input
+repeatedly. Thus, the memory and inference costs of vanilla SNNs are O(L × T ) and O(T ), respectively. (b) In T-RevSNN, we only
+allow the key spiking neurons (red spiking neurons in the figure) to pass temporal information. Coupled with the multi-level temporal
+reversible design, the memory cost of T-RevSNN is O(L). Moreover, the image is encoded only once. The encoded features are divided
+into T groups, exploited as input for each timestep. Correspondingly, the entire SNN is also divided into T independent sub-networks,
+which only share parameters and transfer temporal information at key spiking neurons. Thus, the inference of T-RevSNN is O(1).
+
+can shoot two birds with one stone via a novel temporal                  be altered by their forward, resulting in cheap memory and
+reversible architecture for SNNs. Our motivation is simple               inference costs concurrently.
+and intuitive. It has been shown that the BPTT of SNNs
+                                                                         We verify the effect of T-RevSNN on static (ImageNet-1k
+through the temporal contributes just a little to the final
+                                                                         (Deng et al., 2009)) and neuromorphic datasets (CIFAR10-
+gradients. Xiao et al. (2022) and Meng et al. (2023) there-
+                                                                         DVS (Li et al., 2017) and DVS128 Gesture (Amir et al.,
+fore do not calculate temporal gradients to improve training
+                                                                         2017)). Our contributions are:
+speed. That being the case, can we only retain the temporal
+forward at key positions and turn off the temporal dynamics
+of other spiking neurons?                                                   • We redesign the forward propagation of SNNs simply
+                                                                              and intuitively to simultaneously achieve low training
+Based on this simple idea, we design temporal reversible
+                                                                              memory, low power, and high performance.
+SNNs (Fig. 1(b)). First, to reduce training memory, we
+only turn on the temporal dynamics of the output spiking
+layer of each stage and design the temporal transfer to be                  • We have made systematic designs in three aspects to
+reversible. Specifically, reversibility (Gomez et al., 2017)                  implement the proposed idea, including multi-level
+means that we do not need to store the membrane potentials                    temporal-reversible forward information transfer of
+and activations of all spiking neurons to compute gradients.                  key spiking neurons, group design of input encoding
+Second, since turned-off spiking neurons have no tempo-                       and network architecture, and improvements in SNN
+ral dynamics, we simply let these neurons no longer reuse                     blocks and residual connections.
+parameters in the temporal dimension. In order not to in-
+crease parameters and energy cost, we encode the input only                 • On ImageNet-1k, our model achieves state-of-the-art
+once and divide the input features and the entire network                     accuracy on CNN-based SNNs with minimal memory
+into T groups (Fig. 1(b)). Third, to improve performance,                     and inference cost and the fastest training. Compared
+the information transfer between stages is carried out in a                   to current Transformer-based SNN with state-of-the-art
+multi-level form. We also redesign the SNN blocks in the                      performance, i.e., spike-driven Transformer (Yao et al.,
+style of ConvNeXt (Liu et al., 2022) and adjust the residual                  2023b), our model achieves close accuracy, while the
+connection to ensure the effectiveness of information trans-                  memory efficiency, training time acceleration, and in-
+fer. In summary, the backward propagation of SNNs will                        ference energy efficiency can be significantly improved
+                                                                              by 8.6×, 2.0× and 1.6×, respectively.
+
+                                                                     2
+2. Related Work                                                       Zhang, 2024), which is spatially reversible and we named it
+                                                                      S-RevSNN. In contrast, our method is temporal-reversible.
+Training of SNNs. The two primary deep learning tech-
+niques for SNNs are ANN-to-SNN conversion (ANN2SNN)
+(Wu et al., 2021a; Hu et al., 2023a) and direct training (Wu          3. Preliminaries
+et al., 2018; Neftci et al., 2019). The ANN2SNN method                Spiking neurons have neuronal dynamics that enable spatio-
+approximates the activations in ANNs using firing rates in            temporal information processing. The dynamics of spiking
+SNNs. It can achieve accuracy close to ANNs, but cor-                 neurons can be characterized (Xiao et al., 2022):
+rect firing rate estimation takes a lot of timesteps (Sengupta
+et al., 2019; Rathi et al., 2020; Hu et al., 2023b; Wu et al.,
+2021a; Wang et al., 2023b; Guo et al., 2023). The direct                                      1              1
+                                                                         V l [t + 1] = (1 −      )V l [t] +    Wl S l−1 [t + 1],   (1)
+training approach uses the surrogate gradient to solve the                                  τm              τm
+non-differentiable problem caused by binary spike firing.                S l [t + 1] = Θ(V l [t + 1] − Vth ),                      (2)
+Through the BPTT, SNNs’ training only requires a few
+timesteps. There is a performance gap between directly                where l = 1, · · · , L is the layer index, t is the timestep,
+training SNNs and ANNs, which has been shrinking (Fang                S l−1 [t] and V l [t−1] are the spatial input spikes and the tem-
+et al., 2021a; Hu et al., 2024; Yao et al., 2023d; Zhou et al.,       poral membrane potential input respectively, Wl is synaptic
+2023; Yao et al., 2023b; Qiu et al., 2023). In this work, we          weight, τm is the decay factor, Vth is the threshold. The
+focus on direct training.                                             Heaviside step function is denoted by Θ(x). For every
+Improvement of Architecture and Training in SNNs.                     x ≥ 0, Θ(x) = 1; otherwise, Θ(x) = 0. The input spatio-
+SNNs have become larger and deeper. This is due to im-                temporal information is incorporated into V l [t] and then
+provements in architecture and training. Spiking ResNet               compared with the threshold to decide whether to fire spikes.
+(Hu et al., 2024; Fang et al., 2021a) and Transformer (Zhou           Spatio-Temporal BackPropagation (STBP) is a combi-
+et al., 2023; Yao et al., 2023b) are two benchmark archi-             nation of BPTT and surrogate gradient (Wu et al., 2018;
+tectures, inspired by classic ResNet (He et al., 2016b;a)             Neftci et al., 2019), where the latter is used to solve the non-
+and Transformer (Vaswani et al., 2017; Dosovitskiy et al.,            differentiable of spike signals. Specifically, the gradients
+2021), respectively. Various training methods have been pro-          for weight Wl at timestep T is calculated by
+posed to improve accuracy, such as normalization (Zheng
+                                                                                               T
+et al., 2021; Kim & Panda, 2021; Duan et al., 2022), gra-                                      X    ∂L ⊤ l−1 ⊤
+                                                                                   ∇W l L =        (  l [t]
+                                                                                                            ) S [t]                (3)
+dient optimization (Perez-Nieves & Goodman, 2021; Lian                                             ∂V
+                                                                                               t=1
+et al., 2023), attention (Yao et al., 2021; Qiu et al., 2024;
+Deng et al., 2024; Yao et al., 2023a;c), membrane optimiza-           where L is the loss. It can be calculated by:
+tion (Guo et al., 2022a;b;c). The memory required to train                ∂L         ∂L ∂S l [t]          ∂L      ∂V l [t + 1]
+large-scale SNNs is much higher than that of ANNs because                         =                  +                         , (4)
+                                                                         ∂V l [t]   ∂S l [t] ∂V l [t] ∂V l [t + 1] ∂V l [t]
+of the storage of activation values over multiple timesteps.
+                                                                      where
+Some works are devoted to reducing the memory cost for
+training, including Online Training Through Time (OTTT)                 ∂L          ∂L ∂V l+1 [t]           ∂L      ∂V l [t + 1]
+                                                                                =                     +                          .
+(Xiao et al., 2022), Spatial Learning Through Time (SLTT)              ∂S l [t]   ∂V l+1 [t] ∂S l [t]   ∂V l [t + 1] ∂S l [t]
+(Meng et al., 2023), etc. We compare our T-RevSNN with                                                                         (5)
+these training optimization methods in Section 4.4.                                               ∂S [t] l
+                                                                      The non-differentiable term ∂V l [t] is the spatial gradient.
+Reversible Neural Networks. The goal of reversible neu-                                                                    l
+
+ral networks (Gomez et al., 2017) is to reduce memory                 It can be replaced by the surrogate function. ∂V∂S[t+1]
+                                                                                                                         l [t] and
+                                                                      ∂V l [t+1]
+cost when training the network. The core idea is that the              ∂V l [t]
+                                                                                 are the temporal gradients that need to be calcu-
+activations of each layer can be calculated based on the              lated. According to Eq. 3 and Eq. 4, exploiting the STBP
+subsequent reversible layer’s activations. This enables a             algorithm requires storing the activations and membrane
+reversible neural network to perform backpropagation with-            potentials of all spiking neurons at all timesteps.
+out storing the activations in memory, with the exception of
+a few non-reversible layers. The reversible idea has been
+applied to various architectures, such as Recurrent Neural
+                                                                      4. Methods
+Networks (RNNs) (MacKay et al., 2018), ResNet (Sander                 4.1. Motivation
+et al., 2021; Cai et al., 2023), vision transformer (Mangalam
+et al., 2022), U-Net (Brügger et al., 2019), etc. Recently,          Previous works (Xiao et al., 2022; Meng et al., 2023) ob-
+the idea of reversibility has been applied to SNN (Zhang &            served that the spatial gradients dominate the final calcu-
+                                                                      lation of derivatives. Thus, they abandon the calculation
+
+                                                                  3
+                      1                                                                                                         1
+                                                                                                                                                              T=12,tau=5.0       T=12,tau=2.0       T=12,tau=1.1
+ Cosine Similarity
+
+
+
+
+                                                                                                           Cosine Similarity
+                     0.8                                                                                                       0.8
+                                                                                                                                                              T=6,tau=5.0        T=6,tau=2.0        T=6,tau=1.1
+                     0.6                                                                                                       0.6
+                     0.4                                                                                                       0.4
+                                                  T=12,tau=5.0        T=12,tau=2.0        T=12,tau=1.1
+                     0.2                                                                                                       0.2
+                                                  T=6,tau=5.0         T=6,tau=2.0         T=6,tau=1.1
+                      0                                                                                                         0
+                           1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29                              1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29
+                                                         Epoch                                                                                                       Epoch
+
+Figure 2. Left and Right sub-figures are the cosine similarity between the spatial gradients calculated by baseline and case 1/2, respectively.
+In case 1/2, we only retain/discard the temporal gradients of the last layer of spiking neurons in each stage. We use spiking ResNet-18
+to train on CIFAR-10. T and τ are Timestep and decay, respectively. The temporal gradients of the final layer of each stage are more
+significant (Case 1, left sub-figure, high cosine similarity) than those of spiking neurons in preceding stages (Case 2, right sub-figure, low
+cosine similarity). Due to space constraints, cosine similarity calculation details are given in the supplementary material.
+                                                                                                                                                    Timestep 𝑡 − 1                              Timestep 𝑡
+of temporal gradients to speed up training. In contrast, our
+idea is to turn off the forward propagation of most spiking
+neurons in time, so that the computation of the temporal gra-                                                                                   Layer           Conv                               Conv
+dient is naturally drastically reduced. Building upon these                                                                                     𝑙−3
+                                                                                                                                      Stage                    Conv                                Conv
+insights, we analyze which spiking neurons are relatively                                                                                       Layer
+                                                                                                                                      𝑚−1       𝑙−2
+important for temporal information transfer.
+                                                                                                                                                Layer           Conv                               Conv
+We set up the following experiments. We first use STBP                                                                                          𝑙−1
+to train SNN on CIFAR-10. The calculated gradient is                                                                                                           Conv                                Conv
+called the “baseline gradient”, which needs to maintain the                                                                                                                      𝜏1
+                                                                                                                                              Layer 𝑙
+
+
+
+
+                                                                                                                                                                                                     +
+spatial and temporal computational graph of the previous
+timestep. In general, a typical neural network is divided into
+four stages, and the feature levels of each stage are various                                                                                   Layer           Conv                               Conv
+(He et al., 2016b). An intuitive idea is that the transfer of                                                                                   𝑙+1
+temporal information at the junction of two stages in SNNs                                                                                                      Conv                  𝜏2           Conv
+                                                                                                                                      Stage     Layer
+may be important. Thus, we train two other SNNs using                                                                                   𝑚       𝑙+2
+STBP. One (Case 1) discards most of the temporal gradients                                                                                      Layer           Conv                               Conv
+during training, retaining only the temporal gradients of                                                                                       𝑙+3
+the last layer in each stage. The other (Case 2) adopts the                                                                                                     Conv                               Conv
+opposite behavior, discarding only the temporal gradient of
+the last spiking neuron layer of each stage.
+                                                                                                                                      Figure 3. Temporal-reversible connection in T-RevSNN.
+Then, we compare the difference between the baseline, case
+1, and case 2 by calculating the cosine similarity of the
+                                                                                                                               and the weight update depends solely on the spatial gradient:
+spatial gradient across the network. Results are shown in
+Fig. 2. The similarity in the left sub-figure (comparison                                                                                         T
+                                                                                                                                                  X          ∂L        ∂V l+1 [t] ∂S l [t] ⊤ l−1 ⊤
+between baseline and case 1) has always maintained a high                                                                        ∇W l L =           (                                     ) S [t] (7)
+level, especially as the training epochs increase. In contrast,                                                                                   t=1
+                                                                                                                                                         ∂V l+1 [t]     ∂S l [t] ∂V l [t]
+The similarity in the right sub-figure (comparison between
+baseline and case 2) is always small. Thus, the temporal                                                                       When updating turn-off spiking neuron weights Wl , the
+gradients of the final layer of each stage are more significant                                                                gradient needs to be calculated on the sub-network at each
+than those of spiking neurons in preceding stages.                                                                             timestep. We disable weight reuse of turn-off spiking neu-
+                                                                                                                               rons in the temporal dimension. Therefore, the gradients for
+                                                                                                                               weight Wl [t] at layer l, timestep t can be simplified by
+4.2. Temporal-Reversible Spike Neuron
+Based on the above analysis, we only turn on the temporal                                                                                                  ∂L        ∂V l+1 [t] ∂S l [t] ⊤ l−1 ⊤
+                                                                                                                                     ∇Wl [t] L = (                                      ) S [t] , (8)
+transfer of the spiking neurons in the last layer of each stage,                                                                                        ∂V l+1 [t]    ∂S l [t] ∂V l [t]
+as shown in Fig. 3. Thus spiking neurons in T-RevSNN have
+                                                                                                                               which means that the update of all weights at timestep t only
+two states: turn-on or turn-off in the temporal dimension.
+                                                                                                                               needs to perform O(L) calculation.
+The forward of temporal turn-off spiking neurons is
+                                                                                                                               For temporal turn-on spiking neurons, the forward function
+                                                                                                                               is Eq. 1 and the weight update depends on both spatial and
+                                            V l [t] = Wl S l−1 [t],                               (6)                          temporal gradients (i.e., Eq. 4). Inspired by the concept of
+
+                                                                                                           4
+                                                                                                                     Shortcut
+reversibility (Gomez et al., 2017), we observe that Eq. 1 is
+naturally reversible. Eq. 1 can be rewritten as:
+                   1 −1 l            1                                                                DWConv/PWConv
+ V l [t] = (1 −      ) (V [t + 1] −    Wl S l−1 [t + 1]). (9)
+                  τm                τm
+                                                                                                      PWConv/DWConv
+Subsequently, a reversible transformation can be established                                                   𝛼
+between V l [t + 1] and V l [t]. This means that when calculat-
+
+
+
+
+                                                                                                               +
+ing the gradient at the first timestep, there is no need to store
+the membrane potentials and activations at all timesteps. We
+only need to store V l [T ], and we can reversely deduce the                  Figure 4. Basic SNN Block, following ConvNeXt-style (Liu et al.,
+membrane potential and activation values of all previous                      2022).
+timesteps through Eq. 9. This reduces the memory required
+for multi-timestep training of SNNs. Regarding to the time                    memory cost caused by storing the mean and variance of
+complexity, the gradient process of the temporal turn-on                      features (Xiao et al., 2022). To address the instability of
+spiking neurons is consistent with STBP, i.e., O(T 2 ).                       training caused by loss of BN, the weights of all layers in
+Multi-level feature interaction has been proven to improve                    the network are properly normalized (Brock et al., 2021). In
+the model effectiveness in architectural design (Lin et al.,                  addition, the ReZero (Bachlechner et al., 2021) technique
+2017; Gao et al., 2019). The spatio-temporal neuronal dy-                     is used on the Membrane Shortcut 1 (Hu et al., 2024) to
+namics of SNNs already naturally contain two levels of                        enhance the network’s capacity to meet dynamic isometrics
+features, where spatial inputs come from low-level features                   after initialization and to facilitate efficient network training.
+(the previous layer at the same timestep) and temporal inputs                 To guarantee that only addition operations occur in infer-
+come from same-level features (the previous timestep in the                   ence, we can merge the scale of ReZero (i.e., α in Fig. 4)
+same layer). And, existing residual connections in SNNs                       into the weight Wl at layer l through re-parameterization.
+(Fang et al., 2021a; Hu et al., 2024) also bring low-level
+features. But there’s more we can do. In this work, we                        4.4. Training and Inference Complexity Analysis
+establish stronger multi-level connections between SNNs at                    The memory and computation required by the STBP algo-
+adjacent timesteps. We incorporate the high-level features in                 rithm to calculate the gradient from the output of the last
+deeper layers of the previous timestep into the information                   layer at the last timestep to the input of the first layer at the
+fusion of the current timestep. Generally, we can construct                   first timestep constitute the memory and time complexity
+forward information passing as follows:                                       of training SNNs. We analyze the training memory and
+                 L                                                            time complexity of the proposed T-RevSNN and other SNN
+                 X            1 i          1
+ V l [t + 1] =         (1 −      )V [t] +    Wl S l−1 [t + 1], (10)           training optimization methods in Table 1 and Fig. 5.
+                              τi          τm
+                 i=l
+                                                                                                                   Training             Inference
+where τi means the decay factor at different layers and                              Training Methods
+                                                                                                               Memory     Time           Energy
+τl = τm . Eq. 10 maintains temporal reversibility as follows:                     STBP (Neftci et al., 2019)   O(LT )    O(LT )           O(T )
+                                                                                  OTTT (Xiao et al., 2022)      O(L)     O(LT )           O(T )
+                                  L
+     l           1 −1 X     1                                                    SLTT-K (Meng et al., 2023)     O(L)     O(LK)            O(T )
+   V [t] = (1 −    ) (  (1 − )(V i [t + 1]                                             S-RevSNN
+                τm          τi                                                                                     O(T )        O(T )    O(T )
+                                i=l+1                              (11)            (Zhang & Zhang, 2024)
+                                           1                                    T-RevSNN turn-off (Ours)                        O(L)
+                                      −      Wl S l−1 [t + 1])).                T-RevSNN turn-on (Ours)
+                                                                                                                   O(L)
+                                                                                                                                O(T )
+                                                                                                                                         O(1)
+                                          τm
+Note, as shown in Fig. 3, we only build high-level feature                          Table 1. Training and inference complexity analysis.
+incorporation between stages. In multi-level interaction, we
+use up/down sampling to achieve feature alignment.
+                                                                              STBP (Wu et al., 2018; Neftci et al., 2019) needs to retain
+                                                                              the activations of all spiking neurons at all timesteps, the
+4.3. Basic SNN Block
+                                                                              training memory is O(LT ). The temporal gradient is prop-
+As shown in Fig. 4, we design the basic SNN Block follow-                     agated between the two layers of spiking neurons. When
+ing (Liu et al., 2022) to extract local information effectively.              updating the weights of layer l, T gradients need to be cal-
+It consists of two depth-Wise separable convolutions (DW-                         1
+                                                                                    In addition to Membrane Shortcut (Hu et al., 2024), another
+Conv/PWConv) and a residual connection, where the kernel                      type of residual commonly used in SNNs is Spike-Element-Wise
+size of DWConv is 5 × 5. We drop all Batch Normaliza-                         (SEW) (Fang et al., 2021a), which cannot utilize this technique due
+tion (BN) (Ioffe & Szegedy, 2015) modules to reduce the                       to its nonlinear operations and inability to be re-parameterization.
+
+                                                                          5
+                                                𝜕𝐿             𝜕𝐿               𝜕𝐿                  𝜕𝐿            𝜕𝐿              𝜕𝐿              𝜕𝐿            𝜕𝐿              𝜕𝐿
+        𝑙+1
+       𝑠𝑡−1     𝑠𝑡𝑙+1        𝑙+1
+                            𝑠𝑡+1                 𝑙+1
+                                               𝜕𝑠𝑡−1          𝜕𝑠𝑡𝑙+1             𝑙+1
+                                                                               𝜕𝑠𝑡+1                 𝑙+1
+                                                                                                   𝜕𝑠𝑡−1         𝜕𝑠𝑡𝑙+1            𝑙+1
+                                                                                                                                 𝜕𝑠𝑡+1             𝑙+1
+                                                                                                                                                 𝜕𝑠𝑡−1         𝜕𝑠𝑡𝑙+1            𝑙+1
+                                                                                                                                                                               𝜕𝑠𝑡+1
+
+
+                                                𝜕𝐿             𝜕𝐿               𝜕𝐿                  𝜕𝐿            𝜕𝐿              𝜕𝐿              𝜕𝐿            𝜕𝐿              𝜕𝐿
+        𝑙+1
+       𝑢𝑡−1     𝑢𝑡𝑙+1        𝑙+1
+                            𝑢𝑡+1                 𝑙+1
+                                               𝜕𝑢𝑡−1          𝜕𝑢𝑡𝑙+1             𝑙+1
+                                                                               𝜕𝑢𝑡+1                 𝑙+1
+                                                                                                   𝜕𝑢𝑡−1         𝜕𝑢𝑡𝑙+1            𝑙+1
+                                                                                                                                 𝜕𝑢𝑡+1             𝑙+1
+                                                                                                                                                 𝜕𝑢𝑡−1         𝜕𝑢𝑡𝑙+1            𝑙+1
+                                                                                                                                                                               𝜕𝑢𝑡+1
+                                        𝜕𝐿              𝜕𝐿              𝜕𝐿                    𝜕𝐿            𝜕𝐿             𝜕𝐿              𝜕𝐿             𝜕𝐿             𝜕𝐿
+     𝑊𝑙       𝑊𝑙          𝑊𝑙           𝜕𝑊𝑙             𝜕𝑊𝑙             𝜕𝑊𝑙                   𝜕𝑊𝑙           𝜕𝑊𝑙            𝜕𝑊𝑙             𝜕𝑊𝑙            𝜕𝑊𝑙            𝜕𝑊𝑙
+
+                                                𝜕𝐿     𝑠𝑡𝑙     𝜕𝐿       𝑙       𝜕𝐿                  𝜕𝐿            𝜕𝐿              𝜕𝐿              𝜕𝐿     𝑠𝑡𝑙    𝜕𝐿       𝑙      𝜕𝐿
+        𝑙
+                    𝑠𝑡𝑙      𝑙         𝑙                                                                                   𝑙              𝑙
+                                      𝑠𝑡−1                             𝑠𝑡+1                  𝑙
+                                                                                            𝑠𝑡−1           𝑠𝑡𝑙            𝑠𝑡+1           𝑠𝑡−1                           𝑠𝑡+1
+       𝑠𝑡−1                 𝑠𝑡+1                 𝑙
+                                               𝜕𝑠𝑡−1           𝜕𝑠𝑡𝑙              𝑙
+                                                                               𝜕𝑠𝑡+1                 𝑙
+                                                                                                   𝜕𝑠𝑡−1          𝜕𝑠𝑡𝑙             𝑙
+                                                                                                                                 𝜕𝑠𝑡+1             𝑙
+                                                                                                                                                 𝜕𝑠𝑡−1          𝜕𝑠𝑡𝑙             𝑙
+                                                                                                                                                                               𝜕𝑠𝑡+1
+
+              Temporal                                  Temporal                                           Temporal                                       Temporal
+(a) BPTT/OTTT/SLTT/S-RevSNN forward              (b) BPTT backward                                 (c) OTTT/SLTT backward                       (d) S-RevSNN backward
+
+
+                                                𝜕𝐿             𝜕𝐿               𝜕𝐿                                                                𝜕𝐿            𝜕𝐿              𝜕𝐿
+        𝑙+1
+       𝑠𝑡−1     𝑠𝑡𝑙+1        𝑙+1
+                            𝑠𝑡+1                 𝑙+1
+                                               𝜕𝑠𝑡−1          𝜕𝑠𝑡𝑙+1             𝑙+1
+                                                                               𝜕𝑠𝑡+1
+                                                                                                    𝑙+1
+                                                                                                   𝑠𝑡−1          𝑠𝑡𝑙+1            𝑙+1
+                                                                                                                                 𝑠𝑡+1              𝑙+1
+                                                                                                                                                 𝜕𝑠𝑡−1         𝜕𝑠𝑡𝑙+1            𝑙+1
+                                                                                                                                                                               𝜕𝑠𝑡+1
+
+
+                                                𝜕𝐿             𝜕𝐿               𝜕𝐿                                                                𝜕𝐿            𝜕𝐿              𝜕𝐿
+        𝑙+1
+       𝑢𝑡−1     𝑢𝑡𝑙+1        𝑙+1
+                            𝑢𝑡+1                 𝑙+1
+                                               𝜕𝑢𝑡−1          𝜕𝑢𝑡𝑙+1             𝑙+1
+                                                                               𝜕𝑢𝑡+1
+                                                                                                    𝑙+1
+                                                                                                   𝑢𝑡−1          𝑢𝑡𝑙+1            𝑙+1
+                                                                                                                                 𝑢𝑡+1              𝑙+1
+                                                                                                                                                 𝜕𝑢𝑡−1         𝜕𝑢𝑡𝑙+1            𝑙+1
+                                                                                                                                                                               𝜕𝑢𝑡+1
+                                        𝜕𝐿              𝜕𝐿              𝜕𝐿                                                                 𝜕𝐿             𝜕𝐿             𝜕𝐿
+      𝑙
+    𝑊𝑡−1      𝑊𝑡𝑙           𝑙
+                          𝑊𝑡+1            𝑙
+                                       𝜕𝑊𝑡−1           𝜕𝑊𝑡𝑙               𝑙
+                                                                       𝜕𝑊𝑡+1
+                                                                                              𝑊𝑙           𝑊𝑙              𝑊𝑙             𝜕𝑊𝑙            𝜕𝑊𝑙            𝜕𝑊𝑙
+
+                                                𝜕𝐿             𝜕𝐿               𝜕𝐿                                                        𝑙       𝜕𝐿     𝑠𝑡𝑙    𝜕𝐿       𝑙      𝜕𝐿
+                                                                                                                  𝑠𝑡𝑙
+                                                                        𝑙
+                                                       𝑠𝑡𝑙                                          𝑙                             𝑙
+        𝑙
+                    𝑠𝑡𝑙      𝑙                                                                                                                                          𝑠𝑡+1
+                                       𝑙                               𝑠𝑡+1                                                              𝑠𝑡−1
+                                      𝑠𝑡−1
+       𝑠𝑡−1                 𝑠𝑡+1                 𝑙
+                                               𝜕𝑠𝑡−1           𝜕𝑠𝑡𝑙              𝑙
+                                                                               𝜕𝑠𝑡+1
+                                                                                                   𝑠𝑡−1                          𝑠𝑡+1              𝑙
+                                                                                                                                                 𝜕𝑠𝑡−1          𝜕𝑠𝑡𝑙             𝑙
+                                                                                                                                                                               𝜕𝑠𝑡+1
+
+              Temporal                                  Temporal                                           Temporal                                       Temporal
+  (e) Forward in temporal turn-off   (f) Backward in temporal turn-off                      (g) Forward in temporal turn-on (h) Backward in temporal turn-on
+    spiking neurons (This Work)          spiking neurons (This Work)                          spiking neurons (This Work)      spiking neurons (This Work)
+
+Figure 5. Illustration of the forward and backward. (a) Existing training methods do not change the forward of SNNs. (b) The backward of
+STBP unfolds simultaneously along the temporal and spatial dimensions. (c) The backward of OTTT/SLTT only unfolds along the spatial
+dimension. (d) The backward of S-RevSNN unfolds along the temporal and spatial dimensions but is reversible in spatial. (e) and (f) show
+the forward and backward of the temporal turn-off spiking neurons in the proposed method, respectively. (g) and (h) give the forward and
+backward of the temporal turn-on spiking neurons in T-RevSNN, which are basically consistent with the forward and backward in (a) and
+(b). The difference is that the backward in (h) is reversible, so only the membrane potentials of the last timestep needs to be stored.
+
+culated and summed up. It implies that the time complexity                                 and split the network, thus the inference is O(1).
+is O(T ) per layer, so the overall training time complexity
+of STBP is O(LT ). Please see Fig. 5 (b).                                                  5. Experiments
+OTTT (Xiao et al., 2022) does not calculate the temporal
+                                                                                           We evaluate the proposed T-RevSNN on static ImageNet-
+gradient and can be trained online. Each timestep only needs
+                                                                                           1k (Deng et al., 2009) and neuromorphic CIFAR10-DVS (Li
+to retain activations at the current timestep, so the training
+                                                                                           et al., 2017), DVS128 Gesture (Amir et al., 2017). We
+memory and time are O(L) and O(LT ), respectively.
+                                                                                           generally continued the experimental setup in (Yao et al.,
+SLTT-K (Meng et al., 2023) only calculates the gradients                                   2023b). The input size of ImageNet is 224 × 224. The
+on the most important K(K <= T ) timesteps based on                                        batch size is set to 512 during 300 training epochs with a
+OTTT, thus the training memory and time complexity are                                     cosine-decay learning rate whose initial value is 0.002. The
+O(L) and O(LK), respectively. Please see Fig. 5 (c).                                       optimizer is Lamb. Standard data augmentation techniques,
+                                                                                           like random augmentation, are also employed in training.
+S-RevSNN (Zhang & Zhang, 2024) retains the temporal gra-
+                                                                                           Details of the datasets, training and experimental setup, and
+dient. Due to spatial reversibility, S-RevSNN only needs to
+                                                                                           power analysis are given in the supplementary material.
+store the activations of the spatially reversible layer at each
+timestep. Thus, the training memory and time complexity
+are both O(T ). Please see Fig. 5 (d).                                                     5.1. Main Results
+
+T-RevSNN (This work). We discard most of the tempo-                                        5.1.1. I MAGE N ET-1 K
+ral connections and are temporally reversible, so training                                 We comprehensively compare the proposed T-RevSNN with
+memory of T-RevSNN is consistent with OTTT/SLTT, i.e.,                                     existing work in the five aspects of parameters, training time,
+O(L). The training time of T-RevSNN is related to spiking                                  memory, inference energy, Top-1 accuracy. In Table 2, we
+neurons (turn-on/off), see Fig. 5 (e) to (h).                                              divide the existing direct training SNNs into three types,
+The optimization of OTTT/SLTT/S-RevSNN does not                                            namely spiking ResNet, spiking Transformer, and SNNs
+change the forward propagation, so their inference is all                                  with training optimization. We test various SNNs on 6
+O(T ). The proposed T-RevSNN redign the input encoding                                     NVIDIA-A100-40GB devices and report their memory and
+                                                                                           training time, to demonstrate the superiority of T-RevSNN.
+
+                                                                                       6
+                                                                  Param    Time    Training Time      Memory      Energy
+   Methods                                    Architecture                                                                  Acc (%)
+                                                                   (M)     step       (min/ep)       (MB/img)      (mJ)
+   STBP-tdBN (Zheng et al., 2021)             ResNet-34            21.8      6          29.6           186.1        6.4       63.7
+   SEW ResNet (Fang et al., 2021a)         SEW-ResNet-50           25.6      4          10.0           596.9        4.9       67.8
+   MS ResNet (Hu et al., 2024)              MS-ResNet-34           21.8      6          11.2           267.1        5.1       69.4
+   TEBN (Duan et al., 2022)                   ResNet-34            21.8      4          16.3           260.1       6.4*       64.3
+   TET (Deng et al., 2022)                 SEW-ResNet-34           21.8      4          12.5           221.0       4.0*       68.0
+   Spikformer                             Spikeformer-8-384        16.8      4          14.2           580.8        7.7       70.2
+   (Zhou et al., 2023)                    Spikeformer-8-512        29.7      4          16.7           767.8       11.6       73.4
+   Spike-driven Transformer               Spikeformer-8-384        16.8      4          15.4           548.9        3.9       72.3
+   (Yao et al., 2023b)                    Spikeformer-8-512        29.7      4          18.8           730.0        4.5       74.6
+   OTTT (Xiao et al., 2022)                   ResNet-34            21.8      6          24.2            84.1       6.0*       64.2
+                                              ResNet-34            21.8      6          18.1            71.7       6.0*       66.2
+   SLTT (Meng et al., 2023)
+                                              ResNet-50            25.6      6          23.4           117.3       7.2*       67.0
+                                            Rev-ResNet-37          24.4      4           7.9           127.1         -         -
+   S-RevSNN (Zhang & Zhang, 2024)
+                                          Rev-SFormer-8-384        17.2      4          16.3           389.6         -         -
+                                           ResNet-18 (384)         15.2      4           6.1            57.5        1.7       69.8
+   T-RevSNN (This work)
+                                           ResNet-18 (512)         29.8      4           9.1            85.7        2.8       73.2
+
+Table 2. Evaluation on ImageNet-1K. We divide the existing direct training SNNs into three types, from top to bottom: spiking ResNet,
+spiking Transformer, and SNNs with training optimization (OTTT/SLTT/S-RevSNN). We measure the memory consumption of all models
+and the time it takes to complete an epoch. The memory per image (MB/img) is measured as the peak GPU memory each image occupies
+during training, following S-RevSNN (Zhang & Zhang, 2024). All experiments were tested under float16 automatic mixed precision,
+distributed data-parallel, and no gradient checkpoint. * We estimate the power of these models based on the corresponding spiking ResNet,
+e.g., we assume that the power of one timestep of SEW-ResNet-50 is 4.0/4 = 1.0mJ. In our model, 384/512 represents the channel
+number in the last stage, which is used to control the parameters.
+
+
+Compared with Spiking ResNet Baselines. There are                      whelming advantages in training speed and memory.
+two main types of spiking ResNet baselines in the SNN
+                                                                       Compared with Training Optimization SNNs. As can be
+domain, SEW-ResNet (Fang et al., 2021a) and MS-ResNet
+                                                                       seen in Table 2, our model is better than existing training
+(Hu et al., 2024). The proposed T-RevSNN achieves the
+                                                                       optimization SNNs in accuracy, training speed and memory,
+best accuracy among the spiking ResNet series, with the
+                                                                       power. S-RevSNN (Zhang & Zhang, 2024) does not report
+lowest training memory and time, and inference energy. For
+                                                                       accuracy on ImageNet, so there is no relevant data.
+example, T-RevSNN (This work) vs. SEW-ResNet-50 vs.
+MS-ResNet-34: Param, 29.8M vs. 25.6M vs. 21.8M; Acc,                   Overall, T-RevSNN shows significant advantages over exist-
+73.2% vs. 67.8% vs. 69.4%; Memory, 85.7 (MB/img) vs.                   ing SNNs regarding training speed, memory requirements,
+596.9 (MB/img) vs. 267.1 (MB/img); Traning-Time, 9.1                   and inference power. T-RevSNN also performs competi-
+min/ep vs. 10.0 min/ep vs. 11.2 min/ep; Inference, 2.8mJ               tively in performance. Although the accuracy is lower than
+vs. 4.9mJ vs. 5.1 mJ. Thus, the proposed T-RevSNN shows                Spike-driven Transformer, we argue that this is a gap caused
+a full range of advantages over existing spiking ResNets.              by the architecture and can be solved in the future.
+Compared with Spiking Transformer Baselines. Spik-
+                                                                       5.1.2. CIFAR10-DVS AND G ESTURE
+ing Transformer is a type of architecture that has become
+popular in SNNs recently. Typical works include Spik-                  Unlike static datasets that encode repeated inputs, neuromor-
+Former(Zhou et al., 2023) and Spike-driven Transformer                 phic datasets input different information at each timestep
+(Yao et al., 2023b). The results in Table 2 show that un-              (Deng et al., 2020). Therefore, in the neuromorphic task,
+der similar parameters (30M), the accuracy of T-RevSNN                 the inference complexity of all SNN models is O(1). We
+(73.2%) is the same as SpikFormer (73.4%), but 1.4% lower              present the details of these two datasets as well as the pre-
+than Spike-driven Transformer (74.6%). We think this may               processing and experimental setup in the supplementary
+be a performance gap caused by the architecture (Trans-                material. We still use the network architecture in Fig. 1(b).
+former vs. CNN). In this work, our SNN blocks are entirely             Different from encoding only once in static image tasks,
+composed of convolutional layers. In contrast, Spike-driven            here we encode the input at each timestep, which is con-
+Transformer contains the spiking self-attention operator. We           sistent with prior SNNs. Experiments on CIFAR10-DVS
+tried replacing the spiking CNN block with spiking Trans-              and Gesture are shown in Table 3, we achieve performance
+former in Zhou et al. (2023) and Yao et al. (2023b), but the           comparable to SOTA results with lower memory.
+network would not converge. And, T-RevSNN has over-
+
+
+                                                                   7
+                                                               CIFAR10-DVS                   DVS128 Gesture
+            Methods
+                                                          Timestep Top-1 Acc Timestep Top-1 Acc Memory
+            LIAF-Net (Wu et al., 2021b)                       10          70.4          60         97.6          -
+            Rollout (Kugele et al., 2020)                     48          66.8         240         97.1          -
+            tdBN (Zheng et al., 2021)                         10          67.8          40         96.9          -
+            PLIF (Fang et al., 2021b)                         20          74.8          20         97.6          -
+            SEW ResNet (Fang et al., 2021a)                   16          74.4          16         97.9         81.5
+            MS ResNet (Hu et al., 2024)                       10          76.0          10         94.8         79.4
+            Dspike (Li et al., 2021)                          10          75.4           -           -           -
+             (She et al., 2021)                                -            -           20         98.0          -
+            DSR (Meng et al., 2022)                           10          77.3           -           -           -
+            Spikformer (Zhou et al., 2023)                    16          80.6          16         97.9         51.8
+            Spike-Driven Transformer (Yao et al., 2023b)      16          80.0         16          99.3         51.4
+            OTTT (Xiao et al., 2022)                          10          76.6          20         96.9          -
+            SLTT (Meng et al., 2023)                          10          77.2          20         97.9          -
+            S-RevSNN (Zhang & Zhang, 2024)                    10          75.5          10         94.4         25.0
+                                                              10          77.4          10         94.4         10.3
+             T-RevSNN (This work)
+                                                              16          79.2          16         97.9         18.9
+Table 3. Evaluation on CIFAR10-DVS (Li et al., 2017) and Gesture (Amir et al., 2017). Memory is evaluated on the Gesture.
+5.2. Ablation Studies                                                reversibility directly on MS-ResNet-34, performance will
+                                                                     drop a little. Moreover, we can see that temporal and spatial
+We conduct various ablation studies on ImageNet to analyze
+                                                                     reversibility are orthogonal. The combination of the two
+the proposed T-RevSNN. Generally, we set the training
+                                                                     can further improve training efficiency. Since S-RevSNN
+epoch to 100 and keep the parameter to 15.2M.
+                                                                     does not provide baseline accuracy on ImageNet, we only
+Timestep. In our design, we divide the parameters of the             observe training efficiency here.
+entire network into T groups (sub-networks). In Table 4,
+                                                                                                         Memory    Training Time
+we analyze the impact of different T on accuracy, train-                       Block             Acc
+                                                                                                        (MB/img)      (min/ep)
+ing speed, and memory. Since we fix the total number of                MS-ResNet-34 (Baseline)   68.3     267.1         11.2
+parameters, increasing the T means that the sub-network                     + T-RevSNN           66.7     88.1           7.4
+at each timestep becomes smaller. The training memory                  S-RevSNN-37 (Baseline)     -       127.1          7.9
+decreases accordingly (training memory complexity of T-                     + T-RevSNN            -       55.4           6.8
+RevSNN is O(L)), but the training time will increase. And,                 Table 6. Ablation study with SNN Block Structure.
+the relationship between accuracy and timestep is not linear.
+         Timestep    Acc
+                             Memory     Training Time                6. Conclusion
+                            (MB/img)       (min/ep)
+            2        68.1     75.6            4.9                    We propose T-RevSNN to address the training memory and
+            4        68.6     57.5            6.1                    inference energy challenges posed by multiple timestep sim-
+            8        69.8     49.8           9.9                     ulations for SNNs. Our idea is simple and intuitive. Since
+            16       63.4     42.4           16.0
+                                                                     the temporal gradients in SNNs are not important, can we
+           Table 4. Ablation study with timestep T .
+                                                                     only keep the temporal forward direction of key positions
+Multi-level Temporal Reversible. In Eq. 10, we design                and turn off the temporal dynamics of other spiking neu-
+multi-level feature fusion for T-RevSNN. We fuse the fea-            rons? To this end, we make systematic designs, including
+tures of the next stage into the current stage. Otherwise,           multi-level temporal-reversible forward information transfer
+T-RevSNN’s accuracy will lose 1.2% (68.6% → 67.4%).                  of key spiking neurons, group design of input encoding and
+                                                                     network architecture, and improvements in SNN blocks and
+Scaled Residual Connection contributes to the convergence
+                                                                     residual connections. Extensive experiments are conducted
+speed and final accuracy of the model, as shown in Table 5.
+                                                                     on static and neuromorphic datasets, verifying the advan-
+          Scaled Residual   Acc    Epochs to 60% Acc
+                 ✓          68.6           25                        tages of T-RevSNN in training, inference and accuracy. We
+                 ✗          68.3           32                        hope our investigations pave the way for further research on
+       Table 5. Ablation study with residual connection.             large-scale SNNs and more applications of SNNs.
+SNN Block Structure is critical to final performance. In             Acknowledgement. This work was partially supported
+our design, we apply the idea of temporal reversibility to the       by National Science Foundation for Distinguished Young
+ConvNeXt-style (Liu et al., 2022) architecture. In Table 6,          Scholars (62325603), National Natural Science Foundation
+we exploit the idea to MS-ResNet (Hu et al., 2024) and S-            of China (62236009, U22A20103, 62441606), and CAAI-
+RevSNN (Zhang & Zhang, 2024). When applying temporal                 MindSpore Open Fund, developed on OpenI Community.
+
+                                                                 8
+Impact Statements. This paper presents work whose goal                Deng, L., Wu, Y., Hu, X., Liang, L., Ding, Y., Li, G., Zhao,
+is to advance the field of Machine Learning. There are many             G., Li, P., and Xie, Y. Rethinking the performance com-
+potential societal consequences of our work, none which we              parison between snns and anns. Neural Networks, 121:
+feel must be specifically highlighted here.                             294–307, 2020.
+
+                                                                      Deng, S., Li, Y., Zhang, S., and Gu, S. Temporal ef-
+References                                                              ficient training of spiking neural network via gradient
+Amir, A., Taba, B., Berg, D., Melano, T., McKinstry, J.,                re-weighting. In International Conference on Learning
+ Di Nolfo, C., Nayak, T., Andreopoulos, A., Garreau, G.,                Representations, 2022. URL https://openreview.
+ Mendoza, M., Kusnitz, J., Debole, M., Esser, S., Del-                  net/forum?id=_XNtisL32jv.
+ bruck, T., Flickner, M., and Modha, D. A low power,
+ fully event-based gesture recognition system. In Proceed-            Ding, Y., Zuo, L., Jing, M., He, P., and Xiao, Y. Shrinking
+ ings of the IEEE/CVF Conference on Computer Vision                     your timestep: Towards low-latency neuromorphic object
+ and Pattern Recognition (CVPR), pp. 7243–7252, 2017.                   recognition with spiking neural network. In Proceedings
+                                                                        of the AAAI Conference on Artificial Intelligence, 2024.
+Bachlechner, T., Majumder, B. P., Mao, H., Cottrell, G., and
+  McAuley, J. Rezero is all you need: Fast convergence at             Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,
+  large depth. In Uncertainty in Artificial Intelligence, pp.           D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer,
+  1352–1361. PMLR, 2021.                                                M., Heigold, G., Gelly, S., Uszkoreit, J., and Houlsby,
+                                                                        N. An image is worth 16x16 words: Transformers for
+Brock, A., De, S., Smith, S. L., and Simonyan, K. High-
+                                                                        image recognition at scale. In International Conference
+  performance large-scale image recognition without nor-
+                                                                        on Learning Representations, 2021.
+  malization. In International Conference on Machine
+  Learning, pp. 1059–1071. PMLR, 2021.                                Duan, C., Ding, J., Chen, S., Yu, Z., and Huang, T. Temporal
+Brügger, R., Baumgartner, C. F., and Konukoglu, E. A                   effective batch normalization in spiking neural networks.
+  partially reversible u-net for memory-efficient volumetric           Advances in Neural Information Processing Systems, 35:
+  image segmentation. In Medical Image Computing and                    34377–34390, 2022.
+  Computer Assisted Intervention–MICCAI 2019: 22nd
+                                                                      Eshraghian, J. K., Ward, M., Neftci, E. O., Wang, X., Lenz,
+  International Conference, Shenzhen, China, October 13–
+                                                                        G., Dwivedi, G., Bennamoun, M., Jeong, D. S., and Lu,
+  17, 2019, Proceedings, Part III 22, pp. 429–437. Springer,
+                                                                        W. D. Training spiking neural networks using lessons
+  2019.
+                                                                        from deep learning. Proceedings of the IEEE, 111(9):
+Cai, Y., Zhou, Y., Han, Q., Sun, J., Kong, X., Li, J., and              1016–1054, 2023.
+  Zhang, X. Reversible column networks. In The Eleventh
+  International Conference on Learning Representations,               Fang, W., Yu, Z., Chen, Y., Huang, T., Masquelier, T., and
+  2023. URL https://openreview.net/forum?                               Tian, Y. Deep residual learning in spiking neural net-
+  id=Oc2vlWU0jFY.                                                       works. Advances in Neural Information Processing Sys-
+                                                                        tems, 34:21056–21069, 2021a.
+Chowdhury, S. S., Rathi, N., and Roy, K. One timestep is
+  all you need: Training spiking neural networks with ultra           Fang, W., Yu, Z., Chen, Y., Masquelier, T., Huang, T., and
+  low latency. arXiv preprint arXiv:2110.05929, 2021.                   Tian, Y. Incorporating learnable membrane time constant
+                                                                        to enhance learning of spiking neural networks. In Pro-
+Davies, M., Srinivasa, N., Lin, T.-H., Chinya, G., Cao, Y.,
+                                                                        ceedings of the IEEE/CVF International Conference on
+  Choday, S. H., Dimou, G., Joshi, P., Imam, N., Jain, S.,
+                                                                        Computer Vision (ICCV), pp. 2661–2671, October 2021b.
+  et al. Loihi: A neuromorphic manycore processor with
+  on-chip learning. IEEE Micro, 38(1):82–99, 2018.                    Fang, W., Chen, Y., Ding, J., Yu, Z., Masquelier, T., Chen,
+Deng, H., Zhu, R., Qiu, X., Duan, Y., Zhang, M., and Deng,              D., Huang, L., Zhou, H., Li, G., and Tian, Y. Spikingjelly:
+  L.-J. Tensor decomposition based attention module for                 An open-source machine learning infrastructure platform
+  spiking neural networks. Knowledge-Based Systems, pp.                 for spike-based intelligence. Science Advances, 9(40):
+ 111780, 2024.                                                          eadi1480, 2023.
+
+Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K., and Fei-Fei,       Gallego, G., Delbrück, T., Orchard, G., Bartolozzi, C., Taba,
+  L. Imagenet: A large-scale hierarchical image database.               B., Censi, A., Leutenegger, S., Davison, A. J., Conradt, J.,
+  In Proceedings of the IEEE/CVF Conference on Com-                     Daniilidis, K., and Scaramuzza, D. Event-based vision:
+  puter Vision and Pattern Recognition (CVPR), pp. 248–                 A survey. IEEE Transactions on Pattern Analysis and
+  255, 2009.                                                            Machine Intelligence, 44(1):154–180, 2022.
+
+                                                                  9
+Gao, S.-H., Cheng, M.-M., Zhao, K., Zhang, X.-Y., Yang,               Hu, Y., Deng, L., Wu, Y., Yao, M., and Li, G. Advancing
+  M.-H., and Torr, P. Res2net: A new multi-scale backbone               spiking neural networks toward deep residual learning.
+  architecture. IEEE transactions on pattern analysis and              IEEE Transactions on Neural Networks and Learning
+  machine intelligence, 43(2):652–662, 2019.                           Systems, 2024.
+
+Gomez, A. N., Ren, M., Urtasun, R., and Grosse, R. B.                 Ioffe, S. and Szegedy, C. Batch normalization: Accelerating
+ The reversible residual network: Backpropagation with-                  deep network training by reducing internal covariate shift.
+  out storing activations. Advances in Neural Information                In International Conference on Machine Learning, pp.
+ Processing Systems, 30, 2017.                                          448–456. PMLR, 2015.
+Guo, Y., Chen, Y., Zhang, L., Liu, X., Wang, Y., Huang,               Kim, Y. and Panda, P. Revisiting batch normalization for
+ X., and Ma, Z. IM-loss: Information maximization loss                  training low-latency deep spiking neural networks from
+  for spiking neural networks. In Oh, A. H., Agarwal, A.,               scratch. Frontiers in Neuroscience, 15:773954, 2021.
+  Belgrave, D., and Cho, K. (eds.), Advances in Neural
+ Information Processing Systems, 2022a. URL https:                    Kim, Y., Park, H., Moitra, A., Bhattacharjee, A., Venkatesha,
+ //openreview.net/forum?id=Jw34v_84m2b.                                 Y., and Panda, P. Rate coding or direct coding: Which one
+                                                                        is better for accurate, robust, and energy-efficient spiking
+Guo, Y., Chen, Y., Zhang, L., Wang, Y., Liu, X., Tong, X.,              neural networks? In ICASSP 2022 - 2022 IEEE Inter-
+  Ou, Y., Huang, X., and Ma, Z. Reducing information loss               national Conference on Acoustics, Speech and Signal
+  for spiking neural networks. In European Conference on                Processing (ICASSP), pp. 71–75, 2022.
+ Computer Vision, pp. 36–52. Springer, 2022b.
+                                                                      Kugele, A., Pfeil, T., Pfeiffer, M., and Chicca, E. Effi-
+Guo, Y., Tong, X., Chen, Y., Zhang, L., Liu, X., Ma, Z.,                cient processing of spatio-temporal data streams with
+  and Huang, X. Recdis-snn: Rectifying membrane po-                     spiking neural networks. Frontiers in Neuroscience, 14:
+  tential distribution for directly training spiking neural            439, 2020.
+  networks. In Proceedings of the IEEE/CVF Conference
+  on Computer Vision and Pattern Recognition, pp. 326–                Li, H., Liu, H., Ji, X., Li, G., and Shi, L. Cifar10-dvs: an
+  335, 2022c.                                                           event-stream dataset for object classification. Frontiers
+                                                                        in Neuroscience, 11:309, 2017.
+Guo, Y., Huang, X., and Ma, Z. Direct learning-based
+  deep spiking neural networks: a review. Frontiers in                Li, Y., Guo, Y., Zhang, S., Deng, S., Hai, Y., and Gu, S.
+ Neuroscience, 17:1209795, 2023.                                        Differentiable spike: Rethinking gradient-descent for
+He, K., Zhang, X., Ren, S., and Sun, J. Identity mappings               training spiking neural networks. Advances in Neural
+  in deep residual networks. In Leibe, B., Matas, J., Sebe,             Information Processing Systems, 34:23426–23439, 2021.
+  N., and Welling, M. (eds.), Computer Vision – ECCV
+                                                                      Li, Y., Geller, T., Kim, Y., and Panda, P. Seenn: Towards
+  2016, pp. 630–645, Cham, 2016a. Springer International
+                                                                        temporal spiking early-exit neural networks. In Thirty-
+  Publishing.
+                                                                        seventh Conference on Neural Information Processing
+He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learn-            Systems, 2023.
+  ing for image recognition. In Proceedings of the IEEE
+                                                                      Lian, S., Shen, J., Liu, Q., Wang, Z., Yan, R., and Tang, H.
+  Conference on Computer Vision and Pattern Recognition,
+                                                                        Learnable surrogate gradient for direct training spiking
+  pp. 770–778, 2016b.
+                                                                        neural networks. In Proceedings of the Thirty-Second
+Horowitz, M. 1.1 computing’s energy problem (and what we                International Joint Conference on Artificial Intelligence,
+  can do about it). In 2014 IEEE International Solid-State              IJCAI-23, pp. 3002–3010, 8 2023.
+  Circuits Conference Digest of Technical Papers (ISSCC),
+  pp. 10–14. IEEE, 2014.                                              Lin, T.-Y., Dollar, P., Girshick, R., He, K., Hariharan, B.,
+                                                                        and Belongie, S. Feature pyramid networks for object
+Hu, Y., Tang, H., and Pan, G. Spiking deep residual                     detection. In Proceedings of the IEEE Conference on
+  networks. IEEE Transactions on Neural Networks                        Computer Vision and Pattern Recognition (CVPR), July
+  and Learning Systems, 34(8):5200–5205, 2023a. doi:                    2017.
+ 10.1109/TNNLS.2021.3119238.
+                                                                      Lin, Y., Hu, Y., Ma, S., Yu, D., and Li, G. Rethinking
+Hu, Y., Zheng, Q., Jiang, X., and Pan, G. Fast-snn: Fast spik-          pretraining as a bridge from anns to snns. IEEE Trans-
+  ing neural network by converting quantized ann. arXiv                 actions on Neural Networks and Learning Systems, pp.
+  preprint arXiv:2305.19868, 2023b.                                     1–14, 2022. doi: 10.1109/TNNLS.2022.3217796.
+
+                                                                 10
+Liu, Z., Mao, H., Wu, C.-Y., Feichtenhofer, C., Darrell, T.,               of the AAAI Conference on Artificial Intelligence, vol-
+  and Xie, S. A convnet for the 2020s. In Proceedings                      ume 38, pp. 601–610, 2024.
+  of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition, pp. 11976–11986, 2022.                            Qiu, X.-R., Wang, Z.-R., Luan, Z., Zhu, R.-J., Wu, X.,
+                                                                           Zhang, M.-L., and Deng, L.-J. Vtsnn: A virtual temporal
+Maass, W. Networks of spiking neurons: the third genera-                   spiking neural network. Frontiers in neuroscience, 17:
+ tion of neural network models. Neural Networks, 10(9):                    1091097, 2023.
+ 1659–1671, 1997.
+                                                                         Rathi, N. and Roy, K. Diet-snn: A low-latency spiking
+MacKay, M., Vicol, P., Ba, J., and Grosse, R. B. Reversible                neural network with direct input encoding and leakage
+ recurrent neural networks. Advances in Neural Informa-                    and threshold optimization. IEEE Transactions on Neural
+ tion Processing Systems, 31, 2018.                                        Networks and Learning Systems, 34(6):3174–3182, 2023.
+                                                                           doi: 10.1109/TNNLS.2021.3111897.
+Mangalam, K., Fan, H., Li, Y., Wu, C.-Y., Xiong, B., Feicht-
+ enhofer, C., and Malik, J. Reversible vision transformers.              Rathi, N., Srinivasan, G., Panda, P., and Roy, K. En-
+ In Proceedings of the IEEE/CVF Conference on Com-                         abling deep spiking neural networks with hybrid con-
+ puter Vision and Pattern Recognition, pp. 10830–10840,                    version and spike timing dependent backpropagation. In
+ 2022.                                                                     International Conference on Learning Representations,
+                                                                           2020. URL https://openreview.net/forum?
+Meng, Q., Xiao, M., Yan, S., Wang, Y., Lin, Z., and Luo, Z.-               id=B1xSperKvH.
+ Q. Training high-performance low-latency spiking neural
+ networks by differentiation on spike representation. In                 Roy, K., Jaiswal, A., and Panda, P. Towards spike-based ma-
+ Proceedings of the IEEE/CVF Conference on Computer                        chine intelligence with neuromorphic computing. Nature,
+ Vision and Pattern Recognition, pp. 12444–12453, 2022.                    575(7784):607–617, 2019.
+
+Meng, Q., Xiao, M., Yan, S., Wang, Y., Lin, Z., and Luo, Z.-             Sander, M. E., Ablin, P., Blondel, M., and Peyré, G. Mo-
+ Q. Towards memory-and time-efficient backpropagation                      mentum residual neural networks. In International Con-
+ for training spiking neural networks. In Proceedings of                   ference on Machine Learning, pp. 9276–9287. PMLR,
+ the IEEE/CVF International Conference on Computer                         2021.
+ Vision, pp. 6166–6176, 2023.
+                                                                         Schuman, C. D., Kulkarni, S. R., Parsa, M., Mitchell, J. P.,
+Merolla, P. A., Arthur, J. V., Alvarez-Icaza, R., Cassidy,                 Kay, B., et al. Opportunities for neuromorphic comput-
+ A. S., Sawada, J., Akopyan, F., Jackson, B. L., Imam, N.,                 ing algorithms and applications. Nature Computational
+ Guo, C., Nakamura, Y., et al. A million spiking-neuron                    Science, 2(1):10–19, 2022.
+ integrated circuit with a scalable communication network
+ and interface. Science, 345(6197):668–673, 2014.                        Sengupta, A., Ye, Y., Wang, R., Liu, C., and Roy, K. Going
+                                                                           deeper in spiking neural networks: Vgg and residual
+Neftci, E. O., Mostafa, H., and Zenke, F. Surrogate gradient               architectures. Frontiers in Neuroscience, 13:95, 2019.
+  learning in spiking neural networks: Bringing the power
+  of gradient-based optimization to spiking neural networks.             She, X., Dash, S., and Mukhopadhyay, S. Sequence ap-
+  IEEE Signal Processing Magazine, 36(6):51–63, 2019.                      proximation using feedforward spiking neural network
+                                                                           for spatiotemporal learning: Theory and optimization
+Panda, P., Aketi, S. A., and Roy, K. Toward scalable, ef-                  methods. In International Conference on Learning Rep-
+  ficient, and accurate deep spiking neural networks with                  resentations, 2021.
+  backward residual connections, stochastic softmax, and
+  hybridization. Frontiers in Neuroscience, 14:653, 2020.                Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+                                                                           L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Atten-
+Pei, J., Deng, L., et al. Towards artificial general intelligence          tion is all you need. In Advances in Neural Information
+  with hybrid tianjic chip architecture. Nature, 572(7767):                Processing Systems, pp. 5998–6008, 2017.
+  106–111, 2019.
+                                                                         Wang, D., Wu, B., Zhao, G., Yao, M., Chen, H., Deng, L.,
+Perez-Nieves, N. and Goodman, D. Sparse spiking gradient                  Yan, T., and Li, G. Kronecker cp decomposition with fast
+  descent. Advances in Neural Information Processing                      multiplication for compressing rnns. IEEE Transactions
+  Systems, 34:11795–11808, 2021.                                          on Neural Networks and Learning Systems, 34(5):2205–
+                                                                          2219, 2023a.
+Qiu, X., Zhu, R.-J., Chou, Y., Wang, Z., Deng, L.-j., and Li,
+  G. Gated attention coding for training high-performance                Wang, Z., Fang, Y., Cao, J., Zhang, Q., Wang, Z., and Xu,
+  and efficient spiking neural networks. In Proceedings                   R. Masked spiking transformer. In Proceedings of the
+
+                                                                    11
+  IEEE/CVF International Conference on Computer Vision,                 IEEE/CVF International Conference on Computer Vision,
+  pp. 1761–1771, 2023b.                                                 pp. 10221–10230, 2021.
+
+Wightman, R. Pytorch image models. https://github.                    Yao, M., Hu, J., Zhao, G., Wang, Y., Zhang, Z., Xu, B., and
+ com/rwightman/pytorch-image-models,                                    Li, G. Inherent redundancy in spiking neural networks. In
+ 2019.                                                                  Proceedings of the IEEE/CVF International Conference
+Wu, J., Xu, C., Han, X., Zhou, D., Zhang, M., Li, H., and               on Computer Vision, pp. 16924–16934, 2023a.
+ Tan, K. C. Progressive tandem learning for pattern recog-
+                                                                      Yao, M., Hu, J., Zhou, Z., Yuan, L., Tian, Y., XU, B.,
+ nition with deep spiking neural networks. IEEE Transac-
+                                                                        and Li, G. Spike-driven transformer. In Thirty-seventh
+ tions on Pattern Analysis and Machine Intelligence, 44
+                                                                        Conference on Neural Information Processing Systems,
+ (11):7824–7840, 2021a.
+                                                                        2023b. URL https://openreview.net/forum?
+Wu, X., He, W., Yao, M., Zhang, Z., Wang, Y., and Li, G.                id=9FmolyOHi5.
+ Mss-depthnet: Depth prediction with multi-step spiking
+ neural network. arXiv preprint arXiv:2211.12156, 2022a.              Yao, M., Zhang, H., Zhao, G., Zhang, X., Wang, D., Cao,
+                                                                        G., and Li, G. Sparser spiking activity can be better:
+Wu, Y., Deng, L., Li, G., Zhu, J., and Shi, L. Spatio-                  Feature refine-and-mask spiking neural network for event-
+ temporal backpropagation for training high-performance                 based visual recognition. Neural Networks, 166:410–423,
+ spiking neural networks. Frontiers in Neuroscience, 12:                2023c.
+ 331, 2018.
+                                                                      Yao, M., Zhao, G., Zhang, H., Hu, Y., Deng, L., Tian, Y.,
+Wu, Y., Deng, L., Li, G., Zhu, J., Xie, Y., and Shi, L. Direct          Xu, B., and Li, G. Attention spiking neural networks.
+ training for spiking neural networks: Faster, larger, bet-             IEEE Transactions on Pattern Analysis and Machine In-
+ ter. In Proceedings of the AAAI conference on artificial               telligence, 45(8):9393–9410, 2023d.
+ intelligence, volume 33, pp. 1311–1318, 2019.
+
+Wu, Y., Wang, D.-H., Lu, X.-T., Yang, F., Yao, M., Dong,              Yao, M., Hu, J., Hu, T., Xu, Y., Zhou, Z., Tian, Y., XU,
+ W.-S., Shi, J.-B., and Li, G.-Q. Efficient visual recog-               B., and Li, G. Spike-driven transformer v2: Meta spik-
+ nition: A survey on recent advances and brain-inspired                 ing neural network architecture inspiring the design of
+ methodologies. Machine Intelligence Research, 19(5):                   next-generation neuromorphic chips. In The Twelfth
+ 366–411, 2022b.                                                        International Conference on Learning Representations,
+                                                                        2024a. URL https://openreview.net/forum?
+Wu, Z., Zhang, H., Lin, Y., Li, G., Wang, M., and Tang,                 id=1SIBN5Xyw7.
+ Y. Liaf-net: Leaky integrate and analog fire network
+ for lightweight and efficient spatiotemporal informa-                Yao, M., Richter, O., Zhao, G., Qiao, N., Xing, Y., Wang, D.,
+ tion processing. IEEE Transactions on Neural Net-                      Hu, T., Fang, W., Demirci, T., De Marchi, M., Deng, L.,
+ works and Learning Systems, pp. 1–14, 2021b. doi:                      Yan, T., Nielsen, C., Sheik, S., Wu, C., Tian, Y., Xu, B.,
+ 10.1109/TNNLS.2021.3073016.                                            and Li, G. Spike-based dynamic computing with asyn-
+                                                                        chronous sensing-computing neuromorphic chip. Na-
+Xiao, M., Meng, Q., Zhang, Z., He, D., and Lin, Z. On-                  ture Communications, 15(1):4464, May 2024b. ISSN
+  line training through time for spiking neural networks.               2041-1723. URL https://doi.org/10.1038/
+  Advances in Neural Information Processing Systems, 35:                s41467-024-47811-6.
+  20717–20730, 2022.
+                                                                      Yin, B., Corradi, F., and Bohté, S. M. Accurate and efficient
+Xu, Y., Wei, H., Lin, M., Deng, Y., Sheng, K., Zhang, M.,
+                                                                        time-domain classification with adaptive spiking recur-
+ Tang, F., Dong, W., Huang, F., and Xu, C. Transformers
+                                                                        rent neural networks. Nature Machine Intelligence, 3(10):
+  in computational visual media: A survey. Computational
+                                                                        905–913, 2021.
+ Visual Media, 8:33–62, 2022.
+
+Yang, H., Lam, K.-Y., Xiao, L., Xiong, Z., Hu, H., Niyato,            Zhang, H. and Zhang, Y. Memory-efficient reversible spik-
+  D., and Vincent Poor, H. Lead federated neuromorphic                  ing neural networks. In Proceedings of the AAAI Confer-
+  learning for wireless edge artificial intelligence. Nature            ence on Artificial Intelligence, 2024.
+  Communications, 13(1):4269, 2022.
+                                                                      Zheng, H., Wu, Y., Deng, L., Hu, Y., and Li, G. Going
+Yao, M., Gao, H., Zhao, G., Wang, D., Lin, Y., Yang, Z., and            deeper with directly-trained larger spiking neural net-
+  Li, G. Temporal-wise attention spiking neural networks                works. In Proceedings of the AAAI Conference on Artifi-
+  for event streams classification. In Proceedings of the               cial Intelligence, volume 35, pp. 11062–11070, 2021.
+
+                                                                 12
+Zhou, Z., Zhu, Y., He, C., Wang, Y., Yan, S., Tian, Y., and
+  Yuan, L. Spikformer: When spiking neural network meets
+  transformer. In The Eleventh International Conference
+  on Learning Representations, 2023.
+
+
+
+
+                                                              13
+Limitation of this work are Transformer-based T-RevSNN,                   where N and M are the total number of Conv and FC layers,
+larger scale models, more vision or long sequence tasks, and              EM AC and EAC are the energy costs of MAC and AC oper-
+we will work on them in future work. The experimental                     ations, and f rm , f rn , F Lnconv and F Lm
+                                                                                                                    f c are the firing rate
+results in this paper are reproducible. We explain the details            and FLOPs of the n-th Conv and m-th FC layer. The spike
+of model training and configuration in the main text and                  firing rate is defined as the proportion of non-zero elements
+supplement it in the appendix. Our codes and models will                  in the spike tensor. Previous SNN works (Horowitz, 2014;
+be available on GitHub after review.                                      Rathi et al., 2020) assume 32-bit floating-point implementa-
+                                                                          tion in 45nm technology, where EM AC = 4.6pJ and EAC =
+A. Details of Cosine Similarity Calculation                               0.9pJ for various operations.
+
+In Fig. 2, the Left and Right sub-figures are the cosine                  C. Experiment Details.
+similarity between the spatial gradients calculated by base-
+line and case 1/2, respectively. In case 1/2, we only re-                 Datasets. We employ two types of datasets: static image
+tain/discard the temporal gradients of the last layer of spik-            classification and neuromorphic classification. The former
+ing neurons in each stage. We use spiking ResNet-18 to                    includes ImageNet-1K (Deng et al., 2009). The latter con-
+train on CIFAR-10 for 30 epochs with different hyperparam-                tains CIFAR10-DVS (Li et al., 2017) and DVS128 Gesture
+eters (e.g., time step T , decay τ ). Moreover, we take the               (Amir et al., 2017).
+mean gradient value of each layer in every epoch during the
+                                                                          ImageNet-1K is the most typical static image dataset, which
+training process as a vector and use the cosine similarity for-
+                                                                          is widely used in the field of image classification. It offers
+mula (Eq. 12) to compare the differences between various
+                                                                          a large-scale natural image dataset of 1.28 million train-
+training methods.
+                                                                          ing images and 50k test images, with a total of 1,000 cat-
+                                        n
+                                       P
+                                           Ai · Bi                        egories. CIFAR10-DVS is an event-based neuromorphic
+                   A·B                 i=1                                dataset converted from CIFAR10 by scanning each image
+    F(A, B) =                =s                s          ,
+                 ||A|| ||B||      Pn             n
+                                                 P                        with repeated closed-loop motion in front of a Dynamic
+                                      (Ai )2 ·     (Bi )2                 Vision Sensor (DVS). There are a total of 10,000 samples
+                                   i=1              i=1
+                                                                          in CIFAR10-DVS, with each sample lasting 300ms. The
+                                                       (12)
+                                                                          temporal and spatial resolutions are µs and 128 × 128, re-
+where F(·) is the cosine similarity between vector A and B.
+                                                                          spectively. DVS128 Gesture is an event-based gesture recog-
+||A|| and ||B|| are the Euclidean norms of A and B.
+                                                                          nition dataset, which has the temporal resolution in µs level
+                                                                          and 128 × 128 spatial resolution. It records 1342 samples
+B. Energy Consumption for T-RevSNN.                                       of 11 gestures, and each gesture has an average duration of
+                                                                          6 seconds.
+The T-RevSNN architecture can transform matrix multipli-
+cation into sparse addition, which can be implemented as                  Data Preprocessing. In the static datasets, as shown in
+an addressable addition on neuromorphic chips. Moreover,                  Fig. 1 (b), what differs from previous work is that we do not
+when evaluating algorithms, the SNN field often ignores                   repeatedly feed the data into the SNN, but encode it and di-
+specific hardware implementation details and estimates the-               vide it into equal parts according to the number of timesteps.
+oretical energy consumption for a model (Panda et al., 2020;              Then the features are each sent to the sub-networks. At
+Yin et al., 2021; Yang et al., 2022; Wang et al., 2023a; Yao              the same time, due to the reversible connection of informa-
+et al., 2024a). This theoretical estimation is just to facil-             tion between different timesteps, there is no information
+itate the qualitative energy analysis of various SNN and                  loss (Gomez et al., 2017; Cai et al., 2023) between these
+ANN algorithms. In the encoding layer, convolution oper-                  timesteps, so we do not need to average the output of all
+ations serve as MAC operations that convert analog inputs                 time steps before calculating the loss function. We only
+into spikes, similar to direct coding-based SNNs (Wu et al.,              use the information from the last timestep to calculate the
+2019). Conversely, in SNN’s architecture, the Convolution                 cross-entropy loss.
+(Conv) and Fully-Connected (FC) layers transmit spikes and
+                                                                          In contrast, neuromorphic (i.e. event-based) datasets can
+perform AC operations to accumulate weights for postsy-
+                                                                          fully exploit the energy-efficient advantages of SNNs with
+naptic neurons. The inference energy cost of T-RevSNN
+                                                                          spatio-temporal dynamics. Specifically, neuromorphic
+can be expressed as follows:
+                                                                          datasets are generated by event-based (neuromorphic) cam-
+Etotal = EM AC · F L1conv +                                               eras, such as DVS (Gallego et al., 2022; Wu et al., 2022b;a;
+                     N
+                     X                       M
+                                             X                            Xu et al., 2022). Compared to conventional cameras, DVS
+       EAC · T · (       F Lnconv · f rn +         F Lm        m
+                                                      f c · f r ),
+                                                                          represents a new paradigm shift in visual information acqui-
+                   n=2                       m=1                          sition, encoding the time, location, and polarity of brightness
+                                                              (13)
+
+                                                                     14
+changes for each pixel into event streams with µs-level tem-
+poral resolution. Events (spike signals with address infor-
+mation) are generated only when the brightness of the visual
+scene changes. This is consistent with the event-driven na-
+ture of SNNs. Only when there is an event input will some
+spiking neurons of SNNs be triggered to participate in the
+computation. Typically, event streams are pre-processed
+into image sequences as input to SNNs. Details can be
+found in previous work (Yao et al., 2021).
+Experimental Steup. The experimental setup in this work
+generally follows (Yao et al., 2023b). The experimental
+settings of ImageNet-1K have been given in the main text.
+Here we mainly give the network settings on neuromorphic
+datasets. The training epoch for these datasets is 300. The
+batch size is 16 for Gesture and CIFAR10-DVS. The learn-
+ing rate is initialized to 0.0003 for Gesture, and 0.01 for
+CIFAR10-DVS. All of them are reduced with cosine decay.
+We follow (Yao et al., 2023b) to apply data augmentation on
+Gesture and CIFAR10-DVS. In addition, the network struc-
+tures used in CIFAR10-DVS and Gesture are T-RevSNN
+ResNet-18 (256).
+Detailed configurations and hyper-parameters. We use
+the open-source timm (Wightman, 2019) repository for
+hyper-parameter configuration. We give here a detailed
+hyperparameter configuration to improve the reproducibility
+of T-RevSNN.
+          Hyper-parameter             ImageNet
+            Model size                15M/30M
+                                 [64, 128, 256, 384]
+             Embed dim
+                                 [96, 192, 384, 512]
+              Timestep                     4
+               Epochs                    300
+             Resolution                224*224
+             Batch size                  4096
+             Optimizer                  LAMB
+         Base Learning rate              2e-4
+         Learning rate decay            Cosine
+          Warmup eopchs                   20
+           Weight decay                  0.01
+           Rand Augment           m9-mstd0.5-inc1
+               Mixup                     None
+               Cutmix                    None
+          Label smoothing                 0.1
+
+Table 7. Hyper-parameters for image classification on ImageNet-
+1K.
+
+
+
+
+                                                                  15
+

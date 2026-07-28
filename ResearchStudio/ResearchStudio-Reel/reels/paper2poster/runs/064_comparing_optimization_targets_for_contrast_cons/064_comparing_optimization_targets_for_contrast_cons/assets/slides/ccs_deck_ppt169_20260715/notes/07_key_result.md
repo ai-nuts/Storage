@@ -1,0 +1,1 @@
+The headline: Midpoint-Displacement tuned to imitate CCS gives probe directions averaging cosine similarity about zero point six three to real CCS probes, while CCS agrees with itself only at zero point seven eight. Other accurate losses like PCA sit near zero point one five, so the resemblance is specific to Midpoint-Displacement.

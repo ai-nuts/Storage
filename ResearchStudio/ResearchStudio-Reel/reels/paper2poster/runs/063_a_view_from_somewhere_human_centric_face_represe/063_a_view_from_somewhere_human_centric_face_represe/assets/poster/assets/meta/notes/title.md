@@ -1,0 +1,3 @@
+# Title
+
+This paper, A View From Somewhere, published at ICLR 2023 by researchers at Sony AI and the University of Tokyo, rethinks how we represent human faces in datasets. Instead of relying on problematic demographic labels like race or gender, the authors collect over six hundred thousand human judgments of face similarity and learn a continuous embedding space aligned with human perception. The result is a face representation that is interpretable, that avoids invasive categorical labels, and that captures the smooth, continuous nature of human phenotypic diversity, opening a new path for measuring dataset diversity more responsibly.

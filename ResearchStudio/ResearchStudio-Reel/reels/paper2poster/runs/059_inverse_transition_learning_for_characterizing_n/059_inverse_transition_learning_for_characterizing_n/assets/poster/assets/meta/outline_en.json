@@ -1,0 +1,246 @@
+{
+  "title": "ICML 2023 | When More Data Won't Save an Offline Policy: Learning Safe Dynamics From Expert Choices",
+  "subtitle": "Harvard University and Imperial College London introduce Bayesian Inverse Transition Learning (ITL), a gradient-free way to turn a near-optimal expert's decisions into hard constraints on an offline model of the world.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "In medicine and education, you rarely get to run experiments. You cannot randomize a treatment on a whim, or re-teach a semester ten different ways to see what sticks. So when reinforcement learning enters these domains, it has to work offline: learn a good decision policy from a fixed batch of experience that someone else already collected. The catch is that the batch only ever records the actions people actually chose, which leaves large parts of the state and action space completely unobserved."
+    },
+    {
+      "type": "paragraph",
+      "text": "Reinforcement learning needs a model of how the world responds to actions, the transition dynamics T. The textbook move is to estimate T by maximum likelihood (MLE), counting how often each state follows each action. But in the offline setting this estimate is fragile: wherever the data is thin the counts are noisy or missing, and the resulting policy swings wildly from one dataset to the next and confidently recommends actions no one should take. Worse, collecting more data does not fix it. Because the batch reflects an expert who kept choosing good actions, the unhelpful parts of the space stay unexplored no matter how many trajectories you add."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICML 2023 paper from Harvard University and Imperial College London turns that limitation into leverage. The people who generated the data, clinicians for instance, were usually acting near-optimally, and their choices quietly encode which actions are good and which are not, information a plain maximum-likelihood fit throws away. The authors introduce Bayesian Inverse Transition Learning (ITL): a gradient-free, constraint-based method that reads a near-optimal expert's decisions as constraints on the dynamics, then clips a Bayesian posterior over T so that every dynamics it keeps yields a safe, high-performing policy."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2308.05075"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why offline dynamics estimation is dangerous"
+    },
+    {
+      "type": "paragraph",
+      "text": "Consider what the maximum-likelihood estimate T_MLE actually sees. For a state-action pair the expert visited many times, the transition counts are reliable. For a pair the expert deliberately avoided, there may be a single sample, or none, and the estimate is essentially a guess. Planning against that guess produces a policy that can pick genuinely bad actions in exactly the regions where the model is least trustworthy."
+    },
+    {
+      "type": "paragraph",
+      "text": "The paper's ablation drives home an uncomfortable point: this is not a small-sample problem that vanishes with scale. Even in the high-data regime, MLE keeps making what the authors call bad mistakes, actions that fall outside the set the expert would ever consider, because expert-generated data structurally never covers those regions. This is aleatoric uncertainty, not epistemic uncertainty: no amount of the same kind of data removes it."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Reading the expert's choices as constraints"
+    },
+    {
+      "type": "paragraph",
+      "text": "The starting observation is simple. If an expert is near-optimal (formally, epsilon-optimal), then on the states where it commits to a single action, that action must be at least as good as every alternative, up to a small slack epsilon. The paper writes this down exactly. Using the closed-form Bellman equations, which express a policy's value as V = (I - gamma T)^(-1) R, it derives linear constraints on the dynamics requiring that the value of an action the expert took exceeds the value of actions the expert never took."
+    },
+    {
+      "type": "paragraph",
+      "text": "Any transition model satisfying these constraints reproduces what the authors call the expert's epsilon-ball structure: around each state, the set of actions whose value is within epsilon of the best one. States whose ball contains a single action are deterministic-policy states, while states where several actions tie are stochastic-policy states, a distinction that turns out to matter for how the method is scored."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Clipping the Bayesian posterior"
+    },
+    {
+      "type": "paragraph",
+      "text": "Rather than optimize a single T, ITL stays Bayesian. It places a Dirichlet-Multinomial posterior P(T|D) over the dynamics, the natural conjugate choice for transition counts, and then clips it: draw samples of T, keep only those that satisfy the expert constraints, and discard the rest. The survivors form a new distribution, P(T|D, pi_epsilon), that respects both the data and the expert's demonstrated preferences."
+    },
+    {
+      "type": "paragraph",
+      "text": "Algorithm 1 makes this concrete with a per-state-action slack term delta that enforces the epsilon-ball property even where the non-linearity of the value function would otherwise break it, and the paper gives separate constraint sets for a fully optimal expert and for a partially uncertain, stochastic-policy one. The whole procedure is gradient-free, which sidesteps the instabilities that earlier gradient-based inverse RL methods inherit in tabular MDPs."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Does it work?"
+    },
+    {
+      "type": "paragraph",
+      "text": "The experiments use a synthetic tabular MDP, small enough to compute everything exactly and probe the method's behavior: 15 states plus a terminal state, 6 actions, and a discount factor of 0.95, with true dynamics deliberately mixed between uniform and highly skewed to create varied behavior. Two coverage regimes, a low-data setting of 15 trajectories and a high-data setting of 300, are crossed with three expert-optimality levels, epsilon = 0, 3, and 4, which respectively leave 0, 3, and 6 stochastic-policy states. Every number below is averaged over 1000 independently generated datasets."
+    },
+    {
+      "type": "paragraph",
+      "text": "To score a learned policy, the authors use the Q*metric, which sums, over all states, how far the policy's chosen action falls below the true optimal action's value. Lower is better, and zero means the policy is effectively optimal. The figure below shows this metric, dataset by dataset, for the two baselines and for ITL."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. The Q*metric across 1000 datasets for three ways of estimating the transition dynamics, under three expert-optimality levels (epsilon = 0, 3, 4) and two data regimes. Lower is better. The red line (ITL, our clipped posterior) hugs zero with almost no spread, while MLE (blue) swings violently from dataset to dataset and the unclipped Bayesian posterior (orange) sits far higher throughout.",
+      "width_inches": 5.0
+    },
+    {
+      "type": "paragraph",
+      "text": "The picture is stark. Across all six panels the red line, ITL's clipped posterior, sits essentially at zero with a barely visible band of variation. The blue MLE line, by contrast, thrashes between datasets, and the orange unclipped posterior P(T|D) stays high throughout. Keeping the full Bayesian distribution without the expert constraints is actually worse than plain MLE here, because it averages over many dynamics that plan poorly. Only once the expert constraints clip that distribution does it become useful."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Q*metric (lower is better) across all six regimes. ITL, written P(T|D, pi_epsilon), matches the near-optimal expert and collapses the cross-dataset variance that plagues MLE.",
+      "headers": [
+        "Setting",
+        "P(T|D)",
+        "MLE",
+        "ITL (ours)",
+        "Expert"
+      ],
+      "rows": [
+        [
+          "epsilon = 0, Low data",
+          " 142.17 ± 8.66",
+          " 59.75 ± 51.99",
+          " 0 ± 0",
+          " 0 ± 0"
+        ],
+        [
+          "epsilon = 0, High data",
+          " 99.0 ± 9.73",
+          " 14.75 ± 6.98",
+          " 0 ± 0",
+          " 0 ± 0"
+        ],
+        [
+          "epsilon = 3, Low data",
+          " 141.81 ± 8.92",
+          " 62.71 ± 51.32",
+          " 3.56 ± 0.1",
+          " 3.60 ± 0"
+        ],
+        [
+          "epsilon = 3, High data",
+          " 100.83 ± 10.45",
+          " 16.32 ± 9",
+          " 3.56 ± 0.25",
+          " 3.60 ± 0"
+        ],
+        [
+          "epsilon = 4, Low data",
+          " 143.52 ± 9.02",
+          " 65.85 ± 50.83",
+          " 9.45 ± 0.23",
+          " 9.4 ± 0"
+        ],
+        [
+          "epsilon = 4, High data",
+          " 101.54 ± 10.81",
+          " 20.11 ± 9.85",
+          " 8.79 ± 0.6",
+          " 9.4 ± 0"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Table 1 puts numbers on the figure. With a fully optimal expert (epsilon = 0), ITL reaches a Q*metric of exactly 0 ± 0 in both data regimes, against 59.75 for MLE in low data and 142.17 for the unclipped posterior. At the hardest setting (epsilon = 4, high data) it scores 8.79 ± 0.6, beating MLE's 20.11 ± 9.85 and roughly matching the near-optimal expert's own 9.4. The standard deviations are the real story: MLE's spread across datasets is enormous (± 51.99 at epsilon = 0, low data), while ITL's collapses to a fraction of a point. In several settings ITL even edges below the expert that generated the data, recovering a policy slightly better than the demonstrations it learned from."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Accuracy where it counts, and safety everywhere"
+    },
+    {
+      "type": "paragraph",
+      "text": "Beyond the aggregate metric, the paper breaks accuracy down by the kind of state. On deterministic-policy states, where there is a single best action to get right, ITL is correct 100% of the time in every setting, while MLE ranges from 67% to 92% and the unclipped posterior does worse still. Just as important is the a-in-epsilon-balls column: the share of the mistakes a method does make that at least stay inside the expert's epsilon-ball, meaning the chosen action is still near-optimal rather than genuinely harmful. ITL never leaves the epsilon-ball, so by construction it makes no bad mistakes."
+    },
+    {
+      "type": "table",
+      "caption": "Table 2. Accuracy and safety in the high-data regime. Deterministic: accuracy on states where the expert has one clearly best action. Stochastic: accuracy on states where several actions are near-optimal. a-in-epsilon-balls: share of mistakes that at least stay within the expert's epsilon-ball (a safe mistake). ITL reaches 100% on deterministic states and never leaves the epsilon-ball.",
+      "headers": [
+        "Setting",
+        "Method",
+        "Deterministic",
+        "Stochastic",
+        "a in epsilon-balls"
+      ],
+      "rows": [
+        [
+          "epsilon = 0",
+          "P(T|D)",
+          " 61 ± 6",
+          "N/A",
+          "N/A"
+        ],
+        [
+          "epsilon = 0",
+          "MLE",
+          " 83 ± 7",
+          "N/A",
+          "N/A"
+        ],
+        [
+          "epsilon = 0",
+          "ITL",
+          " 100 ± 0",
+          "N/A",
+          "N/A"
+        ],
+        [
+          "epsilon = 3",
+          "P(T|D)",
+          " 67 ± 8",
+          " 33 ± 25",
+          " 30 ± 30"
+        ],
+        [
+          "epsilon = 3",
+          "MLE",
+          " 87 ± 7",
+          " 53 ± 28",
+          " 70 ± 38"
+        ],
+        [
+          "epsilon = 3",
+          "ITL",
+          " 100 ± 0",
+          " 55 ± 29",
+          " 100 ± 0"
+        ],
+        [
+          "epsilon = 4",
+          "P(T|D)",
+          " 81 ± 7",
+          " 31 ± 17",
+          " 38 ± 20"
+        ],
+        [
+          "epsilon = 4",
+          "MLE",
+          " 92 ± 6",
+          " 52 ± 20",
+          " 77 ± 25"
+        ],
+        [
+          "epsilon = 4",
+          "ITL",
+          " 100 ± 0",
+          " 59 ± 19",
+          " 100 ± 0"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "The subtler result is on stochastic-policy states. Even though the constraints say nothing explicit about which of several near-optimal actions to pick, ITL is still more accurate there than the baselines, which suggests the constraints implicitly transfer the expert's uncertainty structure into the model rather than only pinning down the single-best-action states."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why this matters"
+    },
+    {
+      "type": "paragraph",
+      "text": "The practical message is that in offline settings the expert's behavior is not just training data for a policy, it is information about the world model itself. Using it as a constraint on the dynamics buys safety guarantees that neither maximum likelihood nor a plain Bayesian posterior can offer. The resulting policies are gradient-free to compute, provably stay within the expert's safe set, carry dramatically lower variance across datasets, and can even outperform the expert who produced the data. The same constraints-plus-uncertainty recipe also yields a ranking of actions in the uncertain states, exactly the kind of informative, hedged recommendation that high-stakes planning in healthcare would want."
+    },
+    {
+      "type": "paragraph",
+      "text": "The honest boundaries: the study is on a small synthetic tabular MDP, and the method assumes the reward function R is known and that the demonstrating expert really is near-optimal. Whether the same clipping idea scales to large or continuous state spaces, and how sensitive it is to a genuinely sub-optimal expert, is left for future work. But as a statement of principle, ITL makes a clean case that the choices already sitting in your offline data are a constraint worth enforcing rather than a signal to average away."
+    }
+  ]
+}

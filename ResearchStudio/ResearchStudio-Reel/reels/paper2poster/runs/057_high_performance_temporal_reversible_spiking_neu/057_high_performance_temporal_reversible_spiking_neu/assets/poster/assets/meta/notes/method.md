@@ -1,0 +1,7 @@
+# Method
+
+Core claim: The image is encoded once, split into T groups fed one per timestep, and the network is divided into T parameter-sharing sub-networks; most neurons are temporally "turned off" (no temporal state), while a few key "turned-on" neurons pass information through multi-level temporal-reversible connections so activations can be recomputed instead of stored.
+
+Supporting detail: Reversibility means only the last-timestep membrane potentials must be kept during backward, yielding O(L) memory; feature fusion across stages (with up/down-sampling alignment) builds the multi-level temporal interaction.
+
+Narration: Here is how it works in practice. Instead of feeding the same image to the network at every timestep, T-RevSNN encodes the image just once, divides the encoded features into T groups, and gives one group to each timestep. The whole network is likewise split into T sub-networks that share parameters and exchange temporal information only at the key, turned-on neurons. Those key connections follow a multi-level temporal-reversible rule: the membrane potential at one timestep can be exactly reconstructed from the next timestep's state and the incoming spikes. Because the forward pass is reversible, the backward pass only needs the membrane potentials of the final timestep, so intermediate activations do not have to be stored. That is what collapses the training memory from order L times T down to order L.

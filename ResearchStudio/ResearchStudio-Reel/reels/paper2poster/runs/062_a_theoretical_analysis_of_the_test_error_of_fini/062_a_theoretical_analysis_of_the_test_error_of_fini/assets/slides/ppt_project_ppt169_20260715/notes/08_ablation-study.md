@@ -1,0 +1,1 @@
+The paper ablates its bound. The finite-rank error is an irreducible floor, while residue terms shrink at a log-N-over-N rate and vanish for large samples. Dropped, the simplified bounds fail only in the small-sample regime, as predicted. A ridge sweep shows the new bound improves toward the ridgeless limit while the prior worsens.

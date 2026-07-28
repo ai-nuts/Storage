@@ -1,0 +1,1 @@
+Kernel ridge regression helps explain generalization, and tuning a network's last layer behaves like it with a finite-rank kernel. But classical bounds are far too loose here: they keep the ridge above zero, give only upper bounds, and go vacuous as regularization vanishes.

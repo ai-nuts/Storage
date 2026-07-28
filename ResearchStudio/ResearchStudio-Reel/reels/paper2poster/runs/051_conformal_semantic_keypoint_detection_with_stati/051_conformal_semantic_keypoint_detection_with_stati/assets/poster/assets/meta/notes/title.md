@@ -1,0 +1,3 @@
+# Title
+
+From NVIDIA Research at CVPR 2023, this work closes a safety-critical gap in object pose estimation. Standard two-stage pipelines detect keypoints, then solve for the 6D pose, but give no guarantee on how wrong the answer might be. The authors add two pieces. Conformal keypoint detection turns heatmap detections into circular or elliptical prediction sets that provably cover the true keypoints with a chosen probability, say ninety percent. Geometric uncertainty propagation pushes those sets through the geometry to form a Pose Uncertainty Set, or PURSE, covering the true pose. From PURSE they compute an average pose and use semidefinite relaxation to bound the worst-case error. On LineMOD Occlusion, coverage is valid and the bounds hold.

@@ -1,0 +1,1406 @@
+                                                          Object Pose Estimation with Statistical Guarantees:
+                                                  Conformal Keypoint Detection and Geometric Uncertainty Propagation
+                                                                                                              Heng Yang and Marco Pavone
+                                                                                                                  NVIDIA Research
+                                                                         Conformal Keypoint Detection                                             Geometric Uncertainty Propagation
+
+
+
+
+                                                                                                                                                                                                                      reproject
+                                                                            Inductive
+                                                                            Conformal                           Constraint                                                            Semidefinite
+                                                                                                 OR                                                    RANSAG
+                                                                            Prediction                         Propagation                                                             Relaxation
+                                                                                                                                                                                                               reproject
+arXiv:2303.12246v1 [cs.CV] 22 Mar 2023
+
+
+
+
+                                         (a) Input image & heatmaps (b) Circular/elliptical prediction sets              (c) Pose UnceRtainty SEt (PURSE)        (d) Average pose                    (e) Worst-case error bounds
+
+
+                                         Figure 1. Probabilistically correct object pose estimation. Given (a) an input image and heatmap detections of the object semantic
+                                         keypoints, our method first conformalizes the heatmaps into (b) circular or elliptical prediction sets that guarantee probabilistic coverage
+                                         of the groundtruth keypoints (e.g., 90%). Our method then propagates the uncertainty in the keypoints to the object pose, forming (c) a
+                                         Pose UnceRtainty SEt (PURSE) that contains the groundtruth pose with the same probability. We develop RANdom SAmple averaGing
+                                         (RANSAG) to sample from PURSE and generate (d) an average pose, and apply semidefinite relaxation to compute (e) worst-case error
+                                         bounds: the blue duck attains the worst rotation error w.r.t. the (average pose) yellow duck; the red duck attains the worst translation error.
+                                         Code available: https://github.com/NVlabs/ConformalKeypoint.
+
+                                                                             Abstract                                                   1. Introduction
+                                             The two-stage object pose estimation paradigm first de-
+                                                                                                                                            Estimating object poses from images is a fundamental
+                                         tects semantic keypoints on the image and then estimates
+                                                                                                                                        problem in computer vision and finds extensive applications
+                                         the 6D pose by minimizing reprojection errors. Despite per-
+                                                                                                                                        in augmented reality [42], autonomous driving [81], robotic
+                                         forming well on standard benchmarks, existing techniques
+                                                                                                                                        manipulation [61], and space robotics [19]. One of the most
+                                         offer no provable guarantees on the quality and uncertainty
+                                                                                                                                        popular paradigms for object pose estimation is a two-stage
+                                         of the estimation. In this paper, we inject two fundamental
+                                                                                                                                        pipeline [20, 72, 73, 80, 82, 86, 90, 102], where the first stage
+                                         changes, namely conformal keypoint detection and geomet-
+                                                                                                                                        detects (semantic) keypoints of the objects on the image,
+                                         ric uncertainty propagation, into the two-stage paradigm
+                                                                                                                                        and the second stage computes the object pose by solving
+                                         and propose the first pose estimator that endows an estima-
+                                                                                                                                        an optimization known as Perspective-n-Points (PnP) that
+                                         tion with provable and computable worst-case error bounds.
+                                                                                                                                        minimizes reprojection errors of the detected keypoints.
+                                         On one hand, conformal keypoint detection applies the sta-
+                                         tistical machinery of inductive conformal prediction to con-                                       Safety-critical applications call for provably correct
+                                         vert heuristic keypoint detections into circular or elliptical                                 computer vision algorithms. Existing algorithms in the two-
+                                         prediction sets that cover the groundtruth keypoints with a                                    stage paradigm (reviewed in Section 2), however, provide
+                                         user-specified marginal probability (e.g., 90%). Geometric                                     few performance guarantees on the quality of the estimated
+                                         uncertainty propagation, on the other, propagates the ge-                                      poses, due to three challenges. (C1) It is difficult to en-
+                                         ometric constraints on the keypoints to the 6D object pose,                                    sure the detected keypoints (typically from neural networks)
+                                         leading to a Pose UnceRtainty SEt (PURSE) that guarantees                                      are close to the groundtruth keypoints. In practice, the
+                                         coverage of the groundtruth pose with the same probabil-                                       first stage often outputs keypoints that are arbitrarily wrong,
+                                         ity. The PURSE, however, is a nonconvex set that does not                                      known as outliers. (C2) Robust estimation is employed in
+                                         directly lead to estimated poses and uncertainties. There-                                     the second stage to reject outliers, leading to nonconvex op-
+                                         fore, we develop RANdom SAmple averaGing (RANSAG)                                              timizations. Fast heuristics such as RANSAC [26] are widely
+                                         to compute an average pose and apply semidefinite relax-                                       adopted to find an approximate solution but they cannot
+                                         ation to upper bound the worst-case errors between the                                         guarantee global optimality and often fail without notice.
+                                         average pose and the groundtruth. On the LineMOD Oc-                                           (C3) There is no provably correct uncertainty quantification
+                                         clusion dataset we demonstrate: (i) the PURSE covers the                                       of the estimation, notably, a formal worst-case error bound
+                                         groundtruth with valid probabilities; (ii) the worst-case er-                                  between the estimation and the groundtruth. Though recent
+                                         ror bounds provide correct uncertainty quantification; and                                     work [99] proposed convex relaxations to certify global op-
+                                         (iii) the average pose achieves better or similar accuracy as                                  timality of RANSAC and addressed (C2), it cannot ensure
+                                         representative methods based on sparse keypoints.                                              correct estimation as the optimal pose may be far away from
+the correct pose when the keypoints are unreliable.                 can be an art) and may be conservative. Our experiments
+   Contributions. We propose a two-stage object pose es-            suggest the bounds are loose when the keypoint prediction
+timation framework with statistical guarantees, illustrated         sets are large (e.g., giving 180◦ rotation bound). We discuss
+in Fig. 1. Given an input image, we assume a neural net-            challenges and opportunities in tightening the bounds.
+work [72] is available to generate heatmap predictions of
+the object keypoints (Fig. 1(a)). Our framework then pro-           2. Related Work
+ceeds in two stages, namely conformal keypoint detection                Image-based object pose estimation. We categorize
+(Section 4) and geometric uncertainty propagation (Sec-             object pose estimation into two paradigms: single-stage
+tion 5). We first apply the statistical machinery of induc-         and two-stage. The latter first detects 2D-3D correspon-
+tive conformal prediction (introduced in Section 3), with           dences and then estimates the object pose via solving a PnP
+nonconformity functions inspired by the design of resid-            problem, while the former produces poses without inter-
+ual functions in classical geometric vision [39], to con-           mediate correspondences. (i) Single-stage. Early meth-
+formalize the heatmaps into circular or elliptical predic-          ods perform pose estimation via template matching [29,
+tion sets –one for each keypoint– that guarantee coverage           32, 36]. Recently, deep learning-based approaches such
+of the groundtruth keypoints with a user-specified marginal         as PoseNet [41] and PoseCNN [96] applied CNNs to di-
+probability (Fig. 1(b)). This provides a simple and general         rectly regress poses. A major challenge of pose regres-
+methodology to bound the keypoint prediction errors (i.e.,          sion is the nonlinearity of 3D rotations, and motivated
+addressing (C1)). Given the keypoint prediction sets, we            formulating regression as classification [85, 88, 91] or de-
+reformulate the constraints (enforced by the prediction sets)       signing better rotation representations [47, 103]. It is also
+on the keypoints as constraints on the object pose, leading to      popular to predict multiple pose hypotheses followed by
+a Pose UnceRtainty SEt (PURSE) that guarantees coverage             voting [56, 63, 87]. (ii) Two-stage. Early research used
+of the groundtruth pose with the same probability. Fig. 1(c)        handcrafted features [51, 57, 79] to establish 2D-3D corre-
+plots the boundary of an example PURSE (roll, pitch, raw            spondences and focused on developing algorithms for solv-
+angles for the rotation, and Euclidean coordinates for the          ing PnP. Notable algorithms include the minimal solver
+translation). The PURSE, however, is an abstract nonconvex          P3P [27, 46] and variants of the nonminimal solver PnP [45,
+set that does not directly admit estimated poses and uncer-         52, 69, 98]. Outliers (i.e., wrong correspondences) moti-
+tainty. Therefore, we develop RANdom SAmple averaGing               vated robust estimation based on RANSAC [26], graduated
+(RANSAG) to compute an average pose (Fig. 1(d)) and em-             non-convexity [9, 10, 97], branch-and-bound [16, 38, 53], or
+ploy semidefinite relaxations to upper bound the worst-case         semidefinite relaxations [99]. Unreliable correspondences
+rotation and translation errors between the average pose and        soon became the bottleneck and learned correspondences
+the groundtruth (Fig. 1(e)). This gives rise to the first kind of   have been predominant. Learned correspondences can be
+computable worst-case probabilistic error bounds for object         sparse or dense. Sparse methods define a handful of key-
+pose estimation (i.e., addressing (C3)). Our PURSE method-          points and predict locations of the keypoints via direct re-
+ology has connections to the framework of unknown-but-              gression [75, 90], probabilistic heatmap [68, 72], or vot-
+bounded noise estimation in control theory [64], with spe-          ing [73]. Dense methods [12, 34, 55, 71, 94, 102] regress
+cial provisions to derive the bounds in a statistically princi-     for each object pixel the coordinates of its corresponding
+pled way and enable efficient computation.                          3D point. Recent literature focus on end-to-end training via
+   We test our framework on the LineMOD Occlusion (LM-              differentiating PnP [13, 15, 20, 21, 37]. Both single-stage
+O) dataset [11] to verify the correctness of the theory (Sec-       and two-stage methods perform well on standard bench-
+tion 6). First, we empirically show that the PURSE in-              marks [35], but a crucial feature that is missing, espe-
+deed contains the groundtruth pose according to the user-           cially when deploying computer vision algorithms in safety-
+specified probability. Second, we demonstrate the correct-          critical applications, is that these methods do not provide
+ness of the worst-case error bounds: when the PURSE con-            provably correct uncertainty quantification and formal er-
+tains the groundtruth, our bounds are always larger than,           ror bounds w.r.t. the groundtruth (for either the correspon-
+and in many cases close to, the actual errors between the av-       dences or the poses). In this paper, we provide rigorous
+erage pose and the groundtruth pose. Third, we benchmark            guarantees by applying conformal prediction to an existing
+the accuracy of the average pose (coming from RANSAG)               keypoint detection method (the heatmap [72]) and leverag-
+with representative two-stage pipelines based on sparse key-        ing old and new techniques in computer vision to derive
+points (e.g., PVNet [73]) and show that the average pose            formal error bounds.
+achieves better or similar accuracy.                                    Conformal prediction in computer vision. Conformal
+   Limitations. A drawback of our approach, and confor-             prediction [93] is a statistical machinery that offers provably
+mal prediction in general, is that the size of the prediction       correct finite-sample uncertainty quantification without as-
+sets depends on the nonconformity function (whose design            sumptions on the data distribution or the prediction model
+(i.e., offering a set prediction, instead of a point prediction,   mal prediction (ICP) provides a set prediction F  (x) ⊆ Y,
+that guarantees probabilistic coverage of the groundtruth).        parameterized by an error rate 0 <  < 1, such that given
+Inductive conformal prediction [70] is the most popular            a new sample zl+1 = (xl+1 , yl+1 ) satisfying an exchange-
+variant of conformal prediction because it does not require        ability condition (elaborated in Theorem 1), we have
+retraining of the prediction models [1, 2, 50]. Applying
+                                                                                P [yl+1 ∈ F  (xl+1 )] ≥ 1 − ,                 (1)
+conformal prediction to computer vision, however, is still
+in its infancy. Existing works focus on image classifi-                                     
+                                                                   i.e., the prediction set F guarantees to contain the true label
+cation [1, 77], tumor segmentation [3, 8, 95], and bound-          yl+1 with probability at least 1 − .
+ing box detection [2, 23, 54], which are classification or             Training. We start by dividing the dataset into a
+low-dimensional regression problems. Inspired by these             proper training set {z1 , . . . , zm } and a calibration set
+works, our unique contributions in this paper are: (i) we          {zm+1 , . . . , zl }. We shorthand n = l − m as the size of the
+apply conformal prediction to keypoints detection, a high-         calibration set. We learn a prediction function f : X → Ỹ
+dimensional regression problem; (ii) we design new non-            from the proper training set using any architecture, which
+conformity functions and discuss their connections with            allows us to fully exploit the power of modern deep learn-
+classical geometric vision; and (iii) we develop algorithms        ing. The prediction space Ỹ can be the same as the label
+that propagate the uncertainty after conformal prediction to       space Y, or can contain auxiliary information such as a
+form prediction sets of 6D poses, which are nonlinear and          heuristic notion of uncertainty (e.g., softmax scores in clas-
+nonconvex manifold objects.                                        sification or a heatmap in the case of keypoint detection).
+    Performance guarantees. Pose estimation from 2D-                   Conformal calibration. We define a nonconformity
+2D, 2D-3D, and 3D-3D correspondences are foundational              function S : Z m × Z → R to measure how well a given
+problems in computer vision textbooks [6, 31, 59, 89] and          sample z = (x, y) conforms to the proper training set. A
+typically boil down to formulating and solving mathemat-           popular instance of S leverages the learned prediction f :
+ical optimization problems. Benchmarking on simulated                                                  e.g.
+and real datasets has been a widely adopted standard for                  S ({z1 , . . . , zm } , (x, y)) = r(y, f (x)),        (2)
+testing different formulations and solvers. However, em-
+                                                                   where r : Y × Ỹ → R is a measure of disagreement
+pirical performance can be misleading without theoretical
+                                                                   between the label y and the prediction f (x). For exam-
+guarantees. A striking fact is that, though error analysis
+                                                                   ple, consider Y = Ỹ = R, one can design r(y, f (x)) =
+is an important topic in applied math [17, 24, 43] and con-
+                                                                   |y − f (x)|: if (x, y) poorly conforms to the training set,
+trol theory [62, 64, 83], there is very limited literature in
+                                                                   f will incur large errors. While the function S can be
+computer vision that reason about worst-case estimation
+                                                                   arbitrary (e.g., a learnable neural network [84]), (2) is a
+errors between the optimal solution and the groundtruth.
+                                                                   convenient definition since f is implicitly dependent on
+A popular heuristic relies on the inverse of the Hessian at
+                                                                   {zi }m
+                                                                        i=1 and r can incorporate domain-specific knowledge.
+an optimal solution, which provides the Cramer-Rao lower
+                                                                   We then compute the nonconformity scores on the calibra-
+bound on the covariance of the solution (for linear regres-
+                                                                   tion set as αi = r(yi , f (xi )), i = m + 1, . . . , l, and sort
+sion this coincides with the covariance) [89, Section B.6]
+                                                                   them in nonincreasing order απ(1) ≥ · · · ≥ απ(n) , where
+and thus cannot upper bound the estimation errors. Re-
+                                                                   π(i) ∈ {m + 1, . . . , l} is an index permutation.
+cent works [18, 78, 101] derived error bounds for a few
+                                                                      Conformal prediction. Given a new observation xl+1
+geometric vision problems. However, the bounds either
+                                                                   (with an unknown yl+1 ) and a user-specified  ∈ (0, 1), we
+depend on uncheckable assumptions and cannot be com-
+                                                                   compute the inductive conformal prediction (ICP) set as
+puted [78,101], or build on machinery (e.g., sum-of-squares
+                                                                         F  (xl+1 ) = y ∈ Y | αy ≤ απ(b(n+1)c) ,
+                                                                                      
+proof [5, 65]) that only applies to estimators based on mo-                                                                     (3)
+ment relaxations [18], which are still computationally ex-
+                                                                   where αy = r(y, f (xl+1 )) is the nonconformity score of
+pensive in practice [100]. In this paper, we develop the first
+                                                                   the new sample when fixing the true label to be y. In other
+kind of efficiently computable error bounds that only re-
+                                                                   words, the ICP set (3) outputs the set of all labels that make
+quire the assumption of exchangeability (which comes from
+                                                                   the nonconformity score of the new sample no greater than
+conformal prediction). We justify this assumption on our
+                                                                   απ(b(n+1)c) – the b(n+1)c-th largest nonconformity score
+test dataset and numerically show our bounds can be tight
+                                                                   in the calibration set. We have the following result stating
+for a subset of the test problems.
+                                                                   the probabilistic coverage of the ICP set (3).
+3. Inductive Conformal Prediction                                  Theorem 1 (Validity of ICP Coverage [49, 92, 93]). If
+                                                                   zm+1 , . . . , zl , zl+1 = (xl+1 , yl+1 ) are exchangeable, i.e.,
+   Given a set {zi = (xi , yi )}li=1 with observation xi ∈ X
+                                                                   their distribution is invariant under permutation, then
+and label yi ∈ Y such that each zi ∈ Z := X × Y is drawn
+i.i.d. from an unknown distribution on Z, inductive confor-         1 −  ≤ P [yl+1 ∈ F  (xl+1 )] ≤ 1 −  + 1/(n + 1)          (4)
+                                                                       the groundtruth locations of K semantic keypoints of the
+                                                                       object. We partition a given dataset {zi := (xi , yi )}li=1 into
+                                                                       a proper training set (of size m) and a calibration set (of size
+                                                                       n). We follow the three steps in Section 3 to perform ICP.
+                                                                          Training. We choose the heatmap approach in [72, 80]
+                                                                       as the prediction function: given an image x, [80] outputs
+                                                                       a set of heatmaps f (x) = (f (x)1 , . . . , f (x)K ), where each
+                                                                                                            PHW
+                      0.86       0.9      0.94                         f (x)k ∈ ∆HW := {v ∈ RHW       +   | i          vi = 1} predicts
+                                                                       the probability distribution of the k-th keypoint lying on
+ Figure 2. Beta distribution of the conditional coverage in (5) with   each pixel of the image.1 For convenience, we use q j ∈ R2
+  = 0.1 and different n. Notice how the conditional probability       to denote the j-th pixel location in x and f (x)jk ∈ R+ to
+ becomes more concentrated around 1 −  when n increases.              denote the probability of the k-th keypoint lying on q j . Let
+ for any  ∈ (0, 1). Furthermore, when conditioned on the              σk be the index permutation that sorts f (x)k in nonincreas-
+ calibration set, calling h = b(n + 1)c, we have                                            σ (1)                 σ (HW )
+                                                                       ing order, i.e., f (x)k k ≥ · · · ≥ f (x)k k        . As we will
+                                                                       soon show, choosing the heatmap approach leads to simple
+P [yl+1 ∈ F  (xl+1 ) | {zm+1 , . . . , zl }] ∼ Beta(n+1−h, h). (5)    and intuitive designs of the nonconformity function.
+                                                                          Conformal calibration. We design the following non-
+     A few remarks are in order about Theorem 1. First, ask-           conformity function
+ ing zm+1 , . . . , zl , zl+1 to be exchangeable is weaker than
+ asking them to be independent. However, this assumption                         r(y, f (x)) = max{φ(yk , f (x)k )}K                           (6)
+                                                                                                                   k=1
+ typically fails when the calibration set is a single video se-
+ quence, where the image frames {zm+1 , . . . , zl } are tempo-        that uses φ to score each keypoint and then selects the maxi-
+ rally correlated [58]. Fortunately, as we detail in Section 6,        mum score. This design considers the worst keypoint detec-
+ the way the LineMOD Occlusion dataset [11] was collected              tion performance of f . We provide two designs of φ below.
+ makes the exchangeability condition easily satisfied, which                                                σ (1)
+                                                                          (a) Peak. Shorthand pk = f (x)k k as the peak prob-
+ also suggests best practices to make the exchangeability              ability in the k-th heatmap and qk = q σk (1) as the pixel
+ condition hold in computer vision. Second, the lower bound            location attaining the peak probability, we design
+ in (4) can be intuitively proved because under exchange-
+ ability, αl+1 := r(yl+1 , f (xl+1 )) –the nonconformity score                         φpeak (yk , f (x)k ) = pk kyk − qk k               (peak)
+ of the new sample with the true label– is exchangeable
+ with the nonconformity scores of the calibration samples,             which computes the error between the true keypoint loca-
+ and hence equally likely to fall in anywhere between the              tion yk and the most probable keypoint location qk and
+ scores   {απ(i) }ni=1 . Consequently,   P [yl+1 ∈ F  (xl+1 )] =      scales the error by the peak probability pk . φpeak describes
+                                                                       nonconformity because it becomes larger when the network
+                             
+ P αl+1 ≤ απ(b(n+1)c) = 1 − b(n + 1)c/(n + 1) ≥ 1 − .
+ The upper bound in (4) states that 1 −  is not overly conser-        f is confidently wrong (both kyk − qk k and pk are large),
+ vative (indeed tight if n is large). Lastly, the probabilistic        implying the sample is highly nonconforming.
+                                                                                                         PJ          σ (j)
+ guarantee in (4) is marginal over the randomness of the cal-               (b) Covariance. Let q̄k = j=1 f (x)k k q σk (j) be the
+ ibration set, meaning if one chooses an infinite number of            expected location of the top-J most likely detections for
+                                                                                                           PJ         σk (j)
+ calibration sets, the average empirical coverage will con-            the k-th keypoint, and Σk =           j=1 f (x)k      · (q σk (j) −
+ verge to 1 − . This, however, implies that the empirical             q̄k )(q σk (j)        T
+                                                                                      − q̄k ) as the covariance, we design
+ coverage given one calibration set is a random variable that
+ fluctuates as the Beta distribution (5). Fig. 2 plots the Beta             φcov (yk , f (x)k ) = (yk − q̄k )T Σ−1
+                                                                                                                k (yk − q̄k )               (cov)
+ distribution at  = 0.1 with different sizes of the calibration
+ set. We observe that as n increases the empirical coverage            which computes the squared Mahalanobis distance [60]
+ becomes more concentrated at 1 − . Our experiments show              from the groundtruth yk to the top-J keypoint detections
+ that even with a small (n = 200) calibration set, the empir-          (represented by the mean q̄k and covariance Σk ).2 A larger
+ ical coverage is close to, and mostly higher than, 1 − .             Mahalanobis distance indicates more abnormality of the
+                                                                       heatmap f (x)k (compared to the groundtruth yk ) [28], and
+ 4. Conformal Keypoint Detection                                       hence implies higher nonconformity.
+                                                                           1 The heatmap in the original paper [72] is not a valid probability dis-
+     In this section, we apply the ICP framework in Section 3
+                                                                       tribution as it contains negative values and do not sum up to 1. We remove
+ to the problem of semantic keypoint detection.                        the negative values and normalize it to be a valid probability distribution.
+     Setup. Denote by x ∈ RH×W ×3 an RGB image pictur-                     2 We only choose the top-J (J = 100) most likely detections on the
+
+ ing an object, by y = (y1 , . . . , yK ) ∈ R2 × · · · × R2 := Y       heatmap because the heatmap can be quite noisy in practice.
+       Using the nonconformity function (6) with (peak) or                          Proposition 2 (Invariance of ICP). Let ρ : R+ 7→ R+ be
+    (cov), we compute the nonconformity scores of the calibra-                      any monotonically increasing function. Fixing the calibra-
+    tion set and sort them as: απ(1) ≥ · · · ≥ απ(n) .                              tion set and error rate , the nonconformity function
+       Conformal prediction. Given an error rate  ∈ (0, 1),
+    we first find απ(b(n+1)c) . Then, according to the ICP set                           rρ (y, f (x)) = max{ρ(φ(yk , f (x)k ))}K
+                                                                                                                                 k=1               (8)
+    definition (3) and our nonconformity function (6), we out-
+                                                                                    leads to the same ICP set as (6).
+    put the ICP set for a new xl+1 as
+                                                                                        The proof of Proposition 2 is presented in Supplemen-
+                                  F  (xl+1 )                                       tary Material. We conclude that common robust costs, such
+    = {y ∈ Y | max{φ(yk , f (xl+1 ))}K
+                                     k=1 ≤ απ(b(n+1)c) }                           as `1 , Huber, Geman-McClure, and Barron’s adaptive ker-
+    =        {y ∈ Y | φ(yk , f (xl+1 )) ≤ απ(b(n+1)c) , ∀k},          (7)          nel [7, 9] (which are monotonically increasing on [0, +∞])
+                                                                                    cannot change the ICP sets by robustifying the individual
+    where we used max{φ1 , . . . , φK } ≤ α if and only if φk ≤                     score φ. However, it remains an open question whether
+                                                  
+    α for any k. Insert (peak) into (7), we have Fball (xl+1 ) as                   changing the “max” operation in (6) can give rise P to bet-
+                                                                                    ter ICP sets. For instance, replacing “max” with “ ” in (6)
+        
+                                     απ(b(n+1)c)
+                                                                                                                                          φ2
+                                                                                    and using the Geman-McClure robust cost ρ(φ) = 1+φ        2
+            y ∈ Y | kyk − ql+1,k k ≤              , ∀k ,            (ball)
+                                       pl+1,k                                       with φ = φpeak results in the following ICP set
+                                                                                      (           K
+                                                                                                                                        )
+    which defines –for the k-th keypoint– a ball centered at                                     X      p2k kyk − qk k2
+    ql+1,k (the most likely detection) with a radius inversely                          y∈Y|                             ≤ απ(b(n+1)c)     (9)
+                                                                                                     1 + p2k kyk − qk k2
+                                                                                                k=1
+    proportional to pl+1,k and proportional to απ(b(n+1)c) .
+                                               
+    Similarly, insert (cov) into (7), we have Fellipse (xl+1 ) as                   that does not admit a geometric interpretation that is as sim-
+                                                                                    ple and intuitive as the (ball) and (ellipse) sets introduced
+                                    Σ−1
+(                                                                           )
+                                     l+1,k                                          before. In fact, it is indeed the simplicity of (ball) and
+y ∈ Y | (yk − q̄l+1,k )T                        (yk − q̄l+1,k ) ≤ 1, ∀k         ,   (ellipse) that enables us to propagate the uncertainty in key-
+                                απ(b(n+1)c)
+                                                         (ellipse)                  points to the object pose, as we will show in the next section.
+    which defines –for the k-th keypoint– an ellipse centered
+    at q̄l+1,k (the expected location of the top-J detections)                      5. Geometric Uncertainty Propagation
+    with an area proportional to det(Σl+1,k ) and απ(b(n+1)c) .3                       Conformalizing the heatmaps gives us prediction sets
+    From (ball) and (ellipse), we observe that the prediction sets                  that guarantee probabilistic coverage of the true keypoints.
+    become larger when (i) the heatmaps are uncertain, i.e., the                    We unify the prediction sets (ball) and (ellipse) as
+    peak probability is low or the covariance matrix has large
+                                                                                    F  (x) = y ∈ Y | (yk − µk )T Λk (yk − µk ) ≤ 1, ∀k , (10)
+                                                                                              
+    determinant; and (ii) the heatmaps perform poorly on the
+    calibration set, leading to a large απ(b(n+1)c) .
+                                                                                                                      p2
+        Connections to geometric vision. Our nonconformity                          where µk = ql+1,k , Λk = α2 l+1,k              I2 for (ball), µk =
+    function bears similarity to the residual function in ge-                                                        π(b(n+1)c)
+                                                                                                       Σ−1
+                                                                                                        l+1,k
+    ometric vision [4, 22, 31]. For example, the (peak) and                         q̄l+1,k , Λk = απ(b(n+1)c) for (ellipse), and we omit the sub-
+    (cov) functions are similar to the (weighted) reprojection er-                  script l + 1 for simplicity.
+    ror [31], and the “max” in (6) can be connected to seminal                          Why not uncertainty-aware PnP? A popular way to es-
+    work on optimizing the `∞ norm [39].                                            timate pose from (10) is to solve an uncertainty-aware PnP
+        Outlier-robust nonconformity? One potential issue of
+                                                                                                           K
+    the nonconformity function (6) is that a single outlier can                                            X
+    inflate the score and the calibration quantile απ(b(n+1)c)                              min                (yk − µk )T Λk (yk − µk )
+                                                                                         (R,t)∈SE(3)
+    and lead to conservative prediction sets (e.g., when f pre-                                            k=1
+
+    dicts K − 1 keypoints perfectly but misses one keypoint).                             subject to     yk = Π(RYk + t), k = 1, . . . , K       (11)
+    A potential remedy in geometric vision is to use robust cost
+                                                                                    where Yk ∈ R3 , k = 1, . . . , K are the 3D object keypoints
+    functions [7,9,97]. Therefore, a natural question is whether
+                                                                                    and Π(·) denotes the camera projection. We challenge this
+    “robustifying” the nonconformity function (6) can lead to
+                                                                                    approach and point out its two drawbacks. First, it is dif-
+    better prediction sets. Here we focus on only robustifying φ
+                                                                                    ficult to solve (11) to global optimality due to (i) the non-
+    in (6) and provide a negative answer.
+                                                                                    convex SE(3) constraint and (ii) the rational polynomial ap-
+                                                                                    pearing in Π(·). The best known approach to solve (11) re-
+        3 The area of (x − µ)T A(x − µ) ≤ 1 is proportional to det(A−1 ).           lies on either branch-and-bound [69] or local optimization.
+Second, solving (11) typically outputs a single optimal pose        Algorithm 1: RANdom SAmple averaGing
+without uncertainty quantification. Are there other poses
+                                                                    1 Input: an ICP set F  (x) (10) and its corresponding
+that attain similar costs as the optimal pose? How close is
+the optimal pose to the groundtruth pose? These questions             (PURSE) S  ; maximum trials T ; initial Ŝ = ∅;
+                                                                    2 Output: sample poses S ⊂ SE(3) in PURSE, and an
+remain not answered in the literature.
+   Pose UnceRtainty SEt (PURSE). We propose to, instead               average pose s̄ ∈ SE(3);
+                                                                    3 for τ ← 1 to T do
+of solving a PnP problem similar to (11), directly propagate
+the uncertainty in the ICP sets to the object pose.                 4     Sample {k1 , k2 , k3 } from [K] (k1 6= k2 6= k3 );
+                                                                    5     Sample ŷki , i = 1, 2, 3 from
+                                                    T
+Proposition 3 (PURSE). Let sgt = [vec (Rgt ) ; tT           T
+                                                        gt ] be
+the groundtruth object pose (that lies in front of the camera).                 {y ∈ R2 | (y − µki )T Λki (y − µki ) ≤ 1};
+Then, the groundtruth keypoints y = (y1 , . . . , yK ) belong
+                                                                    6      Ŝ ← Ŝ ∪ (S  ∩ P3P({ŷki ↔ Yki }3i=1 ));
+to the ICP set F  (x) in (10) if and only if sgt belongs to the
+                                                                    7 end
+following pose uncertainty set
+                                                                    8 S = Ŝ;
+                                                  
+                    sT Ak s ≤ 0, k = 1, . . . , K                  9 if Ŝ = ∅ then
+S = s ∈ SE(3)                                        , (PURSE)
+                        bT
+                         k s > 0, k = 1, . . . , K                 10      for τ ← 1 to bT /20c do
+                                                                   11            Sample ŷk , k = 1, . . . , K from F  (x);
+where Ak ∈ S12 , bk ∈ R12 , k = 1, . . . , K are constant                        Ŝ ← Ŝ ∪ PnP({ŷk ↔ Yk }K
+                                                                   12                                           k=1 );
+matrices dependent on µk , Λk , Yk and camera intrinsics.          13      end
+                                                                   14 end
+    The detailed proof for Proposition 3 is algebraically in-                              P
+                                                                   15 R̄ = projSO(3) (         (Rj ,∗)∈Ŝ Rj );
+volved and postponed to the Supplementary Material. The
+                                                                             1
+                                                                                 P
+high-level intuition is, however, straightforward: we plug         16 t̄ =          (∗,tj )∈Ŝ tj ;
+                                                                            |Ŝ|
+in yk = Π(RYk + t) into (10) and obtain K quadratic in-            17   return: S, s̄ = (R̄, t̄)
+equalities of the form sT Ak s ≤ 0. The linear inequalities
+bTk s > 0 are added to enforce the (transformed) 3D key-           K keypoints and solving PnP (line 9-12).4 After obtaining a
+points lie in front of the camera. Proposition 3 implies, if       set of poses, RANSAG performs rotation averaging (line 14)
+we are 1 −  confident the groundtruth keypoints can be            and translation averaging (line 15) to obtain an average pose
+anywhere inside F  (x), then we should also be confident          s̄.5 Note that RANSAG does not check if s̄ lies in the PURSE.
+any pose in (PURSE) can be the groundtruth. Viewing pose               Worst-case error bounds. To upper bound the errors
+estimation as a set estimation with guaranteed probabilis-         between the average pose s̄ and the groundtruth (Rgt , tgt ),
+tic coverage of the groundtruth is fundamentally different         we maximize the squared pose-to-PURSE distance:
+from viewing it as computing a single pose from (11) that
+is (hopefully) close enough to the groundtruth.                          d2,λ = max  λkR − R̄k2F + (1 − λ)kt − t̄k2                (12)
+    RANdom SAmple averaGing (RANSAG). Verifying if                               (R,t)∈S
+a given pose belongs to the PURSE is straightforward via
+checking the inequalities in (PURSE). However, the PURSE           given λ ∈ [0, 1]. Particularly, we compute two cases λ = 1
+does not directly give us estimated poses. Therefore,              (the maximum rotation distance) and λ = 0 (the maximum
+we propose an efficient sampling algorithm called RAN-             translation distance). Proposition 3 states the groundtruth
+dom SAmple averaGing (RANSAG) that is analogous to                 (Rgt , tgt ) lies in S  with 1 −  probability, hence
+RANSAC [26] and leverages the minimal solver P3P [27],
+presented in Algorithm 1. The intuition is that, though it is               kR̄ − Rgt kF ≤ d,1 ,       kt̄ − tgt k ≤ d,0           (13)
+difficult to sample directly in PURSE due to the (nonconvex)
+constraints, it is easy to sample from the keypoint predic-        holds with probability 1 − .
+tion set (10) due to its simple geometry (balls and ellipses).        Computing the bounds. Problem (12) is nonconvex
+Thus, at each iteration (line 3) RANSAG samples three key-         due to the constraints of the (PURSE) S  . We relax the
+points (line 4-5), solves the P3P inverse problem, and ac-         nonconvex problem (12) into a convex semidefinite pro-
+cept the poses that belong to the (PURSE) (line 6). RANSAG         gram (SDP) and employ off-the-shelf solvers to optimize
+typically returns around 100 valid samples with T = 1000
+                                                                       4 Here we switch from P3P to PnP because PnP uses all K keypoints
+trials. However, in difficult cases (e.g., when S  is small or
+                                                                   and there is less ambiguity in its solution.
+even empty) it is possible to obtain zero samples (S = ∅). In          5 In Algorithm 1 we use rotation averaging with the Chordal distance
+this situation, RANSAG samples bT /20c (default 50) poses          metric. The user is free to choose other single rotation averaging algo-
+without checking if they belong to the PURSE, via sampling         rithms with different distance metrics [30].
+the SDP [14, 40, 99].6 Two possible outcomes can happen:                        Dataset and exchangeability. The LM-O dataset con-
+(i) the optimal SDP value coincides with the optimal value                   tains 1214 test images capturing 8 different objects on a ta-
+of (12). The relaxation is said to be exact and one can ex-                  ble, of which 200 images were chosen by BOP19’20 [35].
+tract an optimal solution of (12) from the SDP, or (ii) the                  We use the 200 images for calibration and the entire 1214
+relaxation is not exact, but the optimal SDP value still pro-                images for testing. As mentioned in Section 3, if the dataset
+vides an upper bound for the optimal value of (12). There-                   was collected as a single video sequence under natural mo-
+fore, we either exactly compute d2,λ or find an upper bound,                tion (e.g., a straight line), then the exchangeability assump-
+both can bound the worst-case error (cf . (13)).7                            tion would fail. However, [33] described the data collection:
+    We end with a remark about computing tighter bounds.                          In order to guarantee a well distributed pose space
+Remark 4 (Best Worst-case Error Bounds). (12) can be                              sampling of the dataset pictures, we uniformly di-
+used to bound errors for all possible pose estimators (e.g.,                      vided the upper hemisphere of the objects into
+from PnP (11)). What is the best estimator that attains the                       equally distant pieces and took at most one im-
+smallest error bounds? This boils down to solving                                 age per piece. As a result, our sequences provide
+                                                                                uniformly distributed views ...
+   min         max  λkR − R̄k2F + (1 − λ)kt − t̄k2 (14)                     which indicates the 1214 images are independent (cf . [33,
+(R̄,t̄)∈SE(3) (R,t)∈S
+                                                                             Figs. 5-6]) and therefore exchangeable. This demonstrates
+whose solution is known as the Chebyshev center [25, 64]                     a good example for data collection –to equally divide the
+of the PURSE S  . Unfortunately, problem (14) is more chal-                 parameter space and collect one observation per division–
+lenging than (12) and there is no efficient algorithm to solve               so the guarantees offered by conformal prediction are valid.
+it to global optimality. In the Supplementary Material, we                       Empirical coverage. Our approach conformalizes the
+evaluate the worst-case error bounds for multiple (R̄, t̄)                   heatmaps [80] as (ball) or (ellipse). The implementation8
+samples, select the smallest bounds, and compare them with                   of [80] uses either groundtruth or Faster RCNN [76] bound-
+those of the average pose. An interesting future research                    ing boxes, giving four variants of our approach: groundtruth
+direction is to explore differentiable optimization [74] or                  box plus (ball) or (ellipse) (labels: gt-ball, gt-ellipse), and
+bilevel polynomial optimization [67] to solve (14).                          Faster RCNN box plus (ball) or (ellipse) (labels: frcnn-ball,
+                                                                             frcnn-ellipse). Fig. 3 left column shows the empirical cover-
+6. Experiments                                                               age (i.e., the percentage of images whose groundtruth poses
+   We test our approach on the LineMOD Occlusion (LM-                        lie in (PURSE)) of all four variants with  = 0.1 and  = 0.4.
+O) dataset [11] to (i) justify the exchangeability assumption                We see the empirical coverage is around 90% when  = 0.1
+(Theorem 1) and suggest best practices for applying con-                     and around 60% when  = 0.4, for all 8 objects. Though the
+formal prediction; (ii) evaluate the empirical coverage of                   empirical coverage can deviate from 1 − , it generally stays
+the PURSE and verify the correctness of Theorem 1, and (iii)                 within ±5% and mostly goes above 1 − , which is encour-
+compute the worst-case error bounds and demonstrate tight-                   aging given that our calibration set only has size n = 200.
+ness or looseness. We also (iv) show that the average pose                   Fig. 1 (b) plots examples of the prediction sets. More ex-
+achieves better or similar accuracy as other approaches.                     amples are shown in the Supplementary Material.
+    Implementation and runtime. We set T = 1000 in                               Worst-case error bounds. Fig. 3 middle column plots
+RANSAG; use OpenGV [44] for P3P and PnP; and add a                           the worst-case rotation error bound (x-axis) vs. the actual
+redundant ktk ≤ 5 in (PURSE) to ensure bounded trans-                        rotation error between the average pose and the groundtruth
+lation. All procedures are implemented in Python except                      (y-axis) for our approach using the gt-ball setup (results for
+SDP relaxations are implemented in Matlab. The runtime                       gt-ellipse, frcnn-ball and frcnn-ellipse are similar and provided
+of RANSAG is comparable to RANSAC and below one sec-                         in the Supplementary Material). First, when the PURSE cov-
+ond. The runtime of computing (12) via SDPs is around 8                      ers the groundtruth (blue circles), the rotation error bound
+seconds on a workstation with 2.2GHz AMD CPUs. The                           is always larger than the actual error (i.e., the blue circles
+(second-order) SDP relaxations are almost always exact.                      never cross the y = x diagonal). Second, when the er-
+   6 We omit the technical details and refer the interested reader to [99,
+                                                                             ror rate is increased from  = 0.1 to  = 0.4, we observe
+Section 2] for a pragmatic introduction to SDP relaxations. In practice,
+                                                                             a shift of the blue circles towards y = x, indicating the
+we use the code provided by [99] in https://github.com/MIT-                  error bounds get tightened. Third, our bounds are reason-
+SPARK/CertifiablyRobustPerception, apply a second-order                      ably tight for most test images (i.e., the bottom-left cluster
+SDP relaxation to (12), and use MOSEK [66] to solve the SDP (in about        of blue circles) especially when  = 0.4. However, they
+8 seconds). Solving a first-order SDP relaxation of (12) takes about 0.1
+second but yields looser bounds.
+                                                                             can become overly conservative (i.e., the line of blue circles
+   7 The PURSE can potentially be empty, leading to infeasibility of         on the right-side boundary) due to the keypoint prediction
+problem (12). In such cases, empirically the SDP solver returns
+“PRIMAL_INFEASIBLE” (red squares lying on the y-axis of Fig. 3).               8 https://github.com/yufu-wang/6D_Pose
+                                      100                                                                                                                    180                                                                                                       5
+
+
+
+
+                                                                                                             Rotation error b/t avg pose and gt pose (deg)
+                                                                   gt-ball              frcnn-ball                                                                            Uncovered          Covered                                                                               Uncovered          Covered
+
+
+
+
+                                                                                                                                                                                                                         Translation error b/t avg pose and gt pose
+             Empirical coverage (%)
+                                                                                                                                                             160                                                                                                      4.5
+                                                                   gt-ellipse           frcnn-ellipse
+                                       95                                                                                                                                                                                                                              4
+                                                                                                                                                             140
+                                                                                                                                                                                                                                                                      3.5
+                                                                                                                                                             120
+                                                                                                                                                                                                                                                                       3
+                                       90                                                                                                                    100
+                                                                                                                                                                                                                                                                      2.5
+                                                                                                                                                              80
+                                                                                                                                                                                                                                                                       2
+                                       85
+                                                                                                                                                              60
+                                                                                                                                                                                                                                                                      1.5
+                                                                                                                                                              40
+                                                                                                                                                                                                                                                                       1
+                                       80
+                                                                                                                                                              20                                                                                                      0.5
+
+
+
+
+                                                                                           ue
+                                             e
+
+                                                   n
+
+
+
+
+                                                                            r
+                                                        t
+
+
+
+
+                                                                                                      r
+                                                                                   ox
+                                                              ck
+                                                       ca
+
+
+
+
+                                                                       ille
+
+
+
+
+                                                                                                    he
+                                            ap
+
+                                                 ca
+
+
+
+
+                                                                                          gl
+                                                            du
+
+
+
+
+                                                                                gb
+
+
+
+
+                                                                                                 nc
+                                                                     dr
+                                                                                                                                                               0                                                                                                       0
+
+
+
+
+                                                                              eg
+
+
+
+
+                                                                                               pu
+                                                                                                                                                                   0          50          100          150                                                                  0      1         2        3        4        5
+
+
+
+
+                                                                                            le
+                                                                                                                                                                       Worst-case rotation error bound (deg)
+
+
+
+
+                                                                                          ho
+                                                                                                                                                                                                                                                                                 Worst-case translation error bound
+                                      80                                                                                                                     180                                                                                                       5
+                                                               gt-ball                  frcnn-ball
+
+
+
+
+                                                                                                          Rotation error b/t avg pose and gt pose (deg)
+                                                                                                                                                                              Uncovered          Covered                                                                               Uncovered          Covered
+
+
+
+
+                                                                                                                                                                                                                         Translation error b/t avg pose and gt pose
+           Empirical coverage (%)
+
+
+
+
+                                                                                                                                                             160                                                                                                      4.5
+                                      75                       gt-ellipse               frcnn-ellipse
+                                                                                                                                                                                                                                                                       4
+                                                                                                                                                             140
+                                      70                                                                                                                                                                                                                              3.5
+                                                                                                                                                             120
+                                      65                                                                                                                                                                                                                               3
+                                                                                                                                                             100
+                                                                                                                                                                                                                                                                      2.5
+                                      60                                                                                                                      80
+                                                                                                                                                                                                                                                                       2
+                                                                                                                                                              60
+                                      55                                                                                                                                                                                                                              1.5
+                                                                                                                                                              40
+                                                                                                                                                                                                                                                                       1
+                                      50
+                                                                                                                                                              20                                                                                                      0.5
+                                                                                         ep ue
+                                             e
+
+                                                  n
+
+
+
+
+                                                                        r
+                                                        t
+
+
+
+
+                                                                                                 er
+                                                                                   ox
+                                                              k
+                                                       ca
+
+
+
+
+                                                                       le
+                                           ap
+
+                                                 ca
+
+
+
+
+                                                               c
+
+
+
+
+                                                                                             ch
+                                                                                              gl
+                                                            du
+
+
+                                                                       il
+
+                                                                                gb
+                                                                    dr
+
+
+
+
+                                                                                                                                                               0                                                                                                       0
+                                                                                           un
+                                                                            eg
+
+
+
+
+                                                                                                                                                                   0          50          100          150                                                                  0      1         2        3        4        5
+                                                                                                                                                                       Worst-case rotation error bound (deg)                                                                     Worst-case translation error bound
+                                                                                            l
+                                                                                         ho
+
+
+
+
+Figure 3. Empirical coverage (left) and worst-case error bounds (middle: rotation, right: translation). Top:  = 0.1, bottom:  = 0.4. For
+middle and right columns, x-axis represents the worst-case error bounds computed from (12), y-axis represents the actual error between
+average pose and groundtruth pose. The area below the diagonal y = x indicates correctness of the bounds (i.e., bound ≥ error), and points
+that are closer to the diagonal from below indicate tighter bounds (perfect if precisely lie on the diagonal). Blue circles plot cases where
+the PURSE covers the groundtruth pose and red squares plot cases were the PURSE does not cover the groundtruth. Notice that blue circles
+never cross the diagonal and our bounds are correct when the PURSE contains the pose (which holds with 1 −  marginal probability).
+                                                    Baselines (results adapted from [73])                                                                                                               Conformalized heatmap
+                                                 Tekin PoseCNN Oberweger PVNet                                                                                           gt-ball                     gt-ellipse                                                                 frcnn-ball                  frcnn-ellipse
+         objects                                  [90]       [96]          [68]        [73]                                                                    = 0.1           = 0.4           = 0.1         = 0.4                                                  = 0.1          = 0.4         = 0.1          = 0.4
+           ape                                   7.01       34.6           69.6       69.14                                                                    77.70            79.52            79.26          79.88                                                   70.20           71.01          68.84           69.11
+           can                                   11.20      15.10         82.60       86.09                                                                    73.41            75.97            75.81          78.13                                                   67.52           69.81          67.69           69.56
+            cat                                  3.62       10.40         65.10       65.12                                                                    87.36            90.59            89.54          90.11                                                   74.95           80.23          68.98           78.57
+          duck                                   5.07       31.80         61.40       61.44                                                                    82.71            83.08            84.02          83.55                                                   79.30           80.62          80.06           80.53
+          driller                                1.40       7.40          73.80       73.06                                                                    79.32            82.54            81.22          82.04                                                   58.48           65.92          58.06           65.67
+         eggbox                                     -        1.90         13.10        8.43                                                                      0                0               0.09           0.18                                                     0               0              0              0.14
+           glue                                  4.70       13.80         54.90       55.37                                                                    56.49            71.08            71.69          72.93                                                   30.03           47.18          41.96           48.26
+       holepuncher                               8.26       23.10         66.40       69.84                                                                    81.65            82.89            83.22          84.30                                                   74.96           77.85          76.28           78.18
+         average                                 6.16       17.20         60.90       61.06                                                                    67.33            70.71            70.61          71.39                                                   56.93           61.58          57.73           61.25
+Table 1. Success rates of baseline methods and our conformalized heatmap (using the average pose) based on the 2D projection metric
+(i.e., a pose estimation is considered successful if the average 2D reprojection error is below 5 pixels).
+sets become too large. Fig. 3 right column plots similar re-                                                                                                                        sets that guarantee probabilistic coverage of the groundtruth
+sults for the translation. The Supplementary Material gives                                                                                                                         keypoints, propagated the uncertainty in keypoints to the
+a more detailed analysis of this conservatism, wherein we                                                                                                                           object pose to form a PURSE, designed RANSAG to sam-
+also solve (12) for multiple samples computed by RANSAG,                                                                                                                            ple from PURSE and compute an average pose, and used
+choose the minimum bound, and compare them with those                                                                                                                               SDP relaxations to bound worst-case estimation errors. We
+obtained for the average pose (cf . Remark 4).                                                                                                                                      validated our theory on the LineMOD Occlusion dataset.
+    Accuracy of the average pose. We compare the ac-                                                                                                                                Future research will investigate better nonconformity func-
+curacy of our average pose with other methods according                                                                                                                             tions, and applications to other vision problems.
+to the 2D projection metric (an estimation is correct if the
+mean reprojection error is below 5 pixels). Table 1 shows:                                                                                                                          Acknowledgement
+(i) our average pose achieves significantly better success
+                                                                                                                                                                                       We thank Yufu Wang and Kostas Daniilidis for providing
+rates when using groundtruth bounding boxes, and similar
+                                                                                                                                                                                    the heatmap implementation to detect semantic keypoints;
+success rates when using Faster RCNN; (ii) the accuracy of
+                                                                                                                                                                                    Rachel Luo for discussing the exchangeability assumption
+the average pose increases when  increases.
+                                                                                                                                                                                    in conformal prediction; Luca Carlone for pointing out re-
+7. Conclusions                                                                                                                                                                      lated work on unknown-but-bounded noise (set member-
+                                                                                                                                                                                    ship) estimation in control theory, and anonymous review-
+   We applied inductive conformal prediction to conformal-
+                                                                                                                                                                                    ers for providing valuable feedback.
+ize heatmap predictions as circular or elliptical prediction
+                                              Supplementary Material
+A1. Proof of Proposition 2
+Proof. Let {αi }ni=1 be the calibration scores obtained by applying r in (6) to the calibration set, and {αiρ }ni=1 be the scores
+obtained by applying rρ in (8). Observe that αiρ = ρ(αi ) because ρ being monotonically increasing implies max ◦ρ = ρ◦max
+                                                                    ρ
+(“◦” describes function composition). As a result, it follows that απ(b(n+1)c) = ρ(απ(b(n+1)c) ). Let Fρ be the ICP set due
+to rρ for a given , we have
+                                                                            ρ
+                               Fρ = {y ∈ Y | max{ρ(φ(yk , f (x)k ))}K
+                                                                     k=1 ≤ απ(b(n+1)c) }
+
+                               = {y ∈ Y | ρ(max{φ(yk , f (x)k )}K
+                                                                k=1 ) ≤ ρ(απ(b(n+1)c) )}
+                                     = {y ∈ Y | max{φ(yk , f (x)k )}K
+                                                                    k=1 ≤ απ(b(n+1)c) },
+
+where the last set is precisely F  , the ICP set induced by r.
+
+A2. Proof of Proposition 3
+Proof. Recall the ICP set in (10)
+                                  F  (x) = y ∈ Y | (yk − µk )T Λk (yk − µk ) ≤ 1, ∀k
+                                           
+                                                                                                                               (A15)
+that defines either a (ball) or an (ellipse). From the pinhole camera projection model, we know that the groundtruth keypoints
+y = (y1 , . . . , yK ) satisfy
+                                                          [P (Rgt Yk + tgt )]1:2
+                              yk = Π(Rgt Yk + tgt ) =                            , k = 1, . . . , K                            (A16)
+                                                           [P (Rgt Yk + tgt )]3
+where P ∈ R3×3 denotes the camera intrinsics, Yk ∈ R3 is location of the k-th 3D keypoint in the object’s coordinate frame,
+[v]1:2 (resp. [v]3 ) denotes the first two (resp. third) entries of a 3D vector v. To simplify our notation, we develop (A16) as
+                                                                                                        T 
+                                                                                                        uk,1
+                                                                                       vec (R gt )
+           P Rgt Yk + P tgt = (YkT ⊗ P )vec (Rgt ) + P tgt = YkT ⊗ P P                               =  uT
+                                                                                  
+                                                                                                           k,2
+                                                                                                                sgt       (A17)
+                                                                                          tgt              T
+                                                                  |       {z       }                      u       k,3
+                                                                    :=Uk ∈R3×12
+
+                                                                                            uT
+                                                                                                           
+                                                                           =⇒ yk =           k,1
+                                                                                                          sgt   (uT
+                                                                                                                  k,3 sgt ),   (A18)
+                                                                                            uT
+                                                                                             k,2
+
+where uT k,j ∈ R
+                 1×12
+                      denotes the j-th row of matrix Uk . Notice that uT
+                                                                       k,3 sgt is the depth of the k-th 3D keypoint in the camera
+coordinate frame (after rigid transformation (Rgt , tgt )).
+   In front of the camera. Since the camera observes the object, the groundtruth pose sgt must transform the object to lie in
+front of the camera. Therefore, the keypoints must have positive depth values:
+                                                uT
+                                                 k,3 sgt > 0, k = 1, . . . , K.                                                (A19)
+   Within ICP sets. We now insert (A18) back to the constraint defined by the ICP set (A15), leading to
+                                                                             (yk − µk )T Λk (yk − µk ) ≤ 1 ⇐⇒                  (A20)
+                                                                              T
+                                                                                uk,1 − µk,1 uT
+                                                                                                 
+                     1         T
+                                                                                           k,3
+                              s     uk,1 − µk,1 uk,3 uk,2 − µk,2 uk,3 Λk                           sgt ≤ 1 ⇐⇒                  (A21)
+                (uTk,3 sgt )
+                             2 gt                                               uT
+                                                                                 k,2 − µk,2 uk,3
+                                                           T
+                                                            uk,1 − µk,1 uT
+                                                                                
+            T                                                               k,3
+                                                                                  sgt ≤ sT         T
+                                                                                                    
+           sgt uk,1 − µk,1 uk,3 uk,2 − µk,2 uk,3 Λk                                       gt uk,3 uk,3 sgt ⇐⇒                  (A22)
+                                                            uTk,2 −  µ    u
+                                                                      k,2 k,3
+                                                                   T               T
+                                                                                                     
+                  T                                                   u k,1 − µk,1 uk,3            T
+                                                            
+                 sgt       uk,1 − µk,1 uk,3 uk,2 − µk,2 uk,3 Λk                            − uk,3 uk,3 sgt ≤ 0,                (A23)
+                                                                      uTk,2 − µk,2 uk,3
+                     |                                      {z                                         }
+                                                           :=Ak ∈S12
+
+which indicates that the groundtruth pose sgt must satisfy K quadratic constraints, one for each keypoint. In summary, the
+groundtruth pose sgt must lie in the (PURSE) with bk = uk,3 and Ak as in (A23).
+A3. Supplementary Experiments
+
+                                                                                    180                                                                                                   5
+
+
+
+
+                            Rotation error b/t avg pose and gt pose (deg)
+                                                                                                     Uncovered         Covered                                                                           Uncovered          Covered
+
+
+
+
+                                                                                                                                           Translation error b/t avg pose and gt pose
+                                                                                    160                                                                                                  4.5
+
+                                                                                                                                                                                          4
+                                                                                    140
+                                                                                                                                                                                         3.5
+                                                                                    120
+                                                                                                                                                                                          3
+                                                                                    100
+                                                                                                                                                                                         2.5
+                                                                                     80
+                                                                                                                                                                                          2
+                                                                                     60
+                                                                                                                                                                                         1.5
+                                                                                     40
+                                                                                                                                                                                          1
+                                                                                     20                                                                                                  0.5
+
+                                                                                      0                                                                                                   0
+                                                                                          0          50          100          150                                                              0     1         2        3        4      5
+                                                                                              Worst-case rotation error bound (deg)                                                                Worst-case translation error bound
+                                                                                                                                    (a)  = 0.1
+                                                                                    180                                                                                                   5
+                                    Rotation error b/t avg pose and gt pose (deg)
+
+
+
+
+                                                                                                     Uncovered         Covered                                                                           Uncovered          Covered
+
+
+
+
+                                                                                                                                            Translation error b/t avg pose and gt pose
+                                                                                    160                                                                                                  4.5
+
+                                                                                                                                                                                          4
+                                                                                    140
+                                                                                                                                                                                         3.5
+                                                                                    120
+                                                                                                                                                                                          3
+                                                                                    100
+                                                                                                                                                                                         2.5
+                                                                                     80
+                                                                                                                                                                                          2
+                                                                                     60
+                                                                                                                                                                                         1.5
+                                                                                     40
+                                                                                                                                                                                          1
+                                                                                     20
+                                                                                                                                                                                         0.5
+
+                                                                                      0                                                                                                   0
+                                                                                          0          50          100          150                                                              0     1         2        3        4      5
+                                                                                              Worst-case rotation error bound (deg)                                                                Worst-case translation error bound
+                                                                                                                                    (b)  = 0.4
+
+Figure A4. Looser (albeit faster) worst-case error bounds computed from solving first-order relaxation of (12), compared to worst-case
+error bounds computed from solving second-order relaxation shown in Fig. 3 middle and right columns.
+
+A3.1. Ablation: Relaxation Order
+    In the main document, we briefly described that we applied second-order semidefinite relaxations to compute the worst-
+case error bounds in (12) and reported that the average runtime is around 8 seconds on an ordinary workstation. Here we
+justify the choice of second-order relaxations by showing that first-order relaxations, although much faster (average runtime
+is about 0.1 seconds), lead to much looser upper bounds for the optimization (12).
+    To help the reader better understand the approach, we first give a very short introduction to semidefinite relaxations for
+polynomial optimization problems (POPs). We refer the reader to [99, Section 2] for a detailed introduction.
+    Polynomial optimization problems (POPs) are problems of the following general formulation
+
+                                                                                                                       min                                                    p(x)                                                              (A24)
+                                                                                                                    x∈Rn
+                                                                                                            subject to          hi (x) = 0, i = 1, . . . , lh ,                                                                                 (A25)
+                                                                                                                                 gj (x) ≥ 0, j = 1, . . . , lg                                                                                  (A26)
+                        l                                                                                                                                                                                                                   T
+where p, {hi }li=1
+                h          g
+                   , {gj }j=1 are all polynomial functions in x ∈ Rn . Notice that if we denote s = [vec (R) , tT ]T ∈ R12 , it
+is clear that the cost function of (12) is a polynomial in s when fixing a particular λ (we can add a minus sign to the cost
+of (12) so that we convert “max” to “min”). The constraints for (12) is (R, t) ∈ S  where S  has the form in (PURSE). We
+claim that the (PURSE) can be described by a set of polynomial equalities and inequalities. This is because (i) the rotation
+constraint R ∈ SO(3) can be described by 15 quadratic equality constraints [99]; (ii) the quadratic constraints in (PURSE)
+are already polynomial constraints; and (iii) the linear inequalities bT                                       T
+                                                                       k s > 0 can be equivalently written as bk s ≥  for a small
+                    T
+ > 0 (note that bk s is the depth of the 3D keypoints, so it makes sense to enforce they are larger than, say  = 0.001). We
+conclude that computing the worst-case error bounds (12) is a POP.
+    Semidefinite relaxations are a powerful tool to approximate (or even exactly compute) the global optimal solutions for
+(generally nonconvex) POPs. In particular, Lasserre’s hierarchy of moment and sums-of-squares relaxations [48] provides a
+systematic approach to design such semidefinite relaxations. In particular, Lasserre’s hierarchy relaxes a POP into a hierarchy
+of convex semidefinite programs (SDPs) of increasing size. Each relaxation, at a so-called relaxation order, in this hierarchy
+can be solved in polynomial time and provides a valid lower bound for the POP (if the POP aims to maximize, as in (12), then
+a valid upper bound is provided). Moreover, under mild technical conditions, the lower (upper) bounds of these relaxations
+coincide with the global optimum of the original POP, in which case we say the relaxation is exact, or tight.
+    First-order vs. second-order relaxations. The minimum relaxation order for the POP (12) is 1, since all the polynomials
+in (12) have degree at most 2 (in general, the minimum relaxation order for a POP is dd/2e, where d is the maximum degree of
+the polynomials defining a POP). In practice we choose a second-order relaxation instead of a first-order relaxation because
+first-order relaxations give loose upper bounds for problem (12). Fig. A4 plots the worst-case error bounds computed by
+solving the first-order relaxation of (12) under the same gt-ball setup. Compared to Fig. 3 middle and right columns, we
+clearly see that solving the first-order relaxation produces overly conservation upper bounds for (12). For example, when
+ = 0.1, solving the first-order relaxation never produces a rotation error bound that is below 100◦ , while in Fig. 3 we see a
+cluster of blue circles near the bottom left corner indicating tight bounds.
+    One nice property of applying semidefinite relaxations is that we get a certificate of global optimality when the relaxation
+is indeed exact. Such certificates typically come in the form of a rank-one optimal SDP solution, or a relative suboptimality
+gap (cf . [99, eq. (24)]), which indicates exactness of the relaxation when the value is numerically zero (loosely speaking,
+a relative suboptimality gap of % means that the global optimum of the SDP is at most  percentage away from the global
+optimum of the POP). When we solve second-order relaxations of problem (12) under the gt-ball setup with λ = 1, we obtain
+a relative suboptimality gap that is below 10−3 (resp. 10−6 ) for 99.02% (resp. 72.51%) of the 8784 test problems, indicating
+that the second-order relaxation is sufficient to obtain (approximately) globally optimal solutions for problem (12).
+
+A3.2. Qualitative ICP Sets
+   Fig. 1(b) shows circular and elliptical examples of the ICP sets. Fig. A5 provides more examples of the ICP sets with
+ = 0.1 and  = 0.4. Notice how the ICP sets become smaller when  increases.
+
+A3.3. Worst-case Error Bounds under gt-ellipse, frcnn-ball, and frcnn-ellipse setups
+   Fig. 3 middle and right columns (from the main document) show the worst-case error bounds (computed from (12)) of the
+average pose under the gt-ball setup. Fig. A6 shows the worst-case error bounds under the gt-ellipse, frcnn-ball, and frcnn-ellipse
+setups, which are qualitatively similar to Fig. 3. Notice that the blue circles never cross the y = x diagonal, indicating our
+bounds are always valid when the PURSE contains the groundtruth pose.
+
+A3.4. A Closer Look at the Conservative Error Bounds
+    The reader may have noticed two unusual results in the experiments on LM-O. First, the success rate on eggbox is consis-
+tently lower than other categories in our methods and other baselines (e.g., PVNet achieves 8.43% success rate on eggbox,
+while the second lowest success rate is 55.37%). Second, the worst-case error bounds can be overly conservative, e.g., having
+180◦ rotation error bounds. It turns out both unusual results can be explained by the same reason: a labelling discrepancy in
+the LM-O dataset about eggbox.
+    We noticed the low success rate on eggbox across all baseline methods and contacted the authors of [80], who encountered
+the same problem. One author told us “I think this is a mistake or discrepancy in the 6DoF annotations of the dataset itself.
+As it [the eggbox] is considered a symmetric object, annotators for LMOD might not have consistently annotate it”. Though
+it is possible to revise the nonconformity score for symmetric objects, the manually chosen keypoints by [80] break the
+symmetry. Therefore we decided to leave this discrepancy as is because it does not affect our probabilistic guarantees.
+    This labeling discrepancy, however, does translate to conservative prediction sets for the eggbox, in order to contain
+the (wrong) groundtruth at the desired probability. Fig. A7 shows the eggbox prediction sets are one order of magnitude
+larger than the other categories, leading to worst-case rotation error bounds being mostly 180◦ (because the PURSE is large
+enough to cover the entire SO(3)). This indeed shows the advantage of our framework: the user will see the large uncertainty
+produced by our algorithm and be alerted!
+    Finally, because the PURSE is too large, RANSAG essentially returns a random sample in SO(3), which has zero probability
+being close to the (wrong) groundtruth. Hence, a 0% success rate makes sense.
+A3.5. Best Worst-case Error Bounds from Samples (Remark 4)
+   In Remark 4, we discussed that since solving (12) can provide worst-case error bounds for any pose estimator, the natural
+question is to ask if we can find better pose estimators (than the average pose computed from RANSAG) with tighter worst-case
+error bounds, which boils down to solving the minimax problem in (14). However, problem (14) is much more challenging
+to solve than (12), and to the best of our knowledge, there is no efficient way to obtain a globally optimal solution. We think
+a good future research direction may be to explore methods in [74] or [67] for solving (14).
+   In this section, we provide a very preliminary study to explore if (14) can indeed offer us tighter error bounds. Towards
+this goal, we randomly select M = 5 pose samples {(Ri , ti )}M   i=1 from the results of RANSAG (recall RANSAG not only returns
+an average pose, but also returns a set of poses), and compute
+                                                                                                  M
+                           d2,λ = min       d2i,,λ =     max λkR − Ri k2F + (1 − λ)kt − ti k2            ,                         (A27)
+                                                         (R,t)∈S                                    i=1
+
+which first solves (12) (inner “max” in (A27)) for each (Ri , ti ) and then selects the minimum (tightest) error bounds. Note
+that we still apply a second-order SDP relaxation when computing the error bounds for each (Ri , ti ) since (12) is nonconvex.
+   Fig. A8 plots the cumulative distribution functions (CDF) of the error bounds under the gt-ball setup with  = 0.1. The
+blue curves plot the CDF of the error bounds computed for the average pose, while the red curves plot the CDF of the error
+bounds computed from solving (A27). We can see that solving (A27) does slightly improve the tightness of the translation
+bounds (while the rotation bounds are very close). Considering that we only select the minimum error bounds from M = 5
+samples, we conjecture solving the minimax problem can give us much tighter error bounds, and we leave this as an exciting
+future research.
+
+References
+  [1] Anastasios Angelopoulos, Stephen Bates, Jitendra Malik, and Michael I Jordan. Uncertainty sets for image classifiers using confor-
+      mal prediction. In Intl. Conf. on Learning Representations (ICLR), 2021. 3
+  [2] Anastasios N Angelopoulos and Stephen Bates. A gentle introduction to conformal prediction and distribution-free uncertainty
+      quantification. arXiv preprint arXiv:2107.07511, 2021. 3
+  [3] Anastasios N Angelopoulos, Stephen Bates, Adam Fisch, Lihua Lei, and Tal Schuster. Conformal risk control. arXiv preprint
+      arXiv:2208.02814, 2022. 3
+  [4] Pasquale Antonante, Vasileios Tzoumas, Heng Yang, and Luca Carlone. Outlier-robust estimation: Hardness, minimally tuned
+      algorithms, and applications. IEEE Trans. Robotics, 38(1):281–301, 2021. 5
+  [5] Boaz Barak and David Steurer. Proofs, beliefs, and algorithms through the lens of sum-of-squares. Course notes: http://www.
+      sumofsquares. org/public/index. html, 1, 2016. 3
+  [6] Timothy D Barfoot. State estimation for robotics. Cambridge University Press, 2017. 3
+  [7] Jonathan T Barron. A general and adaptive robust loss function. In Proceedings of the IEEE/CVF Conference on Computer Vision
+      and Pattern Recognition, pages 4331–4339, 2019. 5
+  [8] Stephen Bates, Anastasios Angelopoulos, Lihua Lei, Jitendra Malik, and Michael Jordan. Distribution-free, risk-controlling predic-
+      tion sets. Journal of the ACM (JACM), 68(6):1–34, 2021. 3
+  [9] Michael J Black and Anand Rangarajan. On the unification of line processes, outlier rejection, and robust statistics with applications
+      in early vision. Intl. J. of Computer Vision, 19(1):57–91, 1996. 2, 5
+ [10] Andrew Blake and Andrew Zisserman. Visual reconstruction. MIT press, 1987. 2
+ [11] Eric Brachmann, Alexander Krull, Frank Michel, Stefan Gumhold, Jamie Shotton, and Carsten Rother. Learning 6d object pose
+      estimation using 3d object coordinates. In European Conf. on Computer Vision (ECCV), pages 536–551. Springer, 2014. 2, 4, 7, 17
+ [12] Eric Brachmann, Frank Michel, Alexander Krull, Michael Ying Yang, Stefan Gumhold, et al. Uncertainty-driven 6d pose estimation
+      of objects and scenes from a single rgb image. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 3364–
+      3372, 2016. 2
+ [13] Eric Brachmann and Carsten Rother. Learning less is more-6d camera localization via 3d surface regression. In IEEE Conf. on
+      Computer Vision and Pattern Recognition (CVPR), pages 4654–4662, 2018. 2
+ [14] Jesus Briales, Laurent Kneip, and Javier Gonzalez-Jimenez. A certifiably globally optimal solution to the non-minimal relative pose
+      problem. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 145–154, 2018. 7
+ [15] Dylan Campbell, Liu Liu, and Stephen Gould. Solving the blind perspective-n-point problem end-to-end with robust differentiable
+      geometric optimization. In European Conf. on Computer Vision (ECCV), pages 244–261. Springer, 2020. 2
+ [16] Dylan Campbell, Lars Petersson, Laurent Kneip, and Hongdong Li. Globally-optimal inlier set maximisation for simultaneous
+      camera pose and feature correspondence. In Intl. Conf. on Computer Vision (ICCV), pages 1–10, 2017. 2
+[17] Emmanuel J Candes, Justin K Romberg, and Terence Tao. Stable signal recovery from incomplete and inaccurate measure-
+     ments. Communications on Pure and Applied Mathematics: A Journal Issued by the Courant Institute of Mathematical Sciences,
+     59(8):1207–1223, 2006. 3
+[18] Luca Carlone. Estimation contracts for outlier-robust geometric perception. arXiv preprint arXiv:2208.10521, 2022. 3
+[19] Bo Chen, Jiewei Cao, Alvaro Parra, and Tat-Jun Chin. Satellite pose estimation with deep landmark regression and nonlinear pose
+     refinement. In Proceedings of the IEEE/CVF International Conference on Computer Vision Workshops, pages 0–0, 2019. 1
+[20] Bo Chen, Alvaro Parra, Jiewei Cao, Nan Li, and Tat-Jun Chin. End-to-end learnable geometric vision by backpropagating pnp
+     optimization. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 8100–8109, 2020. 1, 2
+[21] Hansheng Chen, Pichao Wang, Fan Wang, Wei Tian, Lu Xiong, and Hao Li. Epro-pnp: Generalized end-to-end probabilistic
+     perspective-n-points for monocular object pose estimation. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR),
+     pages 2781–2790, 2022. 2
+[22] Tat-Jun Chin, Zhipeng Cai, and Frank Neumann. Robust fitting in computer vision: Easy or hard? In European Conf. on Computer
+     Vision (ECCV), pages 701–716, 2018. 5
+[23] Florence de Grancey, Jean-Luc Adam, Lucian Alecu, Sébastien Gerchinovitz, Franck Mamalet, and David Vigouroux. Object detec-
+     tion with probabilistic guarantees: A conformal prediction approach. In International Conference on Computer Safety, Reliability,
+     and Security, pages 316–329. Springer, 2022. 3
+[24] Ilias Diakonikolas, Daniel M Kane, Sushrut Karmalkar, Ankit Pensia, and Thanasis Pittas. List-decodable sparse mean estimation
+     via difference-of-pairs filtering. arXiv preprint arXiv:2206.05245, 2022. 3
+[25] Yonina C Eldar, Amir Beck, and Marc Teboulle. A minimax chebyshev estimator for bounded error estimation. IEEE transactions
+     on signal processing, 56(4):1388–1397, 2008. 7
+[26] Martin A Fischler and Robert C Bolles. Random sample consensus: a paradigm for model fitting with applications to image analysis
+     and automated cartography. Communications of the ACM, 24(6):381–395, 1981. 1, 2, 6
+[27] Xiao-Shan Gao, Xiao-Rong Hou, Jianliang Tang, and Hang-Fei Cheng. Complete solution classification for the perspective-three-
+     point problem. IEEE Trans. Pattern Anal. Machine Intell., 25(8):930–943, 2003. 2, 6
+[28] Myung Geun Kim. Multivariate outliers and decompositions of mahalanobis distance. Communications in statistics-theory and
+     methods, 29(7):1511–1526, 2000. 4
+[29] Chunhui Gu and Xiaofeng Ren. Discriminative mixture-of-templates for viewpoint classification. In European Conf. on Computer
+     Vision (ECCV), pages 408–421. Springer, 2010. 2
+[30] Richard Hartley, Jochen Trumpf, Yuchao Dai, and Hongdong Li. Rotation averaging. International journal of computer vision,
+     103:Intl. J. of Computer Vision, 2013. 6
+[31] Richard Hartley and Andrew Zisserman. Multiple view geometry in computer vision. Cambridge university press, 2003. 3, 5
+[32] Stefan Hinterstoisser, Cedric Cagniart, Slobodan Ilic, Peter Sturm, Nassir Navab, Pascal Fua, and Vincent Lepetit. Gradient response
+     maps for real-time detection of textureless objects. IEEE Trans. Pattern Anal. Machine Intell., 34(5):876–888, 2011. 2
+[33] Stefan Hinterstoisser, Vincent Lepetit, Slobodan Ilic, Stefan Holzer, Gary Bradski, Kurt Konolige, and Nassir Navab. Model based
+     training, detection and pose estimation of texture-less 3d objects in heavily cluttered scenes. In Asian conference on computer vision,
+     pages 548–562. Springer, 2012. 7
+[34] Tomas Hodan, Daniel Barath, and Jiri Matas. Epos: Estimating 6d pose of objects with symmetries. In IEEE Conf. on Computer
+     Vision and Pattern Recognition (CVPR), pages 11703–11712, 2020. 2
+[35] Tomas Hodan, Frank Michel, Eric Brachmann, Wadim Kehl, Anders GlentBuch, Dirk Kraft, Bertram Drost, Joel Vidal, Stephan
+     Ihrke, Xenophon Zabulis, et al. Bop: Benchmark for 6d object pose estimation. In European Conf. on Computer Vision (ECCV),
+     pages 19–34, 2018. 2, 7
+[36] Daniel P Huttenlocher, Gregory A. Klanderman, and William J Rucklidge. Comparing images using the hausdorff distance. IEEE
+     Trans. Pattern Anal. Machine Intell., 15(9):850–863, 1993. 2
+[37] Shun Iwase, Xingyu Liu, Rawal Khirodkar, Rio Yokota, and Kris M Kitani. Repose: Fast 6d object pose refinement via deep texture
+     rendering. In Intl. Conf. on Computer Vision (ICCV), pages 3303–3312, 2021. 2
+[38] Yanmei Jiao, Yue Wang, Bo Fu, Qimeng Tan, Lei Chen, Minhang Wang, Shoudong Huang, and Rong Xiong. Globally optimal
+     consensus maximization for robust visual inertial localization in point and line map. In IEEE/RSJ Intl. Conf. on Intelligent Robots
+     and Systems (IROS), pages 4631–4638. IEEE, 2020. 2
+[39] Fredrik Kahl and Richard Hartley. Multiple-view geometry under the l infinity norm. IEEE Trans. Pattern Anal. Machine Intell.,
+     30(9):1603–1617, 2008. 2, 5
+[40] Fredrik Kahl and Didier Henrion. Globally optimal estimates for geometric reconstruction problems. Intl. J. of Computer Vision,
+     74(1):3–15, 2007. 7
+[41] Alex Kendall, Matthew Grimes, and Roberto Cipolla. Posenet: A convolutional network for real-time 6-dof camera relocalization.
+     In Intl. Conf. on Computer Vision (ICCV), pages 2938–2946, 2015. 2
+[42] Georg Klein and David Murray. Parallel tracking and mapping for small ar workspaces. In 2007 6th IEEE and ACM international
+     symposium on mixed and augmented reality, pages 225–234. IEEE, 2007. 1
+[43] Adam Klivans, Pravesh K Kothari, and Raghu Meka. Efficient algorithms for outlier-robust regression. In Conference On Learning
+     Theory, pages 1420–1430. PMLR, 2018. 3
+[44] Laurent Kneip and Paul Furgale. Opengv: A unified and generalized approach to real-time calibrated geometric vision. In IEEE
+     Intl. Conf. on Robotics and Automation (ICRA), pages 1–8. IEEE, 2014. 7
+[45] Laurent Kneip, Hongdong Li, and Yongduek Seo. Upnp: An optimal o(n) solution to the absolute pose problem with universal
+     applicability. In European Conf. on Computer Vision (ECCV), pages 127–142. Springer, 2014. 2
+[46] Laurent Kneip, Davide Scaramuzza, and Roland Siegwart. A novel parametrization of the perspective-three-point problem for
+     a direct computation of absolute camera position and orientation. In IEEE Conf. on Computer Vision and Pattern Recognition
+     (CVPR), pages 2969–2976. IEEE, 2011. 2
+[47] Yann Labbé, Justin Carpentier, Mathieu Aubry, and Josef Sivic. Cosypose: Consistent multi-view multi-object 6d pose estimation.
+     In European Conf. on Computer Vision (ECCV), pages 574–591. Springer, 2020. 2
+[48] Jean B Lasserre. Global optimization with polynomials and the problem of moments. SIAM J. Optim., 11(3):796–817, 2001. 11
+[49] Jing Lei, Max G’Sell, Alessandro Rinaldo, Ryan J Tibshirani, and Larry Wasserman. Distribution-free predictive inference for
+     regression. Journal of the American Statistical Association, 113(523):1094–1111, 2018. 3
+[50] Jing Lei, James Robins, and Larry Wasserman. Distribution-free prediction sets. Journal of the American Statistical Association,
+     108(501):278–287, 2013. 3
+[51] Vincent Lepetit, Pascal Fua, et al. Monocular model-based 3d tracking of rigid objects: A survey. Foundations and Trends in
+     Computer Graphics and Vision, 1(1):1–89, 2005. 2
+[52] Vincent Lepetit, Francesc Moreno-Noguer, and Pascal Fua. Epnp: An accurate o(n) solution to the pnp problem. Intl. J. of Computer
+     Vision, 81(2):155–166, 2009. 2
+[53] Hongdong Li. Consensus set maximization with guaranteed global optimality for robust geometry estimation. In Intl. Conf. on
+     Computer Vision (ICCV), pages 1074–1080. IEEE, 2009. 2
+[54] Shuo Li, Sangdon Park, Xiayan Ji, Insup Lee, and Osbert Bastani. Towards pac multi-object detection and tracking. arXiv preprint
+     arXiv:2204.07482, 2022. 3
+[55] Zhigang Li, Gu Wang, and Xiangyang Ji. Cdpn: Coordinates-based disentangled pose network for real-time rgb-based 6-dof object
+     pose estimation. In Intl. Conf. on Computer Vision (ICCV), pages 7678–7687, 2019. 2
+[56] Joerg Liebelt, Cordelia Schmid, and Klaus Schertler. independent object class detection using 3d feature maps. In IEEE Conf. on
+     Computer Vision and Pattern Recognition (CVPR), pages 1–8. IEEE, 2008. 2
+[57] David G Lowe. Object recognition from local scale-invariant features. In Intl. Conf. on Computer Vision (ICCV), volume 2, pages
+     1150–1157. Ieee, 1999. 2
+[58] Rachel Luo, Shengjia Zhao, Jonathan Kuck, Boris Ivanovic, Silvio Savarese, Edward Schmerling, and Marco Pavone. Sample-
+     efficient safety assurances using conformal prediction. arXiv preprint arXiv:2109.14082, 2021. 4
+[59] Yi Ma, Stefano Soatto, Jana Košecká, and Shankar Sastry. An invitation to 3-d vision: from images to geometric models, volume 26.
+     Springer, 2004. 3
+[60] Prasanta Chandra Mahalanobis. On the generalized distance in statistics. National Institute of Science of India, 1936. 4
+[61] Lucas Manuelli, Wei Gao, Peter Florence, and Russ Tedrake. kpam: Keypoint affordances for category-level robotic manipulation.
+     In The International Symposium of Robotics Research, pages 132–157. Springer, 2019. 1
+[62] Maria Cecilia Mazzaro and Mario Sznaier. A set-membership approach to blind identification. In IEEE Conf. on Decision and
+     Control (CDC), volume 5, pages 5176–5181. IEEE, 2004. 3
+[63] Frank Michel, Alexander Kirillov, Eric Brachmann, Alexander Krull, Stefan Gumhold, Bogdan Savchynskyy, and Carsten Rother.
+     Global hypothesis generation for 6d object pose estimation. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR),
+     pages 462–471, 2017. 2
+[64] Mario Milanese and Antonio Vicino. Optimal estimation theory for dynamic systems with set membership uncertainty: An overview.
+     Automatica, 27(6):997–1009, 1991. 2, 3, 7
+[65] Ankur Moitra. Sum of squares in theoretical computer science. Sum of Squares: Theory and Applications, 77:83, 2020. 3
+[66] MOSEK ApS. The MOSEK optimization toolbox for MATLAB manual. Version 8.1., 2017. 7
+[67] Jiawang Nie, Li Wang, and Jane J Ye. Bilevel polynomial programs and semidefinite relaxation methods. SIAM Journal on
+     Optimization, 27(3):1728–1757, 2017. 7, 12
+[68] Markus Oberweger, Mahdi Rad, and Vincent Lepetit. Making deep heatmaps robust to partial occlusions for 3d object pose estima-
+     tion. In European Conf. on Computer Vision (ECCV), pages 119–134, 2018. 2, 8
+[69] Carl Olsson, Fredrik Kahl, and Magnus Oskarsson. Optimal estimation of perspective camera pose. In 18th International Conference
+     on Pattern Recognition (ICPR’06), volume 2, pages 5–8. IEEE, 2006. 2, 5
+[70] Harris Papadopoulos. Inductive conformal prediction: Theory and application to neural networks. In Tools in artificial intelligence.
+     Citeseer, 2008. 3
+[71] Kiru Park, Timothy Patten, and Markus Vincze. Pix2pose: Pixel-wise coordinate regression of objects for 6d pose estimation. In
+     Intl. Conf. on Computer Vision (ICCV), pages 7668–7677, 2019. 2
+[72] Georgios Pavlakos, Xiaowei Zhou, Aaron Chan, Konstantinos G Derpanis, and Kostas Daniilidis. 6-DoF object pose from semantic
+     keypoints. In IEEE Intl. Conf. on Robotics and Automation (ICRA), pages 2011–2018. IEEE, 2017. 1, 2, 4
+[73] Sida Peng, Yuan Liu, Qixing Huang, Xiaowei Zhou, and Hujun Bao. Pvnet: Pixel-wise voting network for 6dof pose estimation.
+     IEEE Trans. Pattern Anal. Machine Intell., 2022. 1, 2, 8
+[74] Luis Pineda, Taosha Fan, Maurizio Monge, Shobha Venkataraman, Paloma Sodhi, Ricky TQ Chen, Joseph Ortiz, Daniel DeTone,
+     Austin Wang, Stuart Anderson, Jing Dong, Brandon Amos, and Mustafa Mukadam. Theseus: A Library for Differentiable Nonlinear
+     Optimization. In Advances in Neural Information Processing Systems (NIPS), 2022. 7, 12
+[75] Mahdi Rad and Vincent Lepetit. Bb8: A scalable, accurate, robust to partial occlusion method for predicting the 3d poses of
+     challenging objects without using depth. In Proceedings of the IEEE international conference on computer vision, pages 3828–
+     3836, 2017. 2
+[76] Shaoqing Ren, Kaiming He, Ross Girshick, and Jian Sun. Faster r-cnn: Towards real-time object detection with region proposal
+     networks. Advances in Neural Information Processing Systems (NIPS), 28, 2015. 7
+[77] Yaniv Romano, Matteo Sesia, and Emmanuel Candes. Classification with valid and adaptive coverage. In Advances in Neural
+     Information Processing Systems (NIPS), volume 33, pages 3581–3591, 2020. 3
+[78] David M Rosen, Luca Carlone, Afonso S Bandeira, and John J Leonard. Se-sync: A certifiably correct algorithm for synchronization
+     over the special euclidean group. Intl. J. of Robotics Research, 38(2-3):95–125, 2019. 3
+[79] Fred Rothganger, Svetlana Lazebnik, Cordelia Schmid, and Jean Ponce. 3d object modeling and recognition using local affine-
+     invariant image descriptors and multi-view spatial constraints. Intl. J. of Computer Vision, 66(3):231–259, 2006. 2
+[80] Karl Schmeckpeper, Philip R Osteen, Yufu Wang, Georgios Pavlakos, Kenneth Chaney, Wyatt Jordan, Xiaowei Zhou, Konstanti-
+     nos G Derpanis, and Kostas Daniilidis. Semantic keypoint-based pose estimation from single RGB frames. J. of Field Robotics,
+     2022. 1, 4, 7, 11
+[81] Jingnan Shi, Heng Yang, and Luca Carlone. Optimal pose and shape estimation for category-level 3d object perception. In Robotics:
+     Science and Systems (RSS), 2021. 1
+[82] Jingnan Shi, Heng Yang, and Luca Carlone. Optimal and robust category-level perception: Object pose and shape estimation from
+     2d and 3d semantic keypoints. arXiv preprint arXiv:2206.12498, 2022. 1
+[83] Torsten Söderström. Errors-in-variables methods in system identification. Automatica, 43(6):939–958, 2007. 3
+[84] David Stutz, Ali Taylan Cemgil, Arnaud Doucet, et al. Learning optimal conformal classifiers. In Intl. Conf. on Learning Represen-
+     tations (ICLR), 2022. 3
+[85] Hao Su, Charles R Qi, Yangyan Li, and Leonidas J Guibas. Render for cnn: Viewpoint estimation in images using cnns trained with
+     rendered 3d model views. In Intl. Conf. on Computer Vision (ICCV), pages 2686–2694, 2015. 2
+[86] Jiaming Sun, Zihao Wang, Siyu Zhang, Xingyi He, Hongcheng Zhao, Guofeng Zhang, and Xiaowei Zhou. Onepose: One-shot
+     object pose estimation without cad models. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 6825–6834,
+     2022. 1
+[87] Min Sun, Gary Bradski, Bing-Xin Xu, and Silvio Savarese. Depth-encoded hough voting for joint object detection and shape
+     recovery. In European Conf. on Computer Vision (ECCV), pages 658–671. Springer, 2010. 2
+[88] Martin Sundermeyer, Zoltan-Csaba Marton, Maximilian Durner, Manuel Brucker, and Rudolph Triebel. Implicit 3d orientation
+     learning for 6d object detection from rgb images. In European Conf. on Computer Vision (ECCV), pages 699–715, 2018. 2
+[89] Richard Szeliski. Computer vision: algorithms and applications. Springer Nature, 2022. 3
+[90] Bugra Tekin, Sudipta N Sinha, and Pascal Fua. Real-time seamless single shot 6d object pose prediction. In IEEE Conf. on Computer
+     Vision and Pattern Recognition (CVPR), pages 292–301, 2018. 1, 2, 8
+[91] Shubham Tulsiani and Jitendra Malik. Viewpoints and keypoints. In Proceedings of the IEEE Conference on Computer Vision and
+     Pattern Recognition, pages 1510–1519, 2015. 2
+[92] Vladimir Vovk. Conditional validity of inductive conformal predictors. In Asian conference on machine learning, pages 475–490.
+     PMLR, 2012. 3
+[93] Vladimir Vovk, Alexander Gammerman, and Glenn Shafer. Algorithmic learning in a random world. Springer Science & Business
+     Media, 2005. 2, 3
+[94] Gu Wang, Fabian Manhardt, Federico Tombari, and Xiangyang Ji. Gdr-net: Geometry-guided direct regression network for monoc-
+     ular 6d object pose estimation. In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 16611–16621, 2021.
+     2
+[95] Håkan Wieslander, Philip J Harrison, Gabriel Skogberg, Sonya Jackson, Markus Fridén, Johan Karlsson, Ola Spjuth, and Carolina
+     Wählby. Deep learning with conformal prediction for hierarchical analysis of large-scale whole-slide tissue images. IEEE journal
+     of biomedical and health informatics, 25(2):371–380, 2020. 3
+[96] Yu Xiang, Tanner Schmidt, Venkatraman Narayanan, and Dieter Fox. Posecnn: A convolutional neural network for 6d object pose
+     estimation in cluttered scenes. In Robotics: Science and Systems (RSS), 2018. 2, 8
+[97] Heng Yang, Pasquale Antonante, Vasileios Tzoumas, and Luca Carlone. Graduated non-convexity for robust spatial perception:
+     From non-minimal solvers to global outlier rejection. IEEE Robotics and Automation Letters, 5(2):1127–1134, 2020. 2, 5
+ [98] Heng Yang and Luca Carlone. In perfect shape: Certifiably optimal 3d shape reconstruction from 2d landmarks. In IEEE Conf. on
+      Computer Vision and Pattern Recognition (CVPR), pages 621–630, 2020. 2
+ [99] Heng Yang and Luca Carlone. Certifiably optimal outlier-robust geometric perception: Semidefinite relaxations and scalable global
+      optimization. IEEE Trans. Pattern Anal. Machine Intell., 2022. 1, 2, 7, 10, 11
+[100] Heng Yang, Ling Liang, Luca Carlone, and Kim-Chuan Toh. An inexact projected gradient method with rounding and lifting
+      by nonlinear programming for solving rank-one semidefinite relaxation of polynomial optimization. Mathematical Programming,
+      pages 1–64, 2022. 3
+[101] Heng Yang, Jingnan Shi, and Luca Carlone. Teaser: Fast and certifiable point cloud registration. IEEE Trans. Robotics, 37(2):314–
+      333, 2020. 3
+[102] Sergey Zakharov, Ivan Shugurov, and Slobodan Ilic. Dpod: 6d pose object detector and refiner. In Intl. Conf. on Computer Vision
+      (ICCV), pages 1941–1950, 2019. 1, 2
+[103] Yi Zhou, Connelly Barnes, Jingwan Lu, Jimei Yang, and Hao Li. On the continuity of rotation representations in neural networks.
+      In IEEE Conf. on Computer Vision and Pattern Recognition (CVPR), pages 5745–5753, 2019. 2
+                            (a)  = 0.1, object: driller, top to bottom: gt-ball, gt-ellipse, frcnn-ball, frcnn-ellipse
+
+
+
+
+                             (b)  = 0.1, object: duck, top to bottom: gt-ball, gt-ellipse, frcnn-ball, frcnn-ellipse
+
+
+
+
+                            (c)  = 0.4, object: driller, top to bottom: gt-ball, gt-ellipse, frcnn-ball, frcnn-ellipse
+
+
+
+
+                             (d)  = 0.4, object: duck, top to bottom: gt-ball, gt-ellipse, frcnn-ball, frcnn-ellipse
+Figure A5. ICP sets on LM-O [11]. Last image of each row overlays all groundtruth keypoints (squares) and ICP sets (balls & ellipses) on
+the original image. Other images overlay the heatmap, groundtruth location, and ICP set of a single keypoint on the original image.
+                                                        180                                                                                                         5                                                                                                         180                                                                                                                     5
+        Rotation error b/t avg pose and gt pose (deg)
+
+
+
+
+                                                                                                                                                                                   Uncovered          Covered                                                                                                                                                                                                        Uncovered           Covered
+
+
+
+
+                                                                                                                                                                                                                              Rotation error b/t avg pose and gt pose (deg)
+                                                                         Uncovered         Covered                                                                                                                                                                                             Uncovered                            Covered
+
+
+
+
+                                                                                                                   Translation error b/t avg pose and gt pose
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                      Translation error b/t avg pose and gt pose
+                                                        160                                                                                                        4.5                                                                                                                                                                                                                               4.5
+                                                                                                                                                                                                                                                                              160
+                                                                                                                                                                    4                                                                                                                                                                                                                                 4
+                                                        140                                                                                                                                                                                                                   140
+                                                                                                                                                                   3.5                                                                                                                                                                                                                               3.5
+                                                        120                                                                                                                                                                                                                   120
+                                                                                                                                                                    3                                                                                                                                                                                                                                 3
+                                                        100                                                                                                                                                                                                                   100
+                                                                                                                                                                   2.5                                                                                                                                                                                                                               2.5
+                                                         80                                                                                                                                                                                                                    80
+                                                                                                                                                                    2                                                                                                                                                                                                                                 2
+                                                         60                                                                                                                                                                                                                    60
+                                                                                                                                                                   1.5                                                                                                                                                                                                                               1.5
+                                                         40                                                                                                                                                                                                                    40
+                                                                                                                                                                    1                                                                                                                                                                                                                                 1
+                                                         20                                                                                                        0.5                                                                                                         20                                                                                                                    0.5
+
+                                                          0                                                                                                         0                                                                                                           0                                                                                                                     0
+                                                              0          50          100          150                                                                    0     1         2        3        4         5                                                              0          50                           100          150                                                               0     1         2         3        4         5
+                                                                  Worst-case rotation error bound (deg)                                                                      Worst-case translation error bound                                                                         Worst-case rotation error bound (deg)                                                                                  Worst-case translation error bound
+
+                                                                                                           (a) gt-ellipse. Left two columns:  = 0.1; right two columns:  = 0.4.
+                                                        180                                                                                                         5                                                                                                         180                                                                                                                     5
+
+
+
+
+                                                                                                                                                                                                                          Rotation error b/t avg pose and gt pose (deg)
+   Rotation error b/t avg pose and gt pose (deg)
+
+
+
+
+                                                                         Uncovered         Covered                                                                                 Uncovered          Covered                                                                                  Uncovered                            Covered                                                                          Uncovered           Covered
+                                                                                                                Translation error b/t avg pose and gt pose
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                    Translation error b/t avg pose and gt pose
+                                                        160                                                                                                        4.5                                                                                                        160                                                                                                                    4.5
+
+                                                                                                                                                                    4                                                                                                                                                                                                                                 4
+                                                        140                                                                                                                                                                                                                   140
+                                                                                                                                                                   3.5                                                                                                                                                                                                                               3.5
+                                                        120                                                                                                                                                                                                                   120
+                                                                                                                                                                    3                                                                                                                                                                                                                                 3
+                                                        100                                                                                                                                                                                                                   100
+                                                                                                                                                                   2.5                                                                                                                                                                                                                               2.5
+                                                         80                                                                                                                                                                                                                    80
+                                                                                                                                                                    2                                                                                                                                                                                                                                 2
+                                                         60                                                                                                                                                                                                                    60
+                                                                                                                                                                   1.5                                                                                                                                                                                                                               1.5
+                                                         40                                                                                                                                                                                                                    40
+                                                                                                                                                                    1                                                                                                                                                                                                                                 1
+                                                         20                                                                                                        0.5                                                                                                         20                                                                                                                    0.5
+
+                                                          0                                                                                                         0                                                                                                           0                                                                                                                     0
+                                                              0          50          100          150                                                                    0     1         2        3        4         5                                                              0          50                           100          150                                                               0     1         2         3        4         5
+                                                                  Worst-case rotation error bound (deg)                                                                      Worst-case translation error bound                                                                         Worst-case rotation error bound (deg)                                                                                  Worst-case translation error bound
+
+                                                                                                           (b) frcnn-ball. Left two columns:  = 0.1; right two columns:  = 0.4.
+                                                        180                                                                                                          5                                                                                                        180                                                                                                                     5
+                                                                                                                                                                                                                         Rotation error b/t avg pose and gt pose (deg)
+     Rotation error b/t avg pose and gt pose (deg)
+
+
+
+
+                                                                         Uncovered         Covered                                                                                 Uncovered          Covered                                                                                  Uncovered                            Covered                                                                          Uncovered           Covered
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                        Translation error b/t avg pose and gt pose
+                                                                                                                      Translation error b/t avg pose and gt pose
+
+
+
+
+                                                        160                                                                                                        4.5                                                                                                        160                                                                                                                    4.5
+
+                                                                                                                                                                     4                                                                                                                                                                                                                                4
+                                                        140                                                                                                                                                                                                                   140
+                                                                                                                                                                   3.5                                                                                                                                                                                                                               3.5
+                                                        120                                                                                                                                                                                                                   120
+                                                                                                                                                                     3                                                                                                                                                                                                                                3
+                                                        100                                                                                                                                                                                                                   100
+                                                                                                                                                                   2.5                                                                                                                                                                                                                               2.5
+                                                         80                                                                                                                                                                                                                    80
+                                                                                                                                                                     2                                                                                                                                                                                                                                2
+                                                         60                                                                                                                                                                                                                    60
+                                                                                                                                                                   1.5                                                                                                                                                                                                                               1.5
+                                                         40                                                                                                                                                                                                                    40
+                                                                                                                                                                     1                                                                                                                                                                                                                                1
+                                                         20                                                                                                        0.5                                                                                                         20                                                                                                                    0.5
+
+                                                          0                                                                                                          0                                                                                                          0                                                                                                                     0
+                                                              0          50          100          150                                                                    0     1         2        3        4         5                                                              0          50                           100          150                                                               0     1         2         3        4         5
+                                                                  Worst-case rotation error bound (deg)                                                                      Worst-case translation error bound                                                                         Worst-case rotation error bound (deg)                                                                                  Worst-case translation error bound
+
+                                                                                                          (c) frcnn-ellipse. Left two columns:  = 0.1; right two columns:  = 0.4.
+Figure A6. Worst-case error bounds under (a) gt-ellipse, (b) frcnn-ball, and (c) frcnn-ellipse setups. x-axis represents the worst-case error
+bounds computed from (12), y-axis represents the actual error between average pose and groundtruth pose. The area below the diagonal
+y = x indicates correctness of the bounds (i.e., bound ≥ error), and points that are closer to the diagonal from below indicate tighter
+bounds (perfect if precisely lie on the diagonal). Blue circles plot cases where the PURSE covers the groundtruth pose and red squares plot
+cases were the PURSE does not cover the groundtruth. Notice that blue circles never cross the diagonal and our bounds are correct when
+the PURSE contains the pose (which holds with 1 −  marginal probability).
+
+
+                                                                  1                                                                                                                                                                                                                                                        1
+ Cumulative distribution
+
+
+
+
+                                                                                                                                                                                                                                                                                                Cumulative distribution
+
+
+
+
+                                                          0.8                                                                                                                                                                                                                                                             0.8
+
+                                                          0.6                                                                                                                                                                                                                                                             0.6
+
+                                                          0.4                                                                                                                           Eggbox                                                                                                                            0.4
+
+                                                          0.2                                                                                                                                                                                                                                                             0.2                                                                                   Eggbox
+                                                                  0                                                                                                                                                                                                                                                        0
+                                                                         101                            102                                                                     103                            104                                                                                                              0              50                                                          100                 150                200
+                                                                              Avg. radius of prediction sets (pix)                                                                                                                                                                                                              Worst case rotation err bound (deg)
+Figure A7. Left: cumulative distribution (CDF) of the average radius of prediction sets (under gt-ball). Right: CDF of the worst-case
+rotation error bounds; eggbox error bounds are mostly 180◦ .
+                                                                Error bounds of average pose                                                     Error bounds of average pose
+                                                                Minimum error bounds of pose samples                                             Minimum error bounds of pose samples
+                                                       1                                                                                1
+
+
+                                                      0.8                                                                              0.8
+                                                                                                             Cumulative distribution
+                            Cumulative distribution
+
+
+
+
+                                                      0.6                                                                              0.6
+
+
+                                                      0.4                                                                              0.4
+
+
+                                                      0.2                                                                              0.2
+
+
+                                                       0                                                                                0
+                                                            0       50        100        150           200                                   0    1       2      3      4        5      6
+                                                                  Rotation error bounds (deg)                                                         Translation error bounds
+Figure A8. Cumulative distribution function (CDF) of the worst-case error bounds under the gt-ball setup with  = 0.1. Blue curve plots
+the CDF of the error bounds of the average pose, and red curve plots the CDF of the minimum error bounds of the pose samples (i.e.
+solving (A27)). We can see that the translation error bounds are slightly tightened by selecting the minimum error bounds for multiple pose
+samples.
+

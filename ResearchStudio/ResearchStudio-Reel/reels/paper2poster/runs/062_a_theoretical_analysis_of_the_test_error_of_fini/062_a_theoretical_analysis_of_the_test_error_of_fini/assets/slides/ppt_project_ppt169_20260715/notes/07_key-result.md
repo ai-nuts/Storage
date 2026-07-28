@@ -1,0 +1,1 @@
+The new upper and lower bounds bracket the error across sample sizes on both kernels, and squeeze together as samples grow. Against Bach's bound the gain is stark: the new bound hugs the true error while Bach's floats far above. In the ridgeless limit, bias reduces to the finite-rank error and variance to the noise.

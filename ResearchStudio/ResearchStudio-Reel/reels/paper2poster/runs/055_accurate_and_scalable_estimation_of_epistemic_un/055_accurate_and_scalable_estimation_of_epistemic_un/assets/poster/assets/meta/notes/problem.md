@@ -1,0 +1,7 @@
+# Problem
+
+Core claim: Under distribution shift, graph neural networks produce unreliable confidence indicators (miscalibrated softmax / entropy scores), yet how and why GNN confidence degrades is far less studied than in vision.
+
+Supporting detail: Safety-critical GNN deployment depends on these confidence indicators for calibration, OOD rejection, and generalization-gap estimates, so their degradation directly undermines safe use.
+
+Narration: Graph neural networks are being deployed in high-stakes applications where the test-time data rarely matches training conditions. In these shifted settings, downstream safety metrics such as calibration error, out-of-distribution rejection, and generalization gap prediction all rely on the model's confidence indicators. While the computer vision community has long known that confidence quality deteriorates under distribution shift, this behavior has remained under-explored for graph neural networks. This paper asks whether GNN confidence indicators can be made reliable under realistic structural, size, concept, and covariate shifts.

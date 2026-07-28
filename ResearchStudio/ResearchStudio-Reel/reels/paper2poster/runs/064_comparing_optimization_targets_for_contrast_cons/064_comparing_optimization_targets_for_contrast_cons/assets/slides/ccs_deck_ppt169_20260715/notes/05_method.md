@@ -1,0 +1,1 @@
+CCS is described by two statistics along the probe direction: sigma-d-squared, how far a statement and its negation are pushed apart, and sigma-m-squared, how far their midpoint sits from origin. Its saturating sigmoid forces a trade-off between the two. Midpoint-Displacement makes this explicit with one knob, lambda, reproducing CCS or maximizing accuracy.

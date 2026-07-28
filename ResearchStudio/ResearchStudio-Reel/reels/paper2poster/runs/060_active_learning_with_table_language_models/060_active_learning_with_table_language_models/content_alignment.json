@@ -1,0 +1,1554 @@
+{
+ "schema_version": "paper2any_alignment.v1",
+ "viewer_version": "section_modal.v2",
+ "template_version": "attention_golden_section_modal.v1",
+ "created_at": "2026-07-15T04:31:26Z",
+ "title": "Active Learning with Tabular Language Models",
+ "artifacts": {
+  "poster": "assets/poster/poster.html",
+  "slides_dir": "assets/slides",
+  "video": "assets/media/video.mp4",
+  "video_source_kind": "raw_pre_subtitle",
+  "caption_delivery": "sidecar_vtt_toggle",
+  "captions": "assets/media/captions/video.vtt"
+ },
+ "downloads": [
+  {
+   "label": "All",
+   "href": "assets/downloads/all_final.zip"
+  },
+  {
+   "label": "Poster",
+   "href": "assets/downloads/poster_final.zip"
+  },
+  {
+   "label": "Video",
+   "href": "assets/downloads/video_final.zip"
+  },
+  {
+   "label": "Blog",
+   "href": "assets/downloads/blog_final.zip"
+  }
+ ],
+ "slides": [
+  {
+   "index": 1,
+   "id": "title",
+   "label": "Title",
+   "src": "assets/slides/slide_01.png",
+   "source": "slide-01.png"
+  },
+  {
+   "index": 2,
+   "id": "problem",
+   "label": "Problem",
+   "src": "assets/slides/slide_02.png",
+   "source": "slide-02.png"
+  },
+  {
+   "index": 3,
+   "id": "motivation",
+   "label": "Motivation",
+   "src": "assets/slides/slide_03.png",
+   "source": "slide-03.png"
+  },
+  {
+   "index": 4,
+   "id": "method",
+   "label": "Method",
+   "src": "assets/slides/slide_04.png",
+   "source": "slide-04.png"
+  },
+  {
+   "index": 5,
+   "id": "dataset-benchmark",
+   "label": "Dataset / Benchmark",
+   "src": "assets/slides/slide_05.png",
+   "source": "slide-05.png"
+  },
+  {
+   "index": 6,
+   "id": "key-result",
+   "label": "Key Result",
+   "src": "assets/slides/slide_06.png",
+   "source": "slide-06.png"
+  },
+  {
+   "index": 7,
+   "id": "ablation-study",
+   "label": "Ablation Study",
+   "src": "assets/slides/slide_07.png",
+   "source": "slide-07.png"
+  },
+  {
+   "index": 8,
+   "id": "takeaway",
+   "label": "Takeaway",
+   "src": "assets/slides/slide_08.png",
+   "source": "slide-08.png"
+  }
+ ],
+ "sections": [
+  {
+   "id": "title",
+   "label": "Title",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": ".titlebar"
+   },
+   "slide_indices": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "slides": [
+    {
+     "slide_index": 1,
+     "slide_id": "title",
+     "target": "#slide-1"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "paragraph",
+       "text": "Industry runs on spreadsheets. The equipment, sensors, and vessels a plant operator tracks usually live in loosely structured tables, and pulling that information out automatically means fine-tuning a tabular language model on labeled examples. The catch is cost. These tables are written in highly technical, domain-specific language that only a handful of experts can read, let alone annotate, so assembling enough training labels quickly becomes prohibitively expensive."
+      },
+      {
+       "type": "paragraph",
+       "text": "Active learning is built for exactly this situation: plenty of unlabeled data, scarce and expensive labels, and a desire to extract as much model performance as possible from every annotation. Yet despite the obvious fit, no prior work had paired active learning with tabular language models. This workshop paper, by Martin Ringsquandl and Aneta Koleva of Siemens (Koleva is also at LMU Munich), presented at the Table Representation Learning Workshop at NeurIPS 2022, sets out to fill that gap."
+      },
+      {
+       "type": "paragraph",
+       "text": "Their task is sub-cell named entity recognition (NER) on tables: a single table holds many cells, and each cell may carry several token-level labels at once. That makes it an unusual, nested multi-instance active-learning problem, and it raises a question that has no obvious answer: at which level should you acquire labels, the token, the cell, or the whole table?"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "Paper: https://arxiv.org/abs/2211.04128"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Where the labeling cost comes from"
+      },
+      {
+       "type": "paragraph",
+       "text": "Fine-tuning a tabular language model for an industrial task needs many labels, and only experts who can read these specialized tables can provide them, which is what keeps acquisition costs high. The structure of the task makes it worse. Sub-cell NER is a nested multi-instance problem: a table contains many cells, and each cell carries multiple token labels, so the granularity at which you acquire annotations is itself an open question."
+      },
+      {
+       "type": "paragraph",
+       "text": "A second constraint comes from the model. A large transformer cannot be updated one example at a time the way classic active learning assumes; it needs batches, trained over several epochs per round, so the acquisition function has to select a whole batch at once. Pure uncertainty sampling tends to grab a cluster of highly correlated, redundant cells, often from the same table or even the same row, which wastes the annotation budget on near-duplicates."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The method: one tabular language model, four acquisition functions"
+      },
+      {
+       "type": "paragraph",
+       "text": "The model is a table-biased transformer encoder. It replaces vanilla attention with a row-column visibility matrix and adds within-cell positional encoding, so each token gets a representation aware of the entire table. A classification decoder then tags every token using IO labels over four entity types: TAG (equipment identifiers), EQ (equipment names), QUANT (physical quantities), and UoM (units of measurement)."
+      },
+      {
+       "type": "paragraph",
+       "text": "The authors make one key design argument: because the encoder already makes each cell aware of its full-table context, acquiring at the cell level is enough, and there is no need for a separate hierarchical table-then-cell selection. On top of that judgment they run standard pool-based active learning: each round selects a batch of the most informative cells, sends them to an expert oracle for labeling, and retrains on the enlarged set."
+      },
+      {
+       "type": "paragraph",
+       "text": "What actually gets compared are four cell-level acquisition functions. MNLP scores cells by their normalized log-probability uncertainty, a pure uncertainty strategy. MNLP+ adds a forced round-robin constraint that maximizes table diversity. BADGE runs k-MEANS++ over per-cell gradient embeddings to select a batch that is both uncertain and diverse. Rand samples cells uniformly at random as a baseline."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The data: a real industrial dataset"
+      },
+      {
+       "type": "paragraph",
+       "text": "The evaluation uses a genuine industrial dataset rather than an academic benchmark. Spreadsheets from several plants were downsampled to at most five rows per table, then annotated cell by cell by experts using prodi.gy, a span-based annotation tool. A random split yields 55 training tables and 24 test tables. The hard part is how sparse and imbalanced the labels are."
+      },
+      {
+       "type": "table",
+       "caption": "Table 1. Training-set statistics.",
+       "headers": [
+        "Statistic",
+        "Value"
+       ],
+       "rows": [
+        [
+         "#tables",
+         "55"
+        ],
+        [
+         "#cells",
+         "4774"
+        ],
+        [
+         "#labels",
+         "1112"
+        ],
+        [
+         "labels per cell",
+         "0.23"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "The 55 training tables hold 4774 cells but only 1112 NER span labels, about 0.23 labels per cell. Put differently, roughly 77% of cells contain only O-tagged tokens, no entity at all, an extreme class imbalance the authors note is typical of real industrial data. Experiments start from a stratified seed of 100 labeled cells, add 50 cells per iteration, and average every result over 5 random seeds. The backbone is bert-base-uncased, fine-tuned for up to 30 epochs per round."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The result: BADGE stands out, forced diversity finishes last"
+      },
+      {
+       "type": "paragraph",
+       "text": "Performance is measured by micro-averaged F1 on the held-out test set as active learning proceeds. The figure below plots the four acquisition functions together with the ceiling from training on the full dataset (full), against the cumulative number of labels. Two things are worth watching: which curve reaches the orange full line first, and how the methods rank against each other."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Micro F1 versus number of labels per acquisition function (averaged over 5 seeds): green badge reaches the orange full ceiling first and exceeds it, blue mnlp only edges past red rand after about 500 labels, and purple mnlp+ (forced maximum table diversity) trails throughout, even below random.",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The picture is sharp. BADGE, the batch-diverse gradient method, is the only acquisition function that clearly beats random and even surpasses the full-training F1 ceiling, reaching that ceiling with far fewer labels. Pure uncertainty sampling with MNLP is disappointing: it only pulls slightly ahead of Rand after around 500 labels, and with noticeably higher variance, which suggests it is more sensitive to the initial seed in this highly imbalanced regime. Most striking is MNLP+, the variant that forces maximum table diversity: it is the worst of the four, falling below even the random baseline, which indicates that pushing diversity to the extreme actively hurts."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why? Diversity is not a free good"
+      },
+      {
+       "type": "paragraph",
+       "text": "The four acquisition functions effectively ablate the role of diversity. To see the mechanism, the authors track how many distinct tables each method samples from at every iteration: MNLP fixates on a few tables, MNLP+ spreads across as many as the budget allows, and BADGE sits in between. Lined up against the F1 results, the reading is clear. What wins is not maximum diversity but a careful trade-off between diversity and per-cell uncertainty: built-in batch diversity (BADGE) helps, while forced maximum table diversity (MNLP+) hurts."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Takeaway and boundaries"
+      },
+      {
+       "type": "paragraph",
+       "text": "The lasting message is that active learning really can cut the expert-labeling cost of tabular language models, but only if diversity is handled with care. Cell-level acquisition with built-in batch diversity, as BADGE does it, reaches full-training performance with a fraction of the labels, whereas bluntly forcing maximum table diversity backfires and does worse than random. The practical recipe is to balance diversity against uncertainty rather than maximize either one alone."
+      },
+      {
+       "type": "paragraph",
+       "text": "As the first study of this problem, the paper is honest about what it leaves open. Two frontiers stand out: the computational cost of table-diverse acquisition, and the extra cognitive load it places on human annotators, who must reinterpret the context of each new table they are handed. Those are the questions that come next when moving active learning from a study into a real industrial annotation pipeline."
+      }
+     ],
+     "zh": [
+      {
+       "type": "paragraph",
+       "text": "工业界跑在电子表格上。工厂里的设备、传感器、容器，往往就记录在一张张结构松散的表里。想把这些信息自动抽取出来，需要在带标注的样本上微调「表格语言模型（tabular language model）」。问题出在标注成本：这些表格用的是高度专业、领域特定的术语，只有少数专家看得懂、标得动，于是「凑够训练标签」这件事很快变得非常昂贵。"
+      },
+      {
+       "type": "paragraph",
+       "text": "主动学习（active learning）恰恰是为这种场景设计的：未标注数据很多、专家标注很贵，它试图把每一次标注的价值榨到最大。但一个尴尬的现实是，尽管这个契合看起来很明显，此前却没有人把主动学习和表格语言模型放在一起研究。这篇由 Siemens 的 Martin Ringsquandl 与 Aneta Koleva（Koleva 同时来自 LMU Munich）完成、发表在 NeurIPS 2022 Table Representation Learning Workshop 的工作，正是来填这个空白。"
+      },
+      {
+       "type": "paragraph",
+       "text": "他们研究的是表格上的「子单元格命名实体识别（sub-cell NER）」：一张表里有很多单元格，每个单元格内又可能同时含有多个 token 级别的标签。这让它成为一个此前少见的「嵌套多实例（nested multi-instance）」主动学习问题——到底应该在 token、单元格，还是整张表这一层去挑选要标注的样本，并不显然。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 工业子单元格 NER 与主动学习采集示意：一张设备表里 QUANT（物理量）、UoM（单位）、TAG（设备标识）、EQ（设备名）四类实体交织出现，模型需向专家 Oracle 请求标注，核心问题是按 token、cell 还是整张 table 挑选最有信息量的样本。",
+       "width_inches": 5.0,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文地址：https://arxiv.org/abs/2211.04128"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "问题：标注贵在哪里"
+      },
+      {
+       "type": "paragraph",
+       "text": "微调一个工业任务上的表格语言模型，需要大量标签，而这些标签只能由能读懂专业表格的专家来提供，采集成本因此居高不下。更麻烦的是任务本身的结构：子单元格 NER 是一个嵌套多实例问题，一张表包含很多单元格，一个单元格又携带多个 token 标签，所以「在哪个粒度上采集标注」本身就是个开放问题。"
+      },
+      {
+       "type": "paragraph",
+       "text": "另一层约束来自模型。大型 Transformer 没法像经典主动学习那样一次只更新一个样本，它需要成批数据、每轮训练多个 epoch，因此采集函数必须一次挑出「一整批」单元格。而单纯按不确定性挑选，往往会抓来一堆高度相关、彼此冗余的单元格（常常来自同一张表甚至同一行），白白浪费标注预算。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "方法：一个表格语言模型加四种采集函数"
+      },
+      {
+       "type": "paragraph",
+       "text": "模型部分是一个「表格偏置」的 Transformer 编码器：它用「行-列可见性矩阵（row-column visibility matrix）」替换了普通注意力，并配合「单元格内位置编码（within-cell positional encoding）」，让每个 token 的表示都能感知整张表的上下文。之上是一个分类解码器，用 IO 标注方式给每个 token 打上四类实体标签——TAG（设备标识）、EQ（设备名）、QUANT（物理量）、UoM（计量单位）。"
+      },
+      {
+       "type": "paragraph",
+       "text": "作者提出了一个关键设计判断：既然编码器已经让每个单元格「看得见」整张表的上下文，那么在单元格（cell）这一粒度上采集就够了，不需要再额外做「先选表、再选单元格」的层级式选择。在这个判断之上，他们把主动学习组织成常见的池式（pool-based）流程：每一轮从未标注池里挑出一批「最有信息量」的单元格，交给专家 Oracle 标注，再用新标签继续训练。"
+      },
+      {
+       "type": "paragraph",
+       "text": "真正被对比的，是四种单元格采集函数。MNLP 按归一化对数概率的不确定性给单元格打分，是纯不确定性采样；MNLP+ 在 MNLP 之上加了一条「强制轮转、最大化表间多样性」的约束；BADGE 则对每个单元格的梯度嵌入做 k-MEANS++ 聚类，试图一次选出既不确定又彼此多样的一批；Rand 均匀随机采样，作为基线。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "数据：一批真实的工业表格"
+      },
+      {
+       "type": "paragraph",
+       "text": "评测用的不是学术基准，而是一批真实的工业电子表格：来自多个工厂，被降采样到每张表最多 5 行，再由专家用 prodi.gy 这一基于 span 的标注工具逐格标注。随机切分后，得到 55 张训练表和 24 张测试表。真正棘手的是标签的稀疏与不均衡。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 训练集表格统计。",
+       "headers": [
+        "统计项",
+        "数值"
+       ],
+       "rows": [
+        [
+         "表格数 (#tables)",
+         "55"
+        ],
+        [
+         "单元格数 (#cells)",
+         "4774"
+        ],
+        [
+         "NER 标签数 (#labels)",
+         "1112"
+        ],
+        [
+         "平均每单元格标签数",
+         "0.23"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "55 张训练表里有 4774 个单元格，却只有 1112 个 NER span 标签，平均每个单元格只有 0.23 个标签——换句话说，约 77% 的单元格里只有 O 标签（没有任何实体）。这种极端的类别不均衡，正是作者强调的、工业数据里非常典型的情形。实验从一个分层抽样的 100 个已标注单元格的种子开始，之后每轮新增 50 个单元格，所有结果在 5 个随机种子上取平均；骨干网络是 bert-base-uncased，每轮最多训练 30 个 epoch。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "结果：BADGE 一枝独秀，强制多样性反而垫底"
+      },
+      {
+       "type": "paragraph",
+       "text": "衡量指标是留出测试集上、随主动学习轮次变化的 micro 平均 F1。下图把四种采集函数和「用全部数据训练」的天花板（full）画在了一起，横轴是累计标签数。读图时可以重点看两件事：哪条曲线最先逼近橙色的 full 水平线，以及各方法之间的高低顺序。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论相当鲜明。BADGE（批内多样的梯度方法）是唯一明显跑赢随机、并且越过「全量训练」F1 天花板的方法——用少得多的标签就摸到了上限。纯不确定性采样的 MNLP 表现令人失望，直到大约 500 个标签之后才略微领先 Rand，而且方差更大，说明它在这种高度不均衡的场景里对初始种子更敏感。最耐人寻味的是 MNLP+：这个「强制最大化表间多样性」的变体是四者中最差的，甚至低于随机基线，说明把多样性推到极致反而有害。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "为什么？多样性不是越多越好"
+      },
+      {
+       "type": "paragraph",
+       "text": "这四种采集函数其实构成了一次关于「多样性」的消融。为了看清机制，作者统计了每一轮各方法从多少张不同的表里取样：MNLP 会盯着少数几张表反复取，MNLP+ 则在预算允许的范围内尽量摊到最多的表上，而 BADGE 落在两者之间。把这条线索和上面的 F1 结果对起来看就很清楚了——制胜关键不是「最大多样性」，而是在「多样性」与「单元格不确定性」之间做出恰当的权衡：内建批内多样性（BADGE）有益，强制最大表间多样性（MNLP+）有害。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "小结与边界"
+      },
+      {
+       "type": "paragraph",
+       "text": "这项工作留下的核心信息是：对表格语言模型做主动学习，确实能大幅削减专家标注成本，但前提是对「多样性」拿捏得当。在单元格粒度上采集、并内建批内多样性（如 BADGE），能用零头的标签逼近全量训练的表现；而生硬地强制最大表间多样性会适得其反，甚至不如随机。可落地的配方是：在多样性与不确定性之间做权衡，而不是单方面最大化其中之一。"
+      },
+      {
+       "type": "paragraph",
+       "text": "作为该问题上的第一项研究，它也坦率地留下了两个开放前沿：一是表间多样化采集本身的计算开销，二是它给人类标注者带来的额外认知负担——每换一张新表，专家都要重新理解一次上下文。这些正是把主动学习真正推向工业标注流水线时，接下来要面对的问题。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 0.0,
+    "end": 281.93,
+    "slides": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ]
+   },
+   "clip": "assets/media/clips/title.mp4",
+   "captions": "assets/media/captions/clips/title.vtt",
+   "clip_seconds": 281.93,
+   "slide_segments": [
+    {
+     "slide": 1,
+     "global_start": 0.5,
+     "global_end": 33.99,
+     "relative_start": 0.5,
+     "relative_end": 33.99,
+     "clip": "assets/media/slide_clips/slide-01.mp4"
+    },
+    {
+     "slide": 2,
+     "global_start": 33.99,
+     "global_end": 66.83,
+     "relative_start": 33.99,
+     "relative_end": 66.83,
+     "clip": "assets/media/slide_clips/slide-02.mp4"
+    },
+    {
+     "slide": 3,
+     "global_start": 66.83,
+     "global_end": 99.72,
+     "relative_start": 66.83,
+     "relative_end": 99.72,
+     "clip": "assets/media/slide_clips/slide-03.mp4"
+    },
+    {
+     "slide": 4,
+     "global_start": 99.72,
+     "global_end": 145.86,
+     "relative_start": 99.72,
+     "relative_end": 145.86,
+     "clip": "assets/media/slide_clips/slide-04.mp4"
+    },
+    {
+     "slide": 5,
+     "global_start": 145.86,
+     "global_end": 183.29,
+     "relative_start": 145.86,
+     "relative_end": 183.29,
+     "clip": "assets/media/slide_clips/slide-05.mp4"
+    },
+    {
+     "slide": 6,
+     "global_start": 183.29,
+     "global_end": 214.57,
+     "relative_start": 183.29,
+     "relative_end": 214.57,
+     "clip": "assets/media/slide_clips/slide-06.mp4"
+    },
+    {
+     "slide": 7,
+     "global_start": 214.57,
+     "global_end": 248.45,
+     "relative_start": 214.57,
+     "relative_end": 248.45,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    },
+    {
+     "slide": 8,
+     "global_start": 248.45,
+     "global_end": 281.87,
+     "relative_start": 248.45,
+     "relative_end": 281.87,
+     "clip": "assets/media/slide_clips/slide-08.mp4"
+    }
+   ]
+  },
+  {
+   "id": "problem",
+   "label": "Problem",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='problem']"
+   },
+   "slide_indices": [
+    2
+   ],
+   "slides": [
+    {
+     "slide_index": 2,
+     "slide_id": "problem",
+     "target": "#slide-2"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "paragraph",
+       "text": "Industry runs on spreadsheets. The equipment, sensors, and vessels a plant operator tracks usually live in loosely structured tables, and pulling that information out automatically means fine-tuning a tabular language model on labeled examples. The catch is cost. These tables are written in highly technical, domain-specific language that only a handful of experts can read, let alone annotate, so assembling enough training labels quickly becomes prohibitively expensive."
+      },
+      {
+       "type": "paragraph",
+       "text": "Active learning is built for exactly this situation: plenty of unlabeled data, scarce and expensive labels, and a desire to extract as much model performance as possible from every annotation. Yet despite the obvious fit, no prior work had paired active learning with tabular language models. This workshop paper, by Martin Ringsquandl and Aneta Koleva of Siemens (Koleva is also at LMU Munich), presented at the Table Representation Learning Workshop at NeurIPS 2022, sets out to fill that gap."
+      },
+      {
+       "type": "paragraph",
+       "text": "Their task is sub-cell named entity recognition (NER) on tables: a single table holds many cells, and each cell may carry several token-level labels at once. That makes it an unusual, nested multi-instance active-learning problem, and it raises a question that has no obvious answer: at which level should you acquire labels, the token, the cell, or the whole table?"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "Paper: https://arxiv.org/abs/2211.04128"
+      }
+     ],
+     "zh": [
+      {
+       "type": "paragraph",
+       "text": "工业界跑在电子表格上。工厂里的设备、传感器、容器，往往就记录在一张张结构松散的表里。想把这些信息自动抽取出来，需要在带标注的样本上微调「表格语言模型（tabular language model）」。问题出在标注成本：这些表格用的是高度专业、领域特定的术语，只有少数专家看得懂、标得动，于是「凑够训练标签」这件事很快变得非常昂贵。"
+      },
+      {
+       "type": "paragraph",
+       "text": "主动学习（active learning）恰恰是为这种场景设计的：未标注数据很多、专家标注很贵，它试图把每一次标注的价值榨到最大。但一个尴尬的现实是，尽管这个契合看起来很明显，此前却没有人把主动学习和表格语言模型放在一起研究。这篇由 Siemens 的 Martin Ringsquandl 与 Aneta Koleva（Koleva 同时来自 LMU Munich）完成、发表在 NeurIPS 2022 Table Representation Learning Workshop 的工作，正是来填这个空白。"
+      },
+      {
+       "type": "paragraph",
+       "text": "他们研究的是表格上的「子单元格命名实体识别（sub-cell NER）」：一张表里有很多单元格，每个单元格内又可能同时含有多个 token 级别的标签。这让它成为一个此前少见的「嵌套多实例（nested multi-instance）」主动学习问题——到底应该在 token、单元格，还是整张表这一层去挑选要标注的样本，并不显然。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 工业子单元格 NER 与主动学习采集示意：一张设备表里 QUANT（物理量）、UoM（单位）、TAG（设备标识）、EQ（设备名）四类实体交织出现，模型需向专家 Oracle 请求标注，核心问题是按 token、cell 还是整张 table 挑选最有信息量的样本。",
+       "width_inches": 5.0,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文地址：https://arxiv.org/abs/2211.04128"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 33.99,
+    "end": 66.83,
+    "slides": [
+     2
+    ]
+   },
+   "clip": "assets/media/clips/problem.mp4",
+   "captions": "assets/media/captions/clips/problem.vtt",
+   "source_clip_seconds": 32.84,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 33.74,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 2,
+     "global_start": 33.99,
+     "global_end": 66.83,
+     "relative_start": 0.0,
+     "relative_end": 32.84,
+     "clip": "assets/media/slide_clips/slide-02.mp4"
+    }
+   ]
+  },
+  {
+   "id": "motivation",
+   "label": "Motivation",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='motivation']"
+   },
+   "slide_indices": [
+    3
+   ],
+   "slides": [
+    {
+     "slide_index": 1,
+     "slide_id": "title",
+     "target": "#slide-1"
+    },
+    {
+     "slide_index": 2,
+     "slide_id": "problem",
+     "target": "#slide-2"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The method: one tabular language model, four acquisition functions"
+      },
+      {
+       "type": "paragraph",
+       "text": "The model is a table-biased transformer encoder. It replaces vanilla attention with a row-column visibility matrix and adds within-cell positional encoding, so each token gets a representation aware of the entire table. A classification decoder then tags every token using IO labels over four entity types: TAG (equipment identifiers), EQ (equipment names), QUANT (physical quantities), and UoM (units of measurement)."
+      },
+      {
+       "type": "paragraph",
+       "text": "The authors make one key design argument: because the encoder already makes each cell aware of its full-table context, acquiring at the cell level is enough, and there is no need for a separate hierarchical table-then-cell selection. On top of that judgment they run standard pool-based active learning: each round selects a batch of the most informative cells, sends them to an expert oracle for labeling, and retrains on the enlarged set."
+      },
+      {
+       "type": "paragraph",
+       "text": "What actually gets compared are four cell-level acquisition functions. MNLP scores cells by their normalized log-probability uncertainty, a pure uncertainty strategy. MNLP+ adds a forced round-robin constraint that maximizes table diversity. BADGE runs k-MEANS++ over per-cell gradient embeddings to select a batch that is both uncertain and diverse. Rand samples cells uniformly at random as a baseline."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "结果：BADGE 一枝独秀，强制多样性反而垫底"
+      },
+      {
+       "type": "paragraph",
+       "text": "衡量指标是留出测试集上、随主动学习轮次变化的 micro 平均 F1。下图把四种采集函数和「用全部数据训练」的天花板（full）画在了一起，横轴是累计标签数。读图时可以重点看两件事：哪条曲线最先逼近橙色的 full 水平线，以及各方法之间的高低顺序。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论相当鲜明。BADGE（批内多样的梯度方法）是唯一明显跑赢随机、并且越过「全量训练」F1 天花板的方法——用少得多的标签就摸到了上限。纯不确定性采样的 MNLP 表现令人失望，直到大约 500 个标签之后才略微领先 Rand，而且方差更大，说明它在这种高度不均衡的场景里对初始种子更敏感。最耐人寻味的是 MNLP+：这个「强制最大化表间多样性」的变体是四者中最差的，甚至低于随机基线，说明把多样性推到极致反而有害。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 66.83,
+    "end": 99.72,
+    "slides": [
+     3
+    ]
+   },
+   "clip": "assets/media/clips/motivation.mp4",
+   "captions": "assets/media/captions/clips/motivation.vtt",
+   "source_clip_seconds": 32.89,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 33.79,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 3,
+     "global_start": 66.83,
+     "global_end": 99.72,
+     "relative_start": 0.0,
+     "relative_end": 32.89,
+     "clip": "assets/media/slide_clips/slide-03.mp4"
+    }
+   ]
+  },
+  {
+   "id": "contribution",
+   "label": "Contribution",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='contribution']"
+   },
+   "slide_indices": [
+    3
+   ],
+   "slides": [
+    {
+     "slide_index": 1,
+     "slide_id": "title",
+     "target": "#slide-1"
+    },
+    {
+     "slide_index": 2,
+     "slide_id": "problem",
+     "target": "#slide-2"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The method: one tabular language model, four acquisition functions"
+      },
+      {
+       "type": "paragraph",
+       "text": "The model is a table-biased transformer encoder. It replaces vanilla attention with a row-column visibility matrix and adds within-cell positional encoding, so each token gets a representation aware of the entire table. A classification decoder then tags every token using IO labels over four entity types: TAG (equipment identifiers), EQ (equipment names), QUANT (physical quantities), and UoM (units of measurement)."
+      },
+      {
+       "type": "paragraph",
+       "text": "The authors make one key design argument: because the encoder already makes each cell aware of its full-table context, acquiring at the cell level is enough, and there is no need for a separate hierarchical table-then-cell selection. On top of that judgment they run standard pool-based active learning: each round selects a batch of the most informative cells, sends them to an expert oracle for labeling, and retrains on the enlarged set."
+      },
+      {
+       "type": "paragraph",
+       "text": "What actually gets compared are four cell-level acquisition functions. MNLP scores cells by their normalized log-probability uncertainty, a pure uncertainty strategy. MNLP+ adds a forced round-robin constraint that maximizes table diversity. BADGE runs k-MEANS++ over per-cell gradient embeddings to select a batch that is both uncertain and diverse. Rand samples cells uniformly at random as a baseline."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 工业子单元格 NER 与主动学习采集示意：一张设备表里 QUANT（物理量）、UoM（单位）、TAG（设备标识）、EQ（设备名）四类实体交织出现，模型需向专家 Oracle 请求标注，核心问题是按 token、cell 还是整张 table 挑选最有信息量的样本。",
+       "width_inches": 5.0,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "方法：一个表格语言模型加四种采集函数"
+      },
+      {
+       "type": "paragraph",
+       "text": "模型部分是一个「表格偏置」的 Transformer 编码器：它用「行-列可见性矩阵（row-column visibility matrix）」替换了普通注意力，并配合「单元格内位置编码（within-cell positional encoding）」，让每个 token 的表示都能感知整张表的上下文。之上是一个分类解码器，用 IO 标注方式给每个 token 打上四类实体标签——TAG（设备标识）、EQ（设备名）、QUANT（物理量）、UoM（计量单位）。"
+      },
+      {
+       "type": "paragraph",
+       "text": "作者提出了一个关键设计判断：既然编码器已经让每个单元格「看得见」整张表的上下文，那么在单元格（cell）这一粒度上采集就够了，不需要再额外做「先选表、再选单元格」的层级式选择。在这个判断之上，他们把主动学习组织成常见的池式（pool-based）流程：每一轮从未标注池里挑出一批「最有信息量」的单元格，交给专家 Oracle 标注，再用新标签继续训练。"
+      },
+      {
+       "type": "paragraph",
+       "text": "真正被对比的，是四种单元格采集函数。MNLP 按归一化对数概率的不确定性给单元格打分，是纯不确定性采样；MNLP+ 在 MNLP 之上加了一条「强制轮转、最大化表间多样性」的约束；BADGE 则对每个单元格的梯度嵌入做 k-MEANS++ 聚类，试图一次选出既不确定又彼此多样的一批；Rand 均匀随机采样，作为基线。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 66.83,
+    "end": 99.72,
+    "slides": [
+     3
+    ]
+   },
+   "clip": "assets/media/clips/motivation.mp4",
+   "captions": "assets/media/captions/clips/motivation.vtt",
+   "source_clip_seconds": 32.89,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 33.79,
+   "clip_strategy": "aliased_from_motivation",
+   "slide_segments": [
+    {
+     "slide": 3,
+     "global_start": 66.83,
+     "global_end": 99.72,
+     "relative_start": 0.0,
+     "relative_end": 32.89,
+     "clip": "assets/media/slide_clips/slide-03.mp4"
+    }
+   ]
+  },
+  {
+   "id": "method",
+   "label": "Method",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='method']"
+   },
+   "slide_indices": [
+    4
+   ],
+   "slides": [
+    {
+     "slide_index": 4,
+     "slide_id": "method",
+     "target": "#slide-4"
+    },
+    {
+     "slide_index": 5,
+     "slide_id": "dataset-benchmark",
+     "target": "#slide-5"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The method: one tabular language model, four acquisition functions"
+      },
+      {
+       "type": "paragraph",
+       "text": "The model is a table-biased transformer encoder. It replaces vanilla attention with a row-column visibility matrix and adds within-cell positional encoding, so each token gets a representation aware of the entire table. A classification decoder then tags every token using IO labels over four entity types: TAG (equipment identifiers), EQ (equipment names), QUANT (physical quantities), and UoM (units of measurement)."
+      },
+      {
+       "type": "paragraph",
+       "text": "The authors make one key design argument: because the encoder already makes each cell aware of its full-table context, acquiring at the cell level is enough, and there is no need for a separate hierarchical table-then-cell selection. On top of that judgment they run standard pool-based active learning: each round selects a batch of the most informative cells, sends them to an expert oracle for labeling, and retrains on the enlarged set."
+      },
+      {
+       "type": "paragraph",
+       "text": "What actually gets compared are four cell-level acquisition functions. MNLP scores cells by their normalized log-probability uncertainty, a pure uncertainty strategy. MNLP+ adds a forced round-robin constraint that maximizes table diversity. BADGE runs k-MEANS++ over per-cell gradient embeddings to select a batch that is both uncertain and diverse. Rand samples cells uniformly at random as a baseline."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The result: BADGE stands out, forced diversity finishes last"
+      },
+      {
+       "type": "paragraph",
+       "text": "Performance is measured by micro-averaged F1 on the held-out test set as active learning proceeds. The figure below plots the four acquisition functions together with the ceiling from training on the full dataset (full), against the cumulative number of labels. Two things are worth watching: which curve reaches the orange full line first, and how the methods rank against each other."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Micro F1 versus number of labels per acquisition function (averaged over 5 seeds): green badge reaches the orange full ceiling first and exceeds it, blue mnlp only edges past red rand after about 500 labels, and purple mnlp+ (forced maximum table diversity) trails throughout, even below random.",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The picture is sharp. BADGE, the batch-diverse gradient method, is the only acquisition function that clearly beats random and even surpasses the full-training F1 ceiling, reaching that ceiling with far fewer labels. Pure uncertainty sampling with MNLP is disappointing: it only pulls slightly ahead of Rand after around 500 labels, and with noticeably higher variance, which suggests it is more sensitive to the initial seed in this highly imbalanced regime. Most striking is MNLP+, the variant that forces maximum table diversity: it is the worst of the four, falling below even the random baseline, which indicates that pushing diversity to the extreme actively hurts."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "方法：一个表格语言模型加四种采集函数"
+      },
+      {
+       "type": "paragraph",
+       "text": "模型部分是一个「表格偏置」的 Transformer 编码器：它用「行-列可见性矩阵（row-column visibility matrix）」替换了普通注意力，并配合「单元格内位置编码（within-cell positional encoding）」，让每个 token 的表示都能感知整张表的上下文。之上是一个分类解码器，用 IO 标注方式给每个 token 打上四类实体标签——TAG（设备标识）、EQ（设备名）、QUANT（物理量）、UoM（计量单位）。"
+      },
+      {
+       "type": "paragraph",
+       "text": "作者提出了一个关键设计判断：既然编码器已经让每个单元格「看得见」整张表的上下文，那么在单元格（cell）这一粒度上采集就够了，不需要再额外做「先选表、再选单元格」的层级式选择。在这个判断之上，他们把主动学习组织成常见的池式（pool-based）流程：每一轮从未标注池里挑出一批「最有信息量」的单元格，交给专家 Oracle 标注，再用新标签继续训练。"
+      },
+      {
+       "type": "paragraph",
+       "text": "真正被对比的，是四种单元格采集函数。MNLP 按归一化对数概率的不确定性给单元格打分，是纯不确定性采样；MNLP+ 在 MNLP 之上加了一条「强制轮转、最大化表间多样性」的约束；BADGE 则对每个单元格的梯度嵌入做 k-MEANS++ 聚类，试图一次选出既不确定又彼此多样的一批；Rand 均匀随机采样，作为基线。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "结果：BADGE 一枝独秀，强制多样性反而垫底"
+      },
+      {
+       "type": "paragraph",
+       "text": "衡量指标是留出测试集上、随主动学习轮次变化的 micro 平均 F1。下图把四种采集函数和「用全部数据训练」的天花板（full）画在了一起，横轴是累计标签数。读图时可以重点看两件事：哪条曲线最先逼近橙色的 full 水平线，以及各方法之间的高低顺序。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论相当鲜明。BADGE（批内多样的梯度方法）是唯一明显跑赢随机、并且越过「全量训练」F1 天花板的方法——用少得多的标签就摸到了上限。纯不确定性采样的 MNLP 表现令人失望，直到大约 500 个标签之后才略微领先 Rand，而且方差更大，说明它在这种高度不均衡的场景里对初始种子更敏感。最耐人寻味的是 MNLP+：这个「强制最大化表间多样性」的变体是四者中最差的，甚至低于随机基线，说明把多样性推到极致反而有害。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 99.72,
+    "end": 145.86,
+    "slides": [
+     4
+    ]
+   },
+   "clip": "assets/media/clips/method.mp4",
+   "captions": "assets/media/captions/clips/method.vtt",
+   "source_clip_seconds": 46.14,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 47.04,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 4,
+     "global_start": 99.72,
+     "global_end": 145.86,
+     "relative_start": 0.0,
+     "relative_end": 46.14,
+     "clip": "assets/media/slide_clips/slide-04.mp4"
+    }
+   ]
+  },
+  {
+   "id": "dataset-benchmark",
+   "label": "Dataset / Benchmark",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='dataset-benchmark']"
+   },
+   "slide_indices": [
+    5
+   ],
+   "slides": [
+    {
+     "slide_index": 6,
+     "slide_id": "key-result",
+     "target": "#slide-6"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Micro F1 versus number of labels per acquisition function (averaged over 5 seeds): green badge reaches the orange full ceiling first and exceeds it, blue mnlp only edges past red rand after about 500 labels, and purple mnlp+ (forced maximum table diversity) trails throughout, even below random.",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The data: a real industrial dataset"
+      },
+      {
+       "type": "paragraph",
+       "text": "The evaluation uses a genuine industrial dataset rather than an academic benchmark. Spreadsheets from several plants were downsampled to at most five rows per table, then annotated cell by cell by experts using prodi.gy, a span-based annotation tool. A random split yields 55 training tables and 24 test tables. The hard part is how sparse and imbalanced the labels are."
+      },
+      {
+       "type": "table",
+       "caption": "Table 1. Training-set statistics.",
+       "headers": [
+        "Statistic",
+        "Value"
+       ],
+       "rows": [
+        [
+         "#tables",
+         "55"
+        ],
+        [
+         "#cells",
+         "4774"
+        ],
+        [
+         "#labels",
+         "1112"
+        ],
+        [
+         "labels per cell",
+         "0.23"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "The 55 training tables hold 4774 cells but only 1112 NER span labels, about 0.23 labels per cell. Put differently, roughly 77% of cells contain only O-tagged tokens, no entity at all, an extreme class imbalance the authors note is typical of real industrial data. Experiments start from a stratified seed of 100 labeled cells, add 50 cells per iteration, and average every result over 5 random seeds. The backbone is bert-base-uncased, fine-tuned for up to 30 epochs per round."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 工业子单元格 NER 与主动学习采集示意：一张设备表里 QUANT（物理量）、UoM（单位）、TAG（设备标识）、EQ（设备名）四类实体交织出现，模型需向专家 Oracle 请求标注，核心问题是按 token、cell 还是整张 table 挑选最有信息量的样本。",
+       "width_inches": 5.0,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "数据：一批真实的工业表格"
+      },
+      {
+       "type": "paragraph",
+       "text": "评测用的不是学术基准，而是一批真实的工业电子表格：来自多个工厂，被降采样到每张表最多 5 行，再由专家用 prodi.gy 这一基于 span 的标注工具逐格标注。随机切分后，得到 55 张训练表和 24 张测试表。真正棘手的是标签的稀疏与不均衡。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 训练集表格统计。",
+       "headers": [
+        "统计项",
+        "数值"
+       ],
+       "rows": [
+        [
+         "表格数 (#tables)",
+         "55"
+        ],
+        [
+         "单元格数 (#cells)",
+         "4774"
+        ],
+        [
+         "NER 标签数 (#labels)",
+         "1112"
+        ],
+        [
+         "平均每单元格标签数",
+         "0.23"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "55 张训练表里有 4774 个单元格，却只有 1112 个 NER span 标签，平均每个单元格只有 0.23 个标签——换句话说，约 77% 的单元格里只有 O 标签（没有任何实体）。这种极端的类别不均衡，正是作者强调的、工业数据里非常典型的情形。实验从一个分层抽样的 100 个已标注单元格的种子开始，之后每轮新增 50 个单元格，所有结果在 5 个随机种子上取平均；骨干网络是 bert-base-uncased，每轮最多训练 30 个 epoch。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 145.86,
+    "end": 183.29,
+    "slides": [
+     5
+    ]
+   },
+   "clip": "assets/media/clips/dataset-benchmark.mp4",
+   "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+   "source_clip_seconds": 37.43,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 38.33,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 5,
+     "global_start": 145.86,
+     "global_end": 183.29,
+     "relative_start": 0.0,
+     "relative_end": 37.43,
+     "clip": "assets/media/slide_clips/slide-05.mp4"
+    }
+   ]
+  },
+  {
+   "id": "key-result",
+   "label": "Key Result",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='key-result']"
+   },
+   "slide_indices": [
+    6
+   ],
+   "slides": [
+    {
+     "slide_index": 7,
+     "slide_id": "ablation-study",
+     "target": "#slide-7"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "The result: BADGE stands out, forced diversity finishes last"
+      },
+      {
+       "type": "paragraph",
+       "text": "Performance is measured by micro-averaged F1 on the held-out test set as active learning proceeds. The figure below plots the four acquisition functions together with the ceiling from training on the full dataset (full), against the cumulative number of labels. Two things are worth watching: which curve reaches the orange full line first, and how the methods rank against each other."
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Micro F1 versus number of labels per acquisition function (averaged over 5 seeds): green badge reaches the orange full ceiling first and exceeds it, blue mnlp only edges past red rand after about 500 labels, and purple mnlp+ (forced maximum table diversity) trails throughout, even below random.",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "The picture is sharp. BADGE, the batch-diverse gradient method, is the only acquisition function that clearly beats random and even surpasses the full-training F1 ceiling, reaching that ceiling with far fewer labels. Pure uncertainty sampling with MNLP is disappointing: it only pulls slightly ahead of Rand after around 500 labels, and with noticeably higher variance, which suggests it is more sensitive to the initial seed in this highly imbalanced regime. Most striking is MNLP+, the variant that forces maximum table diversity: it is the worst of the four, falling below even the random baseline, which indicates that pushing diversity to the extreme actively hurts."
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why? Diversity is not a free good"
+      },
+      {
+       "type": "paragraph",
+       "text": "The four acquisition functions effectively ablate the role of diversity. To see the mechanism, the authors track how many distinct tables each method samples from at every iteration: MNLP fixates on a few tables, MNLP+ spreads across as many as the budget allows, and BADGE sits in between. Lined up against the F1 results, the reading is clear. What wins is not maximum diversity but a careful trade-off between diversity and per-cell uncertainty: built-in batch diversity (BADGE) helps, while forced maximum table diversity (MNLP+) hurts."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "数据：一批真实的工业表格"
+      },
+      {
+       "type": "paragraph",
+       "text": "评测用的不是学术基准，而是一批真实的工业电子表格：来自多个工厂，被降采样到每张表最多 5 行，再由专家用 prodi.gy 这一基于 span 的标注工具逐格标注。随机切分后，得到 55 张训练表和 24 张测试表。真正棘手的是标签的稀疏与不均衡。"
+      },
+      {
+       "type": "table",
+       "caption": "表1 训练集表格统计。",
+       "headers": [
+        "统计项",
+        "数值"
+       ],
+       "rows": [
+        [
+         "表格数 (#tables)",
+         "55"
+        ],
+        [
+         "单元格数 (#cells)",
+         "4774"
+        ],
+        [
+         "NER 标签数 (#labels)",
+         "1112"
+        ],
+        [
+         "平均每单元格标签数",
+         "0.23"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "55 张训练表里有 4774 个单元格，却只有 1112 个 NER span 标签，平均每个单元格只有 0.23 个标签——换句话说，约 77% 的单元格里只有 O 标签（没有任何实体）。这种极端的类别不均衡，正是作者强调的、工业数据里非常典型的情形。实验从一个分层抽样的 100 个已标注单元格的种子开始，之后每轮新增 50 个单元格，所有结果在 5 个随机种子上取平均；骨干网络是 bert-base-uncased，每轮最多训练 30 个 epoch。"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "结果：BADGE 一枝独秀，强制多样性反而垫底"
+      },
+      {
+       "type": "paragraph",
+       "text": "衡量指标是留出测试集上、随主动学习轮次变化的 micro 平均 F1。下图把四种采集函数和「用全部数据训练」的天花板（full）画在了一起，横轴是累计标签数。读图时可以重点看两件事：哪条曲线最先逼近橙色的 full 水平线，以及各方法之间的高低顺序。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论相当鲜明。BADGE（批内多样的梯度方法）是唯一明显跑赢随机、并且越过「全量训练」F1 天花板的方法——用少得多的标签就摸到了上限。纯不确定性采样的 MNLP 表现令人失望，直到大约 500 个标签之后才略微领先 Rand，而且方差更大，说明它在这种高度不均衡的场景里对初始种子更敏感。最耐人寻味的是 MNLP+：这个「强制最大化表间多样性」的变体是四者中最差的，甚至低于随机基线，说明把多样性推到极致反而有害。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 183.29,
+    "end": 214.57,
+    "slides": [
+     6
+    ]
+   },
+   "clip": "assets/media/clips/key-result.mp4",
+   "captions": "assets/media/captions/clips/key-result.vtt",
+   "source_clip_seconds": 31.28,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 32.18,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 6,
+     "global_start": 183.29,
+     "global_end": 214.57,
+     "relative_start": 0.0,
+     "relative_end": 31.28,
+     "clip": "assets/media/slide_clips/slide-06.mp4"
+    }
+   ]
+  },
+  {
+   "id": "ablation-study",
+   "label": "Ablation Study",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='ablation-study']"
+   },
+   "slide_indices": [
+    7
+   ],
+   "slides": [
+    {
+     "slide_index": 8,
+     "slide_id": "takeaway",
+     "target": "#slide-8"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "Figure 2. Micro F1 versus number of labels per acquisition function (averaged over 5 seeds): green badge reaches the orange full ceiling first and exceeds it, blue mnlp only edges past red rand after about 500 labels, and purple mnlp+ (forced maximum table diversity) trails throughout, even below random.",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Why? Diversity is not a free good"
+      },
+      {
+       "type": "paragraph",
+       "text": "The four acquisition functions effectively ablate the role of diversity. To see the mechanism, the authors track how many distinct tables each method samples from at every iteration: MNLP fixates on a few tables, MNLP+ spreads across as many as the budget allows, and BADGE sits in between. Lined up against the F1 results, the reading is clear. What wins is not maximum diversity but a careful trade-off between diversity and per-cell uncertainty: built-in batch diversity (BADGE) helps, while forced maximum table diversity (MNLP+) hurts."
+      }
+     ],
+     "zh": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "方法：一个表格语言模型加四种采集函数"
+      },
+      {
+       "type": "paragraph",
+       "text": "模型部分是一个「表格偏置」的 Transformer 编码器：它用「行-列可见性矩阵（row-column visibility matrix）」替换了普通注意力，并配合「单元格内位置编码（within-cell positional encoding）」，让每个 token 的表示都能感知整张表的上下文。之上是一个分类解码器，用 IO 标注方式给每个 token 打上四类实体标签——TAG（设备标识）、EQ（设备名）、QUANT（物理量）、UoM（计量单位）。"
+      },
+      {
+       "type": "paragraph",
+       "text": "作者提出了一个关键设计判断：既然编码器已经让每个单元格「看得见」整张表的上下文，那么在单元格（cell）这一粒度上采集就够了，不需要再额外做「先选表、再选单元格」的层级式选择。在这个判断之上，他们把主动学习组织成常见的池式（pool-based）流程：每一轮从未标注池里挑出一批「最有信息量」的单元格，交给专家 Oracle 标注，再用新标签继续训练。"
+      },
+      {
+       "type": "paragraph",
+       "text": "真正被对比的，是四种单元格采集函数。MNLP 按归一化对数概率的不确定性给单元格打分，是纯不确定性采样；MNLP+ 在 MNLP 之上加了一条「强制轮转、最大化表间多样性」的约束；BADGE 则对每个单元格的梯度嵌入做 k-MEANS++ 聚类，试图一次选出既不确定又彼此多样的一批；Rand 均匀随机采样，作为基线。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 214.57,
+    "end": 248.45,
+    "slides": [
+     7
+    ]
+   },
+   "clip": "assets/media/clips/ablation-study.mp4",
+   "captions": "assets/media/captions/clips/ablation-study.vtt",
+   "source_clip_seconds": 33.88,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 34.78,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 7,
+     "global_start": 214.57,
+     "global_end": 248.45,
+     "relative_start": 0.0,
+     "relative_end": 33.88,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    }
+   ]
+  },
+  {
+   "id": "headline-numbers",
+   "label": "Headline Numbers",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='headline-numbers']"
+   },
+   "slide_indices": [
+    7
+   ],
+   "slides": [
+    {
+     "slide_index": 8,
+     "slide_id": "takeaway",
+     "target": "#slide-8"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "paragraph",
+       "text": "Industry runs on spreadsheets. The equipment, sensors, and vessels a plant operator tracks usually live in loosely structured tables, and pulling that information out automatically means fine-tuning a tabular language model on labeled examples. The catch is cost. These tables are written in highly technical, domain-specific language that only a handful of experts can read, let alone annotate, so assembling enough training labels quickly becomes prohibitively expensive."
+      },
+      {
+       "type": "paragraph",
+       "text": "Active learning is built for exactly this situation: plenty of unlabeled data, scarce and expensive labels, and a desire to extract as much model performance as possible from every annotation. Yet despite the obvious fit, no prior work had paired active learning with tabular language models. This workshop paper, by Martin Ringsquandl and Aneta Koleva of Siemens (Koleva is also at LMU Munich), presented at the Table Representation Learning Workshop at NeurIPS 2022, sets out to fill that gap."
+      },
+      {
+       "type": "paragraph",
+       "text": "Their task is sub-cell named entity recognition (NER) on tables: a single table holds many cells, and each cell may carry several token-level labels at once. That makes it an unusual, nested multi-instance active-learning problem, and it raises a question that has no obvious answer: at which level should you acquire labels, the token, the cell, or the whole table?"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "Paper: https://arxiv.org/abs/2211.04128"
+      }
+     ],
+     "zh": [
+      {
+       "type": "paragraph",
+       "text": "工业界跑在电子表格上。工厂里的设备、传感器、容器，往往就记录在一张张结构松散的表里。想把这些信息自动抽取出来，需要在带标注的样本上微调「表格语言模型（tabular language model）」。问题出在标注成本：这些表格用的是高度专业、领域特定的术语，只有少数专家看得懂、标得动，于是「凑够训练标签」这件事很快变得非常昂贵。"
+      },
+      {
+       "type": "paragraph",
+       "text": "主动学习（active learning）恰恰是为这种场景设计的：未标注数据很多、专家标注很贵，它试图把每一次标注的价值榨到最大。但一个尴尬的现实是，尽管这个契合看起来很明显，此前却没有人把主动学习和表格语言模型放在一起研究。这篇由 Siemens 的 Martin Ringsquandl 与 Aneta Koleva（Koleva 同时来自 LMU Munich）完成、发表在 NeurIPS 2022 Table Representation Learning Workshop 的工作，正是来填这个空白。"
+      },
+      {
+       "type": "paragraph",
+       "text": "他们研究的是表格上的「子单元格命名实体识别（sub-cell NER）」：一张表里有很多单元格，每个单元格内又可能同时含有多个 token 级别的标签。这让它成为一个此前少见的「嵌套多实例（nested multi-instance）」主动学习问题——到底应该在 token、单元格，还是整张表这一层去挑选要标注的样本，并不显然。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "图1 工业子单元格 NER 与主动学习采集示意：一张设备表里 QUANT（物理量）、UoM（单位）、TAG（设备标识）、EQ（设备名）四类实体交织出现，模型需向专家 Oracle 请求标注，核心问题是按 token、cell 还是整张 table 挑选最有信息量的样本。",
+       "width_inches": 5.0,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "论文地址：https://arxiv.org/abs/2211.04128"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 214.57,
+    "end": 248.45,
+    "slides": [
+     7
+    ]
+   },
+   "clip": "assets/media/clips/ablation-study.mp4",
+   "captions": "assets/media/captions/clips/ablation-study.vtt",
+   "source_clip_seconds": 33.88,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 34.78,
+   "clip_strategy": "aliased_from_ablation-study",
+   "slide_segments": [
+    {
+     "slide": 7,
+     "global_start": 214.57,
+     "global_end": 248.45,
+     "relative_start": 0.0,
+     "relative_end": 33.88,
+     "clip": "assets/media/slide_clips/slide-07.mp4"
+    }
+   ]
+  },
+  {
+   "id": "takeaway",
+   "label": "Takeaway",
+   "poster": {
+    "artifact": "assets/poster/poster.html",
+    "selector": "[data-section='takeaway']"
+   },
+   "slide_indices": [
+    8
+   ],
+   "slides": [
+    {
+     "slide_index": 8,
+     "slide_id": "takeaway",
+     "target": "#slide-8"
+    }
+   ],
+   "blog": {
+    "blocks": {
+     "en": [
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure1.png",
+       "caption": "Figure 1. The industrial sub-cell NER problem and its acquisition: four entity types, QUANT, UoM, TAG, and EQ, are interleaved across a table's cells, and the model queries an expert oracle, with the open question of whether to pick the most informative token, cell, or whole table.",
+       "width_inches": 4.15,
+       "src": "assets/blog/figures/figure1.png"
+      },
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "Takeaway and boundaries"
+      },
+      {
+       "type": "paragraph",
+       "text": "The lasting message is that active learning really can cut the expert-labeling cost of tabular language models, but only if diversity is handled with care. Cell-level acquisition with built-in batch diversity, as BADGE does it, reaches full-training performance with a fraction of the labels, whereas bluntly forcing maximum table diversity backfires and does worse than random. The practical recipe is to balance diversity against uncertainty rather than maximize either one alone."
+      },
+      {
+       "type": "paragraph",
+       "text": "As the first study of this problem, the paper is honest about what it leaves open. Two frontiers stand out: the computational cost of table-diverse acquisition, and the extra cognitive load it places on human annotators, who must reinterpret the context of each new table they are handed. Those are the questions that come next when moving active learning from a study into a real industrial annotation pipeline."
+      }
+     ],
+     "zh": [
+      {
+       "type": "heading",
+       "level": 1,
+       "text": "结果：BADGE 一枝独秀，强制多样性反而垫底"
+      },
+      {
+       "type": "paragraph",
+       "text": "衡量指标是留出测试集上、随主动学习轮次变化的 micro 平均 F1。下图把四种采集函数和「用全部数据训练」的天花板（full）画在了一起，横轴是累计标签数。读图时可以重点看两件事：哪条曲线最先逼近橙色的 full 水平线，以及各方法之间的高低顺序。"
+      },
+      {
+       "type": "figure",
+       "path": "assets/blog/figures/figure2.png",
+       "caption": "图2 四种采集函数的 micro F1 随标签数变化（5 种子平均）：绿色 badge 最先冲上橙色 full 天花板并越过；蓝色 mnlp 约 500 标签后才略超红色 rand，且方差更大；紫色 mnlp+（强制最大表间多样性）全程垫底，甚至低于随机基线。",
+       "width_inches": 5.4,
+       "src": "assets/blog/figures/figure2.png"
+      },
+      {
+       "type": "paragraph",
+       "text": "结论相当鲜明。BADGE（批内多样的梯度方法）是唯一明显跑赢随机、并且越过「全量训练」F1 天花板的方法——用少得多的标签就摸到了上限。纯不确定性采样的 MNLP 表现令人失望，直到大约 500 个标签之后才略微领先 Rand，而且方差更大，说明它在这种高度不均衡的场景里对初始种子更敏感。最耐人寻味的是 MNLP+：这个「强制最大化表间多样性」的变体是四者中最差的，甚至低于随机基线，说明把多样性推到极致反而有害。"
+      }
+     ]
+    },
+    "meta": {
+     "en": {
+      "title": "NeurIPS 2022 | Cutting Label Cost for Table NER with Active Learning",
+      "subtitle": "Siemens and LMU Munich test active learning on a real industrial NER task, and find that built-in batch diversity helps while forced table diversity backfires"
+     },
+     "zh": {
+      "title": "NeurIPS 2022 | 让专家少标一点：表格语言模型的主动学习实践",
+      "subtitle": "Siemens 与 LMU Munich 在工业表格 NER 上验证主动学习，发现「批内多样性」有用，「强制表间多样性」反而更差"
+     }
+    }
+   },
+   "segment": {
+    "start": 248.45,
+    "end": 281.87,
+    "slides": [
+     8
+    ]
+   },
+   "clip": "assets/media/clips/takeaway.mp4",
+   "captions": "assets/media/captions/clips/takeaway.vtt",
+   "source_clip_seconds": 33.42,
+   "natural_tail_seconds": 0.9,
+   "clip_seconds": 34.32,
+   "clip_strategy": "complete_slide_concat_with_freeze_tail",
+   "slide_segments": [
+    {
+     "slide": 8,
+     "global_start": 248.45,
+     "global_end": 281.87,
+     "relative_start": 0.0,
+     "relative_end": 33.42,
+     "clip": "assets/media/slide_clips/slide-08.mp4"
+    }
+   ]
+  }
+ ],
+ "notes": [
+  "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+ ]
+}

@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: SiT is a large-scale real-world pedestrian trajectory dataset collected by a robot navigating crowded indoor and outdoor scenes, providing synchronized LiDAR, camera, IMU, and RTK raw data, 2D and 3D annotations, multi-layered semantic maps, and a unified benchmark for 3D detection, tracking, trajectory prediction, and end-to-end motion prediction.
+
+Supporting detail: Precise time synchronization via a centralized PPS sensor-triggering method enables efficient sensor fusion; the dataset, development kit, and trained models are publicly released.
+
+Narration: The SiT dataset makes several contributions. It provides large-scale real-world pedestrian trajectories gathered as a robot navigated densely populated indoor and outdoor environments, from building interiors and campuses to crosswalks and public walkways. It lets researchers build prediction models using rich context, including appearance features, the robot's ego-motion, and semantic map data. It achieves precise time synchronization between all sensor modalities using a centralized triggering method, which makes sensor fusion practical. It supplies multi-layered semantic maps for both indoor and outdoor scenes. And it offers a curated benchmark covering 3D detection, 3D multi-object tracking, trajectory prediction, and an end-to-end task from perception to motion forecasting, with everything released publicly.

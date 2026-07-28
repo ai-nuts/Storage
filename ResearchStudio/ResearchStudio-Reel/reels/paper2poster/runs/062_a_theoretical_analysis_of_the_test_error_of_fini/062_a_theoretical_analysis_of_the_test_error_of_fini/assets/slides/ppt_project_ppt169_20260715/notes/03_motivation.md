@@ -1,0 +1,1 @@
+Freezing a pre-trained backbone and retraining only the final layer is everywhere, and it defines a finite-rank kernel. Yet the theory lags: many results need the input dimension to grow, others fix how the ridge decays, and almost none give a lower bound, without which tightness cannot be claimed.

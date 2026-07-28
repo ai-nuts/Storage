@@ -1,0 +1,3 @@
+# Title
+
+Comparing collider measurements with theory requires unfolding, that is, correcting the distortions that detectors introduce into the data. But most unfolding methods first bin the data into histograms, while many theory predictions live at the level of statistical moments. This paper introduces Moment Unfolding, a machine-learning method that directly unfolds distribution moments without ever binning. Inspired by Generative Adversarial Networks and by Boltzmann's approach to statistical mechanics, it recovers moments to sub-percent accuracy on both Gaussian toy data and simulated LHC jets.

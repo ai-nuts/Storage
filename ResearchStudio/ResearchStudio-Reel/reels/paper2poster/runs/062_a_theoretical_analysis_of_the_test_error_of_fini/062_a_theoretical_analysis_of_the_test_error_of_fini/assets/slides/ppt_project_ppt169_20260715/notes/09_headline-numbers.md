@@ -1,0 +1,1 @@
+The bounds hold with probability at least one minus two over N. The upper bound decays at a log-N-over-N rate, faster than the square-root Rademacher rate. Variance scales as noise times twice the rank over N. And these are the first finite-rank bounds with a high-probability lower bound.

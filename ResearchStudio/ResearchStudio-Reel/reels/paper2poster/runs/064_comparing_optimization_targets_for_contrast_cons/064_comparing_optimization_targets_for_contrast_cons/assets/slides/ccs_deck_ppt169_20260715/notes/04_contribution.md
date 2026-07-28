@@ -1,0 +1,1 @@
+The paper makes three contributions. First, it corrects two misconceptions: CCS classifies using only the displacement between a statement and its negation, needing no separating hyperplane, and succeeds even when probabilities cluster near one half. Second, it derives a new Midpoint-Displacement loss. Third, a comparison shows it proxies, and can beat, CCS.

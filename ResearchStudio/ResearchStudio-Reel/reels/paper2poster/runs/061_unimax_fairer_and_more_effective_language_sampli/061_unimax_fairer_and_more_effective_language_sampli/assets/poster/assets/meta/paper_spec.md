@@ -1,0 +1,49 @@
+---
+title: UniMax: Fairer and More Effective Language Sampling for Large-Scale Multilingual Pretraining
+authors: Hyung Won Chung¹, Noah Constant¹, Xavier Garcia¹, Adam Roberts¹, Yi Tay¹, Sharan Narang¹, Orhan Firat¹
+institutes: ¹Google Research
+venue: ICLR 2023
+paper_url: https://arxiv.org/abs/2304.09151
+code_url: https://github.com/google-research/t5x
+title_audio_script: Multilingual language models must decide how much to train on each language, and the standard answer has been temperature-based sampling. This paper from Google Research introduces UniMax, a simple sampling method that gives more uniform coverage to high-resource languages while explicitly capping how many times any low-resource language's data is repeated. Across many benchmarks and model scales, UniMax beats temperature sampling, and the gains persist as models grow. The authors also release a refreshed mC4 corpus of twenty-nine trillion characters across one hundred seven languages, along with umT5 checkpoints trained with UniMax.
+---
+
+## Problem
+**Necessary:** Multilingual pretraining faces severe data imbalance: in mC4, English has ~9.7 trillion characters, over 92,000× the lowest-resource language, Yoruba. How to balance the languages is an open, expensive question.
+**Additional:** The dominant fix, temperature sampling with hyperparameter τ, has never been systematically evaluated across model scales.
+
+## Motivation
+**Necessary:** Temperature sampling tuned for head languages over-repeats the tail: at τ=3.33 with a trillion-token budget, the lowest-resource languages are repeated over 100 times.
+**Additional:** Excessive repetition causes overfitting that degrades downstream tasks, raises the risk of memorizing private content, and wastes compute on duplicate examples, and these harms worsen as models scale.
+
+## Contribution
+**Necessary:** (1) UniMax, a simple sampling method that allocates budget uniformly while capping per-language repeats; (2) an extensive ablation of sampling strategies across model scales; (3) a refreshed mC4 corpus of 29 trillion characters across 107 languages; (4) released umT5 checkpoints trained with UniMax.
+**Additional:** Analysis of how sampling choice reshapes the learned vocabulary's capacity allocation across language scripts.
+
+## Method
+**Necessary:** UniMax (uniform + max) starts from a fixed character budget C and distributes it as uniformly as possible across languages, processed from lowest to highest resource. At each step it checks whether the remaining per-language budget can be split uniformly; if a language would exceed N epochs over its corpus, it is capped at N epochs and the freed budget is redistributed uniformly among the rest.
+**Additional:** This delivers more uniform coverage of head languages than temperature sampling while preventing tail languages from being repeated more than N times. Default N=1 disallows any repeats.
+**Key equation:** `$U_l = \min\left(N \cdot D_l,\ \dfrac{B}{|L| - i}\right),\qquad B \leftarrow B - U_l$` <!-- languages sorted ascending by size; D_l = characters in language l, B = remaining budget, i = index of current language, N = max epochs -->
+
+## Dataset / Benchmark
+**Necessary:** Pretraining uses a refreshed mC4 corpus (29 trillion characters, 107 languages). Evaluation spans TyDi QA GoldP, WMT21 multilingual translation, XNLI, XQuAD, MLQA, and PAWS-X.
+**Additional:** Sampling strategies are compared while varying model scale from Small up to XXL, isolating whether benefits persist with size.
+
+## Key Result
+**Necessary:** UniMax consistently outperforms τ=1 and τ=3.33 on average TyDi QA across all three model sizes, and outperforms temperature sampling on WMT21 across all scales, with the majority of language pairs benefiting.
+**Additional:** On high-resource TyDi languages UniMax beats τ=3.33 and only trails τ=1 at the largest scale; it wins on low-resource languages, e.g. outperforming τ=3.33 on Swahili despite seeing fewer Swahili examples.
+
+## Ablation Study
+**Necessary:** Ablating the max-epoch parameter N∈{1,5,10} on Large models gives TyDi QA of 82.2 (N=1), 81.5 (N=5), 81.8 (N=10) — best when disallowing repeats entirely, though the effect is small. At a 4× larger (1/2) budget, UniMax scores 83.1 vs 82.8 (τ=3.33) and 81.2 (τ=1).
+**Additional:** Loss curves show overfitting under high temperature grows more severe with model size, while UniMax stays stable; the optimal N depends on the character budget.
+
+## Headline Numbers
+**Necessary:**
+- Refreshed mC4: **29 trillion characters** across **107 languages** (9.0 billion documents, a 35% size increase).
+- TyDi QA (1/2 budget, Large): UniMax **83.1** vs τ=3.33 **82.8** vs τ=1 **81.2**.
+- umT5-XXL vs mT5-XXL TyDi QA: **81.2/89.7** vs **79.5/88.7**.
+- At τ=3.33 the lowest-resource languages are repeated **>100×**.
+
+## Takeaway
+**Necessary:** Capping per-language repeats and spreading the rest of the budget uniformly beats temperature sampling for multilingual pretraining, and the advantage holds as models scale.
+**Additional:** UniMax is a drop-in, hyperparameter-light replacement for temperature sampling, shipped with a refreshed corpus and umT5 checkpoints.

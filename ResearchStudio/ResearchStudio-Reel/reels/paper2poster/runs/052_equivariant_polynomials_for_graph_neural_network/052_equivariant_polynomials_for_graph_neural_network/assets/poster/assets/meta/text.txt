@@ -1,0 +1,2128 @@
+                                                             Equivariant Polynomials for Graph Neural Networks
+
+
+                                                         Omri Puny * 1 Derek Lim * 2 Bobak T. Kiani * 2 Haggai Maron 3 Yaron Lipman 1 4
+
+
+                                                                 Abstract                                     4     1           PH (X)j2 j2 =
+                                                                                                                                Pn
+                                                                                                                                  j1 ,j3 ,j4 =1 Xj1 j4 Xj1 j3 Xj1 j2 Xj3 j2 =
+                                             Graph Neural Networks (GNN) are inherently
+                                                                                                                    3      2    einsum(12, 13, 14, 32 → 22, X, X, X, X)j2 j2
+                                             limited in their expressive power. Recent seminal
+arXiv:2302.11556v2 [cs.LG] 4 Jun 2023
+
+
+
+
+                                             works (Xu et al., 2019; Morris et al., 2019b) intro-             4     1           PH (X)j1 j2 =
+                                             duced the Weisfeiler-Lehman (WL) hierarchy as a                                    Pn
+                                                                                                                                  j3 ,j4 =1 Xj1 ,j2 Xj1 ,j3 Xj1 ,j4 Xj3 ,j2 =
+                                             measure of expressive power. Although this hier-                       3      2    einsum(12, 13, 14, 32 → 12, X, X, X, X)j1 j2
+                                             archy has propelled significant advances in GNN
+                                             analysis and architecture developments, it suffers            Figure 1. Example of two basis elements of equivariant graph poly-
+                                             from several significant limitations. These include           nomials: node-valued (top), and edge-valued (bottom). Basis
+                                             a complex definition that lacks direct guidance for           elements PH can be described by tensor contraction networks H
+                                             model improvement and a WL hierarchy that is                  (left), corresponding to a matching einsum expression.
+                                             too coarse to study current GNNs. This paper
+                                             introduces an alternative expressive power hier-
+                                             archy based on the ability of GNNs to calculate               machine learning models for processing graph-structured
+                                             equivariant polynomials of a certain degree. As a             data. However, one of the most significant limitations of
+                                             first step, we provide a full characterization of all         these architectures is their limited expressive power. In re-
+                                             equivariant graph polynomials by introducing a                cent years, the Weisfeiler-Lehman (WL) hierarchy has been
+                                             concrete basis, significantly generalizing previous           used to measure the expressive power of GNNs (Morris
+                                             results. Each basis element corresponds to a spe-             et al., 2019b; Xu et al., 2019; Morris et al., 2021). The
+                                             cific multi-graph, and its computation over some              introduction of the WL hierarchy marked an extremely sig-
+                                             graph data input corresponds to a tensor contrac-             nificant step in the graph learning field, as researchers were
+                                             tion problem. Second, we propose algorithmic                  able to evaluate and compare the expressive power of their
+                                             tools for evaluating the expressiveness of GNNs               architectures, and used higher-order WL tests to motivate
+                                             using tensor contraction sequences, and calculate             the development of new, more powerful architectures.
+                                             the expressive power of popular GNNs. Finally,                The WL hierarchy, however, is not an optimal choice for
+                                             we enhance the expressivity of common GNN                     either purpose. First, its definition is rather complex and
+                                             architectures by adding polynomial features or ad-            not intuitive, particularly for k ≥ 3. One implication is
+                                             ditional operations / aggregations inspired by our            that it is often difficult to analyze WL expressiveness of a
+                                             theory. These enhanced GNNs demonstrate state-                particular architecture class. As a result, many models lack
+                                             of-the-art results in experiments across multiple             a theoretical understanding of their expressive power. A
+                                             graph learning benchmarks.                                    second implication is that WL does not provide practical
+                                                                                                           guidance in the search for more expressive architecture.
+                                                                                                           Lastly, as was noted in recent works (Morris et al., 2022;
+                                                                                                           2019a), the WL test appears to be too coarse to be used to
+                                        1. Introduction                                                    evaluate the expressive power of current graph models. As
+                                        In recent years, graph neural networks (GNNs) have become          an example, many architectures (e.g., (Frasca et al., 2022))
+                                        one of the most popular and extensively studied classes of         are strictly more powerful than 2-WL and bounded by 3-WL,
+                                                                                                           and there is no clear way to compare them.
+                                          *
+                                            Equal contribution 1 Weizmann Institute of Science 2 MIT
+                                        CSAIL 3 NVIDIA Research 4 Meta AI Research Centre for              The goal of this paper is to offer an alternative expressive
+                                        Artificial Intelligence.  Correspondence to: Omri Puny             power hierarchy, which we call polynomial expressiveness
+                                        <omri.puny@weizmann.ac.il>.                                        that mitigates the limitations of the WL hierarchy. Our pro-
+                                                                                                           posed hierarchy relies on the concept of graph polynomials,
+                                        Proceedings of the 40 th International Conference on Machine
+                                        Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright         which are, for graphs with n nodes, polynomial functions
+                                                                                                                   2        2
+                                        2023 by the author(s).                                             P : Rn → Rn that are also permutation equivariant —
+
+                                                                                                       1
+                                     Equivariant Polynomials for Graph Neural Networks
+
+that is, well defined on graph data. The polynomial expres-           2. Equivariant Graph Polynomials
+siveness hierarchy is based on a natural and simple idea —                                                                                2
+the ability of GNNs to compute or approximate equivariant             We represent a graph with n nodes as a matrix X ∈ Rn ,
+graph polynomials up to a certain degree.                             where edge values are stored at off-diagonal entries, Xij ,
+                                                                      i ̸= j, i, j ∈ [n] = {1, 2, . . . , n}, and node values are stored
+This paper provides a number of theoretical and algorithmic           at diagonal entries Xii , i ∈ [n].
+contributions aimed at defining the polynomial hierarchy,
+providing tools to analyze the polynomial expressive power            An equivariant graph polynomial is a matrix polynomial
+                                                                                    2        2
+of GNNs, and demonstrating how this analysis can suggest              map P : Rn → Rn that is also equivariant to node permu-
+practical improvements in existing models that give state-            tations. More precisely, P is a polynomial map if each of
+of-the-art performance in GNN benchmarks.                             its entries, P (X)ij , i, j ∈ [n], is a polynomial in the inputs
+                                                                      Xrs , r, s ∈ [n]. P is equivariant if it satisfies
+First, while some polynomial functions were used in GNNs
+in the past (Maron et al., 2019; Chen et al., 2019b; Azizian                               P (g · X) = g · P (X),                        (1)
+& Lelarge, 2021), a complete characterization of the space
+of polynomials is lacking. In this paper, we provide the              for all permutations g ∈ Sn , where Sn denotes the per-
+first characterization of graph polynomials with arbitrary            mutation group on [n], and g acts on a matrix Y as usual
+degrees. In particular, we propose a basis for this vector            by
+space of polynomials, where each basis polynomial PH of                              (g · Y)ij = Yg−1 (i),g−1 (j) .        (2)
+degree d corresponds to a specific multi-graph H with d
+edges. This characterization provides a significant general-          2.1. PH : Basis for equivariant graph polynomials
+ization of known results, such as the basis of constant and
+linear equivariant functions on graphs (Maron et al., 2018).          We next provide a full characterization of equivariant graph
+Furthermore, this graphical representation H can be viewed            polynomials by enumerating a particular basis, denoted PH .
+as a type of a tensor network, which provides a concrete              In later sections we use this basis to analyze expressive
+way to compute those polynomials by performing a series               properties of graph models and improve expressiveness of
+of tensor (node) contractions. This is illustrated in Figure 1.       existing GNNs.
+
+As a second contribution, we propose tools for measuring              The basis elements PH of degree d equivariant graph polyno-
+polynomial expressiveness of graph models and placing                 mials are enumerated from non-isomorphic directed multi-
+them in the hierarchy. This is accomplished by analyzing              graphs, H = (V, E, (a, b)), where V = [m] is the node
+tensor networks using standard contraction operators, simi-           set; E = {(r1 , s1 ), . . . , (rd , sd )}, ri , si ∈ [m], the edge
+lar to those found in Einstein summation (einsum) algo-               set, where parallel edges and self-loops are allowed; and
+rithms. Using these, we analyze two popular graph models:             a, b ∈ V is a pair of not necessarily distinct nodes represent-
+Message Passing Neural Networks (MPNNs) and Provably                  ing the output dimension. The pair (a, b) will be marked in
+Powerful Graph Networks (PPGNs). This is done by first                our graphical notation as a red edge.
+studying the polynomial expressive power of prototypical              Defining the basis PH will be facilitated by the use of
+versions of these algorithms, which we define.                        Einstein summation operator defined next. Note that the
+Our third contribution demonstrates how to improve MPNN               multi-graph H can be represented as the following string
+and PPGN by using the polynomial hierarchy. Specifically,             that encodes both its list of edges and the single red edge:
+we identify polynomial basis elements that are not com-               H∼ = ′ r1 s1 , . . . , rd sd → ab′ . The einsum operator is:
+putable by existing graph architectures and add those poly-
+                                                                          einsum(H, X1 , . . . , Xd )ia ,ib =
+nomial basis elements to the model as feature layers. Also,
+we add two simple operations to the PPGN architecture (ma-                einsum(r1 s1 , . . . , rd sd → ab, X1 , . . . , Xd )ia ,ib =
+trix transpose and diagonal / off-diagonal MLPs) to achieve                  X
+                                                                                  X1jr1 ,js1 · · · Xdjr ,js
+the power of a Prototypical edge-based graph model. After                                                d   d
+                                                                          j1 ,...jm ∈[n]
+precomputing the polynomial features, we achieve strictly                 ja =ia ,jb =ib
+better than 3-WL expressive power while only requiring
+O(n2 ) memory — to the best of our knowledge this is the               Figure 2 shows how matrix multiplication can be defined us-
+first equivariant model to achieve this. We demonstrate that          ing a corresponding multigraph H and Einstein summation.
+these additions result in state-of-the-art performance across         Such multigraphs span the basis of equivariant polynomials:
+a wide variety of datasets.
+
+
+
+
+                                                                  2
+                                        Equivariant Polynomials for Graph Neural Networks
+                                                                                     2
+         1            einsum(H, X, Y)j1 j2 =                         where A ∈ Nn0 , N0 = {0, 1, . . .} is the matrix of powers,
+                                                                           a,b                               a,b
+         X            einsum(13, 32 → 12, X, Y) =                    and δi,j  = 1 if a = i, b = j, and δi,j     = 0 otherwise.
+                      Pn                                             A natural way to encode these monomials is with labeled
+         3   Y   2
+                        j3 =1 Xj1 j3 Y j3 j2 = (XY)j1 j2             multi-graphs H = (V, E, (a, b)), where V = [n], E is
+Figure 2. Example of matrix multiplication, XY. Computation
+                                                                     defined by the adjacency matrix A, and (a, b) is a special
+defined by a multigraph H and Einstein summation.                    (red) edge. We therefore denote M = MH .
+                                                                     These monomials can be projected onto equivariant polyno-
+                                                                     mials via the Reynolds operator that takes the form,
+Theorem 2.1 (Graph equivariant basis). A basis for all
+                                      2     2
+equivariant graph polynomials P : Rn → Rn of degree ≤
+                                                                                       X
+                                                                             QH (X) =       g · MH (g −1 · X, δ g(a),g(b) )
+d is enumerated by directed multigraphs H = (V, E, (a, b)),                                  g∈Sn
+where |V | ≤ min {n, 2 + 2d}, |E| ≤ d, and V \{a, b} does                                    X                                  (6)
+not contain isolated nodes. The polynomial basis elements                                =          Mg·H (X, δ a,b ),
+                                                                                             g∈Sn
+corresponding to H are
+                                          d times
+                                                                     where the action of g ∈ Sn on the multi-graph H is de-
+                                z }| {                               fined (rather naturally) as node relabeling of H using the
+             PH (X) = einsum(H, X, . . . , X).             (3)
+                                                                     permutation g.
+                                                                     From the above, we note: (i) QH sums all monomi-
+An explicit formula for PH can be achieved by plugging in
+                                                                     als with multi-graphs in the orbit of H, namely [H] =
+the definition of einsum and equation 3:
+                                                                     {g · H|g ∈ Sn }. This shows that, in contrast to MH , QH is
+                           X        Y                                represented by an unlabeled multi-graph H and enumer-
+          PH (X)ia ,ib =                 Xjr ,js .    (4)
+                                                                     ated by non-isomorphic multi-graphs H. (ii) Since the
+                         j1 ,...jm ∈[n] (r,s)∈E
+                         ja =ia ,jb =ib                              symmetrization is a projection operator, any equivariant
+                                                                     polynomial is spanned by QH . (iii) Since each QH is a
+Figure 1 depicts an example of graph equivariant basis el-           sum of MH belonging to a different orbit, and since orbits
+ements PH corresponding to two particular multigraphs                are disjoint, the set {QH } for non-isomorphic H is linearly
+H. Note that a repeated pair (a, a) in H leads to a node-            independent. These three points establish that {QH } for
+valued equivariant polynomial, while a distinct pair (a, b),         non-isomorphic multi-graphs H is a basis of equivariant
+a ̸= b leads to an edge-valued equivariant polynomial. Fur-          graph polynomials.
+thermore,  we make the convention that if E is empty then
+Q                                                                    Noting that QH (X)ij includes only terms for which
+   (r,s)∈E ir ,is = 1. The number of such polynomials in-
+           X
+creases exponentially with the degree of the polynomial; the         δ g(a),g(b) = δ i,j , the explicit form below can be derived:
+first few counts of degree d equivariant graph polynomials                                            X          Y
+                                                                               QH (X)ia ,ib =                        Xjr ,js .   (7)
+are 2 (d = 0), 15 (d = 1), 117 (d = 2), 877 (d = 3), 6719
+                                                                                                 j1 ̸=...̸=jm ∈[n] (r,s)∈E
+(d = 4), . . . Further details and proofs of these sequences                                      ja =ia ,jb =ib
+are provided in Appendix I. The full proof of Theorem 2.1
+is provided in Appendix B.                                           QH is similar to PH in equation 4, except we only sum over
+                                                                     non-repeated indices. The proof in Appendix B shows that
+Proof idea for Theorem 2.1. Since the set of monomials               PH is also a basis for such equivariant polynomials.
+form a basis of all (not necessarily invariant) polynomials
+         2       2
+P : Rn → Rn , we can project them onto the space of                  Simple graphs. It is often the case
+equivariant polynomials via the symmetrization (Reynolds)            that the input data X is restricted to
+                                                                                               2
+operator to form a basis for the equivariant polynomials.            some subdomain of Rn , e.g., sym-
+This projection operation will group the monomials into              metric 0/1 matrices with diagonal en-
+                                                                     tries set to zero correspond to simple    Figure 4. Simple H
+orbits that form the equivariant basis.
+                                                                     graph data. In such cases, polynomi-       corresponding to
+To find these orbits, the basic idea is to consider the mono-                                                   simple graph data.
+                                                                     als PH that correspond to different
+mials in the input variables {Xi,j : i, j ∈ [n]} and an              multi-graphs H can coincide, resulting in a smaller basis.
+additional variable {δi,j : i, j ∈ [n]} to denote the possible       For simple graph data X, existence of self loops in H would
+output entries of the equivariant map. Any given monomial            result in PH (X) = 0, parallel edges in H can be replaced
+M (X, δ a,b ) takes the form                                         with single edges without changing the value of PH (X),
+                                       n                             and since the direction of black edges in H do not change
+                                       Y
+                                 a,b
+             M (X, δ a,b )i,j = δi,j           XA                    the value of PH (X) we can consider only undirected multi-
+                                                r,s ,
+                                                  r,s
+                                                           (5)
+                                       r,s=1                         graphs H. That is, for simple graph data it is enough to
+
+                                                                 3
+                                              Equivariant Polynomials for Graph Neural Networks
+
+                                                                             to study properties of graphs (Thiéry, 2000; Lovász, 2012;
+                                                                             Komiske et al., 2018).
+                                                                             Subgraph counting. The previous work on invariant poly-
+                                                                             nomials mentioned above as well as our proof of Theo-
+                                                                             rem 2.1 suggest QH (see equation 7) as another basis of
+                                                                             equivariant graph polynomials. In Appendix G, we show
+                                                                             that when applied to binary input X ∈ {0, 1}n×n , QH
+                                                                             performs subgraph counting; essentially, QH (X)ia ,ib is pro-
+                                                                             portional to the number of subgraphs of X isomorphic to
+                                                                             H such that ia is mapped to a and ib is mapped to b. This
+                                                                             QH basis is interpretable, but does not lend itself to efficient
+Figure 3. Basis of equivariant constant (left of bold line) and linear       vectorized computation or the tensor contraction perspective
+(right of bold line) graph polynomials.                                      that the PH basis has.
+                                                                             Equivariant polynomials for attributed graphs. Our basis
+consider simple graphs H (ignoring the red edge). Figure 4                   for equivariant graph polynomials can be extended to cover
+shows two examples of H for simple graph data.                               the more general case of attributed graphs (i.e., graphs with
+                                                                                                                                   2
+
+Example: linear basis. Employing Theorem 2.1 for the                         Rf features attached to nodes and/or edges), P : Rn ×f →
+                                                                                2
+d = 0, 1 case reproduces the graph equivariant constant and                  Rn . A similar basis to PH can be used in this case, as
+linear functions from Maron et al. (2018). Figure 3 depicts                  described in Appendix F. Figure 6 visualizes this extension.
+the graphical enumeration of the 2 constant and 15 linear
+basis elements.
+                                                                                2          PH (X)j2 j2 =
+Computing PH (X) with tensor contractions. A useful                                        Pn
+                                                                                             j1 ,j3 =1 Xj2 j1 1 Xj1 j3 0 Xj1 j3 2 =
+observation for the graph model analysis performed later is                     1     3    einsum(21, 13, 13 → 22, X[:, :, 1], X[:, :, 0], X[:, :, 2])j2 j2
+that computing PH (X) is equivalent to a tensor contraction
+guided by H. Similarly to einsum, computing PH (X) can                          2          PH (X)j2 j1 =
+                                                                                           Pn       2
+be done iteratively in multiple ways by finding a sequence                                   j3 =1 Xj2 j3 0 Xj2 j1 1 =
+                                                                                1     3    einsum(23, 23, 21 → 21, X[:, :, 0], X[:, :, 0], X[:, :, 1])j2 j1
+of contraction paths for H where we start with each edge
+of H endowed with X and our end goal is to have a single
+                                                                             Figure 6. Basis elements of equivariant polynomials from
+black edge aligned with the red edge. Figure 5 provides an                      2            2
+                                                                             Rn ×3 → Rn . The output edge is indicated by a dotted red
+example of computing a 4th degree polynomial,
+                                                                             edge and the feature dimension is indexed by three colors for index
+                            n
+                            X                                                zero (orange), index one (green), and index two (blue).
+        PH (X)j1 ,j2 =                Xj1 j4 Xj1 j3 Xj3 j2 Xj1 j2 .
+                          j3 ,j4 =1
+
+The computation of the polynomial is decomposed to a se-
+                                                                             3. Expressive Power of Graph Models
+quence of operations, portrayed in the figure. Each step                     In this section we evaluate the expressive power of equivari-
+is labeled by the tensor contraction operation and the cor-                  ant graph models from the new, yet natural hierarchy aris-
+responding explicit computation. Nodes colored in gray                       ing from equivariant graph polynomials. By graph model,
+correspond to contracted nodes whose indices are summed                      F = {F }, we mean any collection of equivariant functions
+                                                                                      2        k
+in the einsum. The output of each contraction step is rep-                   F : Rn → Rn , where k = 1 corresponds to a family
+resented by a new black edge (labeled as Y, Z and R in our                   of node-valued functions, F (X) ∈ Rn , and k = 2 to node
+example).                                                                                                             2
+                                                                             and edge-valued functions, F (X) ∈ Rn . For expositional
+                                                                             simplicity we focus on graph data X representing simple
+2.2. Generalizations and discussion                                          graphs, but note that the general graph data case can be
+Invariant graph polynomials. This approach also gives a                      analysed using similar methods. We will use two notions
+                                                 2
+basis for the invariant polynomials P : Rn → R. In this                      of polynomial expressiveness: exact and approximate. The
+case, we let H be a directedPmultigraph without      a red edge,             exact case is used for analyzing Prototypical graph models,
+and define PH (X) =
+                                               Q                             whereas the approximate case is used for analyzing practical
+                               j1 ,...,jm ∈[n]  r,s∈E(H) Xjr ,js .
+Computing PH then corresponds to contracting H to the                        graph models.
+trivial graph (with no nodes or edges). Our equivariant basis                Definition 3.1. A graph model F is d node/edge polynomial
+is a generalization of previous work, which used invariant                   exact if it can compute all the degree d polynomial basis
+polynomials analogous to PH or the alternative basis QH                      elements PH (X) for every simple graph X.
+
+                                                                         4
+                                              Equivariant Polynomials for Graph Neural Networks
+
+
+                                                       Y              1                                          Y
+                                         X                                                  X                                  1
+                              Yj1 j1 =        Xj1 j4                           Zj 1 j 2 =        Xj1 j3 Xj3 j2                         R j 1 j 2 = Y j 1 j 1 Zj 1 j 2 X j 1 j 2
+ 4   X   1         4     1                             1              3    2                                     1
+                                                                                                                                   2
+                                         j4                                                 j3                                                                                    1
+         X X     −−−−−−−−−−−−−−−−−−−−−−−−−→ X X                     −−−−−−−−−−−−−−−−−−−−−−−−−−−→                      X       −−−−−−−−−−−−−−−−−−−−−−−−−→ R
+                                                                                                                     Z
+         3 X   2                            3 X                 2                                                         2                                                           2
+
+
+
+Figure 5. Computation of PH (X) with a sequence of tensor contractions: The polynomial PH (X) (left-most) is computed when a single
+black edge parallel to the red edge is left (right-most); above each arrow is the tensor contraction applied (contracted nodes are in gray).
+
+                                                                                    Definition 3.3. The polynomial PH is computable by F iff
+                                                                                    there exists a sequence of tensor contractions from F that
+                                                                                    computes PH (X) = einsum(H, X, . . . , X).
+
+                                                                                    We henceforth focus on two Prototypical models: the node-
+                                                                                    based model Fn and edge-based model Fe . Their respective
+C1 C2 C3 C4            C1 C2 C3 C4 C5                      C6         C7            contraction banks are depicted in Figure 7, each motivated
+                                                                                    by the desire to achieve polynomial exactness (see Defini-
+Figure 7. Prototypical node-based (left) and edge-based (right)
+graph models’ contraction banks. Gray nodes indicate nodes that                     tion 3.1) and contract multi-graphs H where a member of
+are contracted. Explicit formula of each element can be found in                    the bank can always be used to contract nodes with up to N
+Appendix D.                                                                         neighbors. Taking N = 1 results in the node-based bank in
+                                                                                    Figure 7 (left), and N = 2 in the edge-based bank in Figure
+Definition 3.2. A graph model F is d node/edge polyno-                              7 (right). These choices are not unique — other contraction
+mial expressive if for arbitrary ϵ > 0 and degree d polyno-                         banks can satisfy these requirements.
+mial basis element PH (X) there exists an F ∈ F such that                           Lemma 3.4. Fn (for simple graphs) and Fe (for general
+maxX simple |F (X) − P (X)| < ϵ.                                                    graphs) can always contract a node in H iff its number of
+                                                                                    neighbors is at-most 1 and 2, respectively.
+As a primary application of the equivariant graph basis PH ,
+we develop tools here for analyzing the polynomial expres-                          A few comments are in order. Node-based contractions
+sive power of graph models F. We define Prototypical                                can only add self-edges during the contraction process (i.e.,
+graph models which provide a structure to analyze or im-                            new node-valued data) thus requiring only O(n) additional
+prove existing popular GNNs such as MPNN (Gilmer et al.,                            memory to perform computation. Further note that since
+2017) and PPGN (Maron et al., 2019).                                                we assume simple graph data, H is also a simple graph,
+                                                                                    and no directed edges (i.e., non-symmetric intermediate
+3.1. Prototypical graph models
+                                                                                    tensors) are created during contraction. Contraction banks
+We consider graph computation models, FB , that are fi-                             with undirected graphs suffice in this setting. We later show
+nite sequences of tensor contractions taken from a bank of                          that the node-based model acts analogously to message-
+primitive contractions B.                                                           passing. The edge-based model targets exactness over both
+                                                                                   node and edge valued polynomial. It generates new edges
+            FB = Ci1 Ci2 · · · Ciℓ |Cij ∈ B ,          (8)                          that can be directed even if X is simple, and thus includes
+                                                                                    directed contractions in its bank. The edge-based model
+where the bank B = {C1 , . . . , Ck } consists of
+                                                                                    will later be connected to the graph models PPGN (Maron
+multi-graphs Ci = (Vi , Ei , (ai , bi )), each repre-
+                                                                                    et al., 2019) and Ring-GNN (Chen et al., 2019b). We later
+senting a different primitive tensor contraction.
+                                                                                    show that the node-based model is 1-WL expressive and the
+A model FB can compute
+                                                                                    edge-based model is 3-WL expressive.
+a    polynomial      PH (X)        =
+einsum(H, X, . . . , X) if it can                                                   Deciding computability of PH (X) with FB . A key com-
+contract H to the red edge by apply-                                                ponent in analyzing the expressive power of a Prototypical
+ing a finite sequence of contractions                                               model is determining which polynomials PH (X) can be
+from its bank. If there exists such     Figure 8. A bank B                          computed with F, given H and X encoding simple graph
+a sequence then PH is deemed            of a model FB that                          data. A naive algorithm traversing all possible enumerations
+computable by FB , otherwise it is      can compute the ex-                         of nodes in H and their contractions would lead to a com-
+not computable by FB . For example,     ample in Figure 5.                          binatorial explosion that is too costly — especially since
+the model with the bank presented in Figure 8 can compute                           this procedure needs to be repeated for a large number of
+PH in Figure 5; removing any element from this model,                               polynomials. Here, we show that at least for contraction
+will make PH (X) non-computable. We recap:                                          banks Fn and Fe , Algorithm 1 is a linear time (in |V |, |E|),
+
+                                                                               5
+                                     Equivariant Polynomials for Graph Neural Networks
+
+Algorithm 1 Decide if PH is computable by Fn or Fe .                  edge-based model Fe is 5-node-polynomial-exact and 4-
+  Input: contraction bank F ∈ {Fn , Fe }, multi-graph H               edge-polynomial-exact. See Figure 9 for the lowest degree
+  set d = 1 for F = Fn , or d = 2 for F = Fe .                        polynomials, represented by H with the smallest number of
+  set doneContracting = f alse                                        edges, that are non-computable for Fn and Fe .
+  while not doneContracting do                                        k-WL expressive power. For simple graphs, there is a
+     if exists a node in V \ {a, b} with ≤ d neighbors then           natural connection between our Prototypical graph models
+        contract the node using F                                     and the k-WL graph isomorphism tests. This stems from
+     else                                                             a result of Dvořák (2010); Dell et al. (2018), which states
+        doneContracting = true                                        that two graphs X(1) and X(2) are k-FWL equivalent if and
+     end if                                                           only if hom(H, X(1) ) = hom(H, X(2) ) for all H of tree-
+  end while                                                           width at most k. Recall that hom(H, X) is the number of
+  if V \ {a, b} is empty then                                         homomorphisms from H to X (where H has no red edges),
+     return computable                                                which we show is equivalent to the output of PH (X) for the
+  else                                                                invariant polynomial PH in Appendix G. By showing that
+     return non-computable                                            the Prototypical node-based graph model can contract any
+  end if                                                              H of tree-width 1 (and no others), and that the Prototypical
+                                                                      edge-based graph model can contract any H of tree-width
+                                                                      at most 2 (and no others), we thus have the following result.
+greedy algorithm for deciding computability of a given poly-          Proposition 3.6. The Prototypical node-based model can
+nomial. Algorithm 1 finds a sequence of contractions using            distinguish a pair of simple graphs if and only if 1-WL can.
+the greedy step until no more nodes are left to contract.             The Prototypical edge-based model can distinguish a pair
+That is, it terminates when all nodes, aside from a, b, have          of simple graphs if and only if 3-WL / 2-FWL can.
+more than 1 or 2 neighbors for Fn or Fe , respectively. If
+it terminates with just {a, b} as vertices it deems PH com-           This proposition indicates that Fn and Fe can contract an
+putable and otherwise it deems PH non-computable. To                  invariant polynomial, represented by a graph H, if and only
+show correctness of this algorithm we prove:                          if the tree-width of H is 1 and 2, respectively. Therefore
+                                                                      computability of invariant PH can be decided by checking
+Theorem 3.5. Let H be some multi-graph and FB ∈
+                                                                      the tree width of H. We leave generalizing this approach to
+{Fn , Fe }. Further, let H ′ be the multi-graph resulting after
+                                                                      equivariant PH to future work.
+contracting a single node in H using one or more opera-
+tions from B to H. Then, H is FB -computable iff H ′ is
+FB -computable.                                                       3.2. GNNs and their expressive power
+                                                                      In this section we turn our attention to commonly used
+To verify the correctness of this procedure, note that the            graph neural networks (GNNs), and provide lower bounds
+algorithm has to terminate after at most |V | − | {a, b} | node       on their polynomial expressive power as in Definition 3.2.
+contractions. Now consider two cases: if the algorithm                The Message Passing Neural Network (MPNN) we consider
+terminates successfully, it must have found a sequence of             consists of layers of the form
+tensor contractions to compute PH (X). If it terminates                                       h                   i
+unsuccessfully, the theorem implies its last network H ′ is                     Y(k+1) = m XY(k) , 11T Y(k) , Y(k) ,         (9)
+computable iff the input network H is computable. Now
+since there is no further node contraction possible to do in          where the intermediate tensor variables are Y ∈ Rn×d ,
+H ′ using operations from B it is not computable by defini-           1 ∈ Rn is the vector of all ones, Y(0) = 1, brackets indicate
+tion, making H not computable.                                        concatenation in the feature dimension, and m means a mul-
+                                                                      tilayer perceptron (MLP) applied to the feature dimension.
+Polynomial exactness. To
+compute the d polynomial ex-                                          As an application of the Prototypical edge-based model,
+actness (see Definition 3.1) for                                      we propose and implement a new model architecture
+the node-based and edge-based                                         (PPGN++) that is at least as expressive as the full versions of
+                                 Figure 9. The   smallest
+Prototypical graph models we     non-computable       H               PPGN/Ring-GNN (Maron et al., 2019; Chen et al., 2019b)
+enumerate all non-isomorphic     for: Fn (left: node-                 (which incorporate all 15 linear basis elements), but is more
+simple graphs H with up to       valued), and Fe (middle:             efficient — PPGN++ uses a smaller number of “primitive”
+d edges and one red edge         node-valued;      right:             operations than the full PPGN/Ring-GNN, and does not
+and run Algorithm 1 on each      edge-valued).                        need parameters for each linear basis element:
+H. This reveals that the node-                                                      h h                i                     i
+based model Fn is 2-node-polynomial-exact, while the                    Z(k+1) = m̄3 m̄1 Z(k) , Z(k)T ⊛ m̄2 (Z(k) ), Z(k) , (10)
+
+                                                                  6
+                                    Equivariant Polynomials for Graph Neural Networks
+              2
+where Z ∈ Rn ×d are intermediate tensor variables, Z(0) =          Algorithm 1, considering all non-isomorphic, simple and
+X, ⊛ performs matrix multiplication of matching features,          connected H. Indeed any H with two disconnected compo-
+and m̄i , for i ∈ [3], is a pair of MLPs: one applied to all       nents corresponds to a multiplication of two lower degree
+diagonal and off-diagonal features of Z separately.                polynomials approximable by the GNN itself (or using lower
+                                                                   degree polynomial features). Any non-computable polyno-
+We lower bound the polynomial expressiveness of MPNN
+                                                                   mials discovered in this process are added as node/edge
+and PPGN++ in the next theorem:
+                                                                   input features to the architecture, effectively increasing the
+Theorem 3.7. PPGN++ is at-least 4 edge polynomial ex-              polynomial expressiveness of the model to d.
+pressive and 5 node polynomial expressive. MPNN is at-
+least 2 node polynomial expressive.
+                                                                   Table 1. Numbers of non-computable polynomials (left) out of all
+Proof idea. We prove the theorem in two steps. First, show-        relevant polynomials (right) for the Prototypical models.
+ing that an MPNN or PPGN++ layer can approximate any                             d=3     d=4     d=5      d=6       d=7
+primitive contraction C ∈ B from the bank of the Prototypi-                Fn     2/8    6/18    23/49    85/144   308/446
+cal node based Fn or edge based Fe models, respectively.                   Fe    0/18    0/53    1/174    11/604   72/2193
+Second, we use a lemma from Lim et al. (2022) stating that
+layer-wise universality leads to overall universality. The         In Table 1 we list, for each Prototypical model and degree d,
+complete proof is in Appendix D.                                   the number of polynomials that are found non-computable
+Comparison of PPGN++ and PPGN. Proposition 3.6                     by the Prototypical models (left), out of the total number of
+and the proof of Theorem 3.7 indicate that PPGN++ is               relevant polynomials PH (right). For the node based model
+3-WL/2-FWL expressive for simple graphs, similarly to              we count only node-valued polynomials, while for the edge
+PPGN (Maron et al., 2019). However, the following propo-           based model we count both node and edge-valued polynomi-
+sition shows that there is a significant expressiveness gap        als. Note that the number of non-computable polynomials
+between PPGN and PPGN++ in approximating equivariant               is substantially smaller than the total number, especially
+polynomials.                                                       in Fe . Since polynomials are calculated at the data pre-
+                                                                   processing step, there is an upfront computational cost for
+Proposition 3.8. PPGN is at most 0 edge polynomial ex-
+                                                                   this procedure that must be accounted for. Finding the op-
+pressive.
+                                                                   timal contraction path that minimizes runtime complexity
+Proof idea. We claim that PPGN is at most 0 edge polyno-           for a general matrix polynomial is an NP-hard problem
+mial expressive by proving that there exist a linear polyno-       (Biamonte et al., 2015) with a naive upper bound in run-
+mial (the transpose operator) that cannot be approximated          time complexity of O(nd ). An empirical evaluation of the
+by PPGN. The proof shows that for an input tensor of the           preprocessing time is in Appendix A; in our experiments,
+form                                                             preprocessing time is small compared to training time.
+                      a a
+                Z=            , a, b ∈ R,
+                       b b                                         4. Related Work
+a PPGN model cannot approximate the transpose operator
+PH (Z) = ZT since it preserves the row structure. The              Relation to Homomorphisms and Subgraph Counts. Past
+complete proof is in Appendix E.                                   work has studied invariant polynomials on graphs (Thiéry,
+                                                                   2000; Lovász, 2012; Komiske et al., 2018). Viewed as
+                                                                   functions on binary inputs, the basis consists of functions
+3.3. Increasing the expressive power of GNNs
+                                                                   that count homomorphisms or injective homomorphisms of
+Theorem 3.7 proves a lower bound on the polynomial ex-             H into an input graph X. Homomorphisms are related to the
+pressiveness of two popular GNN models — a natural ques-           PH basis, and injective homomorphisms are related to QH
+tion is how to increase the expressiveness beyond the lower        (see Appendix G). Also, equivariant homomorphism counts
+bound. Polynomial expressiveness provides a simple path            that relate to our PH or QH has been studied (Mančinska
+forward to add network operations or input features that           & Roberson, 2020; Grohe et al., 2021; Maehara & NT,
+complement these architectures with polynomials that are           2019; Bouritsas et al., 2022; Barceló et al., 2021; Welke
+otherwise uncomputable. In our study, we add input features        et al., 2022). However, these works do not exhibit a basis
+to enhance expressiveness.                                         of equivariant polynomials. Also, our tensor contraction
+                                                                   interpretation and analysis does not appear in past work.
+Suppose we have a d′ polynomial expressive GNN model
+(with a corresponding d′ exact Prototypical graph model            Expressivity Measures for Graph Models. The k-WL
+FB ) that we want to extend it to be d > d′ polynomial ex-         hierarchy has been widely used for studying graph machine
+pressive. For every ℓ ∈ N, d′ + 1 ≤ ℓ ≤ d, we can compute          learning (Morris et al., 2021), starting with the works of Mor-
+all FB non-computable ℓ-degree basis elements of PH using          ris et al. (2019b) and Xu et al. (2019), which show an equiv-
+
+                                                               7
+                                      Equivariant Polynomials for Graph Neural Networks
+
+alence between message passing neural networks and 1-WL.               message passing and higher-order convolutions (Bodnar
+Tensor methods resembling k-WL such as k-IGN (Maron                    et al., 2021a;b; Thiede et al., 2021; de Haan et al., 2020).
+et al., 2018) and PPGN-like methods (Maron et al., 2019;               One can also take a base model and perform group averaging
+Azizian & Lelarge, 2021) achieve k-WL power (Azizian &                 or frame averaging to make it have the desired equivariances
+Lelarge, 2021; Geerts & Reutter, 2022), but scale in mem-              while preserving expressive power (Murphy et al., 2019;
+ory as nk or nk−1 for n-node graphs. Morris et al. (2019a;             Puny et al., 2022).
+2022) define new k-WL variants with locality and sparsity
+biases, which gives a finer hierarchy and offers a trade-off           5. Experiments
+between efficiency and expressiveness.
+                                                                       In this section we demonstrate the impact of increasing
+Various works measure the expressivity of graph neural net-
+                                                                       the polynomial expressive power of GNNs. We test two
+works by the types of subgraphs that they can count (Chen
+                                                                       families of models. PPGN++ (d) uses the architecture
+et al., 2020; Tahmasebi et al., 2020; Arvind et al., 2020). On
+                                                                       in equation 10, derived using our edge based Prototypi-
+simple graphs, subgraph counting of H is equivalent to eval-
+                                                                       cal model, and achieves d polynomial expressive power
+uating an invariant polynomial QH . Additional works have
+                                                                       by pre-computing polynomial features found in Subsection
+studied the ability of graph models to compute numerous
+                                                                       3.3; missing (d) notation means using just PPGN++ with-
+other graph properties. For instance, graph machine learning
+                                                                       out pre-computed features. GatedGCN (d) uses the base
+models have been studied in the context of approximating
+                                                                       MPNN architecture of (Bresson & Laurent, 2017) with the
+combinatorial algorithms (Sato et al., 2019), solving bicon-
+                                                                       d-expressive polynomials pre-computed. We experiment
+nectivity problems (Zhang et al., 2023), computing spectral
+                                                                       with 4 datasets: a graph isomorphism dataset SR (Bod-
+invariants (Lim et al., 2022), distinguishing rooted graphs
+                                                                       nar et al., 2021b), which measures the ability of GNNs to
+at the node level (Chen et al., 2021), and computing various
+                                                                       distinguish strongly regular graphs; and 3 real-world molec-
+other graph properties (Garg et al., 2020). As opposed to our
+                                                                       ular property prediction datasets including ZINC, ZINC-full
+framework, these expressivity measures generally do not
+                                                                       (Dwivedi et al., 2020) and Alchemy (Chen et al., 2019a).
+induce a hierarchy of increasing expressivity, and they often
+do not directly suggest improvements for graph models
+                                                                       5.1. Graph Isomorphism Expressiveness
+A matrix query language (MATLANG) (Brijder et al.,
+2019; Geerts, 2021) and a more general tensor language                 Distinguishing non-isomorphic graphs from families of
+(TL) (Geerts & Reutter, 2022) have been used to study ex-              strongly regular graphs is a challenging task (Bodnar et al.,
+pressive power of GNNs (Balcilar et al., 2021; Geerts &                2021a;b). The SR dataset (Bouritsas et al., 2022) is com-
+Reutter, 2022). These languages define operations and ways             posed of 9 strongly regular families. This dataset is chal-
+to compose them for processing graphs in a permutation                 lenging since any pair of graphs in the SR dataset cannot be
+equivariant or invariant way. Our edge-based Prototypical              distinguished by the 3-WL algorithm. This experiment is
+model result gives a new perspective on a result of Geerts             done without any training (same procedure as in (Bodnar
+(2021), which shows that MATLANG can distinguish any                   et al., 2021b)) and the evaluation is done by randomly ini-
+two graphs that 2-FWL / 3-WL can. Indeed, our edge-based               tialized models. For every family in the dataset, we iterate
+graph model includes the five linear algebra operations that           over all pairs of graphs and report the fraction that the model
+form the 3-WL expressive MATLANG. While the opera-                     determines are isomorphic. Two graphs are considered iso-
+tions of MATLANG were included in a somewhat ad-hoc                    morphic if the L2 distance between their embeddings is
+manner (“motivated by operations supported in linear al-               smaller than a certain threshold (ϵ = 0.01). This procedure
+gebra package” (Geerts, 2021)), our framework shows that               was repeated for 5 different random seeds and the averaged
+these are the at-most quadratic equivariant polynomials that           fraction rate was reported in Figure 10. This figure por-
+are required to contract all tree-width 2 graphs.                      trays the expressiveness boost gained by using high degree
+                                                                       polynomial features. While the base models, GatedGCN
+Other Expressive GNNs. Various approaches have been                    and PPGN (and PPGN++), cannot distinguish any pair of
+used to develop expressive graph neural networks. One                  graphs (as theoretically expected), adding higher degree
+approach adds node or edge features, oftentimes positional             polynomial features significantly improves the ability of the
+or structural encodings, to base graph models (Sato et al.,            model to distinguish non-isomorphic graphs in this dataset.
+2021; Abboud et al., 2021; Bouritsas et al., 2022; Lim et al.,         Optimal results of 0% failure rate are obtained for PPGN++
+2022; Zhang et al., 2023; Li et al., 2020; Loukas, 2020).              (d) with d ≥ 6 (i.e., adding at-least degree 6 polynomial
+Subgraph GNNs treat an input graph as a collection of                  features). For the GatedGCN model, although we do not
+subgraphs (Bevilacqua et al., 2022; Frasca et al., 2022; Qian          reach the 0% failure rate, adding the right polynomial fea-
+et al., 2022; Cotta et al., 2021; Zhao et al., 2021; You et al.,       tures makes GatedGCN outperform 3-WL based models in
+2021; Zhang & Li, 2021). Some models utilize modified                  distinguishing non-isomorphic graphs in this dataset.
+
+
+                                                                   8
+                                                                         Equivariant Polynomials for Graph Neural Networks
+
+                                                                                                           all baselines) which are provably strictly more powerful
+ Table 2. Results on Alchemy (Chen et al., 2019a) and ZINC-full
+                                                                                                           than 3-WL. Our results add evidence to the guiding hy-
+ (Dwivedi et al., 2020) datasets. Lower is better, best models are
+ marked in bold.                                                                                           pothesis that increases in expressivity facilitate improved
+                                                                                                           downstream performance.
+                                           ZINC-Full    Alchemy
+          Model                                                                                            Table 3. Results on ZINC 12K (Dwivedi et al., 2020) dataset.
+                                           Test MAE    Test MAE
+          GIN (Xu et al., 2019)           .088 ± .002 .180 ± .006                                          Lower is better, best model is marked in bold.
+          δ-2-GNN (Morris et al., 2019a) .042 ± .003 .118 ± .001
+                                                                                                               Model                                Test MAE
+          SpeqNet (Morris et al., 2022)         -     .115 ± .001
+          PF-GNN (Dupty et al., 2022)           -     .111 ± .010                                              GCN (Kipf & Welling, 2016)          .321 ± .009
+          HIMP (Fey et al., 2020)         .036 ± .002       -                                                  GIN (Xu et al., 2019)               .163 ± .003
+          SignNet (Lim et al., 2022)      .024 ± .003 .113 ± .002                                              PNA (Corso et al., 2020)            .140 ± .006
+          CIN (Bodnar et al., 2021a)      .022 ± .002       -                                                  GSN (Bouritsas et al., 2022)        .115 ± .012
+                                                                                                               PF-GNN (Dupty et al., 2022)         .122 ± .010
+          PPGN (Maron et al., 2019)       .022 ± .003 .113 ± .001
+                                                                                                               GIN-AK (Zhao et al., 2021)          .080 ± .001
+          PPGN++                          .022 ± .001 .111 ± .002
+                                                                                                               CIN (Bodnar et al., 2021a)          .079 ± .006
+          PPGN++ (5)                     .020 ± .001 .110 ± .001
+                                                                                                               SetGNN (Zhao et al., 2022)          .075 ± .003
+          PPGN++ (6)                     .020 ± .001 .109 ± .001
+                                                                                                               GatedGCN (Bresson & Laurent, 2017) .265 ± .015
+                                                                                                               GatedGCN (4)                        .150 ± .005
+                                                                                                               GatedGCN (5)                        .138 ± .003
+                              G a te dG C N G a te dG C N (5 ) G a te dG C N (6 ) G a te dG C N (7 )
+                              PPG N PPG N+ +        PPG N+ + (5 ) PPG N+ + (6 ) PPG N+ + (7 )
+                                                                                                               GatedGCN (6)                        .106 ± .003
+                        1                                                                                      PPGN (Maron et al., 2019)           .079 ± .005
+                                                                                                               PPGN++                              .076 ± .003
+                     0 .1
+                                                                                                               PPGN++ (5)                          .072 ± .005
+Fa ilure R a te
+
+
+
+
+                   0 .0 1                                                                                      PPGN++ (6)                         .071 ± .001
+                  0 .0 0 1
+
+                  100μ                                                                                     6. Conclusions
+                    10μ
+                                                                                                           We propose a novel framework for evaluating the expressive
+                        0
+                                                                                                           power of GNNs by evaluating their ability to approximate
+                             56
+
+
+                                   67
+
+
+                                            24
+
+
+                                                    64
+
+
+                                                             68
+
+
+                                                                     46
+
+
+
+                                                                              2
+
+
+                                                                                      34
+
+
+                                                                                              99
+
+
+
+
+                                                                                                           equivariant graph polynomials. Our first step was introduc-
+                                                                            62
+                        12
+
+
+                                  14
+
+
+                                          12
+
+
+                                                  12
+
+
+                                                           16
+
+
+                                                                   14
+
+
+
+
+                                                                                    10
+
+
+                                                                                            18
+                                                                          16
+                      25
+
+
+                               29
+
+
+                                        40
+
+
+                                                28
+
+
+                                                         35
+
+
+                                                                 36
+
+
+
+
+                                                                                  26
+
+
+                                                                                          35
+
+
+
+
+                                                                                                           ing a basis for those polynomials of any degree. We then
+                                                                         sr
+                    sr
+
+
+                              sr
+
+
+                                       sr
+
+
+                                               sr
+
+
+                                                       sr
+
+
+                                                                sr
+
+
+
+
+                                                                                sr
+
+
+                                                                                         sr
+
+
+
+
+                                                           Fa m ilie s
+                                                                                                           utilized Prototypical graph models to determine the com-
+ Figure 10. Failure rate (log scale) for distinguishing SR graphs,                                         putability of these polynomials with practical GNNs. This
+ the lower the better.                                                                                     led to a method for increasing the expressivity of GNNs
+                                                                                                           through the use of precomputed polynomial features, result-
+  5.2. Real-World Datasets                                                                                 ing in a significant improvement in empirical performance.
+ The efficacy of increasing polynomial expressive power on                                                 Future research could focus on several promising directions.
+ real-world data (molecular graphs datasets) was evaluated                                                 One direction can reduce the number of features passed
+ on 3 graph regression tasks: ZINC, ZINC-full and Alchemy.                                                 into GNNs by working with a generating set of polynomials
+ Training. We followed the training protocol mentioned                                                     rather than the complete basis. Additionally, incorporating
+ in (Dwivedi et al., 2020) for ZINC and ZINC-full and the                                                  features on nodes and edges, as outlined in Section 2.2 and
+ protocol from (Lim et al., 2022) for Alchemy. All of our                                                  Appendix F, could further improve performance. Another
+ trained models obey a 500K parameter budget. Further de-                                                  exciting avenue for exploration can incorporate otherwise
+ tails regarding the training procedure and model parameters                                               uncomputable polynomials as computational primitives into
+ can be found in Appendix A.                                                                               GNN layers, rather than as features, to increase expressive-
+ Baselines. The baseline results for the ZINC 12K exper-                                                   ness. Finally, it would be beneficial to study Prototypical
+ iment were obtained from (Zhao et al., 2022), except for                                                  graph models to identify families with optimal properties
+ PPGN and GatedGCN, which we calculated. For ZINC-full                                                     related to expressiveness, memory/computation complexity,
+ and Alchemy we used the results from (Lim et al., 2022).                                                  and the size of the contraction bank.
+ Results. The mean absolute error (MAE) over the test set
+ is reported in Table 3 for ZINC 12K and Table 2 for ZINC-                                                 7. Acknowledgments
+ full and alchemy. In both tables, PPGN++ (6) achieves
+ SOTA results across all 3 datasets. In addition, for both test                                            OP is supported by a grant from Israel CHE Program for
+ model families there is a clear correlation between higher                                                Data Science Research Centers. DL is supported by an NSF
+ d (polynomial expressiveness) and test error. Furthermore,                                                Graduate Fellowship. We thank Nicolas Usunier for his
+ PPGN++ (5) and PPGN++ (6), which produce the top re-                                                      insightful remarks and the anonymous reviewers for their
+ sults in all 3 experiments, are the only 2 models (including                                              helpful comments.
+
+                                                                                                       9
+                                     Equivariant Polynomials for Graph Neural Networks
+
+References                                                            Bouritsas, G., Frasca, F., Zafeiriou, S., and Bronstein, M. M.
+                                                                        Improving graph neural network expressivity via sub-
+Abboud, R., Ceylan, I. I., Grohe, M., and Lukasiewicz,
+                                                                        graph isomorphism counting. IEEE Transactions on Pat-
+ T. The surprising power of graph neural networks with
+                                                                        tern Analysis and Machine Intelligence, 45(1):657–668,
+  random node initialization. In IJCAI, 2021.
+                                                                        2022.
+Antoneli, F., Dias, A. P. S., and Matthews, P. C. Invari-
+  ants, equivariants and characters in symmetric bifurcation          Bresson, X. and Laurent, T. Residual gated graph con-
+  theory. Proceedings of the Royal Society of Edinburgh                 vnets, 2017. URL https://arxiv.org/abs/
+ Section A: Mathematics, 138(3):477–512, 2008.                          1711.07553.
+
+Arvind, V., Fuhlbrück, F., Köbler, J., and Verbitsky, O.            Brijder, R., Geerts, F., Bussche, J. V. D., and Weerwag, T.
+  On weisfeiler-leman invariance: Subgraph counts and                   On the expressive power of query languages for matrices.
+  related graph properties. Journal of Computer and System              ACM Transactions on Database Systems (TODS), 44(4):
+  Sciences, 113:42–59, 2020.                                            1–31, 2019.
+
+Azizian, W. and Lelarge, M. Expressive power of in-                   Chen, G., Chen, P., Hsieh, C.-Y., Lee, C.-K., Liao, B.,
+  variant and equivariant graph neural networks. In In-                 Liao, R., Liu, W., Qiu, J., Sun, Q., Tang, J., Zemel, R.,
+  ternational Conference on Learning Representations,                   and Zhang, S. Alchemy: A quantum chemistry dataset
+  2021. URL https://openreview.net/forum?                               for benchmarking ai models, 2019a. URL https://
+  id=lxHgXYN4bwl.                                                       arxiv.org/abs/1906.09427.
+Balcilar, M., Héroux, P., Gauzere, B., Vasseur, P., Adam, S.,        Chen, L., Chen, Z., and Bruna, J. On graph neural networks
+  and Honeine, P. Breaking the limits of message passing                versus graph-augmented mlps. In International Confer-
+  graph neural networks. In International Conference on                 ence on Learning Representations, 2021. URL https:
+  Machine Learning, pp. 599–608. PMLR, 2021.                            //openreview.net/forum?id=tiqI7w64JG2.
+Barceló, P., Geerts, F., Reutter, J., and Ryschkov, M. Graph
+  neural networks with local graph parameters, 2021. URL              Chen, Z., Villar, S., Chen, L., and Bruna, J. On the equiv-
+  https://arxiv.org/abs/2106.06707.                                     alence between graph isomorphism testing and function
+                                                                        approximation with gnns. Advances in neural information
+Bedratyuk, L. A new formula for the generating func-                    processing systems, 32, 2019b.
+  tion of the numbers of simple graphs. arXiv preprint
+  arXiv:1512.06355, 2015.                                             Chen, Z., Chen, L., Villar, S., and Bruna, J. Can graph
+                                                                        neural networks count substructures? Advances in neural
+Bevilacqua, B., Frasca, F., Lim, D., Srinivasan, B., Cai,               information processing systems, 33:10383–10395, 2020.
+  C., Balamurugan, G., Bronstein, M. M., and Maron, H.
+  Equivariant subgraph aggregation networks. In Interna-              Corso, G., Cavalleri, L., Beaini, D., Liò, P., and Veličković,
+  tional Conference on Learning Representations, 2022.                  P. Principal neighbourhood aggregation for graph
+                                                                        nets, 2020. URL https://arxiv.org/abs/2004.
+Biamonte, J. D., Morton, J., and Turner, J. Tensor net-
+                                                                        05718.
+  work contractions for #SAT. Journal of Statistical
+  Physics, 160(5):1389–1404, jun 2015. doi: 10.1007/                  Cotta, L., Morris, C., and Ribeiro, B. Reconstruction for
+  s10955-015-1276-z. URL https://doi.org/10.                            powerful graph representations. Advances in Neural In-
+  1007%2Fs10955-015-1276-z.                                             formation Processing Systems, 34:1713–1726, 2021.
+Bodlaender, H. L. A partial k-arboretum of graphs with
+                                                                      de Haan, P., Cohen, T. S., and Welling, M. Natural graph
+  bounded treewidth. Theoretical computer science, 209
+                                                                        networks. Advances in Neural Information Processing
+  (1-2):1–45, 1998.
+                                                                        Systems, 33:3636–3646, 2020.
+Bodnar, C., Frasca, F., Otter, N., Wang, Y. G., Liò, P.,
+  Montúfar, G., and Bronstein, M. Weisfeiler and lehman              Dell, H., Grohe, M., and Rattan, G. Lov’asz meets weis-
+  go cellular: Cw networks, 2021a. URL https://                         feiler and leman. In 45th International Colloquium on
+  arxiv.org/abs/2106.12575.                                            Automata, Languages, and Programming (ICALP 2018),
+                                                                        volume 107, pp. 40. Schloss Dagstuhl–Leibniz-Zentrum
+Bodnar, C., Frasca, F., Wang, Y. G., Otter, N., Montúfar,              fuer Informatik, 2018.
+  G., Liò, P., and Bronstein, M. Weisfeiler and lehman go
+  topological: Message passing simplicial networks, 2021b.            Derksen, H. and Kemper, G. Computational invariant the-
+  URL https://arxiv.org/abs/2103.03212.                                 ory. Springer, 2015.
+
+                                                                 10
+                                    Equivariant Polynomials for Graph Neural Networks
+
+Diestel, R. Graph Theory (Graduate Texts in Mathe-                    Grohe, M., Rattan, G., and Seppelt, T. Homomor-
+  matics). Springer, August 2005. ISBN 3540261826.                      phism tensors and linear equations. arXiv preprint
+  URL http://www.amazon.ca/exec/obidos/                                 arXiv:2111.11313, 2021.
+  redirect?tag=citeulike04-20{&}path=
+  ASIN/3540261826.                                                    Harary, F. and Palmer, E. M. Graphical enumeration. Else-
+                                                                        vier, 2014.
+Duffin, R. J. Topology of series-parallel networks. Journal
+  of Mathematical Analysis and Applications, 10(2):303–               Hardy, G. H., Wright, E. M., et al. An introduction to the
+  318, 1965.                                                            theory of numbers. Oxford university press, 1979.
+Dupty, M. H., Dong, Y., and Lee, W. S. PF-GNN: Dif-                   Hornik, K.        Approximation capabilities of multi-
+  ferentiable particle filtering based approximation of uni-            layer feedforward networks.        Neural Networks,
+ versal graph representations. In International Confer-                4(2):251–257, 1991.         ISSN 0893-6080.     doi:
+  ence on Learning Representations, 2022. URL https:                    https://doi.org/10.1016/0893-6080(91)90009-T.
+ //openreview.net/forum?id=oh4TirnfSem.                                 URL         https://www.sciencedirect.com/
+                                                                        science/article/pii/089360809190009T.
+Dvořák, Z. On recognizing graphs by numbers of homo-
+  morphisms. Journal of Graph Theory, 64(4):330–342,
+                                                                      Kipf, T. N. and Welling, M. Semi-supervised classification
+  2010.
+                                                                        with graph convolutional networks, 2016. URL https:
+Dwivedi, V. P., Joshi, C. K., Luu, A. T., Laurent, T., Bengio,          //arxiv.org/abs/1609.02907.
+ Y., and Bresson, X. Benchmarking graph neural networks.
+ 2020. doi: 10.48550/ARXIV.2003.00982. URL https:                     Komiske, P. T., Metodiev, E. M., and Thaler, J. Energy flow
+ //arxiv.org/abs/2003.00982.                                            polynomials: A complete linear basis for jet substructure.
+                                                                        Journal of High Energy Physics, 2018(4):1–54, 2018.
+Fey, M. and Lenssen, J. E. Fast graph representation learning
+  with PyTorch Geometric. In ICLR Workshop on Repre-                  Li, P., Wang, Y., Wang, H., and Leskovec, J. Distance en-
+  sentation Learning on Graphs and Manifolds, 2019.                     coding: Design provably more powerful neural networks
+                                                                        for graph representation learning. Advances in Neural
+Fey, M., Yuen, J.-G., and Weichert, F. Hierarchical inter-              Information Processing Systems, 33:4465–4478, 2020.
+  message passing for learning on molecular graphs, 2020.
+  URL https://arxiv.org/abs/2006.12179.                               Lim, D., Robinson, J., Zhao, L., Smidt, T., Sra, S., Maron,
+                                                                        H., and Jegelka, S. Sign and basis invariant networks
+Frasca, F., Bevilacqua, B., Bronstein, M. M., and Maron,                for spectral graph representation learning. arXiv preprint
+  H. Understanding and extending subgraph GNNs by                       arXiv:2202.13013, 2022.
+  rethinking their symmetries. In Oh, A. H., Agarwal, A.,
+  Belgrave, D., and Cho, K. (eds.), Advances in Neural                Loukas, A. What graph neural networks cannot learn:
+  Information Processing Systems, 2022.                                 depth vs width. In International Conference on Learning
+                                                                        Representations, 2020. URL https://openreview.
+Garg, V., Jegelka, S., and Jaakkola, T. Generalization and
+                                                                        net/forum?id=B1l2bp4YwS.
+  representational limits of graph neural networks. In In-
+  ternational Conference on Machine Learning, pp. 3419–
+                                                                      Lovász, L. Large networks and graph limits, volume 60.
+  3430. PMLR, 2020.
+                                                                        American Mathematical Soc., 2012.
+Geerts, F. On the expressive power of linear algebra on
+  graphs. Theory of Computing Systems, 65(1):179–239,                 Maehara, T. and NT, H. A simple proof of the universality
+  2021.                                                                of invariant/equivariant graph neural networks. arXiv
+                                                                       preprint arXiv:1910.03802, 2019.
+Geerts, F. and Reutter, J. L. Expressiveness and approx-
+  imation properties of graph neural networks. In In-                 Mančinska, L. and Roberson, D. E. Quantum isomorphism
+  ternational Conference on Learning Representations,                  is equivalent to equality of homomorphism counts from
+  2022. URL https://openreview.net/forum?                              planar graphs. In 2020 IEEE 61st Annual Symposium on
+  id=wIzUeM3TAU.                                                       Foundations of Computer Science (FOCS), pp. 661–672.
+                                                                       IEEE, 2020.
+Gilmer, J., Schoenholz, S. S., Riley, P. F., Vinyals, O., and
+  Dahl, G. E. Neural message passing for quantum chem-                Maron, H., Ben-Hamu, H., Shamir, N., and Lipman, Y.
+  istry. In International conference on machine learning,              Invariant and equivariant graph networks. arXiv preprint
+  pp. 1263–1272. PMLR, 2017.                                           arXiv:1812.09902, 2018.
+
+                                                                 11
+                                    Equivariant Polynomials for Graph Neural Networks
+
+Maron, H., Ben-Hamu, H., Serviansky, H., and Lipman, Y.              Rampášek, L., Galkin, M., Dwivedi, V. P., Luu, A. T., Wolf,
+ Provably powerful graph networks. Advances in neural                  G., and Beaini, D. Recipe for a general, powerful, scal-
+ information processing systems, 32, 2019.                             able graph transformer, 2023.
+
+Molien, T. Uber die invarianten der linearen substitutions-          Sato, R., Yamada, M., and Kashima, H. Approximation ra-
+ gruppen. Sitzungber. Konig. Preuss. Akad. Wiss. (J. Berl.             tios of graph neural networks for combinatorial problems.
+ Ber.), 52:1152–1156, 1897.                                            Advances in Neural Information Processing Systems, 32,
+                                                                       2019.
+Morris, C., Rattan, G., and Mutzel, P. Weisfeiler and le-
+ man go sparse: Towards scalable higher-order graph em-              Sato, R., Yamada, M., and Kashima, H. Random features
+ beddings, 2019a. URL https://arxiv.org/abs/                           strengthen graph neural networks. In Proceedings of the
+ 1904.01543.                                                           2021 SIAM International Conference on Data Mining
+                                                                       (SDM), pp. 333–341. SIAM, 2021.
+Morris, C., Ritzert, M., Fey, M., Hamilton, W. L., Lenssen,
+ J. E., Rattan, G., and Grohe, M. Weisfeiler and leman               Segol, N. and Lipman, Y. On universal equivariant set
+ go neural: Higher-order graph neural networks. In Pro-                networks. arXiv preprint arXiv:1910.02421, 2019.
+ ceedings of the AAAI conference on artificial intelligence,         Tahmasebi, B., Lim, D., and Jegelka, S. Counting
+ volume 33, pp. 4602–4609, 2019b.                                      substructures with higher-order graph neural networks:
+                                                                       Possibility and impossibility results. arXiv preprint
+Morris, C., Lipman, Y., Maron, H., Rieck, B., Kriege, N. M.,
+                                                                       arXiv:2012.03174, 2020.
+ Grohe, M., Fey, M., and Borgwardt, K. Weisfeiler and
+ leman go machine learning: The story so far. arXiv                  Thiede, E., Zhou, W., and Kondor, R.         Autobahn:
+ preprint arXiv:2112.09992, 2021.                                      Automorphism-based graph neural nets. Advances in Neu-
+                                                                       ral Information Processing Systems, 34:29922–29934,
+Morris, C., Rattan, G., Kiefer, S., and Ravanbakhsh, S.                2021.
+ Speqnets: Sparsity-aware permutation-equivariant graph
+ networks, 2022. URL https://arxiv.org/abs/                          Thiéry, N. M. Algebraic invariants of graphs; a study based
+ 2203.13913.                                                           on computer exploration. ACM SIGSAM Bulletin, 34(3):
+                                                                       9–20, 2000.
+Murphy, R., Srinivasan, B., Rao, V., and Ribeiro, B. Re-
+ lational pooling for graph representations. In Interna-             Tucker, A. Applied combinatorics. John Wiley & Sons, Inc.,
+ tional Conference on Machine Learning, pp. 4663–4673.                 1994.
+ PMLR, 2019.
+                                                                     Welke, P., Thiessen, M., and Gärtner, T. Expectation
+Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J.,            complete graph representations using graph homomor-
+  Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,           phisms. In The First Learning on Graphs Conference,
+  L., Desmaison, A., Köpf, A., Yang, E., DeVito, Z., Rai-            2022. URL https://openreview.net/forum?
+  son, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang,           id=8GJyW4i2oST.
+  L., Bai, J., and Chintala, S. Pytorch: An imperative               Xu, K., Hu, W., Leskovec, J., and Jegelka, S. How powerful
+  style, high-performance deep learning library, 2019. URL             are graph neural networks? In International Conference
+  https://arxiv.org/abs/1912.01703.                                    on Learning Representations, 2019. URL https://
+Pólya, G. Kombinatorische anzahlbestimmungen für grup-               openreview.net/forum?id=ryGs6iA5Km.
+   pen, graphen und chemische verbindungen. Acta mathe-              You, J., Gomes-Selman, J. M., Ying, R., and Leskovec,
+   matica, 68:145–254, 1937.                                           J. Identity-aware graph neural networks. In Proceed-
+                                                                       ings of the AAAI Conference on Artificial Intelligence,
+Puny, O., Atzmon, M., Smith, E. J., Misra, I., Grover,
+                                                                       volume 35, pp. 10737–10745, 2021.
+  A., Ben-Hamu, H., and Lipman, Y. Frame averag-
+  ing for invariant and equivariant network design. In               You, Y., Li, J., Reddi, S., Hseu, J., Kumar, S., Bhojanapalli,
+  International Conference on Learning Representations,                S., Song, X., Demmel, J., Keutzer, K., and Hsieh, C.-J.
+  2022. URL https://openreview.net/forum?                              Large batch optimization for deep learning: Training bert
+  id=zIUyj55nXR.                                                       in 76 minutes, 2019. URL https://arxiv.org/
+                                                                       abs/1904.00962.
+Qian, C., Rattan, G., Geerts, F., Niepert, M., and Morris, C.
+  Ordered subgraph aggregation networks. In Oh, A. H.,               Zhang, B., Luo, S., Wang, L., and Di, H. Rethinking the
+  Agarwal, A., Belgrave, D., and Cho, K. (eds.), Advances              expressive power of gnns via graph biconnectivity. arXiv
+  in Neural Information Processing Systems, 2022.                      preprint arXiv:2301.09505, 2023.
+
+                                                                12
+                                  Equivariant Polynomials for Graph Neural Networks
+
+Zhang, M. and Li, P. Nested graph neural networks. Ad-
+  vances in Neural Information Processing Systems, 34:
+  15734–15747, 2021.
+Zhao, L., Jin, W., Akoglu, L., and Shah, N. From stars
+  to subgraphs: Uplifting any gnn with local structure
+  awareness, 2021. URL https://arxiv.org/abs/
+  2110.03753.
+
+Zhao, L., Shah, N., and Akoglu, L.            A practical,
+  progressively-expressive GNN. In Oh, A. H., Agarwal,
+  A., Belgrave, D., and Cho, K. (eds.), Advances in Neural
+  Information Processing Systems, 2022. URL https:
+  //openreview.net/forum?id=WBv9Z6qpA8x.
+
+
+
+
+                                                             13
+                                      Equivariant Polynomials for Graph Neural Networks
+
+A. Implementation Details
+A.1. Datasets
+SR. The SR dataset (Bouritsas et al., 2022) is composed of 9 families of Strongly Regular graphs. Each family has a
+4 dimensional representation: n the number of nodes in the graph, d the degree of each node, λ the number of mutual
+neighbors of adjacent nodes and µ the number of mutual neighbors of non-adjacent nodes. Table 4 shows the size of each
+Strongly Regular family from the dataset.
+
+                                Table 4. Sizes of Strongly Regular Families (Bouritsas et al., 2022)
+
+    Familty          (16,6,2,2) (25,12,5,6) (26,10,3,4) (28,12,6,4) (29,14,6,7) (35,16,6,8) (35,18,9,9) (36,14,4,6) (40,12,2,4)
+    Number of Graphs     2          15          10           4          41         3854        227         180          28
+
+ZINC. The ZINC dataset is a molecular graph dataset composed of ∼ 250K molecules. The regression criterion is a
+molecular property known as the constrained solubility. Each molecule has both node features and edge features. Node
+features represent the type of heavy atoms (4 types) and edge features the type of bonds between them (28). The average
+number of nodes in a graph is 23.15 and the number of edges is 49.8. There are two versions of the dataset used for learning:
+ZINC 12K which has train/val/test split of 10000/1000/1000 and ZINC-full with a 2200011/24445/5000 split. Both data
+splits can be obtained from (Fey & Lenssen, 2019)
+
+Alchemy. Alchemy is also a molecular graph dataset composoed of 12000 graphs (10000/1000/1000 split taken from
+(Lim et al., 2022)). The average number of nodes is 10.1 and the number of edges is 20.9. The Regression target in this
+dataset is a 12-dimensional vector composed of a collection molecular properties : dipole moment, polarizability, HOMO,
+LUMO, gap, R2 , zero point energy, internal energy, internal energy at 298.15K, enthalpy at 298.15K , free energy at
+298.15K and heat capacity at 298.15K. Each graph has node features (6-dimensional atom type indicator) and edge features
+(4-dimensional bond type indicator).
+
+A.2. Training Protocol
+ZINC. For the ZINC and ZINC-full experiments we followed the training protocol from (Dwivedi et al., 2020). The
+protocol includes parameter budget (500K), predefined 4 random seeds and a learning rate decay scheme that reduces
+the rate based on the validation error (factor 0.5 and patience factor of 10 epochs). Initial learning rate was set to 0.002
+and training stopped when reached 10−5 . Batch size was set to 128. Test error at last epoch was reported. When using
+                                                                                                               2        2
+polynomial features, we removed the polynomials that had no response over the dataset. Namely, let f : Rn → Rn be
+an equivariant polynomial and X = {X} be a graph dataset. f does not have a response over X if ∀X ∈ X , f (X) = 0.
+Similarly to (Barceló et al., 2021) we normalized the additional features to have a unit norm. For PPGN++ we used 1/1 of
+the edge based 5-degree polynomials and 8/11 of the 6-degree polynomials. For GatedGCN we used 2/2 of the node based
+3-degree polynomials, 6/6 of the 4-degree polynomials, 23/23 of the 5-degree polynomials and 83/85 of the 6-degree
+polynomials. models were trained using the LAMB optimizer (You et al., 2019) on a single Nvidia V-100 GPU. The models
+were trained using the PyTorch framework (Paszke et al., 2019).
+
+Alchemy. We followed the training protocol from (Lim et al., 2022). The protocol includes averaging results on 5 random
+seeds and learning rate decay scheme that reduces the rate based on the validation error (factor 0.5 and patience factor of 20
+epochs). Initial learning rate was set to 10−3 and training stopped when reached 10−5 . Batch size was set to 128. Test error
+at last epoch was reported. When using polynomial features, we removed the polynomials that had no response over the
+dataset and normalized them in the same way as in the ZINC experiment. For PPGN++ we used 1/1 of the edge based
+5-degree polynomials and 8/11 of the 6-degree polynomials. models were trained using the LAMB optimizer (You et al.,
+2019) on a single Nvidia V-100 GPU. The models were trained using the PyTorch framework (Paszke et al., 2019).
+
+A.3. Architectures
+GatedGCN. We used the model as it defined in (Bresson & Laurent, 2017) and implemented in (Lim et al., 2022). For the
+ZINC 12K experiment we to used a 16-layer model (same baseline as used in (Lim et al., 2022)) with feature dimension of
+size 77 for the baseline model and 75 for the models with polynomial features. For the SR dataset we used a 4-layer network
+with hidden dimension size of 150. The polynomial features were added to the initial input node features via concatenation.
+
+                                                                14
+                                    Equivariant Polynomials for Graph Neural Networks
+
+PPGN++. The PPGN++ architecture is based on the PPGN architecture (Maron et al., 2019). The original PPGN layer is
+defined by the following equation:            h                              i
+                                   Z(k+1) = m3 m1 (Z(k) ) ⊛ m2 (Z(k) ), Z(k)
+            2
+For Z ∈ Rn ×d . While this layer definition cannot approximate all C ∈ B from Fe , it is possible to naively incorporate
+all the linear and constant basis (Maron et al., 2018) to obtain full approximation power. As mentioned in Section 3.2 we
+suggest to add this expressiveness to the layer in a more compact manner:
+                                                   h h               i                i
+                                    Z(k+1) = m̄3 m̄1 Z(k) , Z(k)T ⊛ m̄2 (Z(k) ), Z(k)
+where                                                                    
+                                                   m̄i = m̄diag  off-diag
+                                                           i , m̄i          ,
+defines a separate MLP for diagonal elements and off-diagonal elements. In practice, we implement this separation by
+adding an identity matrix as additional feature before applying an MLP on the tensor’s features.
+For the ZINC 12K experiment we used a 8-layer network with hidden dimension size of 95. For ZINC-full and Alchemy we
+used a 6-layer network with hidden dimension size of 110. We ran parameter search over the number of layers L ∈ {4, 6, 8}
+and hidden dimension size h ∈ {95, 110, 130} while maintaining the 500K parameter budget. For the SR experiment we
+used a 4-layer network with hidden dimension of size 75. The polynomial features were added to the initial input features
+via concatenation.
+
+A.4. Timing
+Table 5 shows a runtime comparison between the preprocessing require to compute polynomial features and training a
+PPGN++ (6) model on the ZINC 12K dataset. The time it takes to compute polynomials of degree 7 is non-negligible and
+most likely that for higher degrees (or in cases of larger graphs) the runtime will be longer and intractable from some degree.
+However, for SOTA results which we report in Section 5 we only use up to 6 degree polynomial features and the added time
+used for computing those features is equivalent to only 3 training epochs. Moreover, comparing the running time of other
+methods puts in perspective the computational time required for computing polynomial features. SetGNN (Zhao et al., 2022)
+reports that the epoch running of their best ZINC model (0.075 compared to 0.071 of PPGN++ (6)) is around 25 seconds. In
+addition GraphGPS (Rampášek et al., 2023), a state of the art Graph Transformer (test error of 0.07 on the ZINC dataset),
+takes ∼ 11.7 hours to train.
+
+                            Table 5. Runtime comparison on ZINC 12K: preprocessing vs. training.
+                                                                                               Time (Seconds)
+           finding all Fe non-computable polynomials up to degree 7.                                  5
+           compute all 5 degree polynomial features for the entire ZINC 12K dataset.                 10
+           compute all 6 degree polynomial features for the entire ZINC 12K dataset.                 23
+           compute all 7 degree polynomial features for the entire ZINC 12K dataset.                310
+           Average runtime of training PPGN++ (6) on ZINC 12K                               4110 (15.5 per epoch)
+
+
+
+B. Proof of Theorem 2.1.
+                                                                                                   2
+General definitions and setup. We denote an input graph data points represented by X ∈ Rn . We denote by the vector
+                               2       2                2
+space of all polynomials P : Rn → Rn by P = Rn ⊗ R[X], where ⊗ is the tensor product and R[X] denotes the module
+of polynomials with indeterminate X11 , . . . , Xnn . The space of polynomials P is spanned by the monomial basis
+                                                                    n
+                                                                    Y
+                                                M (X) = δ a,b ⊗            XA r,s
+                                                                            r,s                                           (11)
+                                                                   r,s=1
+                2                                 2
+where A ∈ Nn0 , N0 = {0, 1, . . .}, and δ a,b ∈ Rn is a matrix satisfying
+                                                         (
+                                                   a,b     1 if a = i,b=j
+                                                  δi,j =
+                                                           0 o/w
+
+                                                              15
+                                        Equivariant Polynomials for Graph Neural Networks
+                                            2
+That is δ a,b , a, b ∈ [n] is a basis for Rn .
+The degree of a polynomial is the maximal degree of its monomials defined by
+
+                                                                            n
+                                                                            X
+                                                        deg M (X) =                 Ar,s                              (12)
+                                                                            r,s=1
+
+
+
+We denote by Pd the space of all polynomials of degree at most d.
+
+
+Enumerating monomials with multi-graphs H. Next, we define H = (V, E, (a, b)) to be a multi-graph with node set
+V = [n], and edge multiset defined by the matrix A, that is (r, s) appears k ∈ N0 times in E iff Ar,s = k. Lastly (a, b) is
+the red edge. We can therefore identify monomials with multi-graphs H, i.e.,
+
+
+                                                                 MH = M,                                              (13)
+
+
+where M is defined in equation 11.
+
+
+Action of permutations Sn on polynomials. We consider the group of permutations Sn that consists of bijections
+g : [n] → [n]. The action of Sn on a matrix X is defined in the standard way in equation 2, i.e.,
+
+
+                                                       (g · X)i,j = Xg−1 (i),g−1 (j)                                  (14)
+
+
+where the inverse is used to make this a left action. We define PSn to be the space of permutation equivariant polynomials,
+namely P ∈ P that satisfy
+
+                                                          g · P (X) = P (g · X)
+
+
+                              2
+for all g ∈ Sn and X ∈ Rn . A standard method of projecting a polynomial in P onto the equivariant polynomials PSn is
+via the symmetrization (Reynolds) operators:
+
+                                                                 X
+                                                     P̄ (X) =           g · P (g −1 · X)                              (15)
+                                                                 g∈Sn
+
+
+
+Let us verify that indeed P̄ ∈ PSn :
+
+                                                                X
+                                                 P̄ (h · X) =          g · P (g −1 · (h · X))
+                                                                g∈Sn
+                                                                X
+                                                           =           g · P ((h−1 g)−1 · X)
+                                                                g∈Sn
+                                                                X
+                                                           =           hg · P (g −1 · X)
+                                                                g∈Sn
+
+                                                           = h · P̄ (X)
+
+                                                                       16
+                                       Equivariant Polynomials for Graph Neural Networks
+
+Symmetrization of monomials.           The key part of the proof is computing the symmetrization of the monomial basis MH
+via the symmetrization operator:
+                                                 X 
+                                                    g · MH (g −1 · X) i,j
+                                                                     
+                                 QH (X)i,j =
+                                                 g∈Sn
+                                                 X 
+                                                    MH (g −1 · X) g−1 (i),g−1 (j)
+                                                                 
+                                             =
+                                                 g∈Sn
+                                                        "                  n
+                                                                                                        #
+                                                 X                         Y
+                                             =              δ a,b ⊗              (g −1 · X)A r,s
+                                                                                           r,s
+                                                 g∈Sn                     r,s=1                             g −1 (i),g −1 (j)
+                                                        "                  n
+                                                                                                  #
+                                                                                   A
+                                                 X                         Y
+                                             =              δ a,b ⊗                 r,s
+                                                                                  Xg(r),g(s)
+                                                 g∈Sn                     r,s=1                       g −1 (i),g −1 (j)
+                                                        "                  n
+                                                                                                            #
+                                                 X
+                                                                a,b
+                                                                           Y       A −1      −1
+                                             =              δ         ⊗           Xr,sg (r),g (s)
+                                                 g∈Sn                     r,s=1                                 g −1 (i),g −1 (j)
+                                                                                   n
+                                                 X                                 Y        A −1 (r),g−1 (s)
+                                             =          δga,b
+                                                           −1 (i),g −1 (j)                Xr,sg
+                                                 g∈Sn                             r,s=1
+                                                                            n
+                                                 X       g(a),g(b)
+                                                                            Y        A −1 (r),g−1 (s)
+                                             =          δi,j                       Xr,sg
+                                                 g∈Sn                      r,s=1
+
+
+where in the second and fourth equality we used the action definition (equation 23), in the fifth equality we re-enumerated
+(r, s) ∈ [n] × [n] with (r′ , s′ ) = (g(r), g(s)), and the last equality uses the fact that a = g −1 (i) and b = g −1 (j) iff g(a) = i
+and g(b) = j.
+Now let us define the action of Sn on the multi-graph H, also in a natural manner: g · H is the multi-graph that results from
+relabeling each node i ∈ [n] in H as g(i) ∈ [n]. The multi-graph g · H is isomorphic to H and (r, s) ∈ E with multiplicity
+ℓ iff (g(r), g(s)) ∈ g · E with multiplicity ℓ. If we let A be the adjacency matrix of H then g · A (defined via equation 23)
+is the adjacency of g · H, i.e., (g · A)i,j = Ag−1 (i),g−1 (j) . Furthermore, the red edge in g · H is (g(a), g(b)). With these
+definitions, the above equation takes the form
+                                                                            X
+                                                    QH (X) =                       Mg·H (X)                                         (16)
+                                                                           g∈Sn
+
+
+Equation 16 is the key to the proof. It shows that QH is a sum over all monomials corresponding to the orbit of H under node
+relabeling g, therefore, any two isomorphic multi-graphs H ∼   = H ′ would correspond to the same equivariant polynomials
+QH = QH ′ . Differently put, in contrast to MH that are enumerated by labeled multi-graphs H, QH are enumerated by
+non-isomorphic multi-graphs H. Note that if H has isolated nodes (i.e., not touching any edge), these can be discarded
+without changing QH , so for degree d polynomials we really just need to consider graphs with d edges and a single red edge
+with no isolated nodes, so the maximal number of nodes is at most min {2d + 2, n}.
+We next show that {QH }, corresponding to all non-isomorphic H with up to d edges, is a basis for Pd . First, we
+     it spans Pd . Indeed, since every polynomial P ∈ Pd can be written as a linear combination of monomials MH ,
+claimP
+P = k ck MHk (X). Now,
+                                                                 X                            X
+                                      P (X) = P̄ (X) =                    ck M̄Hk (X) =                 ck QHk (X)
+                                                                      k                           k
+
+
+where in the first equality we used the fact that the symmetrization operator fixes P , i.e., P̄ = P , and in the second equality
+the fact that the symmetrization operator is linear. Next, we claim that {QH } for non-isomorphic H is an independent set.
+This is true since each QH is a sum over the orbit of H, {g · H|g ∈ Sn }, and the orbits are disjoint sets. Therefore, since
+the set of all monomials, MH , is independent, also {QH } is independent.
+
+                                                                            17
+                                       Equivariant Polynomials for Graph Neural Networks
+
+Formula for QH . We found that QH is a basis for the equivariant graph polynomials Pd . Let us write down an explicit
+formula for it next. The (ia , ib ) entry of QH (X) takes the form
+                                                                                n
+                                                                    g(a),g(b)             A
+                                                            X                   Y
+                                                                                          r,s
+                                          QH (X)ia ,ib =           δia ,ib              Xg(r)g(s)
+                                                            g∈Sn                r,s=1
+                                                                    g(a),g(b)
+                                                            X                    Y
+                                                        =          δia ,ib                Xg(r)g(s)
+                                                            g∈Sn                (r,s)∈E
+                                                                 X              Y
+                                                        =                               Xjr ,js                                    (17)
+                                                            j1 ̸=···̸=jm ∈[n] (r,s)∈E
+                                                             ja =ia ,jb =ib
+
+
+where in the third equality we denote j1 = g(1), j2 = g(2), . . . , jm = g(m), and j1 ̸= · · · ̸= jm ∈ [n] stands for all
+assignments of different indices j1 , . . . , jm ∈ [n].
+Note that QH is proved a basis but is still different from PH in equation 4 in that it does not sum over repeated indices. The
+fact that allowing repeated indices is still a basis is proved next. This seemingly small change of basis is crucial for our
+tensor network connection and analysis in the paper.
+
+PH is a basis.    We now prove that PH defined in equation 4 is a basis. For convenience we repeat it below:
+                                                                    X            Y
+                                             PH (X)ia ,ib =                               Xjr ,js                                  (18)
+                                                               j1 ,...,jm ∈[n] (r,s)∈E
+                                                               ja =ia ,jb =ia
+
+
+
+Denote by Hm the set of all multigraphs H = (V, E, (a, b)) with |V | ≤ m. Since the cardinality of {PH }H∈Hm is at most
+that of {QH }H∈Hm it is enough to show that {PH }H∈Hm spans the same space as {QH }H∈Hm .
+The proof follows an induction on m. For the base m = 1 consider all multigraphs H = (V, E, (a, a)), where V = {a}. In
+this case both equation 17 and equation 18 have vacant sums and
+                                                               Y
+                                           PH (X)ia ,ia =              Xir ,is = QH (X)ia ,ia ,
+                                                             (r,s)∈E
+
+
+where for all (r, s) ∈ E we have r, s ∈ {a}.
+Now, for m ≥ 2, assume
+                                           span {PH }H∈Hm−1 = span {QH }H∈Hm−1
+
+and consider an arbitrary H ∈ Hm \ Hm−1 .
+If m = 2, and a ̸= b, then H = (V, E, (a, b)), and V = {a, b}. In this case again both equation 17 and equation 18 have
+vacant sums and
+                                                      Y
+                                     PH (X)ia ,ib =         Xir ,is = QH (X)ia ,ib ,
+                                                             (r,s)∈E
+
+where for all (r, s) ∈ E we have r, s ∈ {a, b}.
+In all other cases, consider the space of tuples [n]m = {(j1 , . . . , jm )|ji ∈ [n], i ∈ [m]}, and the action of Sn on this
+collection via g · (j1 , . . . , jm ) = (g(j1 ), . . . , g(jm )). The orbits, denoted o1 , . . . , oB correspond to equality patterns of
+indices, and B = Bell(m), the Bell number of m. By convention we define o1 to be the orbit
+
+                                                        o1 = [(1, 2, . . . , m)]
+
+where we use the orbit notation [(j1 , . . . , jm )] = {(g(j1 ), . . . , g(jm ))|g ∈ Sn }. Now, we decompose the index set
+{(j1 , . . . , jm ) ∈ [n]m |ja = ia , jb = ib } to disjoint index sets by intersecting it with oℓ , ℓ ∈ [B]. Note that some of these
+
+                                                                    18
+                                      Equivariant Polynomials for Graph Neural Networks
+
+index sets may be empty; we let cℓ = 1 in case this index set is not empty, and cℓ = 0 otherwise.
+                                                B
+                                                X              X                Y
+                               PH (X)ia ,ib =                                          Xjr ,js
+                                                ℓ=1 (j1 ,...,jm )∈[n]m ∩oℓ (r,s)∈E
+                                                         ja =ia ,jb =ib
+
+                                    X         Y                    B
+                                                                   X           X                 Y
+                                =                      Xjr ,js +                                        Xjr ,js
+                                j1 ̸=...̸=jm (r,s)∈E               ℓ=2 (j1 ,...,jm )∈[n]m ∩oℓ (r,s)∈E
+                               ja =ia ,jb =ib                               ja =ia ,jb =ib
+                                                       B
+                                                       X             X                Y
+                                = QH (X)ia ,ib +                                              Xjr ,js
+                                                       ℓ=2 (j1 ,...,jm )∈[n]m ∩oℓ (r,s)∈E
+                                                                ja =ia ,jb =ib
+
+For ℓ ≥ 2 consider the polynomial                          X                Y
+                                                                                    Xjr ,js
+                                                 (j1 ,...,jm )∈[n]m ∩oℓ (r,s)∈E
+                                                      ja =ia ,jb =ib
+
+In case cℓ = 1, this polynomial corresponds to QHℓ (X)ia ,ib , where we denote by Hℓ = (Vℓ , Eℓ , (a, b)) the multigraph that
+results from unifying nodes in H that correspond to equal indices in oℓ . We therefore have
+                                                                              B
+                                                                              X
+                                        PH (X)ia ,ib = QH (X)ia ,ib +               cℓ QHℓ (X)ia ,ib
+                                                                              ℓ=2
+
+Since for all ℓ ≥ 2 there is at-least one pair of equal indices in ok , |Vℓ | ≤ m − 1. We can therefore use the induction
+assumption and express these polynomials using polynomials in {PH }H∈Hm−1 . This shows that QH can be spanned by
+{PH }H∈Hm . Since H ∈ Hm \ Hm−1 was arbitrary this shows that all QH ∈ Hm \ Hm−1 can be spanned by elements in
+{PH }H∈Hm . Now using the induction assumption again and the fact that Hm−1 ⊂ Hm we get that
+
+                                             span {Qh }H∈Hm ⊂ span {Ph }H∈Hm
+
+as required.
+
+C. Proof of Theorem 3.5
+Theorem 3.5. Let H be some multi-graph and FB ∈ {Fn , Fe }. Further, let H ′ be the multi-graph resulting after contracting
+a single node in H using one or more operations from B to H. Then, H is F-computable iff H ′ is F-computable.
+
+Proof. We will use Lemma 3.4 and two auxiliary lemmas:
+Lemma C.1. All the tensor contractions used in Fn and Fe only affect the 1-ring neighborhood of the contracted node.
+Lemma C.2. Assumption (I) for Hk and Hk′ imply that the k-th node can be contracted from Hk′ .
+
+For conciseness we will use F = FB to denote a graph model. If H ′ is F computable then there exists a sequence of
+contractions Ci1 , Ci2 , ..., Cik ∈ F that contracts H ′ to the red edge. Then C, Ci1 , Ci2 , ..., Cik is a sequence contracting H
+to the red edge. Therefore H is computable with F.
+The other direction is more challenging. We assume H is computable with F and need to prove H ′ is computable with F.
+H = (V = [m], E, (a, b)) has some sequence of tensor contraction contracting all vertices in H until only a and b are left
+(a and b could be the same node). Without losing generality a ≤ b, and we assume the order of the node contraction from H
+is 1, 2, . . . , a − 1. We will say that nodes i, j ∈ [m] are neighbors (in H) if they share an edge.
+A key property we use is proved in Lemma 3.4 that shows that using contractions from B, we can always contract a node if
+it has at-most 1 and 2 neighbors for Fn and Fe , respectively.
+We have that H ′ = (V ′ , E ′ , (a, b)) resulted from H by contracting a single node using contractions in F. Therefore
+|V ′ | = m − 1, and we let c be the contracted node. Since c is contracted then necessarily c ̸= a, b. Therefore c belongs to
+
+                                                                      19
+                                     Equivariant Polynomials for Graph Neural Networks
+
+the H contraction series, and in our notation that means c < a. Now we will use the series 1, 2, . . . , c̄, . . . , a − 1 (a bar
+indicates a missing index) as a node contraction series for H ′ . What we need to prove is that this is indeed a series of node
+contractions that can be implemented with tensor contractions from B.
+To show that we will prove by induction the following claim. We will compare the two node contraction sequences:
+
+                                           H:    1, 2, . . . , c − 1, c, c + 1, . . . , a − 1
+                                            ′
+                                          H :    1, 2, . . . , c − 1, ∅, c + 1, . . . , a − 1
+
+where ∅ means no node contraction done. We enumerate these steps using k = 1, . . . , a. We denote by Hk and Hk′ the
+corresponding graphs before performing the k-th contraction. So H1 = H, and H1′ = H ′ . We claim the following holds at
+the k-th step:
+
+  (I) Any pair of nodes i, j where at-least one node is not c or a neighbor of c satisfy: i, j are neighbors in HK iff they are
+      neighbors in Hk′
+
+Where we define the 1-ring of a node c to be the set of nodes that includes: c and all the nodes that share an edge with c.
+Before proving this by induction we note that if the induction hypothesis holds at the k-th step then the k-th node can be
+contracted from H ′ using operations from B, see Lemma C.2.
+
+Base case, k = 1: For k = 1 we compare the original H and H ′ . Consider two nodes i, j not in the 1-ring of c in H.
+Lemma C.1 asserts that contraction of a node only affect its immediate neighbors. Therefore any edge/no edge between i
+and j will be identical in H and H ′ .
+
+                                                                       ′
+Induction step: We assume by the induction assumption that the Hk−1 , Hk−1 satisfy (I) and prove it for Hk , Hk′ .
+Consider the node k − 1 that was contracted at the k − 1 stage. Let {d, e} be its neighbor set in Hk−1 (could be empty,
+with a single node, or at-most two nodes). There are three cases: (i) k − 1 = c, (ii) k − 1 is a neighbor of c in Hk−1 (i.e.,
+k − 1 ∈ {d, e}), and (iii) k − 1 is not in the 1-ring of c in Hk−1 (i.e., k − 1 ∈
+                                                                                / {c, e, d}).
+                                                                                          ′
+In case (i), its contraction will only affect its 1-ring in Hk−1 (see Lemma C.1), and in Hk−1 no contraction will happen.
+                                                          ′
+Therefore assumption (I) can be carried to Hk and Hk .
+In case (ii), k − 1 is a neighbor of c in Hk−1 . Since the contraction of k − 1 only affects its 1-ring in Hk−1 (according to
+Lemma C.1) and the 1-ring of k − 1 in Hk−1 is included, aside of k − 1, in the 1-ring of c at Hk . Therefore the neighboring
+relations in Hk and Hk′ outside the 1-ring of c in Hk do not change. The induction assumption (I) on Hk−1 and Hk−1   ′
+                                                                                                                         now
+                                             ′
+implies the assumption holds for Hk and Hk .
+In case (iii), k − 1 is not in the 1-ring of c in Hk−1 . Then Lemma C.1 implies that the 1-ring of c in Hk will not change and
+the neighborhood changes in the 1-ring of k − 1 will be identical to Hk and Hk′ due to induction assumption (I).
+
+Lemma 3.4. Fn (for simple graphs) and Fe (for general graphs) can always contract a node in H iff its number of neighbors
+is at-most 1 and 2, respectively.
+
+Proof. We start with Fn : We will use contraction notations from the contraction banks presented in Figure 7, left. For
+simple graphs H is simple (see Section 2.1), and therefore does not have parallel edges. Applications of contractions
+from the bank of Fn cannot introduce parallel edges and therefore any two neighbors in the graph will share a single edge.
+Furthermore, using C2 we can always reduce the number of self-loops generated during the tensor computation path to 1.
+Lastly, any node, with or without a single self-loop, and with at-most 1 neighbor is connected to it with at-most a single
+edge, and therefore C3 or C4 will be able to contract it.
+For Fe : We will use contraction notations from the contraction bank in Figure 7, right. First note that any number of
+self-loops and parallel edges can be reduced to 1 using C2 and C6 , respectively. Now if a node with a single self-loop has no
+neighbors in H then is can be contracted with C1 . Now in the case a node i has 1 or 2 neighbors in H we can cancel its
+self-loop (if it has one) as follows. Let j denote one of its neighbors. Then we first apply C5 between i (top) and j (bottom),
+then we apply C6 if necessary to make the existing edge between i, j directing towards j, and lastly apply C6 to have a
+single edge between i and j.
+
+                                                                 20
+                                            Equivariant Polynomials for Graph Neural Networks
+
+Lets recap: we have now a node i, without self-loops, with a single edge going to its 1 or 2 neighbors. We can change the
+direction of these edges by applying C6 , if required. Now, we can use C3 or C7 to contract node i.
+In the other direction if the number of neighbors is greater than 1 for Fn and 2 for Fe then inspection of the respective
+contraction banks shows that edges cannot be completely removed between nodes without contraction and no contraction
+operators for nodes with valence 2 and 3 exists for Fn and Fe , respectively.
+
+Lemma C.1. All the tensor contractions used in Fn and Fe only affect the 1-ring neighborhood of the contracted node.
+
+Proof. Inspection of the tensor contraction banks of Fn and Fe (see Figure 7, contracted nodes are in gray) shows that any
+contraction of a node can introduce new edges in its 1-ring but does not affect neighboring relation outside the 1-ring.
+
+Lemma C.2. Assumption (I) for Hk and Hk′ imply that the k-th node can be contracted from Hk′ .
+
+Proof. Indeed, there are 3 options for the k-th node: (i) k = c, (ii) k is a neighbor of c in Hk , and (iii) k is not in the 1-ring
+of c in Hk .
+Since k can be contracted from Hk by definition, Lemma 3.4 imply that we only need to show that k has at-most the same
+number of neighbors in Hk′ in order to prove the lemma. We show that next.
+In case (i): since k = c no contraction is to take place in Hk′ . In case (ii): hypothesis (I) imply that the number of neighbors
+of k in Hk′ is at most that in Hk . In case (iii): Hypothesis (I) implies that k has the same neighbors in Hk and Hk′ .
+
+D. Proof of Theorem 3.7
+To prove Theorem 3.7 it is enough to show that MPNN and PPGN++ can approximate any polynomial computable by the
+matching Prototypical models, namely node based Fn and edge based Fe . We show that in the following theorem:
+Theorem D.1. For any compact input domain, PPGN++ and MPNN can arbitrarily approximate any polynomial computable
+by the Prototypical graph models Fe and Fn , respectively.
+
+Proof. The proof of this theorem has two parts. First, we will show that for ϵ > 0, a single layer of PPGN++ and MPNN
+can approximate any contraction operation C ∈ B of the corresponding graph model. The second part will show that a
+composition of those layers can approximate any finite sequence f ∈ FB , i.e any polynomial computable by FB .
+
+Part I. Let Ω ⊂ Rn×d be an arbitrary compact set and Yi ∈ Rn be the ith column of Y ∈ Ω. Consider C ∈ Bn , the tensor
+contraction bank of Fn . We will show that a single layer of MPNN (eq 9) can approximate C. To do so we will write the
+operations explicitly and verify that a MPNN layer can approximate them:
+
+              (k+1)             (k)
+   • C1 → Yj          = 11T Yi .
+              (k+1)       (k)         (k)
+   • C2 → Yl          = Yi      ⊙ Yj        where ⊙ is element-wise product.
+              (k+1)
+   • C3 → Yj          = X1.
+              (k+1)          (k)
+   • C4 → Yj          = XYi .
+
+In order for MPNN approximate the mentioned functions we need to argue that m can approximate several functions. We
+assume that simple functions, such as constant functions and feature retrieving, can be computed exactly for m. To justify
+approximation of element-wise product we use the universal approximation theorem (Hornik, 1991):
+                                                                                         
+Theorem D.2. The set of one hidden layer MLPs with a continuous σ, i.e, M (σ) = span σ(wT x + b)|w ∈ Rn , b ∈ R is
+dense in C(Rn ) in the topology of uniform convergence over compact sets if and only if σ is not a polynomial.
+                                      2                                           2
+In the next case we set Ω ⊂ Rn ×d be an arbitrary compact set (Zi ∈ Rn for Z ∈ Ω). We repeat the same process for
+PPGN++ (eq 10) and C ∈ B of Fe :
+
+                                                                   21
+                                                   Equivariant Polynomials for Graph Neural Networks
+
+
+                                                                                 Invariant
+
+
+
+
+                                               number of polynomials
+                                                                       107       Equivariant
+                                                                       105
+                                                                       103
+                                                                       101
+                                                                             0     2       4     6   8
+                                                                                          degree
+
+Figure 11. The number of graph invariant and equivariant polynomials scales exponentially with the degree of the polynomial. Here, we
+count the number of polynomials in the asymptotic limit of graphs of n → ∞ nodes. Graphs with a fixed number of nodes will have
+fewer invariant polynomials. See Appendix I for further details on the generating functions and explicit counts.
+
+               (k+1)                           (k)
+   • C1 → Zj           = 11T (diag(Zi )11T ).
+               (k+1)                   (k)         (k)
+   • C2 → Zl           = diag(Zi             · Zj ).
+               (k+1)                          (k)
+   • C3 → Zj           = diag(11T Zi ).
+               (k+1)                   (k)
+   • C4 → Zj           = diag(Zi )11T .
+               (k+1)        (k)         (k)
+   • C5 → Zl           = Zi       · Zj .
+               (k+1)        (k)T
+   • C6 → Zj           = Zi        .
+               (k+1)        (k)    (k)
+   • C7 → Zl           = Zi Zj .
+
+Here the only addition is the diag function, which given a matrix returns a diagonal matrix with the matrix diagonal. This
+could computed using m̄i since it computes different functions for the diagonal and off-diagonal elements.
+
+Part II. This part of the proof will show that any sequence f ∈ Fe (or ∈ Fn ), namely a polynomial computable by this
+graph model, can be approximated by a composition of PPGN++ (or MPNN) layers. To prove that we can use Lemma 6
+from (Lim et al., 2022) that states the following:
+Lemma D.3 (Layer-wise universality implies universality). Let Z ⊆ Rd0 be a compact domain, let F1 , · · · , FL be a
+families of continuous
+                       functinos where Fi consists of functions from Rdi−1 → Rdi for some d1 , · · · , dL . Let F be a family
+of functions fL ◦ · · · ◦ f1 : Z → RdL , fi ∈ Fi that are compositions of functions fi ∈ Fi .
+For each i, let Φi , be a family of continuous functions that universally approximates Fi . Then the family of compositions
+{ϕL ◦ · · · ◦ ϕ1 : ϕi ∈ Φi } universally approximates F.
+
+Based on the first part proof, using this lemma while pluging in B as Fi for every i and the corresponding GNN layer as Φi
+(also for every i) shows that PPGN++ and MPNN are universal approximators for Fe and Fn , respectively.
+
+
+
+
+E. Proof of Proposition 3.8
+           2            2     ′
+Let f : Rn ×d → Rn ×d be a PPGN block, defined by the following equation (as portrayed in (Maron et al., 2019)):
+                                               h                             i
+                                 Z(k+1) = m̄3 m̄1 (Z(k) ) ⊛ m̄2 (Z(k) ), Z(k) .                                  (19)
+
+                                                                                        22
+                                     Equivariant Polynomials for Graph Neural Networks
+
+Also, let                                                         
+                                                           a     a
+                                                   Z=                a, b ∈ R
+                                                            b    b
+to be an input tensor. A PPGN network (composition of PPGN blocks) cannot approximate the transpose operator
+PH (Z) = ZT due to the fact that the PPGN block maintains the row structure of Z, i.e
+                                                                    
+                                                          x        x
+                                                f (Z)i =               x, y ∈ R,
+                                                           y       y
+                   2
+when f (Z)i ∈ Rn (for i ∈ [d′ ]) denotes the ith slice of f (Z) along the last dimension. This holds since each PPGN block is
+composed of Siamese element-wise operations and matrix multiplications which preserve this structure. a simple induction
+can generalize this claim for a composition of blocks while the extension for larger size graphs is also trivial.
+
+F. Equivariant Polynomials of Attributed Graphs
+                                                                                                                 2          2
+Repeating the derivations in Appendix B for the case of equivariant polynomials of attributed graphs, P : Rn ×f → Rn ,
+suggests that we should enumerate each QH and PH with a multi-graph H = (V, E, (a, b)), where there are also f types of
+edges types (e.g., colors); we denote by (r, s; k) ∈ E an edge (r, s) with type k ∈ [f ]. This gives the formulas
+                                                                X            Y
+                                       QH (X)ia ,ib =                                  Xjr ,js ,k                         (20)
+                                                         j1 ̸=...̸=jm ∈[n] (r,s;k)∈E
+                                                          ja =ia ,jb =ib
+                                                               X          Y
+                                        PH (X)ia ,ib =                              Xjr ,js ,k                            (21)
+                                                         j1 ,...jm ∈[n] (r,s;k)∈E
+                                                         ja =ia ,jb =ib
+
+
+where the degree of PH , QH is the total number of edges of all types, counting multiplicities. The basis {QH } (and
+consequently {PH }) for equivariant polynomials in this case is achieved by considering all non-isomorphic H (comparing
+both edge types and multiplicity) with total number of edges up to f .
+                       2         2                                                                  2   2             2
+Equivariant maps Rn ×f → Rn are isomorphically equivalent to the module (R[Rn ×f ] × Rn )Sn , where R[Rn ×f ] is
+                                           2
+the polynomial ring on the vector space Rn ×f . Similarly to the proof in Appendix B, via the Reynolds operator applied to
+monomials in variables Xijk , we obtain orbits which as before, correspond to unique subgraphs. For a given monomial, if
+the variable Xijk is contained in that monomial, then we add an edge between i to j and color that edge according to the
+index k. The k-index remains invariant under the group operation and is not permuted by the group action.
+To continue the graphical notation, we label this basis by labeling its orbits according to the monomials that appear. We pick
+a given monomial in the orbit and then for each variable in that monomial, we add an edge with the appropriate color. As
+before, the equivariant output dimension is colored red, but we make such an edge dotted to more clearly differentiate it
+with other edges.
+In this expanded graphical notation, we provide two examples below:
+The proof that the above forms a basis follows directly from the proof in Appendix B. We follow the basic steps below.
+                                                           2             2                  2
+We denote by the vector space of all polynomials P : Rn ×f → Rn by P = Rn ×f ⊗ R[X], where ⊗ is the tensor product
+and R[X] denotes the module of polynomials with indeterminate X11 , . . . , Xnn . The space of polynomials P is now spanned
+by the expanded monomial basis
+                                                             n Y  f
+                                                                           Ar,s,k
+                                                            Y
+                                            M (X) = δ a,b ⊗            Xr,s,k                                           (22)
+                                                                   r,s=1 k=1
+
+               2                                     2
+where A ∈ Nn0 ×f , N0 = {0, 1, . . .}, and δ a,b ∈ Rn is a matrix satisfying
+                                                          (
+                                                 a,b       1     if a = i, b = j
+                                                δi,j =
+                                                           0     o/w
+
+                                                                23
+                                     Equivariant Polynomials for Graph Neural Networks
+
+Permuations now only act on the first two indices, i.e.,
+
+                                                (g · X)i,j,k = Xg−1 (i),g−1 (j),k .                                          (23)
+
+Given the last index is invariant to permutations, symmetrization of monomials continues as before where we add the feature
+dimension:
+                                                  X 
+                                                       g · MH (g −1 · X) i,j
+                                                                        
+                                     QH (X)i,j =
+                                                  g∈Sn
+                                                                        f
+                                                                      n Y
+                                                  X       g(a),g(b)
+                                                                      Y             A −1
+                                                                                     g   (r),g   −1 (s),k
+                                              =          δi,j                     Xr,s,k                    .
+                                                  g∈Sn                r,s=1 k=1
+
+
+QH is a sum over all monomials corresponding to the orbit of H under node relabeling g. This forms an equivalence class
+over orbits of H (i.e., two graphs H and H ′ are in the same class if they can be obtained from one another via permutations).
+Since every polynomial is a sum over monomials, symmetrization over these monomials implies each symmetrization
+falls into one of these orbits. Therefore, similar to the proof as before, the multigraphs H compose the set of equivariant
+polynomials.
+
+F.1. Equivariant set polynomials
+As a note, we show here via an example how to form set polynomials from the structure described before. In correspondence
+with the equivariant polynomials on sets (Rn×d → Rn ), Segol & Lipman (2019) proved any polynomial in this setting takes
+the following form:
+Theorem F.1 (Theorem 2 of (Segol & Lipman, 2019), paraphrased). Any equivariant map on sets Rn×d → Rn can be
+generated by polynomials of the form           X
+                                      P (X) =       bα qα,j (s1 , . . . , st ),                         (24)
+                                                         |α|≤n
+                                                                                                                       h      i
+                          α ⊤
+                                           Pn     αj                                                                        n+d
+where bα = [xα
+             1 , . . . , xn ] , sj (X) =     i=1 xi  are the power sum symmetric polynomials indexed by j ∈                  d
+possible such polynomials up to degree d, and qα,j (s1 , . . . , st ) is a polynomial in its power sum polynomial inputs.
+
+In our graphical language, set polynomials correspond to graphs with only multi-edges that are self loops. To recover the
+above theorem in our graphical notation, we consider each element in the sum above. We identify a given bα with the self
+loops on the equivariant edge with the dotted line. The polynomial qα,j is identified with the polynomial on the rest of the
+nodes, e.g. let us consider the below graph.
+
+
+                                                                                                                             (25)
+
+
+As before, for colors indexed by index zero (orange), index one (green), and index two (blue), the above corresponds to the
+polynomial                                               
+                                                     X1,2                     
+                                                    X2,2      Xn
+                                          P (X) =  .  ·           Xi,0 Xj,1  .                                     (26)
+                                                         
+                                                    ..       i,j=1
+                                                     Xn,2
+By inspection, one can see that the above is of the form as stated in (Segol & Lipman, 2019), i.e. choose qα,j =
+ Pn    [1,0,0] Pn     [0,1,0]
+( i=1 xi      )( i=1 xi       ) only for α = [0, 0, 1] and qα,j = 0 otherwise.
+
+G. Relationship between Equivariant Polynomials, Homomorphisms, and Subgraph Counting
+There is a close correspondence between homomorphism counts, subgraph counts, and the evaluation of our polynomials
+on binary graphs X, meaning directed graphs with self-loops but no multiedges, i.e. those graphs with adjacency in
+
+                                                                 24
+                                    Equivariant Polynomials for Graph Neural Networks
+
+{0, 1}n×n . For binary graphs H and X, a homomorphism is a function φ : V (H) → V (X) such that if (r, s) ∈ E(H),
+then (φ(r), φ(s)) ∈ E(X). An isomorphism is a bijective homomorphism whose inverse is also a homomorphism. We
+let hom(H, X) denote the number of homomorphisms from H to X. We let inj(H, X) denote the number of injective
+homomorphisms from H to X. The injective homomorphism number is closely related to subgraph counts. If we let
+count(H, X) denote the number of subgraphs isomorphic to H, and let Aut(H) denote the automorphism group of H
+(i.e. the set of isomorphisms from H to H), then inj(H, X) = |Aut(H)| · count(H, X). The |Aut(H)| term is due to
+overcounting when H has symmetries.
+
+G.1. Invariant Polynomials and Standard Homomorphisms
+PH and standard homomorphisms. Let H and X be binary graphs. Then it can be seen that the homomorphism count
+hom(H, X) can be written as (Lovász, 2012):
+                                                           X                Y
+                                     hom(H, X) =                                   Xφ(r),φ(s) ,                           (27)
+                                                     φ:V (H)→V (X) (r,s)∈E(H)
+
+
+where the sum ranges over all functions from V (H) to V (X). Choose an ordering 1, . . . , m of the nodes of V (H) and
+1, . . . , n of the nodes of X; writing φ(l) = jl , we see that hom(H, X) is exactly equivalent to our (invariant) polynomial
+basis element PH :
+                                                                   X          Y
+                                      PH (X) = hom(H, X) =                           Xjr ,js .                           (28)
+                                                               j1 ,...,jm ∈[n] (r,s)∈E(H)
+
+
+If H has multiple edges, then let H̃ be the graph H with any multiple edges reduced to a single edge. If X is still a binary
+graph, it is easy to see that PH (X) = PH̃ (X), so in this case PH (X) = hom(H̃, X).
+QH and injective homomorphisms / subgraph counts. Once again, let H and X be binary graphs. The injective
+homomorphism number can be written in a similar form to the homomorphism count (Lovász, 2012):
+                                                          X                Y
+                                     inj(H, X) =                                  Xφ(r),φ(s) .                            (29)
+                                                    φ:V (H)→V (X) (r,s)∈E(H)
+                                                       φ injective
+
+
+In this case, the sum ranges over all injective functions φ : V (H) → V (X). As in the non-injective case, we write jl = φ(l)
+for each l = 1, . . . , m. By injectivity j1 ̸= . . . ̸= jm . Thus, we have a corrspondence between inj(H, X) and our invariant
+basis polynomial QH :
+                                                X              Y
+                 QH (X) = inj(H, X) =                                     Xφ(r),φ(s) = |Aut(H)| · count(H, X).            (30)
+                                           j1 ̸=...̸=jm ∈[n] (r,s)∈E(H)
+
+
+
+G.2. Equivariant Polynomials and Homomorphism Tensors
+                                                                                      2           2
+Here, we consider our equivariant polynomials basis elements PH , QH : Rn → Rn . On binary graphs, this will also
+correspond to counts of homomorphisms, except now we have to restrict the homomorphisms to preserve the red edge in an
+equivariant way. Let (a, b) be the red edge of H, and consider any two nodes (possibly the same) ia , ib of X. Then we may
+                                                             2
+define a tensor of homomorphism counts Hom(H, X) ∈ Rn , where Hom(H, X)ia ,ib is the number of homomorphisms
+φ : V (H) → V (X) such that φ(a) = ia and φ(b) = ib . We define a tensor Inj(H, X) of injective homomorphism counts
+similarly.
+Following the arguments for the invariant case, it is easy to see that
+
+                                               PH (X)ia ,ib = Hom(H, X)ia ,ib                                             (31)
+                                               QH (X)ia ,ib = Inj(H, X)ia ,ib .                                           (32)
+
+Thus, this gives an interpretation of PH (X)ia ,ib and QH (X)ia ,ib , when H and X are binary graphs. We expand on this
+interpretation for QH in the next section.
+
+                                                                25
+                                          Equivariant Polynomials for Graph Neural Networks
+
+
+
+
+                                                    H                    H̃
+
+
+                                                           |Aut(H̃)| = 2
+                                                           QH (X)i,i = j̸=k∈[n]\{i} Xi,j X2i,k X2j,k
+                                                                       P
+                              X 1           2       4
+                                                           QH (X)3,3 = 4
+                                                           QH (X)i,i = 0, i ̸= 3
+                                  5
+                                                3
+
+Figure 12. Relationship between QH and subgraph counts. The directed multigraph H (top left) has its multiedges turned to single edges
+to form H̃ (top right). The size of the automorphism group Aut(H̃) is 2, as we may swap the bottom left and bottom right node while
+preserving the graph structure. QH (X)3,3 = 4 because node 3 participates in 2 subgraphs isomorphic to H̃, and this subgraph count is
+scaled by |Aut(H̃)| = 2 to get QH (X)3,3 .
+
+
+G.3. QH as Subgraph Counts
+                                                                                                                 2
+The basis QH can be interpreted as subgraph counts when the input is a simple binary graph X ∈ {0, 1}n . For any directed
+multigraph H with red edge (a, b), let H̃ denote the same graph H but where any multiple black edges are collapsed to just
+one black edge; the difference between H and H̃ is that if H has more than one black edge from node i to j, then H̃ only
+has one edge. Then we have that
+
+                                           QH (X)ia ,ib = |Aut(H̃)| · count(H̃, X, (ia , ib )),                                  (33)
+
+where count(H̃, X, (ia , ib )) is the number of subgraphs of X that are isomorphic to H̃, after adding a red edge (ia , ib )
+to X and labelling edge (a, b) in H̃ as red. |Aut(H̃)| is the size of the automorphism group of H̃, which contains the
+automorphisms φ : V (H) → V (H) that have φ(a) = a and φ(b) = b.
+Now, suppose H has a red self loop (a, a), and let i be any node in X. We have that QH (X)ia ,ia is equal to |Aut(H̃)|
+multiplied by the number of subgraphs of X that are isomorphic to H̃, where the isomorphism maps ia in X to a (the node
+with the self loop in H). Intuitively, this is proportional to the number of subgraphs isomorphic to H̃ that ia participates in
+as the designated red-self-loop node. See Figure 12 for an illustration.
+Derivation. Here, we derive the relationship between QH (X) and subgraph counts. First, we write out some definitions
+more precisely. Let Aut(H̃) denote the automorphism group of H̃. This is the set of permutations σ : V (H̃) → V (H̃)
+such that σ(a) = a, σ(b) = b, and (r, s) ∈ E(H̃) if and only if (σ(r), σ(s)) ∈ E(H̃). Further, let count(H̃, X, (ia , ib ))
+denote the number of subgraphs of X isomorphic to H̃, where the isomorphism maps a to ia and b to ib . In other words,
+it is the number of choices (V ′ , E ′ ) such that V ′ ⊆ V (X) and E ′ ⊆ E(X) ∩ (V ′ × V ′ ) where there exists a bijection
+φ : V (H̃) → V ′ such that φ(a) = ia , φ(b) = ib , and (r, s) ∈ E(H̃) if and only if (φ(r), φ(s)) ∈ E ′ . We call any such
+map φ a subgraph isomorphism, and we may also view it as an injective function V (H̃) → V (X).
+We will use the fact that for any subgraph isomorphism φ and any automorphism σ ∈ Aut(H̃), the map φ ◦ σ : V (H̃) →
+V (X) is also a subgraph isomorphism. Let (V ′ , E ′ ) be the subgraph that φ maps to. To see that φ is a subgraph isomorphism,
+first note that φ ◦ σ is injective, φ ◦ σ(a) = φ(a) = ia , and φ ◦ σ(b) = φ(b) = ib . To see the edge preserving property, note
+that (r, s) ∈ E(H̃) if and only if (σ(r), σ(s)) ∈ E(H̃) since σ ∈ Aut(H̃). Moreover, (σ(r), σ(s)) ∈ E(H̃) if and only if
+(φ(σ(r)), φ(σ(s))) ∈ E ′ since φ is a subgraph isomorphism. Thus, φ ◦ σ is a subgraph isomorphism.
+We now derive the formula for QH (X) in terms of subgraph counts:
+                                      2
+Proposition G.1. If X ∈ {0, 1}n , then
+
+                                           QH (X)ia ,ib = |Aut(H̃)| · count(H̃, X, (ia , ib ))                                   (34)
+
+Proof. Note that we can write                                     X            Y
+                                             QH (X)ia ,ib =                               Xjr ,js ,                              (35)
+                                                               j1 ̸=···̸=jm (r,s)∈E(H̃)
+                                                              ja =ia ,jb =ib
+
+
+                                                                    26
+                                      Equivariant Polynomials for Graph Neural Networks
+
+
+                   Q product over E(H) with the product over E(H̃), due to the assumption that X is binary. Further, note
+where we replace the
+that the summand (r,s)∈E Xjr ,js is either 0 or 1 for each setting of (j1 , . . . , jm ). We show that the number of nonzero
+terms of the sum in QH (X)ia ,ib is equal to |Aut(H̃)| · count(H̃, X, (ia , ib )).
+Let (j1 , . . . , jm ) correspond to a nonzero term in the sum. Define φ : V (H) → V (X) by φ(i) = ji . Note that φ is injective
+since j1 ̸= . . . ̸= jm . Moreover, φ(a) = ja = ia and φ(b) = jb = ib . Now, define
+
+                             Vφ = {φ(i) : i ∈ V (H)},    Eφ = {(φ(r), φ(s)) : (r, s) ∈ E(H̃)}.                       (36)
+                                                               Q
+This is the vertex set and edge set of a subgraph in X, because (r,s)∈E(H̃) Xjr ,js = 1 implies that (φ(r), φ(s)) ∈ E(X)
+for all (r, s) ∈ E(H̃). Thus, φ corresponds to an isomorphism between H̃ and a subgraph of X.
+Suppose (j1 , . . . , jm ) ̸= (j̃1 , . . . , j̃m ) are both indices corresponding to nonzero summands, with corresponding subgraph
+isomorphisms φ and φ̃. Note that φ ̸= φ̃, so each nonzero summand corresponds to a unique subgraph isomorphism φ.
+Hence, it suffices to show that the number of subgraph isomorphisms is |Aut(H̃)| · count(H̃, X, (ia , ib )).
+For each l ∈ {1, . . . , count(H̃, X, (ia , ib ))}, let Gl = (Vl , El ) be a subgraph of X that is isomorphic to H̃. Then choose a
+subgraph isomorphism φl : V (H) → V (X) associated to Gl . For this φl , as in our argument above we know that φl ◦ σ :
+V (H) → V (X) is a subgraph isomorphism for every σ ∈ Aut(H̃). Thus, there are at least |Aut(H̃)| · count(H̃, X, (ia , ib ))
+subgraph isomorphisms φl ◦ σ.
+To show that there are at most |Aut(H̃)| · count(H̃, X, (ia , ib )) subgraph isomorphisms, assume for sake of contradiction
+that ψ : V (H) → V (X) is a subgraph isomorphism that is not of the form φl ◦ σ above. Denote the vertex set and
+edge set of the associated subgraph as Vψ and Eψ , respectively. If (Vψ , Eψ ) ̸= (Vl , El ) for each l, then we have
+the existence of count(H̃, X, (ia , ib )) + 1 subgraphs in X isomorphic to H̃, which contradicts the definition of count.
+Thus, (Vψ , Eψ ) = (Vl , El ) for some l. As φl and ψ are both bijective from V (H̃) → Vψ , there is a unique bijection
+σ : V (H̃) → V (H̃) such that φl = ψ ◦ σ.
+We will show that σ ∈ Aut(H̃), which contradicts our definition of ψ. Note that σ(a) = a and σ(b) = b, because φl (a) =
+ψ(a) = ia and φl (b) = ψ(b) = ib . Now, suppose (r, s) ∈ E(H̃). Since (ψ ◦ σ(r), ψ ◦ σ(s)) = (φ(r), φ(s)) ∈ Eφl = Eψ ,
+we know that (σ(r), σ(s)) ∈ E(H̃) as ψ is a subgraph isomorphism. On the other hand, if (σ(r), σ(s)) ∈ E(H̃), then
+(φl (r), φl (s)) = (ψ ◦ σ(r), ψ ◦ σ(s)) ∈ Eψ since ψ is a subgraph isomorphism, so that (r, s) ∈ E(H̃) because φl is a
+subgraph isomorphism. Thus, σ ∈ Aut(H̃), and we are done.
+
+
+
+H. k-WL Equivalence
+
+
+
+
+                           C1 C2 C3 C4               C1 C2 C3 C4 C5                   C6        C7
+Figure 13. For convenience, we redraw our Prototypical graph models here. We show these the node-based model (left) is equivalent to
+1-WL on simple graphs, and the edge-based model (right) is equivalent to 2-FWL / 3-WL on simple graphs.
+
+In this section, we demonstrate that our studied Prototypical graph models achieve 1-WL and 3-WL/2-FWL expressive
+power, thus showing that our framework can be used to design and analyze k-WL style models. The key connection comes
+from a result of Dvořák (2010); Dell et al. (2018), which states that k-FWL indistinguishability is equivalent to hom(H, X)
+indistinguishability for all H of tree-width at most k.
+Lemma H.1 (Dvořák (2010); Dell et al. (2018)). Two simple graphs X(1) and X(2) are k-FWL distinguishable if and only if
+there is a graph H of tree-width at most k such that hom(H, X(1) ) ̸= hom(H, X(2) )
+
+                                                                27
+                                     Equivariant Polynomials for Graph Neural Networks
+
+Recall from Appendix G that hom(H, X) is equal to the evaluation of the invariant polynomial PH (X) when X ∈ {0, 1}n×n .
+Thus, an Prototypical graph model can compute hom(H, X) if it can contract H into the trivial graph (that has zero nodes
+and zero edges) using contractions from its bank.
+Proposition H.2. The Prototypical node-based graph model can distinguish any two simple graphs if and only if 1-WL can.
+
+Proof. ( ⇐= ) Suppose 1-WL can distinguish two simple graphs X(1) and X(2) . Then there is a graph H of tree-width 1
+such that hom(H, X(1) ) ̸= hom(H, X(2) ). We will show that the node-based Prototypical model can contract H to the
+trivial graph. As H has tree-width 1, it is a forest or a tree. We can assume it is a tree as we can contract each tree connected
+component one by one if it is a forest. We will show that the node-based model can contract any tree T with or without
+self-loops.
+Suppose T consists of one node. If T has no self-loops, it is the constant polynomial, which is a trivial case. Otherwise, the
+node has at least one self-loop, and C1 and C2 can of course contract it the trivial graph.
+Now, suppose T consists of m ≥ 2 nodes. Then there is a leaf (a node that has degree 1 when we ignore self-loops). If this
+leaf does not have a self-loop, we can contract it to remove this node using C3 . Otherwise, we can use C2 to remove any
+multiple self-loops (if needed), and then use C4 to remove the node once we are left with one self-loop. This gives a tree T ′
+with at least one self-loop of m − 1 nodes, so T ′ can be contracted by induction.
+( =⇒ ) Suppose 1-WL cannot distinguish the two simple graphs X(1) and X(2) , so hom(H, X(1) ) = hom(H, X(2) ) for all
+H of tree-width 1. We show that the node-based contraction bank cannot contract any hom(H, X) for H of tree-width
+greater than 1.
+Suppose H has tree-width greater than 1, so it cannot be a forest or a tree. Hence, H must have a cycle. However, the
+node-based model cannot contract any graph that has a cycle; this is because if it could, then the first node of the cycle that
+is contracted would have had at least two different neighbors, but such a node cannot be contracted by C1 , C2 , C3 or C4 .
+Hence, the node-based graph model cannot distinguish X(1) and X(2) .
+Proposition H.3. The Prototypical edge-based graph model can distinguish any two simple graphs if and only if 2-FWL /
+3-WL can.
+
+Proof. ( ⇐= ) Suppose 2-FWL can distinguish the two simple graphs X(1) and X(2) , so there is a graph H of tree-width
+2 such that hom(H, X(1) ) ̸= hom(H, X(2) ). We will show that the edge-based model can contract H. We can assume H
+is connected because otherwise we can separately contract each connected component. Moreover, we can assume that H
+has no self-loops or multiple edges. This is because if a node has a self-loop and it has no neighbors, then C2 and C1 can
+remove the node, and if it has neighbors then C4 can contract the self-loop and add an edge to a neighbor, thus forming a
+multiple edge. For multiple edges, C6 can align the direction of the edges between if necessary, and then C5 can remove the
+multiple edges.
+Since H has tree-width 2, we know it is a partial 2-tree. Thus, there is an ordering of the m vertices of H, say v1 , . . . , vm ,
+such that when deleting each vertex and all incident edges in turn, we only ever delete vertices of degree at most 2. We show
+that our edge-based Prototypical model can contract edges in this order by induction. For i ∈ [m], suppose we have deleted
+nodes v1 , . . . , vi−1 (in the base case i = 1 we have not deleted any nodes), we are deleting vi , the current graph has no
+multiple edges, and the any self-loops in the current graph belong to nodes with no neighbors
+
+   • If node vi has degree zero, then it can be contracted to a trivial graph by C1 and C2 .
+   • If node vi has degree one, then we use C3 to contract it, thus adding a self-loop to its neighbor. If its neighbor then has
+     degree 0, then we do not need to remove self-loops for our induction. Otherwise, if its neighbor has nonzero degree,
+     then we use C4 , C6 (if necessary), and C5 to remove the self-loop of the neighbor, and remove any multiple edges.
+   • If node vi has degree two, then we use C6 if necessary, then use C7 to contract vi , and use C6 and C5 to remove any
+     multiple edges formed.
+
+After any of these operations, we have deleted the node vi , and maintained the assumptions of our induction. In particular,
+note that the degree of a node (ignoring self-loops) never increases, so we indeed only ever contract nodes of degree at most
+2. Thus, the Prototypical edge model is capable of contracting H to a trivial graph.
+
+                                                               28
+                                      Equivariant Polynomials for Graph Neural Networks
+
+ ( =⇒ ) Consider a pair of graphs that are not distinguishable by 3-WL. Let k > 3 be the smallest integer such that k-WL
+ distinguishes this pair. This pair of graphs differs in the number of homomorphisms for a subgraph that has at least tree-width
+ k − 1 ≥ 3 (Grohe et al., 2021) (e.g. see figure 2 of (Bouritsas et al., 2022) for explicit example). Series of eliminations of
+ nodes of a subgraph form a tree decomposition of the subgraph via its chordal completion as described below. Subgraphs of
+ tree-width ≥ 3 have at least one bag of 4 or more nodes in their tree decomposition. Since the Prototypical edge-based
+ graph model can only contract with bags of size 3 or fewer, such a homomorphism count cannot be performed using the
+ contractions.
+ To show that any set of contractions forms a valid tree decomposition of the graph, consider the chordal completion of the
+ graph formed by the eliminations. This chordal completion consists of the original graph with all edges added between
+ nodes that were part of a contraction which eliminated any other node. E.g., if nodes in {a, b, c} were part of a contraction
+ eliminating node a, then all edges between the nodes in {a, b, c} are added to its chordal completion. Note that this chordal
+ completion follows naturally in any contraction as once a node is eliminated in a contraction, an edge must be made between
+ its remaining neighbors to store the output of the contraction.
+ Any chordal completion of a subgraph has the property that via the same elimination order of its construction, no more
+ edges are added. I.e., the subgraph constructed by each eliminated node and its neighbors forms a clique. This elimination
+ ordering forms a tree decomposition with bags consisting of the cliques in the elimination ordering. Thus, the tree-width of
+ a graph is upper bounded by the size of the maximal clique in its chordal completion minus one (Diestel, 2005). Since the
+ Prototypical edge based model can only contract up to 3 nodes at once, cliques of size at most 3 can be constructed in the
+ chordal completion and the tree-width of such a tree decomposition is at most 2.
+
+ Another way to approach this result is through the relationship between graphs of tree-width 2 and series-parallel graphs.
+ Any biconnected graph H of tree-width 2 is a series-parallel graph (more generally, a graph has tree-width 2 if and only if
+ all biconnected components are series-parallel) (Bodlaender, 1998). Suppose H is series-parallel. Then it is known that it
+ can be contracted to a single edge by two operations (Duffin, 1965):
+
+(op1) Delete a node of exactly degree 2, and connecting its two neighbors.
+(op2) If there are two edges between the same two nodes, delete one of the edges.
+
+ The edge-based Prototypical model can implement these two operations, so it can contract H into a single edge. The first
+ operation (op1) is C7 (matrix multiplication), possibly with a C6 (matrix transpose) beforehand to align the directions of
+ the edges. The second operation (op2) is C5 (replace two parallel edges with one edge), again possibly with a C6 (matrix
+ transpose) beforehand to align the directions of the edges. After contraction to a single edge, the remaining operations
+ C1 , C2 , C3 can be used to contract H to the trivial graph.
+ If H is not biconnected, then we can use the block-cut tree of H to get the biconnected components. Then we can contract
+ each biconnected component that is a leaf of the block-cut-tree (as it is a series parallel graph) in a way such that we add a
+ self-loop to the cut vertex it is connected to. After pruning cut vertices appropriately, we can continue this process until
+ reaching the trivial graph.
+
+ I. Counting of Invariant Polynomials of Symmetric Group
+ Various methods exist to count the number of invariant polynomials of the Symmetric group (in our case, also isomorphic to
+ multigraphs) of a given form (Harary & Palmer, 2014; Pólya, 1937; Molien, 1897; Thiéry, 2000; Bedratyuk, 2015). Here,
+ we follow a standard strategy to count the number of invariant polynomials by summing over partitions corresponding to
+                                                                                                      (k)
+ cycle indices of the permutation group. Given Sn as the symmetric group on n elements, let Sn be the symmetric group
+                                          ⊗k
+ acting on the representation X ∈ (Rn ) . Let Pn denote the set of integer partitions of n where each partition m ∈ Pn is a
+ length n vector whose j-th element is the number of elements of size j in the given partition. For example, for the partition
+ of 4 into (1, 1, 2), the corresponding value of m = [2, 1, 0, 0]. Let si for i ∈ N be arbitrary variables for now (their meaning
+                                                            (k)           (k)
+ will become clear later). We define the cycle index Z(Sn )[si ] of Sn as a power series in variables si for i ∈ N as
+                                                                    k Y  n
+                                               X           1        Y        Qk
+                                                                               t=1 mjt jt / lcm(j1 ,...,jk )
+                            Z(Sn(k) )[si ] =          Qn     mt m !
+                                                                            slcm(j1 ,...,jk )                ,              (37)
+                                               m∈Pn    t=1 t     t i=1 j =1
+                                                                           i
+
+
+
+                                                                  29
+                                    Equivariant Polynomials for Graph Neural Networks
+
+where lcm(·) is the least common multiple of the arguments.
+As an example, we have
+                                                       (2)         1 9 1        1
+                                              Z(S3 )[si ] =         s + s1 s42 + s33 .                                            (38)
+                                                                   6 1 2        3
+                                                                                               (k)        (d)
+For the equivariant case, we need a weighted cycle index which we denote as ZW (Sn × Sn )[si ] which can be calculated
+as
+                                                                           k Y  n
+                                                       X         md1      Y         Qk
+                                                                                      t=1 mjt jt / lcm(j1 ,...,jk )
+                     ZW (Sn(k) × Sn(d) )[si ] =              Qn    mt m !
+                                                                                   slcm(j1 ,...,jk )                ,             (39)
+                                                              t=1 t    t  i=1 j =1
+                                                   m∈Pn                           i
+
+
+
+                                                                                                                            (k)
+From here, we can generate the Molien series which counts the number of invariant/equivariant polynomials on Sn .
+                                                                                       (k)
+Theorem I.1. The Molien series MS (k) (x) for invariant polynomials on Sn is generated by
+                                      n
+
+
+
+                                invariant: MS (k) (x) = Z(Sn(k) )[si = 1 + xi + x2i + · · · ],                                    (40)
+                                                   n
+
+
+                                                                                               (d)                    (k)
+and more generally, the Molien series for the polynomials which are equivariant to Sn outputs and Sn inputs is generated
+by:
+
+                       equivariant: MS (k) ×S (d) (x) = ZW (Sn(k) × Sn(d) )[si = 1 + xi + x2i + · · · ].                          (41)
+                                          n        n
+
+
+
+Proof. We enumerate the Molien series of order k invariant polynomials RkG in the invariant ring of polynomials RG using
+Molien’s formula (Derksen & Kemper, 2015; Molien, 1897). A similar proof can be obtained via the Pólya enumeration
+theorem (Tucker, 1994; Pólya, 1937).
+Given a representation ρ : G → GL (V ), Molien’s formula states that
+                                              X                               X              1
+                                MG (x) =           dim(RkG )xk = |G|−1                                .                           (42)
+                                                                                      det (I − xρ(g))
+                                               k                              g∈G
+
+                                                       (k)
+First, let us consider the invariant setting for Sn – the symmetric group with representation acting on the vector space
+            ⊗k
+X ∈ (Rn ) . Eigenvalues of a permutation matrix depend only on the cycle index of the permutation. Therefore, we
+decompose the sum of group elements in the symmetric group by their cycle indices
+                                                       X             1                1
+                                  MS (k) (x) =               Qn        m
+                                                                                                ,                               (43)
+                                                                 t=1 t    mt ! det I − xρ(gm
+                                      n                                 t                  (k)
+                                                   m∈Pn                                        )
+
+                                                                                                (k)             (1)
+where ρ(gm(k) ) is any permutation with cycle index mt for the representation on Sn . For Sn , the representation of the
+permutation group is the standard representation corresponding to permutations of indices of the vector space. For cycle
+index m, the representation ρ(gm(1) ) has mj eigenvalues equal to the j different powers of the j-th root of unity. Denoting
+si = 1 + xi + x2i + · · · , this then results in the following:
+                                                                    n
+                                                             1     Y     mj
+                                                              =       sji i .                                                   (44)
+                                                           (1)
+                                               det I − xρ(gm )    ji =1
+
+
+ρ(gm(k) ) acts as a k-fold tensor product of the representation ρ(gm(1) ), i.e. ρ(gm(k) ) = [ρ(gm(1) )](⊗k) . Therefore, to
+generalize the above formula to higher order k, we enumerate the possible eigenvalues of the tensor product of ρ(gm(1) .
+Since the eigenvalues of a tensor product of operators are simply the product of the eigenvalues of the elements of the tensor
+product, we can perform this enumeration over products of the operators.
+As we noted before, for cycle index m, the representation ρ(gm(1) ) has mj eigenvalues equal to the j different powers of
+the j-th root of unity. Given the product of two elements of this cycle index, we now consider the product of eigenvalues
+
+                                                                     30
+                                      Equivariant Polynomials for Graph Neural Networks
+
+equal to the different powers of the j-th and k-th roots of unity. This results in all the eigenvalues which are products of the
+lcm(j, k)-roots of unity where lcm(·) denotes the least common multiple. Given mj and mk cycles of j-th and k-th order
+respectively, powers of the lcm(j, k)-roots of unity will appear a total of mj mk / lcm(j, k) number of times. Generalizing
+this to products of more than two eigenvalues, we arrive at
+                                                       k Y  n
+                                             1        Y          Qk
+                                                                   t=1 mjt jt / lcm(j1 ,...,jk )
+                                                   =           slcm(j                           .                          (45)
+                                                                      1 ,...,jk )
+                                       
+                                               (k)
+                                   det I − xρ(gm )    i=1 ji =1
+
+
+Plugging the above into Equation (43), we obtain the desired result.
+For the equivariant setting, we use the equivariant form of Molien’s formula. For maps from a vector space V to another vector
+space W , we consider a representation ρ : G → GL (V ) acting on the input space and a representation σ : G → GL (W )
+acting on the output space. Here, Molien’s formula takes the form (Derksen & Kemper, 2015; Antoneli et al., 2008)
+                                             X                             X       Tr(σ(g)−1 )
+                                 MG (x) =            dim(RkG )xk = |G|−1                         .                          (46)
+                                                                                 det (I − xρ(g))
+                                                 k                         g∈G
+
+The above can be shown by noting that the module of equivariant polynomials corresponds to (R[V ] ⊗ W )G where R[V ] is
+                                                                       (d)
+the ring of polynomials on the vector space V . The representation of Sn corresponds to the d-fold tensor product of the
+standard representation of the symmetric group. For a cycle index m this representation has one nonzero entries on the
+diagonal for each cycle of size 1. Therefore, there are md1 total nonzero entries each equal to one. Plugging this in, we
+arrive at the final solution.
+                                                                                          (2)
+As an example, returning to Equation (38), we have for invariant polynomials on S3 :
+                                   1
+                    MS (2) (x) =      (1 + x + x2 + · · · )9 + 3(1 + x + x2 + · · · )(1 + x2 + x4 + · · · )4
+                        3          6
+                                       + 2(1 + x3 + x6 + · · · )3
+                                                                                                                           (47)
+
+                               = 1 + 2x + 10x2 + · · ·
+
+Theorem I.1 quantifies the Molien series for polynomials on n nodes. To obtain the asymptotic limit MS (2) (x) for invariant
+                                                                                                            ∞
+polynomials on graphs of arbitrary size, we note that MS (2) (x) and MS (2) (x) agree in powers xc up to c = ⌊n/2⌋. Therefore,
+                                                        n              ∞
+to generate the asymptotic series up to power n, it suffices to calculate the corresponding Molien series for MS (2) (x). A
+                                                                                                                     2n
+similar logic can be applied for equivariant polynomials which also have a “red” edge as well as described in the main text.
+Corollary I.2. The number of invariant polynomials quantified in the Molien series MS (2) (x) for the asymptotic limit of
+                                                                                           ∞
+n → ∞ nodes agrees with MS (2) (x) for n up to the first ⌊n/2⌋ degrees. Similarly, the number of equivariant polynomials
+                                n
+quantified in the Molien series MS (2) (x) for the asymptotic limit of n → ∞ nodes agrees with MS (2) (x) for n up to the first
+                                  ∞                                                              n
+⌊n/2⌋ − 1 degrees.
+                                                                                                                        2
+Counts of invariant polynomials. The Molien series of the number of invariant polynomials on graphs, i.e., Rn → R
+for sufficiently large n, begins with
+
+                                   1, 2, 11, 52, 296, 1724, 11060, 74527, 533046, 3999187,
+                                   31412182, 257150093, 2188063401, 19299062896,                                            (48)
+                                   176059781439, 1657961491087, . . .
+
+Counts of equivariant polynomials. The Molien series of the number of equivariant polynomials on graphs, i.e.,
+  2      2
+Rn → Rn for sufficiently large n, begins with
+
+                                 2, 15, 117, 877, 6719, 52505, 422824, 3508753, 30036833,
+                                 265100322, 2410638644, 22563597944, 217175819474,                                          (49)
+                                 2147355853088, 21790101729085, 226707665717377, . . .
+
+                                                                31
+                                   Equivariant Polynomials for Graph Neural Networks
+
+                                                                                (1)
+For the setting of the standard representation of the symmetric group on nodes (Sn in our notation), the above recovers the
+generating series for partitions for which there exist efficiently calculable recurrences via the pentagonal number theorem
+(Hardy et al., 1979). We do not know of a similarly more direct way to compute the Molien series above in the general case.
+
+
+
+
+                                                            32
+

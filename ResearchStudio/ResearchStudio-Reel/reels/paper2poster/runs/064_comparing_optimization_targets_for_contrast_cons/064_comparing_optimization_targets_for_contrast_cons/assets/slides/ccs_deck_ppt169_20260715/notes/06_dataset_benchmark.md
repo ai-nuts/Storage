@@ -1,0 +1,1 @@
+Experiments use hidden-state activations from four models: the encoder and decoder of UnifiedQA T5-Large, DeBERTa, and GPT-Neo, averaged over five datasets including BoolQ. Contrast pairs append two exclusive answers, each set normalized independently so the probe cannot detect the answer token.

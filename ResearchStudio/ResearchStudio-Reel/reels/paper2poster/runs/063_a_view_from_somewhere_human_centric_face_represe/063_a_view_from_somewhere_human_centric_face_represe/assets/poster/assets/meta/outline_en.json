@@ -1,0 +1,155 @@
+{
+  "lang": "en",
+  "title": "A View From Somewhere: learning face representations from human judgment, not demographic labels",
+  "subtitle": "ICLR 2023 · Sony AI & University of Tokyo · 638,180 human similarity judgments, zero demographic labels",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "When a team wants to check whether a face dataset is diverse, the reflex is to reach for demographic labels: race, gender, age. It is the default move across the field, and it rests on shaky ground. Those labels are frequently missing, legally restricted to collect, and unreliable the moment a model or a human annotator has to infer them rather than read them off a record."
+    },
+    {
+      "type": "paragraph",
+      "text": "They also flatten something that is not flat. \"Skin tone\" collapses into light or dark; two faces filed under the same category can look nothing alike; and rigid taxonomies erase multi-ethnic people and cause real harm when someone is mislabeled. The deeper issue is not a badly chosen taxonomy that a better one would fix. It is the premise that human appearance sorts cleanly into discrete boxes at all."
+    },
+    {
+      "type": "paragraph",
+      "text": "A View From Somewhere (AVFS), an ICLR 2023 paper from Sony AI and the University of Tokyo, starts from the opposite premise. Instead of labeling faces, it asks people a simpler question: given three faces, which one is the odd one out? The authors collect 638,180 of these judgments over 4,921 faces and learn a continuous embedding space aligned with human perception, with no demographic label anywhere in the training signal."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "width_inches": 3.5,
+      "caption": "Figure 2. What a learned dimension looks like. The highest-scoring faces along one AVFS dimension, with the human-generated topic labels (top) and the CelebA / FairFace attributes (bottom) that independently line up with it. Faces are synthetic StyleGAN3 images used for privacy."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2303.17176 — Code: https://github.com/SonyAI/a_view_from_somewhere"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why demographic labels are the wrong measuring stick"
+    },
+    {
+      "type": "paragraph",
+      "text": "Categorical labels answer the wrong question. They can tell you a face is filed as one group or another, but they cannot say how similar two faces within that group are, and similarity is what diversity auditing actually cares about. Human appearance varies continuously, and the same face can strike two observers differently, so any fixed label is a lossy, observer-blind compression of what people actually perceive."
+    },
+    {
+      "type": "paragraph",
+      "text": "Earlier work tried to learn perceptual embeddings of faces from human judgments, but ran into two walls. Some methods can only place the exact stimuli they were trained on and cannot embed a new face at all. Others pool every judgment into one average observer, discarding the variation within and between annotators — precisely the signal that tells you similarity depends on who is looking. AVFS is designed to break through both walls at once."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: odd-one-out judgments and a mask per annotator"
+    },
+    {
+      "type": "paragraph",
+      "text": "The data comes from an odd-one-out task (a triplet judgment): shown three faces, an annotator picks the one least similar to the other two. This forces a relative comparison rather than an absolute label, and it is cognitively easy to do consistently. Crucially, every one of the 638,180 judgments is stamped with the identity and self-reported demographics of the annotator who made it, so the dataset records not just what was judged but who judged it."
+    },
+    {
+      "type": "paragraph",
+      "text": "On top of this data sits a conditional model. A ResNet18 convnet maps each face to a 128-dimensional embedding. Each annotator is given a learnable gating vector that, after a sigmoid, scales the importance of every embedding dimension for that person. Similarity between two faces is then the dot product of their masked, rectified embeddings, and the model predicts the odd-one-out probability from the three pairwise similarities in a triplet. Formally the per-annotator similarity is sim_a(i,j) = (σ(φ_a) ⊙ ReLU(w_i)) · (σ(φ_a) ⊙ ReLU(w_j)), where φ_a is annotator a's mask and w_i is the embedding of face i."
+    },
+    {
+      "type": "paragraph",
+      "text": "Two design choices make the space usable rather than just accurate. Setting every mask to ones removes the conditioning and recovers a single unconditional space (AVFS-U); keeping the masks gives the conditional variants AVFS-C and the post-hoc AVFS-CPH. And a sparsity-plus-non-negativity penalty pushes most dimensions to zero, leaving roughly 22 active, non-negative dimensions that a person can actually read — the paper retains 22 interpretable dimensions at 61.9% validation accuracy. Figure 2 above shows one such dimension: its top faces, the words humans used to describe it, and the CelebA/FairFace attributes that independently track it all agree, which is what \"interpretable\" means here."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Does a perception-aligned space actually predict human judgment?"
+    },
+    {
+      "type": "paragraph",
+      "text": "The first test holds out judgments over the same faces the model was trained on — 24,060 of them — and asks the model to predict which face humans called the odd one out. Figure 1 reports accuracy across models. Representations trained on semantic labels (FairFace, CelebA, FFHQ, CASIA-WebFace) sit in the low-to-mid 50% range, while the AVFS models climb well past them; even an AVFS-U variant trained on just 12.5% of the judgments still beats every semantic baseline."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "width_inches": 4.8,
+      "caption": "Figure 1. Predicting similarity on held-out judgments over the same 24,060 faces. Semantic-label representations (left) trail every AVFS model (right); even AVFS-U-12.5% stays ahead of the baselines."
+    },
+    {
+      "type": "paragraph",
+      "text": "The harder test uses 80,300 judgments over entirely novel faces the model never saw in training. This is where a merely memorized space would fall apart. Instead, as Figure 3 shows, the AVFS models again lead the semantic baselines, and the annotator-specific masks continue to help even on unfamiliar faces — evidence that the masks capture something transferable about how a given person judges similarity, not just a fit to the training stimuli."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "width_inches": 4.8,
+      "caption": "Figure 3. Predicting similarity on 80,300 judgments over novel faces. The conditional models (AVFS-C, AVFS-CPH) generalize to triplets built entirely from unseen faces."
+    },
+    {
+      "type": "paragraph",
+      "text": "The table below distills both tests. Across same-stimuli and novel-stimuli accuracy, the AVFS models improve on the best semantic baseline by roughly six to twelve points, and they do it without ever seeing a demographic label during training."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Odd-one-out accuracy (%), best semantic baseline vs AVFS models.",
+      "headers": [
+        "Model",
+        "Same-stimuli acc (%)",
+        "Novel-stimuli acc (%)"
+      ],
+      "rows": [
+        [
+          "FairFace (best semantic baseline)",
+          "55.9",
+          "51.9"
+        ],
+        [
+          "AVFS-U",
+          "62.0",
+          "57.5"
+        ],
+        [
+          "AVFS-C",
+          "67.4",
+          "61.7"
+        ],
+        [
+          "AVFS-CPH",
+          "66.5",
+          "61.4"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Do annotators really matter, or is the mask decoration?"
+    },
+    {
+      "type": "paragraph",
+      "text": "If every person judged similarity the same way, the annotator masks would be interchangeable and swapping them at random would cost nothing. The authors test exactly that: they randomly reassign which annotator mask is attached to each of the 80,300 novel-stimuli judgments and recompute accuracy 100 times. The best conditional model's accuracy falls from 61.7% to 52.8% — a large, consistent drop showing who does the judging is part of the signal."
+    },
+    {
+      "type": "paragraph",
+      "text": "A second analysis eliminates embedding dimensions one at a time. Only 6–13 dimensions are needed to recover 95–99% of the predictive accuracy, but 15–22 are required to explain 95–99% of the full similarity structure. Which dimensions matter, in other words, depends on the context of each particular comparison."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "width_inches": 3.4,
+      "caption": "Figure 4. Annotator positionality. A linear SVM can separate annotator masks by demographic group well above chance (the horizontal line), so sociocultural background leaves a measurable trace in how people judge face similarity."
+    },
+    {
+      "type": "paragraph",
+      "text": "Figure 4 makes the same point from the other direction. A simple linear classifier can tell annotators apart by demographic group from their masks alone, with every confidence interval clear of chance. The model never trained on those group labels; the structure emerged because different people genuinely weigh visual dimensions differently. The paper is careful here — this is a description of how judgments vary, not an endorsement of any grouping as ground truth."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why it matters"
+    },
+    {
+      "type": "paragraph",
+      "text": "AVFS trades a demographic label for a record of who judged what, and gets back a continuous, interpretable, perception-aligned face representation that measures diversity without forcing people into discrete boxes. For teams constrained by law and ethics on collecting sensitive attributes, that is a practical alternative, not just a philosophical one."
+    },
+    {
+      "type": "paragraph",
+      "text": "The boundaries are worth keeping in view: the faces are near-frontal and the annotator pool, though diverse, is finite. But the framework only needs to know who made which judgment, so nothing about it is specific to faces — the same recipe could learn perception-aligned representations for almost any task built on human comparison. That generality is what makes the paper worth reading."
+    }
+  ]
+}

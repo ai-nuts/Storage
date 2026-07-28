@@ -1,0 +1,1 @@
+A few numbers: Midpoint-Displacement matched to CCS reaches average cosine similarity about zero point six three, versus CCS self-similarity zero point seven eight, while competing losses reach only zero point one five. The accuracy-tuned variant averages zero point seven six accuracy versus zero point seven one, winning on three of four models, across five datasets.

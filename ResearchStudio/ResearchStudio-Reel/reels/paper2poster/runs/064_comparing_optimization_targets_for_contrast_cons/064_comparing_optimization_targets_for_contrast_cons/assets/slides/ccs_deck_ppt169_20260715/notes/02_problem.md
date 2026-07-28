@@ -1,0 +1,1 @@
+CCS recovers a direction in a model's activations encoding whether a statement is true or false, using no labels, only the constraint that a statement and its negation disagree. Yet nobody had pinned down what its loss really optimizes, or whether that target is best.

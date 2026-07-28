@@ -1,0 +1,3 @@
+# Title
+
+Offline reinforcement learning in domains like healthcare and education must estimate the environment's transition dynamics from fixed batch data, yet standard maximum likelihood estimates give high variance policies that make dangerous mistakes where data is sparse. This paper introduces Bayesian Inverse Transition Learning, a gradient free, constraint based method that uses an expert's near optimal demonstrations to clip a Bayesian posterior over the transition dynamics. The result is a distribution of dynamics that guarantees safe, high performing policies, recovering one hundred percent accuracy on states where the best action is known and cutting policy variance dramatically across datasets.

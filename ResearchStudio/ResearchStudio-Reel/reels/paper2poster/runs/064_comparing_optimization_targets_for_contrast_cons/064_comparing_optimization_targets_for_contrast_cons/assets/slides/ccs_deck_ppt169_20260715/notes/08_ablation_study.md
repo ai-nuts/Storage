@@ -1,0 +1,1 @@
+The two Midpoint-Displacement variants differ only in lambda. Tuned to mimic CCS, cosine similarity is about zero point six three; tuned for accuracy, it drops to zero point three eight, showing the displacement-versus-midpoint trade-off defines CCS's target. Retuning lambda raises test accuracy to zero point seven six.

@@ -1,0 +1,1 @@
+Being a theory paper, the experiments use controlled synthetic settings. The authors test two finite-rank kernels: a truncated neural tangent kernel and a constructed low-rank kernel. For each they sweep sample sizes from ten to two hundred and many ridge values, averaging ten trials with median and quartile bars.

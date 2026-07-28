@@ -1,0 +1,3 @@
+# Title
+
+Graph neural networks are increasingly deployed in safety-critical settings, but their confidence estimates often become unreliable when the test data shifts away from training. This paper, from the University of Michigan and Lawrence Livermore National Laboratory, introduces G-Delta-UQ, a single-model method for estimating epistemic uncertainty in graph neural networks. By adapting stochastic centering and partial stochasticity to structured graph data, G-Delta-UQ produces better-calibrated confidence indicators across size, concept, and covariate distribution shifts, and improves downstream tasks like out-of-distribution detection and generalization gap prediction.

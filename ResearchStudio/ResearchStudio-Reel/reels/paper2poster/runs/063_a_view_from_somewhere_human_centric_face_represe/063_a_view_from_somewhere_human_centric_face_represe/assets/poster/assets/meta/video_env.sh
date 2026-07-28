@@ -1,0 +1,12 @@
+export SK=/home/v-lingaoxiao/.claude/skills
+export PPT_MASTER_DIR=/datadisk/project/ppt-master
+export VIDEO_OUT=/datadisk/project/ResearchStudio/benchmarks/paper2poster/runs/063_a_view_from_somewhere_human_centric_face_represe/063_a_view_from_somewhere_human_centric_face_represe
+export PAPER_ASSETS=$VIDEO_OUT
+export VIDEO_ASSETS=$VIDEO_OUT/assets
+export VIDEO_AUDIO=$VIDEO_ASSETS/audio
+export VIDEO_CAPTIONS=$VIDEO_ASSETS/captions
+export VIDEO_SLIDES=$VIDEO_ASSETS/slides
+export VIDEO_CLIPS=$VIDEO_ASSETS/clips
+export VIDEO_META=$VIDEO_ASSETS/meta
+export DECK=$VIDEO_SLIDES/deck
+DECKPPTX=/datadisk/project/ResearchStudio/benchmarks/paper2poster/runs/063_a_view_from_somewhere_human_centric_face_represe/063_a_view_from_somewhere_human_centric_face_represe/assets/slides/slides.pptx

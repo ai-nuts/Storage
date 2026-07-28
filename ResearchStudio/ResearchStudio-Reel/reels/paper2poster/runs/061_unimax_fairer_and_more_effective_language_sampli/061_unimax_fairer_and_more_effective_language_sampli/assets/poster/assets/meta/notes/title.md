@@ -1,0 +1,3 @@
+# Title
+
+Multilingual language models must decide how much to train on each language, and the standard answer has been temperature-based sampling. This paper from Google Research introduces UniMax, a simple sampling method that gives more uniform coverage to high-resource languages while explicitly capping how many times any low-resource language's data is repeated. Across many benchmarks and model scales, UniMax beats temperature sampling, and the gains persist as models grow. The authors also release a refreshed mC4 corpus of twenty-nine trillion characters across one hundred seven languages, along with umT5 checkpoints trained with UniMax.

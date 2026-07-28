@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: G-∆UQ substantially improves expected calibration error under structural distortion without significantly sacrificing accuracy, and produces better-calibrated confidence indicators than popular single-model UQ methods across size, concept, and covariate shifts.
+
+Supporting detail: When the calibrated confidence indicators are used downstream, G-∆UQ is competitive-to-best for both generalization-gap prediction (lowest MAE among single-model estimators) and OOD detection; the pretrained variant is often the strongest, notably on covariate shift.
+
+Narration: Across the board, G-Delta-UQ improves the reliability of confidence indicators. On the structural distortion benchmark it achieves substantial reductions in expected calibration error even at severe rotations, while keeping accuracy close to the vanilla model. Under size shift, last-layer anchoring lowers calibration error while maintaining or improving accuracy, with the largest gains on the most severe shift. Under concept and covariate shifts it delivers competitive in-distribution and out-of-distribution accuracy alongside better calibration than other single-model methods. And when its confidence estimates feed downstream tasks, it is among the best single-model estimators for generalization gap prediction and is highly competitive for out-of-distribution detection, with the pretrained variant frequently the strongest under covariate shift.

@@ -1,0 +1,208 @@
+{
+  "lang": "en",
+  "title": "What Is Contrast-Consistent Search Actually Optimizing?",
+  "subtitle": "NeurIPS 2023: opening up the CCS loss reveals a displacement-vs-midpoint trade-off, and a simpler loss that reproduces CCS then beats it",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Large language models keep getting more capable, yet they still state falsehoods with complete confidence. One appealing way to catch this is to read the model's own internal sense of truth: if a model somehow \"knows\" whether a statement is true or false, perhaps we can extract that judgment directly from its activations. Contrast-Consistent Search (CCS) is a probe built on exactly this idea. It uses no labels at all, relying only on a single constraint, that a statement and its negation must give opposite verdicts, to find a direction in activation space that separates \"true\" from \"false.\""
+    },
+    {
+      "type": "paragraph",
+      "text": "CCS works surprisingly well, but a basic question had gone unanswered: what does its loss function actually optimize for? Without a clear answer, the probe is hard to trust and hard to improve. This NeurIPS 2023 paper, by Hugo Fry, Seamus Fallows, Ian Fan, Jamie Wright, and Nandi Schoots (Independent, Oxford University, and King's College London), opens up the CCS loss. It first corrects two long-standing misconceptions, then offers a cleaner account of the optimization target, and turns that account into a new loss function called Midpoint-Displacement (MD)."
+    },
+    {
+      "type": "paragraph",
+      "text": "The conclusion is clean. Tune one hyper-parameter of MD to imitate CCS, and the probe directions it finds almost coincide with real CCS probes. Tune that same hyper-parameter toward accuracy, and it beats CCS. In other words, CCS succeeds not because of the particular shape of its loss formula, but because of the displacement information carried by its contrast-pair training data."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2311.00488　　Code: https://github.com/ash-ai-safety-hub/g3-nandi"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Two misconceptions, corrected"
+    },
+    {
+      "type": "paragraph",
+      "text": "Before explaining CCS, the authors dispel two common but misleading descriptions of it. The first is the idea that CCS learns a separating hyperplane, splitting the true and false clusters onto opposite sides like an ordinary linear classifier. In fact, CCS classifies using only the displacement vector between a statement and its negation, projected onto the probe direction, a quantity that is invariant to translating all activations together. As Figure 1 shows, the raw activations are not cleanly separable by any hyperplane, yet CCS still works, because it reads the difference within each contrast pair rather than which side of a plane a point lands on."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/page7_figure1.png",
+      "caption": "Figure 1: T5-base activations on BoolQ. The x-axis is the projection onto the first principal component; the y-axis is the projection onto the CCS direction θ̂. Red points are 'true', blue are 'false', and the black line marks where CCS outputs 0.5. True and false separate along the CCS direction (vertical axis), yet no clean separating hyperplane splits the two classes.",
+      "width_inches": 4.3
+    },
+    {
+      "type": "paragraph",
+      "text": "The second misconception is to treat CCS outputs as calibrated \"truth probabilities\" and to assume the probe must push those probabilities toward 0 and 1 to succeed. Figure 2 refutes this. On the same UnifiedQA T5-Large model, the encoder's CCS outputs pile up confidently at 0 and 1, yet its test accuracy is only 0.523; the decoder's outputs cluster near 0.5, looking far less confident, yet reach 0.978 accuracy. How polarized the probabilities are and how accurate the probe is turn out to be two entirely different things."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/page8_figure2.png",
+      "caption": "Figure 2: histograms of CCS prober outputs for UnifiedQA T5-Large on BoolQ. (a) The encoder is highly confident, with outputs concentrated at 0 and 1, but reaches only 0.523 test accuracy; (b) the decoder's outputs cluster near 0.5 and look unconfident, yet reach 0.978 accuracy. Confidence and accuracy are decoupled.",
+      "width_inches": 6.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "What CCS really optimizes: a displacement-midpoint trade-off"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors describe CCS with two simple statistics measured along the probe direction θ̂. The first is the displacement variance σ_d²: for the positive activation φ⁺ of a statement and the activation φ⁻ of its negation, the difference u = φ⁺ − φ⁻ captures how far the pair is pushed apart. The second is the midpoint variance σ_m²: the sum v = φ⁺ + φ⁻ captures how far the pair's midpoint sits from the origin."
+    },
+    {
+      "type": "paragraph",
+      "text": "The key observation is that the CCS loss uses a sigmoid that saturates at both ends, which forces the optimization into a trade-off: it wants to spread each pair as far apart as possible along the probe direction (maximizing σ_d²) while pulling their midpoint back toward the origin (minimizing σ_m²). The authors write this implicit trade-off out explicitly as the Midpoint-Displacement loss, L_MD = (λ − 1)·σ_d² + λ·σ_m², with λ ∈ [0, 1] and the probe direction constrained to unit norm. A single hyper-parameter λ sets the relative weight of spreading the pair versus shrinking the midpoint."
+    },
+    {
+      "type": "paragraph",
+      "text": "This yields two variants: MD-CCS, with λ tuned to mimic CCS, and MD-Acc, with λ tuned for accuracy. Since they differ only in λ, they form a natural ablation. As baselines, the authors also compare Mean Absolute (MA), Square Mean Root (SMR), PCA, random directions, and supervised probes, across four models and five datasets."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Results: MD is a faithful proxy for CCS"
+    },
+    {
+      "type": "paragraph",
+      "text": "The central evidence comes from direction similarity. The weight direction learned by MD-CCS has an average cosine similarity of about 0.63 with real CCS probes. That may not sound close to 1, but two facts put it in context: CCS probes agree with each other at only 0.78, and in 1024 dimensions the probability that two random unit vectors reach a cosine similarity of 0.63 is about 10⁻²³⁷. By comparison, other equally accurate losses (MA, SMR, PCA) reach only 0.14 to 0.17 similarity with CCS. The resemblance is specific to MD, not a generic byproduct of being accurate."
+    },
+    {
+      "type": "paragraph",
+      "text": "On accuracy, MD-Acc averages 0.7557 test accuracy, above CCS at 0.7105, winning on three of the four models by about 4% on average. Supervised probes average 0.8674, marking the practical ceiling for these activations."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1: test accuracy of each loss function, averaged over five datasets. MD-Acc beats CCS on three of four models, by about 4% on average.",
+      "headers": [
+        "Model",
+        "CCS",
+        "MD-CCS",
+        "MD-Acc",
+        "Superv."
+      ],
+      "rows": [
+        [
+          "UQA (E)",
+          "0.6863",
+          "0.6902",
+          "0.7414",
+          "0.8839"
+        ],
+        [
+          "UQA (D)",
+          "0.8305",
+          "0.8200",
+          "0.8180",
+          "0.9140"
+        ],
+        [
+          "DeBERTa",
+          "0.7740",
+          "0.7855",
+          "0.8735",
+          "0.9135"
+        ],
+        [
+          "GPT-Neo",
+          "0.5510",
+          "0.5755",
+          "0.5898",
+          "0.7580"
+        ],
+        [
+          "Average",
+          "0.7105",
+          "0.7178",
+          "0.7557",
+          "0.8674"
+        ]
+      ]
+    },
+    {
+      "type": "table",
+      "caption": "Table 2: average cosine similarity between each loss function's direction and 20 CCS probers. Only MD-CCS approaches the CCS self-similarity of 0.78; other high-accuracy losses reach just 0.14-0.17.",
+      "headers": [
+        "Model",
+        "CCS",
+        "MD-CCS",
+        "MD-Acc",
+        "MA",
+        "SMR",
+        "PCA"
+      ],
+      "rows": [
+        [
+          "UQA (E)",
+          "0.8359",
+          "0.7034",
+          "0.2995",
+          "0.1448",
+          "0.1991",
+          "0.2406"
+        ],
+        [
+          "UQA (D)",
+          "0.8787",
+          "0.7269",
+          "0.5303",
+          "0.1687",
+          "0.2432",
+          "0.1792"
+        ],
+        [
+          "DeBERTa",
+          "0.8643",
+          "0.6209",
+          "0.2786",
+          "0.2309",
+          "0.2024",
+          "0.0741"
+        ],
+        [
+          "GPT-Neo",
+          "0.5277",
+          "0.4830",
+          "0.4164",
+          "0.0226",
+          "0.0485",
+          "0.1901"
+        ],
+        [
+          "Average",
+          "0.7767",
+          "0.6336",
+          "0.3812",
+          "0.1418",
+          "0.1733",
+          "0.1710"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Ablating λ: the trade-off defines the target"
+    },
+    {
+      "type": "paragraph",
+      "text": "Because MD-CCS and MD-Acc differ only in λ, they give a clean ablation. Tuned to mimic CCS, the direction reaches an average cosine similarity of about 0.63; tuned for accuracy, that similarity drops to about 0.38. This shows that the trade-off between σ_d² and σ_m² is the knob that defines what CCS is optimizing. Swapping MD-CCS's λ for the accuracy-tuned value raises average test accuracy from 0.7178 to 0.7557. The λ that matches CCS also barely changes across datasets and models, suggesting the identified proxy target is robust."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaways and limitations"
+    },
+    {
+      "type": "paragraph",
+      "text": "This work turns a probe that \"just works\" into one we can explain: CCS succeeds because of the displacement information in its contrast-pair data, the difference between a statement and its negation, not because of the specific shape of its loss formula. A simple Midpoint-Displacement loss reproduces CCS faithfully and, once retuned, outperforms it. For researchers working on interpretability and truth probing, the implication is that the exact loss formula is largely interchangeable among high-accuracy probes; the real lever is the trade-off between how far pairs are separated and how large their midpoint grows."
+    },
+    {
+      "type": "paragraph",
+      "text": "A few caveats are worth noting. The account of CCS's optimization target is heuristic rather than a formal proof, the experiments span four models and five datasets, and MD-Acc does not win everywhere (CCS is slightly ahead on the UQA decoder). Even so, the displacement-midpoint trade-off offers a clear, actionable lens for understanding and improving this family of unsupervised truth probes."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: Analysis confirms SiT captures the close human-robot interaction absent from driving datasets: pedestrians are concentrated near the robot, and SiT has far more instances satisfying both space-sharing and within-2-meter proximity conditions than nuScenes, Waymo Open, or Argoverse2. Using the provided semantic maps consistently improves trajectory prediction.
+
+Supporting detail: For trajectory prediction, NSP-SFM with the semantic map achieves the best accuracy (ADE20 0.517, FDE20 0.925), improving over its no-map variant (ADE20 0.634, FDE20 1.087).
+
+Narration: The data analysis confirms that SiT captures exactly the interactions it set out to. When you plot where pedestrians appear relative to the robot, they cluster close in, from all directions, whereas in Waymo Open and nuScenes pedestrians tend to sit off to the side on separate paths. Counting instances that satisfy both a space-sharing condition and a within-two-meter proximity condition, SiT has dramatically more than the three autonomous-driving datasets, which means driving data underrepresents the human-robot interaction that social navigation robots must handle. On the benchmark itself, the standout finding is that supplying the semantic map improves trajectory prediction: the best model, NSP-SFM with the map, reaches an ADE-twenty of about 0.52 and an FDE-twenty of about 0.93, clearly better than the same model without the map.

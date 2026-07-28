@@ -1,0 +1,560 @@
+                                                         Bayesian Inverse Transition Learning for Offline Settings
+
+
+                                                                         Leo Benac 1 Sonali Parbhoo 2 Finale Doshi-Velez 1
+
+
+                                                                Abstract                               be more data efficient, simulate data, encourage exploring,
+                                                                                                       capturing important details of the environment as well as
+                                             Offline Reinforcement learning is commonly used
+                                                                                                       counterfactual reasoning (Ha & Schmidhuber, 2018; Oh
+                                             for sequential decision-making in domains such
+                                                                                                       et al., 2015; Buesing et al., 2018).
+arXiv:2308.05075v1 [cs.LG] 9 Aug 2023
+
+
+
+
+                                             as healthcare and education, where the rewards
+                                             are known and the transition dynamics T must              In this paper, we are particularly interested in learning
+                                             be estimated on the basis of batch data. A key            the transition dynamics T in offline settings, that is from
+                                             challenge for all tasks is how to learn a reliable        already-collected batch data. Such settings are common in
+                                             estimate of the transition dynamics T that pro-           healthcare and education. However, learning the dynamics
+                                             duce near-optimal policies that are safe enough           T is a hard problem as the number of parameters to estimate
+                                             so that they never take actions that are far away         grows with the dimensions of state and action spaces. There
+                                             from the best action with respect to their value          is a tension between a model class for the dynamics that is
+                                             functions and informative enough so that they             expressive enough to capture what is needed and one that is
+                                             communicate the uncertainties they have. Using            small enough to learn (Zhu et al., 2023; Ayoub et al., 2020).
+                                             data from an expert, we propose a new constraint-         Moreover, in offline settings, we cannot interact with the
+                                             based approach that captures our desiderata for           environment to generate more data; we are limited to the
+                                             reliably learning a posterior distribution of the         exploration (or lack thereof) to that the users who produced
+                                             transition dynamics T that is free from gradients.        the data (Herman et al., 2016).
+                                             Our results demonstrate that by using our con-
+                                                                                                       Our goal in this work is to take advantage of the fact that, in
+                                             straints, we learn a high-performing policy, while
+                                                                                                       many scenarios, the users who generated the trajectories of
+                                             considerably reducing the policy’s variance over
+                                                                                                       batch data can be presumed to be near-optimal—or at the
+                                             different datasets. We also explain how combin-
+                                                                                                       very least, not highly sub-optimal. We consider a version
+                                             ing uncertainty estimation with these constraints
+                                                                                                       of the learning from the expert demonstration that we call
+                                             can help us infer a partial ranking of actions that
+                                                                                                       Inverse Transition Learning (ITL). Here, we presume that
+                                             produce higher returns, and helps us infer safer
+                                                                                                       both the rewards R and a near-optimal policy πϵ are avail-
+                                             and more informative policies for planning.
+                                                                                                       able to us; our goal is to estimate a posterior distribution of
+                                                                                                       the dynamics T (either for further optimization of the policy
+                                                                                                       or for use in planning against other rewards R′ ). In later
+                                        1. Introduction                                                versions, we will relax the requirement that the user policy
+                                        In standard planning scenarios, one is given the rewards       πϵ is given.
+                                        R and the transition dynamics of the environment T and         Broadly, our approach consists of three parts: First, we use
+                                        asked to compute the optimal set of actions or policy π.       observational data from the expert to create a set of con-
+                                        However, in many real settings, the transition dynamics T is   straints that require that the value of actions taken by the
+                                        not available. In such settings, model-based (Reinforcement    expert user is higher than the values of actions they never
+                                        Learning) RL—that is, first learning the transition dynam-     took. Next, we create a gradient-free way to estimate the
+                                        ics T and then planning—is useful because it can help us       posterior distribution over the dynamics T in a way that sat-
+                                             1                                                         isfies those constraints. This process guarantees that policies
+                                               Department of Computer Science, Harvard Univer-
+                                        sity, Cambridge, MA, USA 2 Department of Engineering,          associated with planning against any sample of the dynam-
+                                        Imperial College London, London, UK. Correspondence            ics T will be highly performant—potentially better than the
+                                        to:    Leo Benac <lbenac@g.harvard.edu>, Sonali Parb-          original expert—even with limited coverage of the state-
+                                        hoo <s.parbhoo@imperial.ac.uk>, Finale Doshi-Velez <fi-        action space. We then demonstrate how planning against the
+                                        nale@seas.harvard.edu>.                                        maximum likelihood estimate of the dynamics T M LE often
+                                        ICML (International Conference on Machine Learning) Workshop   results in policies that have high variance depending on the
+                                        on Counterfactuals in Minds and Machines, Honolulu, Hawaii,    particular sample of trajectories in the offline batch. Then,
+                                        USA. Copyright 2023 by the author(s).
+                                          Inverse Transition Learning for Offline RL
+
+we show that having a posterior distribution over the dynam-     the system dynamics but also characterize where methods
+ics T and also a posterior over potential optimal policies       such as T M LE fail under poor sample coverage as this is a
+results in higher performing and more informative policies,      common way to estimate the transition dynamics T in such
+as well as lower variance across different batches of data.      offline settings (Zhang et al., 2021). Other works (Reddy
+                                                                 et al., 2018; Golub et al., 2013) developed gradient-based
+2. Related Work                                                  methods to learn the expert’s belief of the dynamics, where
+                                                                 such beliefs are suboptimal, whereas, in our setting, the
+Learning from Demonstrations Learning behavior poli-             expert is uncertain of what the best action is.
+cies from demonstration trajectories produced by a near-
+                                                                 Constraint-based RL Several algorithms study IRL by im-
+optimal expert through supervised learning is called Imi-
+                                                                 posing constraints on the rewards to induce, for instance,
+tation Learning (IL). Different IL methods have been de-
+                                                                 safety. For instance, Fischer et al. (2021) presents Con-
+veloped. (Ross et al., 2010) trains a policy at each time
+                                                                 strained Soft Reinforcement Learning (CSRL), an extension
+step, (Ross et al., 2011) introduces an iterative algorithm
+                                                                 of soft reinforcement learning to Constrained Markov De-
+DAgger where at each iteration the agent needs to ask an
+                                                                 cision Processes (CMDPs) where the goal of the reward
+optimal expert a set of actions for some states that the agent
+                                                                 maximization is regularized with an entropy objective to en-
+explored, then aggregate the dataset with this new informa-
+                                                                 sure safety. (Scobee & Sastry, 2019) introduce an approach
+tion and retrain a policy on the aggregated dataset. (Kim
+                                                                 based on the Maximum Entropy IRL framework that allows
+et al., 2013) introduces Approximate Policy Iteration with
+                                                                 inferring which constraints can be added to the MDP to most
+Demonstration (APID), where they combine expert data and
+                                                                 increase the likelihood of observing these demonstrations.
+RL signals and show that the policy that they learn is robust
+                                                                 Our work may be seen as a specific form of constraint-based
+to suboptimal demonstrations.
+                                                                 RL: we utilize observational data from an expert agent to
+Outside of learning the policy, learning the reward function     create a set of constraints and perform inference on T within
+R may be of interest as it gives a succinct description of a     a discrete MDP setting. In contrast to these approaches, we
+task, and such reward function R can be used for planning        leverage (near) optimal data to estimate transitions for ac-
+and transfer learning. (Ng et al., 2000) introduce Inverse Re-   tions that lack data, ultimately resulting in a more accurate
+inforcement Learning (IRL) where the focus is on learning        T estimate than what traditional maximum likelihood esti-
+the reward function R given T or access to a simulator to do     mates would produce.
+roll-outs, as well as near-optimal demonstrations from an
+expert and in some cases its policy. (Abbeel & Ng, 2004)         3. Preliminaries
+show that learning the reward function R through the prin-
+ciple of maximum margin can be used to learn the behavior        Markov Decision Processes (MDPs) An MDP M can be
+policy. (Ziebart et al., 2008) show how the principle of         respresented as a tuple M = {S, A, T, γ, R} , where S is
+Maximum Entropy can be used to learn the reward function         the state space , A is the action space, T is the dynamics of
+R and corresponding policies that are robust to suboptimal       the environment, γ is the discount factor and R is a bounded
+demonstrations. (Ramachandran & Amir, 2007) solves the           reward function. In RL the goal is to find the best policy
+non-identifiability of the reward function R by learning a       π ∗ corresponding to a MDP M. In a discrete MDP there
+posterior distribution rather than a point estimate.             exists at least one optimal deterministic policy. We measure
+                                                                 the quality of a policy π is by looking at its corresponding
+ITL focuses on learning the transition dynamics T given
+                                                                 value functions. The value functions V π and Qπ are the
+R, expert demonstrations, and its policy. Using Bayesian
+                                                                 expected cumulative reward by taking actions with respect
+inference, we propose to learn a posterior distribution of the
+                                                                 to a policy π. V π (s) and Qπ (s, a) will both start from state
+transition dynamics T in an offline setting. Every sample
+                                                                 s but Qπ (s, a) will take action a before following π. They
+of this distribution is guaranteed to produce a near-optimal
+                                                                 can be computed through the Bellman Equations below,
+policy downstream. The most closely related among these
+                                                                 where rt is the reward at time t:
+works is (Herman et al., 2016) where the authors present a
+gradient-based IRL approach for simultaneously estimating        Bellman Equations The value of a policy π at state s is
+system dynamics and rewards via combined optimization            given by the expected sum of rewards,
+in tabular MDPs. However, (Herman et al., 2016) does not
+explicitly explore the relation between the estimated and                                   ∞
+                                                                                            X
+true dynamics and learn the dynamics T by gradient-based               V π (s)   =     E[         γ t rt |s0 = s, π]          (1)
+optimization. In contrast to these methods, we i) present                                   t=0
+a constraint-based optimization that is free of gradients to                     =     Ea [R(s, π(a|s))] + γEs′ [V π (s′ )]
+guarantee learning a posterior distribution of T that yields
+a performant and informative policy. We not only learn           The value of a policy π at state s when performing action a
+                                           Inverse Transition Learning for Offline RL
+
+is given by,                                                       (ie. for the states where the expert user is certain of the best
+                        ∞
+                                                                   action a∗ have the value of a∗ at least ϵ away from the other
+       Qπ (s, a)   = E[
+                       X
+                          γ t rt |s0 = s, a0 = a, π]        (2)    actions and for the uncertain states have the actions selected
+                           t=0
+                                                                   by the user expert ϵ close to each other, all with respect to
+                                                                   Tb).
+                   = R(s, a) + γEs′ [V π (s′ )]             (3)
+                                                                   Definition 4.3. (ϵ-optimality) A policy π is ϵ-optimal if it
+                   π
+Notation: Let V denote the vector of values V (s). Weπ             only takes actions in the ϵ-ball for all states s with respect
+use shorthand Ra , Qa , and Ta to represent the vectors R(·, a)    to the true transition dynamics T , that is, only takes actions
+and Q(·, a) and the matrix T (·|·, a). We also use use short-      in ϵ(s; T ).
+hand Rπ , Qπ , and Tπ to represent the vectors Ea∼π [Ra ],
+                                                                   We assume that the expert policy πϵ , which is ϵ-optimal, is
+Ea∼π [Qa ] and the matrix Ea∼π [Ta ]. Q∗ represents the op-
+                                                                   uniform in each of the actions in the ϵ ball ϵ(s; T ), where
+timal Q functions in the True unknown environment T (ie.
+                                                                   T is the true unknown dynamics. This definition of sub-
+assuming the agent always takes the best action possible a∗ ,
+                                                                   optimality is similar to how clinicians would behave in real
+where a∗ may change depending on the state s that we are
+                                                                   healthcare settings, for states where there is a clear best treat-
+in).
+                                                                   ment it makes sense for them to only pick that one treatment
+In the tabular setting the value functions can be calculated       but for other states where more than one treatment seems
+directly through a closed-form solution of V π ,                   appropriate it makes sense to assume complete uncertainty
+                                                                   among these treatments if no else prior information is given.
+          V π = Rπ + γTπ V π = (I − γTπ )−1 Rπ ,            (4)
+                                                                   Definition 4.4. (deterministic/stochastic-policy state ) A
+      π
+and Q respectively,                                                deterministic-policy state is a state for which the expert πϵ
+                                                                   takes only one action (ie. a state for which we know the best
+  Qπa = Ra + γTa V π = Ra + γTa (I − γTπ )−1 Rπ . (5)              action to take since we assume we are given the policy of the
+                                                                   expert πϵ ) and a stochastic-policy state is a state for which
+                                                                   the expert takes multiple actions (i.e. a state for which the
+4. Methodology
+                                                                   expert has uncertainty over a certain group of actions).
+In this section, we describe the setup of our methods, intro-
+duce two key definitions relating the sub-optimality of the        Note that when ϵ = 0, the expert is fully optimal and hence
+expert to T , and develop a set of constraints for both an op-     we would only get deterministic-policy states, whereas as
+timal and sub-optimal expert. These constraints enable us to       ϵ gets bigger we start having more stochastic-policy states.
+impose the structure we would like to have when estimating         A common method to estimate the dynamics T in offline
+T . Based on these constraints, we demonstrate how one can         settings is to use MLE estimates. However since our batch
+infer a reasonable estimate posterior on T .                       data D only contains expert demonstrations, there can be
+                                                                   states and action pairs (s, a) for which there is no data. A
+Problem Setup We assume we know everything about the               common way around that is to assume we see every tran-
+MDP M except the true transition dynamics T (i.e. M \              sition at least once before computing the MLE estimates,
+{T }). We assume we are also given an expert policy πϵ             which is also called smoothing (Zhang & Teng, 2021) . We
+and offline tabular observational batch data D, where D            refer to this as T M LE . It is the equivalent of assuming a
+is assumed to have been generated by rollouts of πϵ with           uniform prior on T and setting T M LE to be the mean of this
+respect to the true unknown transition dynamics T . We             posterior, assuming a Dirichlet-Multinomial Probabilistic
+assume that the policy of the expert we are given, πϵ is           Model over T , which we will refer to as the P (T |D):
+ϵ-optimal.
+Definition 4.1. (ϵ-ball) For a state s, an action a belongs to     Probabilistic Model over T : P (T |D)
+the ϵ-ball ϵ(s; T ′ ) if the action-value of that action Q(s, a)
+is within ϵ of the optimal action-value maxa′ Q(s, a′ ) with                      Prior :      Dir(1|s, a)
+respect to the transition dynamics T ′ .                                   Likelihood :        M ultinomial(Ns,a |s, a)
+Definition 4.2. (ϵ-ball property) We say that a point es-                     Posterior :      Dir(Ns,a + 1|s, a)
+timate Tb has the ϵ-ball property with respect to the true
+transition dynamics T if they have the same ϵ-balls for ev-
+ery state s : ϵ(s; Tb) = ϵ(s; T ).                                 Ns,a and 1 are both vectors of dimensions |S|. Ns,a is the
+                                                                   number of transitions in the batch data from state s and
+Having a transition dynamics estimate Tb that has the ϵ ball       action a. Using the assumptions we have made, we can
+property is important as we want to make sure that it cap-         develop a set of constraints based on the expert policy πϵ
+tures the same structure as the true transition dynamics T         that highlights what properties we want our T to satisfy
+                                           Inverse Transition Learning for Offline RL
+
+by using the Closed Form Bellman Equations for tabular              For (s, a) such that a ∈
+                                                                                           / ϵ(s) i.e. actions that the expert never
+MDPs.                                                               takes:
+                                                                                              1
+4.1. Constraints on T given that the expert policy πϵ is            Ta (I − γ Tbπϵ )−1 Rπϵ < ((I − γ Tbπϵ )−1 Rπϵ − Ra − δs,a )
+                                                                                             γ
+     ϵ-optimal                                                                                                            (10)
+We construct two different sets of constraints that T should        Finally, for (s, a) where a ∈ ϵ(s):
+satisfy. The first set of constraints is applicable when the                                1
+expert is fully optimal, and the second when the expert is          Ta (I − γ Tbπϵ )−1 Rπϵ < ((I − γ Tbπϵ )−1 Rπϵ − Ra + δs,a )
+                                                                                            γ
+suboptimal. Tbπϵ in the constraints below could be sampled                                                                (11)
+from the posterior of the data model or we could use Tbπϵ =         and
+TπMϵ LE . These are both reasonable choices since this is the
+                                                                    1
+part of the state action space for which we have adequate             ((I − γ Tbπϵ )−1 Rπϵ − Ra − δs,a ) < Ta (I − γ Tbπϵ )−1 Rπϵ
+data.                                                               γ
+                                                                                                                              (12)
+Fully Optimal Expert Policy Constraints When πϵ =                   If πϵ is not fully optimal, meaning there are states for which
+π∗ ,                                                                the expert takes more than 1 action (stochastic-policy states),
+                          1                                         we can still develop similar constraints and guarantees. How-
+ Ta∗ (I − γ Tbπϵ )−1 Rπϵ = ((I − γ Tbπϵ )−1 Rπϵ − Ra∗ ) (6)         ever in this case, if T satisfies the Suboptimal Expert Pol-
+                          γ
+                                                                    icy Constraints above, T will not necessarily have the ϵ-
+and for a ̸= a∗                                                     ball property due to the nonlinearity of the actions in the
+                         1                                          stochastic-policy states. We can however still make sure that
+ Ta (I − γ Tbπϵ )−1 Rπϵ < ((I − γ Tbπϵ )−1 Rπϵ − Ra − ϵ (7)
+                         γ                                          the T ’s satisfying the constraints have the ϵ-ball property
+In what follows, we show that if T satisfies the constraints        by tuning the δs,a appropriately, where δs,a are constants.
+above, then T will capture the correct structure provided by        Empirically, when δs,a = ϵ does not seem to output T ’s that
+the ϵ-optimal expert.                                               have the ϵ-ball property, it seems to be a good heuristic to
+                                                                    make the constraints tighter by increasing/decreasing δs,a
+Lemma 4.5. If T satisfies the above constraints then T will
+                                                                    in the inequality 10/ 11&12 respectively.
+recover the ϵ-ball property. That is, let a be any action such
+that a ̸= a∗ . Then,
+                                                                    4.2. Estimating the Posterior over T given that the
+Ta (I − γ Tbπϵ )−1 Rπϵ < γ1 ((I − γ Tbπϵ )−1 Rπϵ − Ra − ϵ)               expert is ϵ-optimal
+                             ⇐⇒                                     Using the batch data D, we can construct a posterior distribu-
+                                                                    tion over T , P (T |D). T M LE is the mean of this posterior.
+Ra + Ta γV πϵ + ϵ = Qπa ϵ + ϵ < V πϵ = Qπa∗ϵ                        However, the problem with such estimates of T ’s is that
+                                                             (8)    they do not take advantage of the fact that the expert is
+                                                                    acting near-optimally. The two sets of constraints we de-
+Proof sketch: We used the fact that if T satisfy the con-           veloped impose T ′ s satisfying such constraints to have the
+straints then Tπϵ = Tbπϵ (since πϵ = a∗ ). Hence we see             ϵ-ball property. We use those constraints to “Clip” the pos-
+that having a Tb that satisfies these constraints will result in    terior distribution through rejection sampling and estimate
+the optimal action being at least ϵ better with respect to the      P (T |D, πϵ ), where the notation here means that we are now
+value functions with respect to that Tb and hence recover the       using the information given by the expert through πϵ , this is
+ϵ-ball property.                                                    the same information that is used to develop the constraints.
+                                                                    We are now using this assumption to estimate the posterior
+Lemma 4.5 implies that if T satisfies the constraints then it       distribution of T . The idea is to sample from the posterior
+will always recover the best actions in deterministic-policy        distribution P (T |D) but to only accept the samples that
+states as well as never inducing actions outside of the ϵ-ball      satisfy our constraints. This leaves us with an empirical dis-
+in stochastic-policy states. This is why we observe 100%            tribution of T ’s that recover the ϵ-ball property). We present
+accuracy of our method in the Deterministic and a ∈ ϵ-balls         an algorithm to clip the P (T |D) posterior in Algorithm 1.
+columns in Table 1.                                                 We call this resulting posterior distribution P (T |D, πϵ ).
+
+Suboptimal Expert Policy Constraints:           For (s, a∗ ) i.e.
+where the expert is deterministic:
+                                                                    5. Experimental Setup
+                             1                                      In our experiments, we look at how the T M LE performs
+ Ta∗ (I − γ Tbπϵ )−1 Rπϵ =     ((I − γ Tbπϵ )−1 Rπϵ − Ra∗ ) (9)     across different data and optimality settings, characterize
+                             γ
+                                           Inverse Transition Learning for Offline RL
+
+Algorithm 1 Rejection Sampling to estimate P (T |D, πϵ )          an environment that has a variety of behaviors. We use
+  Inputs: R, πϵ (ϵ expert policy), P (T |D), Number of            γ = 0.95 and a reward function that is action dependent
+  samples N required                                              and such that the range of possible values depends on the
+  Output: P (T |D, πϵ )                                           number of states, |S| = 15.
+  While samples accepted < N
+                                                                  Generating batch data D. For D, we simulate episodes
+     Sample Tbs,a ∼ P (T (s′ |s, a)|D) for each (s,a)
+                                                                  as follows: first, we pick a random state among the 15
+     constrainta = Vπ − (Ra + Tba γVπ )
+                          ϵ                  ϵ                    possible states; next, we roll out the state using πϵ in the true
+       for each (s,a) where πϵ (a|s) = 0                          environment T until we reach the terminal state or until we
+            While constrainta (s) < ϵ                             reach 20 steps 1 This procedure is repeated for K episodes.
+                Tbs,a ∼ P (T (s′ |s, a)|D)                        Based on D, we examine two different settings namely, a
+               constrainta = Vπϵ − (Ra + Tba γVπϵ )               low data setting (K = 15) and a high data setting (K = 300),
+       for each (s,a) where πϵ (a|s) = 1                          as well as 3 different values of ϵ to get an idea of how the
+            While constrainta (s) ̸= 0                            task of estimating T varies across different datasets as well
+                Tbs,a ∼ P (T (s′ |s, a)|D)                        as different degree of optimality: ϵ = 0 (corresponding
+                                                                  to a fully optimal expert with 0 stochastic-policy states);
+               constrainta = Vπϵ − (Ra + Tba γVπϵ )
+                                                                  ϵ = 3 (3 stochastic-policy states); ϵ = 4 (6 stochastic-policy
+       for each (s,a) where s is a stochastic-policy state        states)
+  and πϵ (a|s) > 0
+            While constrainta [s] < −δs,a
+                                                                  Baselines and Metrics. First, We compare the perfor-
+                Tbs,a ∼ P (T (s′ |s, a)|D)                        mance of our posterior distribution P (T |D, πϵ ) to the per-
+               constrainta = Vπϵ − (Ra + Tba γVπϵ )               formance of T M LE and the posterior distribution P (T |D).
+            While constrainta [s] > δs,a                          We look at the accuracy of deterministic-policy states, and
+                Tbs,a ∼ P (T (s′ |s, a)|D)                        the accuracy of stochastic-policy states, as well as how of-
+               constrainta = Vπϵ − (Ra + Tba γVπϵ )               ten. Next, we look at how different methods perform at
+       If Tb recover the ϵ ball property                          recovering the best action over states, through planning on
+            Accept Tb                                             their respective estimate of T by computing Q∗metric .
+       Else                                                                        X                  X
+                                                                                                                          !
+            Tune the different δs,a and start over.                 Q∗metric (b
+                                                                              π) =      Q∗ (s, a∗ ) −      b(a|s)Q∗ (s, a)
+                                                                                                           π
+  Construct the posterior distribution P (T |D, πϵ ) from all                       s∈S                   a∈A
+  of the accepted samples
+                                                                  This metric gives us a more quantitative idea of how good,
+                                                                  the different methods are at estimating a T that captures the
+its mistakes as well as highlight certain issues that can arise   best action when planning on such T , as well as quantifying
+when learning under expert data. We show how combining            the importance of each mistake with respect to the True
+our constraints with uncertainty helps our method avoid and       environment. The better an action is, the lower Q∗metric will
+reduce such mistakes and pathologies and hence performs           be, and the worse an action is the higher Q∗metric . We want
+better across different metrics and settings. We also show        Q∗metric to be as close as possible to 0 (using π ∗ will achieve
+that our constraints considerably reduce the variance of          such a result). In real life we would not be able to compute
+the policy we get over different batch data. Finally, we          such metrics, this is purely for analysis purposes. We also
+demonstrate why combining uncertainty with constraints            report the result of the Q∗metric for the policy of the expert
+can help us infer a ranking of actions in the ϵ-balls over        πϵ . (Note that this policy is not obtained through planning
+the stochastic-policy states which results in having more         on any T estimate, we just report it to get an idea of how
+informative, and higher-performing policies when doing            it performs compared to others. It is expected that this πϵ
+planning.                                                         performs very well since it is ϵ optimal by definition).
+
+                                                                  Training Details All of the results presented are averaged
+Setup For all the results we will show, we used a fixed
+                                                                  over 1000 datasets. For the MLE results, we do planning
+MDP of 15 states (+1 terminal state) and 6 actions so that it
+                                                                  on T M LE to get π b and compute the results whereas for the
+is computationally feasible to run various experiments and
+                                                                  P (T |D, πϵ ) and P (T |D) results, we do planning on 1000
+big enough so that it is an environment interesting enough.
+                                                                  different T ’s (sampled using the corresponding distribution)
+The True T is created such that transitioning from one state
+to the next state is sometimes uniform and sometimes very             1
+                                                                        Trajectories of longer than 20 steps are truncated to 20 steps
+skewed towards one or a couple of states so that we have          to reflect most realistic healthcare settings.
+                                                        Inverse Transition Learning for Offline RL
+
+and get 1000 corresponding πb’s, then take the mean. For                       Our approach enables quantifying the uncertainty and
+each Batch Data D ∈ {D(i) }1000
+                           i=1 we do the following:                            ranking over actions for stochastic-policy states s thus re-
+                                                                               sulting in more informative and performant policies for
+MLE Method
+                                                                               planning. The policy and Q values function we get when
+Tb = T M LE                   −→           (π M LE , QM LE ) = (b
+                                                                π , Q)
+                                                                    b
+                         Value Iteration                                       planning on our P (T |D, πϵ ) Posterior will quantify the un-
+   −→
+Compute Results                                                                certainty in a more informative way by creating a ranking
+                                                                               over the actions in the ϵ ball ϵ(s) for all the stochastic-policy
+P (T |D, πϵ ) or P (T |D) Posterior Method
+                                                                               states s. This is particularly useful when we present such
+{Tb(i) }1000 ∼ Posterior        −→        π (i) , Q
+                                        {(b       b (i) )}1000
+        i=1
+                                      Value Iteration
+                                                                      i=1      policies to clinicians. The policy from the T M LE will be de-
+    −→            {(b
+                    π , Q)}
+                        b         −→                                           terministic even in states where we have uncertainty which
+Empirical Mean                Compute Results
+                                                                               can be dangerous as T M LE is prone to making a lot of
+                                                                               mistakes, while the policy of the expert has no idea of the
+6. Results                                                                     ranking of actions in the ϵ(s; T ) in stochastic-policy states
+                                                                               s. The uncertainty modeled from the data coupled with our
+Our approach outperforms the baselines in terms of
+                                                                               constraints used by the P (T |D, πϵ ) Posterior, is what helps
+accuracy on both deterministic-policy and stochastic-
+                                                                               us infer that ranking while making sure that this uncertainty
+policy states. For deterministic-policy states, the more
+                                                                               is correct with respect to the ϵ-ball definition of the expert.
+data the more accurate we are across the settings and the less
+                                                                               It can also help us at inferring a better policy than the one
+variability we observe. We also observe that in our method
+                                                                               we are given by the expert (See Table 2).
+(P (T |D, πϵ )), the constraints for deterministic-policy states
+enforce 100% accuracy on such states while the MLE and
+P (T |D) method, who does not have such constraints can-
+not achieve such performance. These results are shown in
+Table 1. For stochastic-policy states, our introduction of
+constraints explicitly enforces that we will never pick ac-
+tions that are ϵ away from the best action (bad mistakes). In
+contrast, the MLE and P (T |D) methods do not have such a
+guarantee. What is also interesting to observe is that even
+though our constraints do not say anything explicitly about
+which action to take in the epsilon balls we see that our
+method is still more accurate than the MLE and P (T |D)
+when inferring actions for stochastic-policy states. This
+show how the constraints can help to infer the uncertainty
+over stochastic-policy states. (See Table 1)
+
+T M LE makes more bad mistakes, regardless of the
+amount of data used. Results from Table 1 show that
+having more data does not necessarily help in inferring bet-
+ter actions. Specifically, though T M LE uses more data, this
+does not prevent it from making more bad mistakes (actions
+not in the ϵ-balls), since certain states will still be hard to
+infer even with more data. This is due to that the data only
+covers a small part of the state action space and even in
+higher data settings, a large part of the state action space                   Figure 1. Result of the Q∗ metric across 1000 different datasets,
+will remain unexplored. This is due to aleatoric uncertainty.                  where the Q∗ metric measure quantitatively how close the inferred
+                                                                                      b is to the true unknown policy π ∗ .Our method performs
+                                                                               policy π
+                                                                               the best as well as exhibiting the least amount of variance.
+Our constraints produce policies that have considerably
+less variance across all datasets in comparison to the
+baselines. Results from Table 2 and Figure 1 show that in                      7. Discussion
+addition to outperforming the MLE and the P (T |D) poste-
+rior at inferring the best action, our method (P (T |D, πϵ ))                  We focused on addressing the challenges associated with
+has a lot less variance across different datasets thanks to the                learning the transition function, T , in a gradient-free man-
+constraints that enforce the T to recover the ϵ ball property                  ner, under offline, tabular, and inverse settings while cap-
+when planning.                                                                 turing our desired outcomes. First, we introduced a novel
+                                                Inverse Transition Learning for Offline RL
+
+
+
+
+                                                                          Table 2. Our method (P (T |D, πϵ )) can recover a policy even better
+                                                                          than the policy of the expert πϵ which is already near optimal. It
+Table 1. (Deterministic): accuracy in % of the deterministic-policy       recovers such a policy by having very little variance of various
+states, (Stochastic): the accuracy of the stochastic-policy states        batch data. This holds over different degrees of optimality.
+(a ∈ ϵ-balls): the percentage of mistakes that are still ϵ-close to the
+best action. (When ϵ = 0 there are no stochastic-policy states due                       ϵ = 0: 0 stochastic-policy states
+to the expert being fully optimal which is why there is no result                                    Low Data
+for the Stochastic and a ∈ ϵ-balls columns). On each metric the                            Method            Q∗metric
+P (T |D, πϵ ) posterior achieves better results.                                           P (T |D)      142.17 ± 8.66
+              ϵ = 0: 0 stochastic-policy States                                             MLE          59.75 ± 51.99
+                 Low Data (Accuracy in %)                                                P (T |D, πϵ )        0 ±0
+   Method        Deterministic Stochastic a ∈ ϵ-balls                                       Expert             0 ±0
+  P (T |D)           48 ±9           N/A        N/A                                                 High Data
+    MLE              67 ±1           N/A        N/A                                        Method            Q∗metric
+ P (T |D, πϵ )      100 ± 0          N/A        N/A                                        P (T |D)        99.0 ± 9.73
+                High Data (Accuracy in %)                                                   MLE           14.75 ± 6.98
+   Method        Deterministic Stochastic a ∈ ϵ-balls                                    P (T |D, πϵ )         0 ±0
+  P (T |D)           61 ±6           N/A        N/A                                         Expert             0 ±0
+    MLE              83 ±7           N/A        N/A
+                                                                                        ϵ = 3: 3 stochastic-policy States
+ P (T |D, πϵ )      100 ± 0          N/A        N/A
+                                                                                                    Low Data
+               ϵ = 3: 3 Stochastic States                                                 Method             Q∗metric
+               Low Data (Accuracy in %)                                                   P (T |D)       141.81 ± 8.92
+   Method      Deterministic Stochastic                a ∈ ϵ-balls                         MLE           62.71 ± 51.32
+  P (T |D)        48 ±09         37 ±20                  64 ±37                         P (T |D, πϵ )      3.56 ±0.1
+    MLE           65 ± 10        44 ±23                  83 ±29                            Expert           3.60 ±0
+ P (T |D, πϵ )    100 ± 0        53 ±25                 100 ± 0                                     High Data
+               High Data (Accuracy in %)                                                  Method             Q∗metric
+   Method      Deterministic Stochastic                a ∈ ϵ-balls                        P (T |D)      100.83 ± 10.45
+  P (T |D)         67 ±8         33 ±25                  30 ±30                            MLE             16.32 ± 9
+    MLE            87 ±7         53 ±28                  70 ±38                         P (T |D, πϵ )     3.56 ± 0.25
+ P (T |D, πϵ )    100 ± 0        55 ±29                 100 ± 0                            Expert           3.60 ±0
+
+               ϵ = 4: 6 Stochastic States                                               ϵ = 4: 6 stochastic-policy States
+               Low Data (Accuracy in %)                                                             Low Data
+   Method      Deterministic Stochastic                a ∈ ϵ-balls                        Method             Q∗metric
+  P (T |D)         53 ± 9        34 ±15                  81 ±18                           P (T |D)       143.52 ± 9.02
+    MLE           71 ±11         38 ±16                  87 ±17                            MLE           65.85 ± 50.83
+ P (T |D, πϵ )    100 ± 0        46 ±18                 100 ± 0                         P (T |D, πϵ )     9.45 ± 0.23
+               High Data (Accuracy in %)                                                  Expert             9.4 ±0
+   Method      Deterministic Stochastic                a ∈ ϵ-balls                                  High Data
+  P (T |D)         81 ± 7        31 ±17                  38 ±20                           Method             Q∗metric
+    MLE            92 ± 6        52 ±20                  77 ±25                           P (T |D)      101.54 ± 10.81
+ P (T |D, πϵ )    100 ± 0        59 ±19                 100 ± 0                            MLE           20.11 ± 9.85
+                                                                                        P (T |D, πϵ )      8.79 ± 0.6
+                                                                                           Expert            9.4 ±0
+                                           Inverse Transition Learning for Offline RL
+
+constraint-based approach that explicitly incorporates our           Counterfactually-guided policy search. arXiv preprint
+desiderata for learning T without relying on gradients. By           arXiv:1811.06272, 2018.
+doing so, we mitigate the limitations and complexities that
+often arise when gradient-based methods are employed. Sec-         Fischer, J., Eyberg, C., Werling, M., and Lauer, M.
+ond, we investigate the performance of T obtained through            Sampling-based inverse reinforcement learning algo-
+MLE, denoted as T M LE , across various data and optimality          rithms with safety constraints. In 2021 IEEE/RSJ In-
+settings. We comprehensively analyze the mistakes made by            ternational Conference on Intelligent Robots and Systems
+this T M LE when learning under an uneven coverage dataset           (IROS), pp. 791–798. IEEE, 2021.
+due to the expert πϵ being ϵ-optimal. Third, we demonstrate        Golub, M., Chase, S., and Yu, B. Learning an internal
+that by integrating our proposed constraints and incorporat-         dynamics model from control demonstration. In Inter-
+ing uncertainty, our approach effectively avoids and reduces         national Conference on Machine Learning, pp. 606–614.
+such mistakes. Consequently, our method outperforms                  PMLR, 2013.
+T M LE across different evaluation metrics and in diverse
+settings. Additionally, we showcase how our constraints sig-       Ha, D. and Schmidhuber, J. Recurrent world models facil-
+nificantly decrease the variance of the policy generated from        itate policy evolution. Advances in neural information
+different batch data, even in scenarios where these datasets         processing systems, 31, 2018.
+exhibit substantial variation. Furthermore, we highlights the
+benefits of combining uncertainty with constraints, particu-       Herman, M., Gindele, T., Wagner, J., Schmitt, F., and Bur-
+larly in the context of planning. Our results indicate that this     gard, W. Inverse reinforcement learning with simulta-
+combination enables us to derive a ranking of the actions            neous estimation of rewards and dynamics. In Artificial
+in the ϵ-ball. Consequently, the policies derived from our           intelligence and statistics, pp. 102–110. PMLR, 2016.
+approach are not only more informative by inferring a policy
+                                                                   Kim, B., Farahmand, A.-m., Pineau, J., and Precup, D.
+that is more discriminative in the stochastic-policy states but
+                                                                     Learning from limited demonstrations. Advances in Neu-
+also demonstrates superior performance in planning tasks.
+                                                                     ral Information Processing Systems, 26, 2013.
+In summary, our contributions include the development of a
+constraint-based approach for learning T without gradients,        Ng, A. Y., Russell, S., et al. Algorithms for inverse rein-
+a comprehensive analysis of the limitations of T M LE , and          forcement learning. In Icml, volume 1, pp. 2, 2000.
+the successful integration of constraints and uncertainty to
+enhance the performance and informativeness of policies.           Oh, J., Guo, X., Lee, H., Lewis, R. L., and Singh, S. Action-
+Future work could extend this work assuming we are only              conditional video prediction using deep networks in atari
+given the batch data and not the expert policy πϵ and extend         games. Advances in neural information processing sys-
+the method to partially observable domains or continuous             tems, 28, 2015.
+state and action spaces.
+                                                                   Ramachandran, D. and Amir, E. Bayesian inverse rein-
+                                                                     forcement learning. In IJCAI, volume 7, pp. 2586–2591,
+Acknowledgements This material is based upon work
+                                                                     2007.
+supported by the National Science Foundation under Grant
+No. IIS-2007076. Any opinions, findings, and conclusions           Reddy, S., Dragan, A., and Levine, S. Where do you think
+or recommendations expressed in this material are those of           you’re going?: Inferring beliefs about dynamics from
+the author(s) and do not necessarily reflect the views of the        behavior. Advances in Neural Information Processing
+National Science Foundation.                                         Systems, 31, 2018.
+
+                                                                   Ross, S., Gordon, G. J., and Bagnell, J. A. No-regret re-
+References
+                                                                     ductions for imitation learning and structured prediction.
+Abbeel, P. and Ng, A. Y. Apprenticeship learning via inverse         Technical report, 2010.
+  reinforcement learning. In Proceedings of the twenty-first
+  international conference on Machine learning, pp. 1,             Ross, S., Gordon, G., and Bagnell, D. A reduction of imita-
+  2004.                                                              tion learning and structured prediction to no-regret online
+                                                                     learning. In Proceedings of the fourteenth international
+Ayoub, A., Jia, Z., Szepesvari, C., Wang, M., and Yang, L.           conference on artificial intelligence and statistics, pp.
+  Model-based reinforcement learning with value-targeted             627–635. JMLR Workshop and Conference Proceedings,
+  regression. In International Conference on Machine                 2011.
+  Learning, pp. 463–474. PMLR, 2020.
+                                                                   Scobee, D. R. and Sastry, S. S. Maximum likelihood con-
+Buesing, L., Weber, T., Zwols, Y., Racaniere, S., Guez, A.,          straint inference for inverse reinforcement learning. arXiv
+  Lespiau, J.-B., and Heess, N. Woulda, coulda, shoulda:             preprint arXiv:1909.05477, 2019.
+                                           Inverse Transition Learning for Offline RL
+
+Zhang, K., Wang, Y., Du, J., Chu, B., Celi, L. A., Kindle, R.,
+  and Doshi-Velez, F. Identifying decision points for safe
+  and interpretable reinforcement learning in hypotension
+  treatment. arXiv preprint arXiv:2101.03309, 2021.
+Zhang, Y. and Teng, Z. Natural language processing: a
+  machine learning perspective. Cambridge University
+  Press, 2021.
+
+Zhu, Y., Tang, Y.-H., and Kim, C. Learning stochastic dy-
+  namics with statistics-informed neural network. Journal
+  of Computational Physics, 474:111819, 2023.
+Ziebart, B. D., Maas, A. L., Bagnell, J. A., Dey, A. K., et al.
+  Maximum entropy inverse reinforcement learning. In
+  Aaai, volume 8, pp. 1433–1438. Chicago, IL, USA, 2008.
+                                       Inverse Transition Learning for Offline RL
+
+A. You can have an appendix here.
+You can have as much text here as you want. The main body must be at most 8 pages long. For the final version, one more
+page can be added. If you want, you can use an appendix like this one, even using the one-column format.
+

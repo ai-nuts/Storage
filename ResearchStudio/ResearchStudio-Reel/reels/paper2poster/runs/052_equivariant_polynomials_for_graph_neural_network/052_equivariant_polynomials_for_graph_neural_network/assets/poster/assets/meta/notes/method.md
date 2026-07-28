@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Equivariant graph polynomials of degree at most d are characterized by a basis indexed by directed multi-graphs H with bounded vertices and edges; each basis element P_H is computed as a tensor contraction (einsum) over the input matrix, and is obtained by symmetrizing monomials with the Reynolds operator. A model is analyzed as a contraction bank F, and Algorithm 1 decides in linear time whether P_H is computable by node-based (F_n) or edge-based (F_e) banks. The theory then motivates PPGN++, a matrix-multiplication network augmented with additional primitive operations and precomputed polynomial features.
+
+Supporting detail: Node-based contractions recover 1-WL, edge-based contractions recover 2-FWL / 3-WL, and adding higher-degree polynomial features pushes expressive power strictly beyond 3-WL.
+
+Narration: The core object is a basis for equivariant graph polynomials. Each basis element is a directed multi-graph with a marked red edge, and its value is a tensor contraction, an einsum over adjacency entries that sums over internal nodes. Averaging monomials over all node permutations, the Reynolds operator, makes them equivariant. To analyze a network, the authors treat it as a bank of primitive contractions and give a linear-time algorithm deciding which polynomials it can assemble. Node-based banks equal one-WL, edge-based banks equal two-FWL, that is three-WL. Building on this, PPGN plus plus feeds in precomputed polynomial features, lifting it strictly above three-WL.
