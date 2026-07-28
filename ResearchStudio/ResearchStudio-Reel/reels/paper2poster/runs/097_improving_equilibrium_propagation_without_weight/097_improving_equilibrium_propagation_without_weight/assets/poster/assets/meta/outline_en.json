@@ -1,0 +1,167 @@
+{
+  "title": "Equilibrium Propagation Doesn't Need Symmetric Weights After All",
+  "subtitle": "ICLR 2024 · Researchers at the Friedrich Miescher Institute and the University of Basel separate and remove the two biases that held equilibrium propagation back",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "To train a deep network, we almost reflexively reach for backpropagation. But backprop needs a separate linear backward pass and the exact transpose of every weight matrix, neither of which a physical neural system can naturally provide. Equilibrium Propagation (EP) is an appealing alternative: it is an energy-based method that estimates gradients from nothing more than the network's own relaxation toward equilibrium, which makes it a natural fit for physical substrates such as brains or analog and neuromorphic chips."
+    },
+    {
+      "type": "paragraph",
+      "text": "The catch is that classic EP rests on two demanding assumptions. First, the weights must be exactly symmetric, so that each forward connection equals its backward counterpart (w_ij equals w_ji). Second, the teaching nudge that pushes the network toward its target must be infinitesimally small. Both are hard to honor in real hardware. Worse, whether weight asymmetry actually hurts learning had never been pinned down, because its effect is always entangled with the error introduced by using a finite nudge and could not be observed on its own."
+    },
+    {
+      "type": "paragraph",
+      "text": "Why does this matter now? The answer is energy. Whether in a biological brain or a neuromorphic chip, physical neural systems could train networks at a small fraction of the energy that digital hardware spends. Yet the asymmetric version of EP had only ever worked on small tasks like MNIST, and it failed outright on CIFAR-10 for reasons nobody had explained. This ICLR 2024 paper, by Axel Laborieux and Friedemann Zenke, cleanly separates the two sources of bias and removes each in turn: finite-nudge bias is eliminated exactly with a Cauchy integral, and weight-asymmetry bias is tamed by a homeostatic loss that acts on the Jacobian. The payoff is that asymmetric networks train, for the first time, on ImageNet 32×32, with only a small gap to the ideal symmetric case."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper and code links: the arXiv paper is at https://arxiv.org/abs/2309.02214 ."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Background: why EP relies on symmetry, and why the bias was hard to study"
+    },
+    {
+      "type": "paragraph",
+      "text": "EP works by letting the network relax to a free fixed point with no teaching signal, then applying a small nudge that pulls the output toward the target; comparing the two equilibria reveals the error each neuron should carry. The derivation hinges on the Jacobian at equilibrium being symmetric, because only then does the relaxation implicitly perform the transpose that backprop needs. Once the forward and backward weights are decoupled, the Jacobian picks up a skew-symmetric component, and the error direction read out from the dynamics drifts away from the true gradient."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. Three network types and their Jacobian after the free phase: a) an energy-based network with symmetric weights (w_ij equals w_ji) and a symmetric Jacobian; b) independent forward and backward connections, so the Jacobian is asymmetric; c) a feedforward network with a lower-triangular Jacobian. This paper targets the middle, asymmetric-with-feedback case.",
+      "width_inches": 4.4
+    },
+    {
+      "type": "paragraph",
+      "text": "In practice, though, that bias is hard to measure in isolation: as long as the nudge is finite, it introduces a bias of its own that masks the contribution of weight asymmetry. So \"how much does asymmetry actually hurt\" stayed an open, unexplained failure mode. The paper's first move is to pull these two sources apart analytically and handle each separately."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Method, part one: removing finite-nudge bias exactly with a Cauchy integral"
+    },
+    {
+      "type": "paragraph",
+      "text": "The first bias comes from the finite nudge. The authors build on and extend holomorphic EP (hEP): they drive the network with a teaching signal that oscillates in the complex plane, β(t), and use a Cauchy integral from complex analysis to recover the exact derivative from the network's oscillatory response. What makes this elegant is that it returns an unbiased error estimate no matter how large the nudge and whether or not the Jacobian is symmetric. Better still, the integral can be estimated continuously over many oscillation cycles, so the network no longer has to alternate between a separate free phase and a nudged phase."
+    },
+    {
+      "type": "paragraph",
+      "text": "Reading the figure below, watch two things: how close each curve sits to the black dashed line (the true derivative), and how quickly it falls off as the teaching amplitude |β| grows. Classic EP, in grey, distorts rapidly once the nudge is large, whereas the Cauchy-integral estimate (hEP) hugs the true value even at large nudges. The two right-hand columns add that the error vector can even be read out online from the network's continuous oscillations, with no phase switching."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Separating finite-nudge bias from Jacobian-asymmetry bias. a, b) Cosine similarity between the RBP error vector and those from classic EP (grey) and holomorphic EP (N=2 and N=10), as a function of the teaching amplitude |β|, for symmetric and non-symmetric Jacobians; classic EP diverges quickly from the true derivative (black dashed), while hEP stays close. c, d) Kernel density estimates of the cosine distribution in a two-hidden-layer MLP, worsening with asymmetry and depth. e, f) Continuous-time, online estimation of the free fixed point and the error vector from the oscillating signal.",
+      "width_inches": 5.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Method, part two: shrinking Jacobian asymmetry with a homeostatic loss"
+    },
+    {
+      "type": "paragraph",
+      "text": "The second bias comes from weight asymmetry. The authors first quantify it: the error's bias grows linearly with the skew-symmetric part A of the Jacobian, written d_β u* = δ − 2S⁻¹Aδ + o(·), where δ is the error vector we actually want and S is the symmetric part of the Jacobian. Since the bias is proportional to A, the natural move is to drive A down directly."
+    },
+    {
+      "type": "paragraph",
+      "text": "To that end they introduce a homeostatic loss that penalizes only the skew-symmetric part of the Jacobian, computed efficiently with the Hutchinson trace estimator and Gaussian noise, then added to the cross-entropy with a weight λ_homeo. Its form is L_homeo = E‖J_F ε‖² − εᵀ J_F² ε, with ε standard Gaussian noise. The key point is that this loss acts on the Jacobian, that is, on the network's functional symmetry, rather than forcing the weights themselves to be equal, so it applies even to architectures with no reciprocal connections at all."
+    },
+    {
+      "type": "paragraph",
+      "text": "The next figure confirms this from the angle of training dynamics. The top row trains with RBP (an approximation of backprop); the bottom row trains with hEP's exact error d_β u*. The contrast is telling: only the bottom row actively pulls the angle between forward and backward weights down over training (toward symmetry), and only there does the training loss depend on the initial angle; the top row barely changes the weight angle. This suggests that EP's own error signal nudges the network toward a more symmetric functional state."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. Training dynamics of a two-hidden-layer MLP on Fashion MNIST, with RBP on top and hEP's exact error d_β u* on the bottom. a, b) Evolution of the angle between forward and backward weights for different initial angles; training tends to reduce asymmetry. c, d) Learning curves; only hEP's training loss depends on the initial angle. e, f) Cosine similarity between the RBP and hEP error vectors over training.",
+      "width_inches": 5.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Key result: the homeostatic loss brings asymmetric networks close to the symmetric ceiling"
+    },
+    {
+      "type": "paragraph",
+      "text": "Put the two pieces together, removing nudge bias with the Cauchy integral and shrinking Jacobian asymmetry with the homeostatic loss, and the behavior of asymmetric networks changes qualitatively. The figure below tracks three different architectures during training (a reciprocally connected multi-layer network, a network whose output feeds directly back to the first layer, and the recurrent convolutional network used on CIFAR-10), reporting validation error, Jacobian symmetry, and layer-wise error alignment. The common pattern: with the homeostatic loss (dark red), Jacobian symmetry climbs steadily, hEP's error vectors align with RBP's layer by layer, and validation error drops accordingly. Read the rows top to bottom as a stress test: the same loss is asked to help three structurally different networks, and in each case the same story repeats."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "Figure 4. The homeostatic loss improves hEP training by acting directly on the Jacobian. Each row is an architecture–dataset pair: a–d) a reciprocally connected multi-layer network on Fashion MNIST, with validation error, Jacobian symmetry, and layer-wise error cosine; e–h) a network whose output feeds back to the first layer; i–l) the recurrent convolutional network on CIFAR-10, with validation error, weight angle, and layer-wise error cosine. Dark red adds the homeostatic loss; grey omits it.",
+      "width_inches": 4.6
+    },
+    {
+      "type": "paragraph",
+      "text": "The numbers make the case. On CIFAR-10, asymmetric hEP without the homeostatic loss reaches only 60.4% accuracy; add the loss and it jumps to 84.3%, just 4.3 points behind the fully symmetric architecture, all with only approximate weight symmetry. More importantly, this is the first time the method trains at all on ImageNet 32×32, reaching 31.4% Top-1 and 55.2% Top-5. The table below summarizes Top-1 accuracy for several variants across three datasets."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Top-1 validation accuracy (%) for asymmetric networks trained with hEP (ours) and RBP, averaged over three random seeds.",
+      "headers": [
+        "Method",
+        "CIFAR-10",
+        "CIFAR-100",
+        "ImageNet 32×32"
+      ],
+      "rows": [
+        [
+          "hEP (no homeo. loss)",
+          "60.4",
+          "35.2",
+          "–"
+        ],
+        [
+          "hEP (N=2, |β|=1)",
+          "81.4",
+          "51.1",
+          "–"
+        ],
+        [
+          "hEP (exact d_β u*)",
+          "84.3",
+          "53.8",
+          "31.4"
+        ],
+        [
+          "RBP (backprop-like)",
+          "87.8",
+          "60.8",
+          "–"
+        ],
+        [
+          "Symmetric hEP (ceiling)",
+          "88.6",
+          "61.6",
+          "36.5"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Ablation: how much each bias contributes"
+    },
+    {
+      "type": "paragraph",
+      "text": "The ablations quantify each bias in turn. On Fashion MNIST, when the nudge is deliberately made large at |β|=0.5, classic one-sided EP falls apart and its error balloons to 38.4%; the six-point holomorphic estimate (N=6) brings it back to 14.3%, essentially matching the true derivative at 14.7%, which shows finite-nudge bias is fully removed. Separately, replacing the exact derivative with a coarse two-point estimate (N=2) costs about 2.9 points on CIFAR-10, and that gap is exactly the residual nudge bias. Meanwhile a network whose output feeds straight back to the first layer, with no reciprocal connections, benefits just as much, confirming that the loss targets functional symmetry rather than weight symmetry itself."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "The core message is that equilibrium propagation does not actually need perfectly symmetric weights. Remove finite-nudge bias exactly with a Cauchy integral, encourage functional symmetry of the Jacobian with a homeostatic loss, and asymmetric networks scale to ImageNet-level tasks with only a small gap to the ideal symmetric case. It is worth being honest about the boundary: a measurable gap to the symmetric ceiling remains, and the method adds the overhead of oscillatory estimation and the homeostatic term, both of which future work can refine."
+    },
+    {
+      "type": "paragraph",
+      "text": "Looking further out, functional symmetry is a much weaker and more attainable condition than weight symmetry. That points to a more biologically plausible route to training real physical substrates, and hints that the brain might rely on similar homeostatic mechanisms to learn effectively without ever making its connections exactly symmetric."
+    }
+  ]
+}

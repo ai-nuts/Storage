@@ -1,0 +1,851 @@
+       Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio
+                                 Detection
+
+
+                Xiaohui Zhang 1 2 Jiangyan Yi 1 Jianhua Tao 3 Chenglong Wang 1 4 Chuyuan Zhang 1
+
+
+                          Abstract                                    1. Introduction
+                                                                      With the development of speech synthesis and voice con-
+                                                                      version technology (Wang et al., 2018; 2021), the models
+       Current fake audio detection algorithms have
+                                                                      can generate human-like speech, which makes it difficult
+       achieved promising performances on most
+                                                                      for most people to distinguish the generated audio from the
+       datasets. However, their performance may be
+                                                                      real one. Although this technology has brought great conve-
+       significantly degraded when dealing with audio of
+                                                                      nience to human life, it has also brought great safety hazards
+       a different dataset. The orthogonal weight modi-
+                                                                      to the country and society. Therefore, fake audio detection
+       fication to overcome catastrophic forgetting does
+                                                                      has attracted increasing attention in recent years. A series of
+       not consider the similarity of genuine audio across
+                                                                      challenges have been organized to detect fake audio, such as
+       different datasets. To overcome this limitation, we
+                                                                      the ASVspoof challenge (Wu et al., 2015; Kinnunen et al.,
+       propose a continual learning algorithm for fake
+                                                                      2017; Todisco et al., 2019; Yamagishi et al., 2021) and the
+       audio detection to overcome catastrophic forget-
+                                                                      Audio Deep Synthesis Detection (ADD) challenge (Yi et al.,
+       ting, called Regularized Adaptive Weight Modi-
+                                                                      2022). In these competitions, deep neural networks have
+       fication (RAWM). When fine-tuning a detection
+                                                                      achieved great success. Currently, large-scale pre-trained
+       network, our approach adaptively computes the
+                                                                      models have gradually been applied to fake audio detection
+       direction of weight modification according to the
+                                                                      and achieved state-of-the-art results on several public fake
+       ratio of genuine utterances and fake utterances.
+                                                                      audio detection datasets (Tak et al., 2022; Martı́n-Doñas &
+       The adaptive modification direction ensures the
+                                                                      Álvarez, 2022; Lv et al., 2022; Wang & Yamagishi, 2021).
+       network can effectively detect fake audio on the
+                                                                      Although fake audio detection achieves promising perfor-
+       new dataset while preserving its knowledge of old
+                                                                      mance, it may be significantly degraded when dealing with
+       model, thus mitigating catastrophic forgetting. In
+                                                                      audio of another dataset. The diversity of audio proposes a
+       addition, genuine audio collected from quite dif-
+                                                                      significant challenge to fake audio detection across datasets
+       ferent acoustic conditions may skew their feature
+                                                                      (Zhang et al., 2021b;a).
+       distribution, so we introduce a regularization con-
+       straint to force the network to remember the old               Some approaches have been proposed to improve detec-
+       distribution in this regard. Our method can easily             tion performance across datasets. An ensemble learning
+       be generalized to related fields, like speech emo-             method is proposed to improve the detection ability of the
+       tion recognition. We also evaluate our approach                model for unseen audio (Monteiro et al., 2020) and a dual-
+       across multiple datasets and obtain a significant              adversarial domain adaptive network (DDAN) is designed
+       performance improvement on cross-dataset exper-                to learn more generalized features for different datasets
+       iments.                                                        (Wang et al., 2020). Both methods require some audio from
+                                                                      the old dataset, but in some practical situations, it is al-
+                                                                      most impossible to obtain them. For instance, a pre-trained
+   1
+                                                                      model proposed by a company has been released to the pub-
+     State Key Laboratory of Multimodal Artificial Intelligence
+                                                                      lic. It is unfeasible for the public to fine-tune it using the
+Systems, Institute of Automation, Chinese Academy of Sciences,
+Beijing, China 2 School of Computer and Information Technology,       data belonging to the original company. In addition, a data
+University of Beijing Jiaotong, Beijing, China 3 Department of        augmentation method is proposed to extract more robust
+Automation, Tsinghua University, Beijing, China 4 University of       features for detection across datasets (Zhang et al., 2021b),
+Science and Technology of China, Beijing, China. Correspondence       which is only suitable for the datasets with similar feature
+to: Jiangyan Yi <jiangyan.yi@nlpr.ia.ac.cn>.
+                                                                      distribution. In continual learning, a method called Detect-
+Proceedings of the 40 th International Conference on Machine          ing Fake Without Forgetting (DFWF) is proposed for fake
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright            audio detection (Ma et al., 2021). Although the above meth-
+2023 by the author(s).
+
+                                                                  1
+                        Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+               New                                Old                                             P: Modification direction in OWM
+                                                                                                  Q: Projector introdued by RAWM
+                                                                                      R1 R2
+                                             𝜃𝐴
+                                                                                                  R: Modification direction in RAWM
+
+                𝜃መ𝑠𝑔𝑑
+
+                                                                                 P
+                                     𝜃መ𝑜𝑤𝑚                                                        Q2
+                                                                                             Q1
+                                                  RAWM
+                          𝜃መ𝑟𝑎𝑤𝑚                  OWM
+                                                  SGD
+
+
+
+
+                               (a)                                                         (b)
+
+Figure 1: Schematic of SGD, OWM, and RAWM. (a), With RAWM, the optimization process searches for configurations
+that lead to great performance on both old (blue area) and new (green area) datasets. The center parts of the two areas
+represent better recognition performance than the other, and can be regarded as subspaces of the area mentioned by the
+OWM. A successful optimized configuration θ̂rawm stops inside the overlapping subspace. However, the configuration θ̂sgd
+obtained by SGD is optimized without considering forgetting, and the configuration θ̂owm obtained by orthogonal weight
+modification can reach the overlapping area but not the overlapping subspace. (b), the RAWM adaptively modifies weight
+direction by introducing a projector that is orthogonal to the projector P proposed by OWM.
+
+ods are effective, they still have some limitations, like the        old feature distribution. In addition, compared with the
+acquisition of old data in the ensemble learning method and          experience-replay-based method, RAWM does not require
+the DDAN and deteriorating learning performance in the               old data, which makes it suitable for most situations. The
+DFWF. This paper, however, aims to overcome catastrophic             optimization process of RAWM is compared with that of
+forgetting while exerting a positive influence on acquiring          the Stochastic Gradient Descent search (SGD) and OWM
+new knowledge without any previous samples.                          in Figure 1a.
+Most fake audio detection datasets are under clean condi-            Contributions: We propose a regularized adaptive weight
+tions, where the genuine audio has a more similar feature            modification algorithm to overcome catastrophic forgetting.
+distribution than the fake audio (Ma et al., 2021). A few            There are two essential steps in our method: adaptive weight
+datasets, however, are collected under different acoustic            modification (AWM) and regularization. The former AWM
+conditions (Müller et al., 2022), which makes a difference          is proposed for continual learning in most situations where
+in their feature distributions of genuine audio (Ma et al.,          genuine audio has similar feature distribution and the latter
+2022). If we modify the model weights as the orthogonal              regularization is introduced to ease the problem that gen-
+weight modification (OWM) method (Zeng et al., 2019)                 uine audio may have different feature distribution in a few
+which introduces a new weight direction orthogonal to all            cases. Although our method is inspired by the feature distri-
+old data, most genuine audio with similar feature distri-            bution similarity in fake audio detection, it can also be used
+bution across datasets can not be trained effectively. The           in other related tasks, such as speech emotion recognition.
+reason is that new genuine audio is supposed by the OWM              The experimental results show that our proposed method
+to damage learned knowledge, so it modifies new weight               outperforms several continual learning methods in acquir-
+direction orthogonal to the old one regardless the new and           ing new knowledge and overcoming forgetting, including
+old genuine audio have similar feature distribution and they         Elastic Weight Consolidation (EWC) (Kirkpatrick et al.,
+can be seen as a whole from the same dataset. Based on               2017), Learning without Forgetting (LwF) (Li & Hoiem,
+the above inference, it is more effective for genuine audio          2017), OWM, and DFWF. The code of our method has been
+on new datasets to be trained with a direction close to the          released in Regularized Adaptive Weight Modification.
+previous one, rather than orthogonal to it. To address these
+issues, we propose a continual learning approach, named              2. Related Work
+Regularized Adaptive Weight Modification (RAWM). In
+our method, if the proportion of fake audio is larger, the           In continual learning, overcoming catastrophic forgetting
+modified direction is closer to the orthogonal projector of          methods can be divided into the following categories. The
+the subspace spanned by all old input; if the proportion of          regularization methods perform a regularization on the ob-
+genuine audio is larger, the modification is closer to the old       jection function or regulate important weights that are es-
+input subspace. However, old and new datasets are collected          sential for previous tasks (Kinnunen et al., 2017; Zenke
+from different acoustic conditions in some cases, where gen-         et al., 2017b; Aljundi et al., 2018; 2019; Mallya & Lazeb-
+uine audio may have quite different feature distributions.           nik, 2018; Serra et al., 2018). The dynamic architecture
+We address this issue by introducing a regularization con-           methods reserve their previous knowledge by introducing ad-
+straint. This constraint forces the model to remember the            ditional layers or nodes and grow model architecture (Rusu
+
+                                                                 2
+                         Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+et al., 2016; Schwarz et al., 2018); (Yoon et al., 2017). The              The model trained on old datasets is replicated into two mod-
+memory-based methods remember their previous data to pre-                  els with the same parameters. The two models are named
+vent gradient updates from damage on their learned knowl-                  teacher and student models in the LwF. In process of train-
+edge. (Lopez-Paz & Ranzato, 2017; Castro et al., 2018; Wu                  ing on new datasets, the parameters of the teacher model are
+et al., 2019; Lee et al., 2019). The natural gradient descent              frozen to produce its features as ”soft labels”. The student
+methods approximate the Fisher information matrix in EWC                   model is trained by the loss function as:
+using the generalized Gauss-Newton method to fast gradient                           Llwf = λ0 Lold (yo , ŷo ) + Lnew (yn , ŷn )   (2)
+descent (Tseran et al., 2018; Chen et al., 2019).
+                                                                           where λ0 is a ratio coefficient representing the importance
+Although the mainstream continual learning methods, such                   of learned knowledge; yo is the ”soft label” produced by
+as the EWC, LwF and OWM, have achieved great success in                    the teacher model and yn is the ground truth of new data;
+many fields including image classification (Zeng et al., 2019;             Both ŷo and ŷn are the softmax output of the student model.
+Kirkpatrick et al., 2017), object detection (Perez-Rua et al.,             Both Lold and Lnew are cross-entropy loss. The former
+2020), semantic segmentation (Cermelli et al., 2020), life-                Lold regulates the output probabilities ŷo to be close to the
+long language learning (de Masson D’Autume et al., 2019)                   recorded output yo from the teacher model and the latter
+and sentence representation (Liu et al., 2019). However, the               Lnew encourages predictions ŷn to be consistent with the
+approximation of regularization methods will produce error                 ground truth yn .
+accumulation in continual learning (Zenke et al., 2017a;
+Huszár, 2017; Ma et al., 2021). In contrast, our proposed
+method only needs the current inputs, which leads to a better              4. Proposed Method
+performance than others in error accumulation. Besides, we                 On most fake audio detection datasets, under the same acous-
+relax the regularized constraint in the DFWF and introduce                 tic conditions, feature distributions of genuine audio are
+a direction modification to solve the deteriorating learning               relatively more concentrated than the fake, which means the
+performance problem.                                                       feature distribution of genuine audio has a smaller variance
+                                                                           than that of fake audio (Ma et al., 2021; Yan et al., 2022).
+3. Background                                                              Besides, there are also a few datasets whose genuine audio
+                                                                           has quite different feature distributions from others (Ma
+3.1. Orthogonal Weight Modification                                        et al., 2022; Müller et al., 2022).
+The OWM algorithm overcomes catastrophic forgetting by                     Based on the observations, we propose a continual learning
+modifying the direction of weights on the new task. The                    method, named Regularized Adaptive Weight Modification
+modified direction P , which is a square matrix, is orthog-                (RAWM), to overcome catastrophic forgetting. There are
+onal to the subspace spanned by all inputs of the previous                 two essential steps in our method: adaptive direction modi-
+task. The orthogonal projector is constructed by an itera-                 fication (AWM) and regularization. The AWM is proposed
+tive method similar to the Recursive Least Square (RLS)                    for most situations where genuine audio has similar feature
+algorithm (Shah et al., 1992), which hardly requires any                   distribution. As shown in Figure 1b, by introducing an ex-
+previous samples.                                                          tra projector, which is a square matrix orthogonal to the
+We consider a feed-forward network consisting of L + 1                     projector proposed by the OWM, our method could adap-
+layers, indexed by l = 0, 1, · · · , L with the same activation            tively modify weight direction closer to the previous inputs
+function g(·). The xl (i, j) ∈ Rs represents the output of                 subspace. As for those genuine audio collected from quite
+the lth layer in response to the mean of the ith batch inputs              different acoustic conditions, it is detrimental for learned
+on jth dataset, and the xl (i, j)T is the transpose matrix of              knowledge to modify weight according to the rule we men-
+the xl (i, j). The modified direction P can be calculated as:              tioned above, because their feature distribution is distinct
+                                                                           from others. To address this issue, we introduce a regu-
+   Pl (i, j) = Pl (i−1, j) − kl (i, j)xl−1 (i, j)T Pl (i−1, j)             larization term to force the new distribution of inference
+                        Pl (i−1, j)xl−1 (i, j)                   (1)       to be similar to the old one. Our method does not require
+   kl (i, j) =
+                 α + xl−1 (i, j)T Pl (i−1, j)xl−1 (i, j)                   any replay of previous samples. In addition, our method is
+where α is a hyperparameter decaying with the number of                    inspired by fake audio detection but it can easily be general-
+tasks.                                                                     ized to other related tasks. The reason is that most of them
+                                                                           have one or more classes, like neutral emotion in speech
+                                                                           emotion recognition (SER) (Sharma, 2022), with relatively
+3.2. Learning without Forgetting
+                                                                           similar feature distribution between different datasets. We
+The LwF algorithm is inspired by the idea of model distil-                 also take SER as an example to present how our method
+lation, where old knowledge is viewed as a penalty term                    generalizes to other fields in Sec. 4.3 and show the process
+to regulate the new model representation similar to the old.               of our algorithm in Algorithm 1.
+
+                                                                       3
+                           Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+4.1. Adaptive Weight Modification                                           Algorithm 1 Regularized Adaptive Weight Modification
+We start by introducing an adaptive modification of weight                   1: Require: Training data from different datasets, γ (learn-
+direction according to the ratio β of classes with similar                        ing rate), m (constant hyperparameter), Treg (constant
+feature distribution between different datasets and others
+in batch data, which is essential for sequence training on                        hyperparameter).
+multi-datasets. We first consider a feed-forward network                     2: for every dataset j do
+like that described in Sec. 3.1. Then, we introduce a square
+matrix Q as a projector that is orthogonal to the P proposed                 3:     for every batch i do
+by the OWM algorithm. This orthogonal projector can be                       4:       if j = 1 then
+written as Eq 3:
+                                                                             5:          Wl (i, j) = Wl (i−1, j) + γ(i, j)∆WlBP (i, j)
+                                         T      −1
+                  Q = β[I −P (P P )                  P]           (3)        6:       else
+                                                                                                             Pl (i−1)xl−1 (i, j)
+ where the projector P , which is orthogonal to the subspace                 7:          k(i, j) =
+                                                                                                     α + xl−1 (i, j)T Pl (i−1, j)xl−1 (i, j)
+spanned by all previous inputs, can be calculated as Eq 1 and                8:          Pl (i, j)          =             Pl (i−1, j)     −
+I is an identity matrix. The construction of the orthogonal                              k(i, j)xl−1 (i, j)T Pl (i−1, j)
+projector Q is mathematically sound (Haykin, 2002; Ben-                                         Pb
+Israel & Greville, 2003; Bengio & LeCun, 2007). To verify                                           Nt + 1
+                                                                                                t=1
+the modification direction according to the essential ratio β,               9:          β = b+c
+we introduce the β defined as:                                                                  P
+                                                                                                     Nt + 1
+                                                                                               t=b+1
+                                 b
+                                 P
+                                       Nt + 1                               10:          Q = β[I − P (P T P )−1 P ]
+                           β=
+                                 t=1
+                                                                  (4)
+                                                                                                P
+                                 b+c                                        11:          PN =
+                                 P
+                                        Nt + 1                                                ||P ||
+                                t=b+1                                                                   Q
+                                                                            12:          QN =
+                                                                                               ||I −P (P T P )−1 P ||
+in which the Nt , t ∈ [1, b] represents the number of batch                 13:          R = PN + mQN
+samples of b classes with relatively similar feature distri-                                                1/Treg
+                                                                            14:          ŷo (i) = Pyoy(i)(i)1/Treg
+butions on old and new datasets, respectively; the Nt , t ∈                                             o
+                                                                                                            1/Treg
+[b + 1, c] represents the number of batch samples of other c                15:          ŷn (i) = Pyny(i)(i)1/Treg
+                                                                                                        n
+classes. By adding one to both the numerator and denom-                     16:          ∆WlBP  = −∇(ŷo (i) · log ŷn (i))
+                                                                                            reg
+inator, β can be calculated when all the batch data belong
+                                                                            17:          G = γ(i, j)∆WlBP (i, j)
+to classes in the numerator. As illustrated in Eq 3, the norm
+of projector Q is proportional to the ratio β. Our approach                 18:          H = (1−η)Rl (j−1)G+η∆WlBP
+                                                                                                                reg
+                                                                                                                    (i, j)
+defines the modified direction R of weights as:                             19:          Wl (i, j) = Wl (i−1, j)+H
+                     R = Pnorm +mQnorm                            (5)       20:       end if
+                                                                            21:     end for
+                  P                               Q
+      Pnorm =          ,     Qnorm =                              (6)       22: end for
+                ||P ||                   ||I −P (P T P )−1 P ||
+where m is a constant to constrain the norm of projector Q
+to prevent gradient explosion or gradient vanishing in the
+backward process; Pnorm and Qnorm are identity matrices                     that we modify weight direction adaptively by multiplying
+normalized by P and Q, respectively. Normalization is to                    the BP gradient ∆WlBP (i, j) with our projector R whose
+prevent the case that the change of β has little effect on the              direction is varied according to the ratio β of classes with
+modified direction because of the large norm gap between                    similar feature distribution between different datasets and
+P and Q. In the back-propagate (BP) process, the direction
+of network weights is modified as:                                          others.
+
+                   Wl (i, j) = Wl (i−1, j)+G              j=1               4.2. Regularization
+         Wl (i, j) = Wl (i−1, j)+Rl (j−1)G                j>1     (7)
+                                                                            There are also a few datasets where genuine audio is col-
+                     G = γ(i, j)∆WlBP (i, j)                                lected from quite different acoustic conditions compared
+                                                                            with others. In this case, it is unreasonable to use the above
+ where Wl (i, j) ∈ Rs×v represents the connection weights
+                                                                            method directly. As for these utterances, we introduce an
+between the lth layer and the (l+1)th layer; γ represents
+                                                                            extra regularization forcing the model to remember the pre-
+the learning rate of this network; ∆WlBP (i, j) represents
+                                                                            vious inference distribution.
+the standard BP gradient; R represents the modification
+projector in our method. In Eq 7, we can easily observe                     We first replicate the pre-trained model into two models
+
+                                                                        4
+                      Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+with the same parameters, one is the teacher model and the             Compared with the Eq 7, our method introduces a regular-
+other one is the student model. The parameter of the teacher          ization constraint to the adaptive weight modification. The
+model is frozen in the process of training on the new dataset         importance of the regularization depends on the hyperpa-
+and the parameter of the student model is fine-tuned. Like            rameter η which is a coefficient measuring the attention
+the operation in the LwF, we view the softmax output yo               degree of the knowledge acquired from old datasets.
+from the teacher model as ”soft labels” and use the loss
+function to slash the distinction between the ”soft labels” yo        5. Experiments
+and the softmax output yn of the student model, thus forcing
+the student model to remember the learned knowledge. The              5.1. Datasets
+loss function, which is a modified cross-entropy loss, can
+                                                                      We conduct our experiments on four fake audio datasets,
+be written as:
+                                                                      including the ASVspoof2019LA (S), ASVspoof2015 (T1 ),
+                Lreg (ŷo , ŷn ) = −ŷo · log ŷn          (8)       VCC2020 (T2 ), and In-the-Wild (T3 ). The models are
+                     1/T
+                    yo reg
+                                           1/T
+                                          yn reg
+                                                                      firstly trained using the training set of the S and are fine-
+             ŷo = P 1/T ,         ŷn = P 1/T              (9)       tuned on the training sets of the other three datasets. All of
+                     yo reg                yn reg
+                                                                      the experiments are evaluated using two or four evaluation
+where Treg is a constant hyperparameter. The yo , yn are              sets in these datasets. The final model in the study refers to
+softmax outputs of teacher and student models, respectively;          the model that was trained after the entire training process
+The ŷ is a normalized form of the y; The ŷ and y are one            and then evaluated on each dataset.
+item of ŷ and y, respectively. The weight modification of
+this regularization ∆WlBP   can be written as Eq 10.                  ASVspoof 2019 LA Dataset (Todisco et al., 2019) is the
+                        reg
+                                                                      sub-challenge dataset (30 males and 37 females) containing
+                     ∆WlBP
+                        reg
+                            = ∇Lreg                        (10)       three subsets: training, development, and evaluation. The
+                                                                      training set and development share the same attack including
+4.3. Regularized Adaptive Weight Modification                         four TTS and two VC algorithms. The bonafide audio is
+In brief, our method RAWM is proposed for general con-                collected from the VCTK corpus (Veaux et al., 2017). The
+tinual learning conditions by modifying weight direction              evaluation set contains totally different attacks.
+according to the ratio β of classes with similar feature dis-
+tribution between different datasets and others in batch data.        ASVspoof2015 dataset (Wu et al., 2015) is an open-
+By introducing a regularized restriction, our method eases            source standard dataset of genuine and synthetic speech
+the problem that a few data belonging to classes in the nu-           in the ASVspoof2015 challenge. The genuine speech was
+merator of the Eq 4 may have distinct feature distributions           recorded from 106 speakers (45 males and 61 females) with
+because they are collected from quite different conditions.           no significant channel or background noise effects. The
+Our method is inspired by fake audio detection where the
+ratio β in the Eq 4 can be written as:                                spoofing speech is generated using a variety of speech syn-
+                                                                      thesis and voice conversion algorithms.
+                               Ng + 1
+                         β=                                (11)       VCC2020 dataset (Zhao et al., 2020) is collected from
+                               Nf + 1
+                                                                      Voice Conversion Challenge 2020. This dataset contains
+ in which Ng and Nf represent the number of genuine and
+fake audios in a batch, respectively. As for another research         two subsets: a set of genuine audio provided by organizers
+area, for example, speech emotion recognition including               and a set of fake audio provided by participating teams.
+happy, sad, angry, and neutral, the essential ratio can be            Different from the previous three datasets, VCC2020 is a
+written as:                                                           multilingual fake audio dataset, including English, Finnish,
+                           Nneu + 1                                   German and Mandarin.
+               β=                                          (12)
+                    Nang + Nhap + Nsad + 1
+                                                                      In-the-Wild dataset (Müller et al., 2022) contains a set
+ because the neutral emotion has a relatively more similar            of deep fake audio (and corresponding real audio) of 58
+feature distribution than others between different datasets.          politicians and other public figures collected from publicly
+The Nneu , Nang , Nsad , and Nhap represent the number of             available sources, such as social networks and video stream-
+neutral, angry, sad, and happy data in a batch, respectively.         ing platforms. In total, 20.8 hours of genuine audio and
+Considering a continual learning situation, the BP process            17.2 hours of fake audio were collected. On average, each
+of regularized adaptive weight modification can be written            speaker had 23 minutes of genuine audio and 18 minutes of
+as Eq 13.                                                             fake audio.
+              Wl (i, j) = Wl (i−1, j)+G              j=1              We divide the genuine and fake audios of the VCC2020
+              Wl (i, j) = Wl (i−1, j)+ H             j>1              dataset into four subsets. A quarter is used to build the
+                                                           (13)
+                 G = γ(i, j)∆WlBP (i, j)                              evaluation set, a quarter to build the development set, and the
+                                                                      rest to be used as the training set. The In-the-Wild dataset
+            H = (1−η)Rl (j−1)G+η∆WlBP
+                                   reg
+                                       (i, j)
+
+                                                                  5
+                            Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+  Table 1: (a) is the statistics of experimental datasets and (b) is the EER(%) of our baseline on multiple evaluation sets.
+
+                                          (a)                                                                                     (b)
+
+            ASVSpoof2019LA (S)    ASVSpoof2015 (T1 )          VCC2020 (T2 )    In-the-Wild (T3 )             Model           S    T1        T2      T3
+ Dataset
+            #Real       #Fake     #Real          #Fake        #Real    #Fake   #Real      #Fake              Baseline    0.258   24.532   46.503   91.473
+  Train     2,580       22,800    3,750         12,625        1,330    3,060   9,431      5,908
+  Dev       2,548       22,296    3,497         49,875         665     1,530   4,715      2,954
+  Eval      7,355       63,882    9,404         184,000        665     1,530   4,717      2,954
+
+
+
+Table 2: The EER(%) on evaluation sets of our method with different η. (a), (b) and (c) are trained using the training set
+in order to S → Tk and are evaluated using the evaluation set on S and Tk ; (d) is trained using training set in order to
+S → T1 → T2 → T3 and is evaluated using evaluation sets.
+
+               (a)                                   (b)                                    (c)                                           (d)
+      η             S      T1              η              S       T2              η           S      T3                  η        S        T1       T2       T3
+   Baseline     0.258    24.532       Baseline       0.258      46.503         Baseline     0.258   91.473          Baseline     0.258    24.532   46.503   91.473
+     0.00      1.643     0.256            0.00       1.413      3.845           0.00       6.126    3.457               0.00     1.845    1.127    3.916    3.410
+     0.20      1.424     0.431            0.20       1.334      4.288           0.20       5.490    3.848               0.20     1.724    1.003    4.120    3.367
+     0.25      1.175     0.311            0.25       1.275      3.994           0.25       4.975    3.593               0.25     1.699    0.945    4.017    3.529
+     0.50      0.878     0.257            0.50       1.237      3.721           0.50       4.942    3.249               0.50     1.508    0.641    3.850    3.163
+     0.75      0.666     0.247            0.75       1.262      4.571           0.75       4.482    4.271               0.75     1.636    0.873    3.975    4.454
+     1.00      3.123     0.343            1.00       4.234      4.566           1.00       4.453    4.598               1.00     2.714    1.621    3.875    4.325
+
+
+
+
+is divided in the same way as the VCC2020. The detailed                                   of training all datasets (Tain-on-All) that is considered to
+statistics of the datasets are presented in Table 1a. The                                 be the lower bound to all continual learning methods we
+Equal Error Rate (EER), which is widely used for fake audio                               mentioned (Parisi et al., 2019). All results are (re)produced
+detection and speaker verification, is applied to evaluate the                            by us and averaged over 7 runs with standard deviations.
+experimental performance.
+                                                                                          5.3. Baseline
+5.2. Experimental Setup
+                                                                                          We first train our model on the training set of the S dataset.
+Fake Audio Detection Model: We use the pre-trained                                        Table 1b shows the detection performance of our baseline
+model Wav2vec 2.0 (Baevski et al., 2020) as the feature                                   on multiple evaluation sets which is very close to the state-
+extractor and the self-attention convolutional neural network                             of-the-art result (Nautsch et al., 2021) in the same dataset.
+(S-CNN) as the classifier. The parameters of Wav2vec 2.0 is                               Although the model achieves promising performance on
+loaded from the pre-train model XLSR-53 (Conneau et al.,                                  S, its detection accuracy degrades significantly on other
+2020). The classifier S-CNN contains three 1D-Convolution                                 datasets. In addition, our baseline achieves the lowest cross-
+layers, one self-attention layer, and two full connection lay-                            datasets EER on T1 dataset among three unseen datasets,
+ers, according to the forward process. The input dimension                                which verifies that the detection model will have better per-
+of the first convolution layer is 256 and the hidden dimen-                               formance when facing genuine audio with more similar
+sion of all convolution layers is 80. The kernel size and                                 feature distribution. Apart from that, the results with differ-
+stride are set to 5 and 1, respectively. The hidden dimension                             ent training steps are presented in Table 8 in the appendix.
+of all full connection layers is 80 and the output dimension
+is 2.
+Training Details: We fine-tune the model weights including                                5.4. Effects of the η for our method
+the pre-trained model XLSR-53 and the classifier S-CNN.                                   Sequence training between two datasets: We start by
+All of the parameters are trained by the Adam optimizer                                   performing some experiments to evaluate the effectiveness
+with a batch size of 2 and a learning rate γ of 0.0001. The                               of η in RAWM, which represents the attention degree to
+constant m and Treg in RAWM are set to 0.1 and 2, re-                                     learned knowledge. In Table 2, we can easily observe that
+spectively. The α is initialized to 0.00001 for convolution                               the RAWM achieves great performance on both old and new
+layers, 0.0001 for the self-attention layer, and 0.1 for full                             datasets, especially in the experiment on S → T1 . By com-
+connection layers. The norm in normalization of projector                                 paring the results of three cross-datasets, we observe that
+P and Q is the L2 norm. In addition, we present the results                               when the new and old datasets have similar feature distribu-
+
+                                                                                      6
+                                 Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+Table 3: The EER(%) on evaluation sets of the ablation studies. (a), (b) and (c) are trained using the training set in order to
+S → Tk and are evaluated using the evaluation set on S and Tk ; (d) is trained in order to S → T1 → T2 → T3 and are
+evaluated using evaluation sets.
+
+               (a)                                    (b)                                       (c)                                                       (d)
+   Method          S             T1        Method       S              T2            Method       S               T3            Method           S           T1          T2        T3
+   RAWM        0.666          0.247        RAWM      1.237          3.721            RAWM      4.942          3.249             RAWM       1.508          0.641         3.850     3.163
+   –REG        1.643          0.256        –REG      1.413          3.845            –REG      7.126          3.357             –REG       1.845          1.127         3.916     3.410
+   –AWM        2.448          0.500        –AWM      3.086          5.432            –AWM      8.130          5.065             –AWM       4.083          2.167         6.480     5.472
+
+
+
+Table 4: The EER(%) of our method compared with various methods. (a), (b) and (c) are trained using the training set
+in order to S → Tk and are evaluated using the evaluation set on S and Tk ; (d) is trained using training set in order to
+S → T1 → T2 → T3 and is evaluated using evaluation sets.
+
+                   (a)                                      (b)                                       (c)                                                    (d)
+      Method              S           T1       Method              S         T2          Method               S         T3          Method            S            T1     T2       T3
+      Baseline           0.258    24.532       Baseline           0.258     46.503       Baseline           0.258      91.473       Baseline         0.258     24.532    46.503   91.473
+    Train-on-All         0.406     0.201     Train-on-All         0.965     2.498      Train-on-All         2.740      2.160      Train-on-All       1.324      0.561    3.579     2.008
+     Fine-tune           7.324    0.510       Fine-tune           8.755     5.647       Fine-tune           20.976     4.978       Fine-tune         7.068      2.841    5.674    4.543
+       EWC               2.832    0.570         EWC               3.494     6.289         EWC                8.039     5.615         EWC             5.569      2.444    6.510    5.129
+      OWM                2.448    0.540        OWM                3.086     6.432        OWM                 8.130     5.065        OWM              4.083      2.167    6.480    5.472
+       LwF               3.123    0.343         LwF               4.234     4.566         LwF                6.453     4.998         LwF             2.714      1.621    4.875    4.325
+      DFWF               1.849    0.689        DFWF               1.874     7.355        DFWF                4.324     6.275        DFWF             3.476      3.735    7.345    6.114
+   RAWM(Ours)            0.666    0.247     RAWM(Ours)            1.237     3.721     RAWM(Ours)            4.942      3.249     RAWM(Ours)          1.508      0.641    3.850    3.163
+
+
+
+
+tion (Table 2a), there is an improvement in the performance                                    has a significant positive impact on acquiring knowledge,
+of both acquiring new knowledge and overcoming forget-                                         while regularization impacts little. As for overcoming for-
+ting with the increasing of η (η < 1); When the feature                                        getting, when the feature distribution of the new and old
+distribution of the new and old datasets is different (Table                                   datasets is similar (Table 3a), the EER of the –REG on
+2b, Table 2c), it is the model when η = 0.50 that achieves                                     the old datasets is much lower than that of the –AWM and
+the best result, which shows that the regularization we in-                                    higher than that of the RAWM, which shows that the adap-
+troduced is also of benefit to performance on both learning                                    tive weight modification and regularization can significantly
+and overcoming forgetting.                                                                     reduce the forgetting in this case. When the languages of
+                                                                                               the new and old datasets are different (Table 3b), the EER of
+Sequence training on four datasets: We also present the
+                                                                                               RAWM in the old datasets is similar to that of the –REG and
+results on multiple evaluation sets about different η in Table
+                                                                                               much lower than that of the –AWM, which also proves that
+2d. It can be observed that our method slashes performance
+                                                                                               the adaptive weight modification has a significant positive
+degradation when training across datasets. The RAWM
+                                                                                               impact on overcoming forgetting. When the feature distri-
+achieves the lowest EER among the results when η = 0.50,
+                                                                                               bution of the new and old datasets is quite different (Table
+which demonstrates that the same attention degree to both
+                                                                                               3c), the EER of the –REG is similar to that of the –AWM
+old and new datasets is the best choice for learning and
+                                                                                               and much higher than that of the RAWM, which shows that
+overcoming forgetting. In addition, the results of S, T1 and
+                                                                                               in this case, regularization is of great benefit to overcoming
+T2 show that the model with larger η is more effective in
+                                                                                               forgetting, while the effect of adaptive weight modification
+overcoming forgetting.
+                                                                                               is not obvious.
+5.5. Ablation studies for our method                                                          Sequence training on four datasets: In this section, we
+                                                                                              present the results of the ablation study on four evaluation
+Sequence training between two datasets: In this section,                                      sets in Table 3d. We observe that the EER of –REG to
+we compare our proposed method with adaptive weight                                           –AWM degrades more obviously than that of RAWM to –
+modification without regularization (–REG) and orthogo-                                       REG on all evaluation sets, which indicates that adaptive
+nal weight modification without regularization (–AWM).                                        weight modification has a more obvious benefit in learning
+Table 3 presents their EER on three evaluation sets. We                                       and overcoming forgetting than regularization for sequence
+observe that RAWM achieves similar EER to –REG on                                             training on multiple datasets.
+the new dataset, both of them are superior significantly to
+–AWM, which shows that the adaptive weight modification
+
+
+                                                                                          7
+                     Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+Table 5: The EER(%) of few samples experiments. All                  Table 6: The Acc(%) of various continual learning meth-
+experiments are first trained using the training set of S and        ods for 4-classes speech emotion recognition. All experi-
+then trained on 100 samples of the training set of T1 . All          ments are trained using the training set in order to MSP-
+experiments are evaluated using the evaluation set on S and          Podcast → IEMOCAP and are evaluated using the eval-
+T1 .                                                                 uation set on MSP-Podcast and IEMOCAP
+
+                     Method        S       T1                                    Method       MSP-Podcast      IEMOCAP
+                     Baseline     0.258   24.532                                 Baseline          54.446         30.043
+                   Train-on-All   0.279   0.291                                Train-on-All        54.396         57.262
+                    Fine-tune     7.951   0.617
+                      EWC         2.972   0.619
+                                                                               Fine-tune          24.094          50.379
+                     OWM          2.683   0.617                                  EWC              35.819          48.698
+                      LwF         3.198   0.542                                 OWM               32.267          48.162
+                     DFWF         1.975   0.733                                  LwF              38.800          44.034
+                  RAWM(Ours)      0.923   0.312                              RAWM(Ours)           41.995          54.229
+
+
+
+
+5.6. Comparison of our method with other methods                     trained on the S datasets and then fine-tuned or continually
+Sequence training between two datasets: We compare our               learned on the T1 dataset. All models are trained on the
+method with several methods in Table 4. The EWC, LwF,                new dataset within five steps. From the results, we can
+and OWM as three mainstream continual learning methods               observe that our method RAWM also achieves the best
+achieve great success in many fields. The DFWF is the first          performance on both old and new datasets and the learning
+continual learning method to overcome forgetting for fake            performance is very close to the result of Train-on-All which
+audio detection. The results demonstrate that fine-tuning            is the the lower bound to all continual learning methods. By
+without modification (Fine-tune) forgets previous knowl-             comparing the results in Table 4a and Table 5, we can easily
+edge obviously. The forgetting of RAWM is one-tenth that             find that reducing the number of samples has only a little
+of Fine-tune on Table 4a and the EER on the new dataset              damage to our method.
+of RAWM is also half that of Fine-tune. We also observe
+that the Fine-tune, EWC and OWM achieve similar perfor-              5.8. The RAWM for speech emotion recognition
+mance in three experiments and the performance of LwF
+                                                                     Our method is inspired by fake audio detection and it can be
+outperforms theirs on the new dataset. The DFWF is more
+                                                                     easily used in other related tasks. We take speech emotion
+effective in overcoming forgetting than the above methods,
+                                                                     recognition as an example to evaluate the performance of
+but its performance on the new dataset is inferior to others.
+                                                                     the RAWM in other fields. In this regard, the previous result
+Compared with others, our method achieves lower EER on
+                                                                     shows that neutral emotion achieved the highest recognition
+both old and new datasets of all experiments, which demon-
+                                                                     accuracy across thirteen emotion datasets (Sharma, 2022).
+strates that both overcoming forgetting and learning could
+                                                                     So we infer that neutral speech has a more similar feature
+definitely benefit from our method when training across
+                                                                     distribution than that of happy, sad, and angry, thus the ratio
+datasets, regardless of whether the datasets have similar fea-
+                                                                     β of our method can be written as Eq 12. Based on this ob-
+ture distributions (Table 4a, Table 4b) or same languages
+                                                                     servation, we conduct some experiments for speech emotion
+(Table 4c).
+                                                                     recognition. We choose four emotional classes, including
+Sequence training on four datasets: In addition, We com-             neutral, happy, angry, and sad. The feature extractor and
+pare our method with several methods for sequence training           classifier are as same as that in fake audio detection. The
+on four datasets in Table 4d. The results show that most             results have been shown in Table 6. It could be easily ob-
+methods achieve lower EERs than fine-tuning, and the best            served that our method still achieves the highest accuracy
+result for overcoming forgetting and learning is our pro-            on both datasets. The effect of our method in overcoming
+posed method, which indicates that the RAWM is superior              forgetting is most obvious and its learning performance is
+to others for sequence training on both two and multiple             very close to the result of Train-on-All.
+datasets.
+                                                                     5.9. The RAWM for image recognition
+5.7. The performance of the RAWM with a few samples
+                                                                     We also have performed evaluation experiments on the im-
+We also present some results of the model when training on           age recognition domain in the CLEAR benchmark (Lin et al.,
+a few samples of new datasets. In our experiments, only 100          2021) to explore the broader applicability of our method.
+samples randomly selected from new datasets T1 were used             The CLEAR-10 benchmark for continual learning consists
+for fine-tuning or continual learning. All models are first          of 10 image recognition experiences, each comprising 11
+
+                                                                 8
+                      Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+                                  Table 7: The Accuracy(%) on the CLEAR experiences.
+
+
+                                                         Acc on the evaluation set of each experience
+  Continual Learning Methods
+                                   Exp1     Exp2     Exp3       Exp4      Exp5      Exp6     Exp7      Exp8     Exp9     Exp10
+             Replay                94.34    93.64    94.34      95.15     94.75     94.55    94.34    94.34     95.35     96.06
+            Fine-tune              87.68    90.00    91.11      91.82      90.40    89.90    90.30    90.61     90.61     93.33
+              EWC                  84.04    84.95    85.86      87.07      85.66    85.56    86.97    86.16     85.76     87.78
+              LwF                  88.59    88.89    87.27      90.51      87.68    87.78    87.47    87.47     88.79     88.48
+              GDF                  91.11    91.62    88.38      91.01      88.79    89.19    90.20    87.68     90.10     90.30
+              CWR                  90.71    91.72    90.71      91.52      89.49    90.91    91.62    90.71     91.82     93.74
+             OWM                   91.62    92.12    91.82      93.64      91.72    92.42    92.22    92.32     92.42     95.05
+         RAWM (Ours)               92.12    92.53     91.41     93.74     91.82     92.42    92.53     92.22    92.53     95.25
+
+
+
+classes such as camera, baseball, laptop, etc. To evaluate          scenarios of sequence training on both two and multiple
+the effectiveness of our method, we selected several widely         datasets. The result shows that our method still achieves the
+used continual learning algorithms, including the Replay,           best performance among the above methods when training
+EWC, LwF, GDumbFinetune (GDF) (Prabhu et al., 2020),                on a few samples. Besides, our method is inspired by fake
+CopyWeights with Re-init (CWR) (Lomonaco & Maltoni,                 audio detection and the results show that it can be easily gen-
+2017), and OWM methods. Table 7 presents the results of             eralized to other fields, like speech emotion recognition. In
+the comparative analysis. We treated the Replay method,             addition, our method does not require previous data; thus it
+which corresponds to the ”Train-on-all” approach in our             can be applied to most classification networks. We have yet
+paper, as the upper bound of accuracy for all continual             to study how to make the model learn the weight direction
+learning methods. The EWC and LwF methods have been                 gradually in the process of training on new datasets without
+introduced in our paper. In the GDF algorithm, we set the           any constraint, and exploring generalization to related tasks
+memory size to be the same as the number of training data           will form the focus of our future studies.
+in one bucket, and for CWR, the cwr layer was positioned
+as the final layer of the model. To extract features, we em-        Acknowledgements
+ployed a pre-trained ResNet-50 (He et al., 2016) as a feature
+extractor, producing 2048-dimensional feature vectors. A            This work is supported by the National Key Re-
+linear layer with input and output dimensions of 2048 and           search and Development Program of China under
+11, respectively, was used as the downstream classifier. Our        Grant No.2020AAA0140003, the National Natural Sci-
+experiments were conducted with a batch size of 512, an             ence Foundation of China (NSFC) (No.61831022,
+initial learning rate of 1 (decayed by a factor of 0.1 after        No.U21B2010, No.62101553, No.61971419, No.62006223,
+60 epochs), and the SGD optimizer with a momentum of                No.62276259, No.62201572, No.62206278), Beijing Mu-
+0.9. The experimental results in Table 7 demonstrate that           nicipal Science and Technology Commission, Admin-
+our proposed method, referred to as RAWM, consistently              istrative Commission of Zhongguancun Science Park
+achieved the best performance across most tasks. In partic-         No.Z211100004821013, Open Research Projects of Zhe-
+ular, in Exp3 and Exp8 , the performance of our method              jiang Lab (NO.2021KH0AB06).
+closely approached the highest accuracy achieved among
+all the evaluated methods.                                          References
+                                                                    Aljundi, R., Babiloni, F., Elhoseiny, M., Rohrbach, M.,
+6. Conclusion
+                                                                      and Tuytelaars, T. Memory aware synapses: Learning
+In this work, we propose a continual learning algorithm to            what (not) to forget. In Proceedings of the European
+overcome catastrophic forgetting, called RAWM, that could             Conference on Computer Vision (ECCV), pp. 139–154,
+adaptively modify the weight direction in process of training         2018.
+on new datasets. We also introduce a regularization to deal
+with the situation when old and new datasets are collected
+                                                                    Aljundi, R., Kelchtermans, K., and Tuytelaars, T. Task-
+from quite different conditions. The experimental results
+                                                                      free continual learning. In Proceedings of the IEEE/CVF
+demonstrate that our method outperforms four continual
+                                                                      Conference on Computer Vision and Pattern Recognition,
+learning methods in learning and overcoming forgetting in
+                                                                      pp. 11254–11263, 2019.
+
+                                                                9
+                     Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+Baevski, A., Zhou, Y., Mohamed, A., and Auli, M.         Kinnunen, T., Sahidullah, M., Delgado, H., Todisco, M.,
+  wav2vec 2.0: A framework for self-supervised learning    Evans, N. W. D., Yamagishi, J., and Lee, K. The asvspoof
+  of speech representations. In Larochelle, H., Ranzato,   2017 challenge: Assessing the limits of replay spoofing
+  M., Hadsell, R., Balcan, M., and Lin, H. (eds.), Ad-     attack detection. In Lacerda, F. (ed.), Interspeech
+  vances in Neural Information Processing Systems 33:      2017, 18th Annual Conference of the International
+  Annual Conference on Neural Information Processing       Speech Communication Association, Stockholm, Sweden,
+  Systems 2020, NeurIPS 2020, December 6-12, 2020,         August 20-24, 2017, pp. 2–6. ISCA, 2017. URL
+  virtual, 2020.      URL https://proceedings.             http://www.isca-speech.org/archive/
+  neurips.cc/paper/2020/hash/                              Interspeech_2017/abstracts/1111.html.
+  92d1e1eb1cd6f9fba3227870bb6d7f07-Abstract.
+  html.                                                  Kirkpatrick, J., Pascanu, R., Rabinowitz, N., Veness, J., Des-
+                                                           jardins, G., Rusu, A. A., Milan, K., Quan, J., Ramalho, T.,
+Ben-Israel, A. and Greville, T. N. Generalized inverses:   Grabska-Barwinska, A., et al. Overcoming catastrophic
+  theory and applications, volume 15. Springer Science &   forgetting in neural networks. Proceedings of the national
+  Business Media, 2003.                                    academy of sciences, 114(13):3521–3526, 2017.
+
+Bengio, Y. and LeCun, Y. Scaling learning algorithms                  Langley, P. Crafting papers on machine learning. In Langley,
+  towards AI. In Large Scale Kernel Machines. MIT Press,                P. (ed.), Proceedings of the 17th International Conference
+  2007.                                                                 on Machine Learning (ICML 2000), pp. 1207–1216, Stan-
+                                                                        ford, CA, 2000. Morgan Kaufmann.
+Castro, F. M., Marı́n-Jiménez, M. J., Guil, N., Schmid, C.,
+  and Alahari, K. End-to-end incremental learning. In                 Lee, K., Lee, K., Shin, J., and Lee, H. Overcoming catas-
+  Proceedings of the European conference on computer                    trophic forgetting with unlabeled data in the wild. In
+  vision (ECCV), pp. 233–248, 2018.                                     Proceedings of the IEEE/CVF International Conference
+                                                                        on Computer Vision, pp. 312–321, 2019.
+Cermelli, F., Mancini, M., Bulo, S. R., Ricci, E., and Caputo,
+                                                                      Li, Z. and Hoiem, D. Learning without forgetting. IEEE
+  B. Modeling the background for incremental learning in
+                                                                        transactions on pattern analysis and machine intelligence,
+  semantic segmentation. In Proceedings of the IEEE/CVF
+                                                                        40(12):2935–2947, 2017.
+  Conference on Computer Vision and Pattern Recognition,
+  pp. 9233–9242, 2020.                                                Lin, Z., Shi, J., Pathak, D., and Ramanan, D. The clear
+                                                                        benchmark: Continual learning on real-world imagery. In
+Chen, Y., Diethe, T., and Lawrence, N. Facilitating bayesian            Thirty-fifth Conference on Neural Information Processing
+  continual learning by natural gradients and stein gradients.          Systems Datasets and Benchmarks Track, 2021.
+  arXiv preprint arXiv:1904.10644, 2019.
+                                                                      Liu, T., Ungar, L., and Sedoc, J. Continual learning for
+Conneau, A., Baevski, A., Collobert, R., Mohamed, A.,                   sentence representations using conceptors. arXiv preprint
+  and Auli, M. Unsupervised cross-lingual representa-                   arXiv:1904.09187, 2019.
+  tion learning for speech recognition. arXiv preprint
+  arXiv:2006.13979, 2020.                                             Lomonaco, V. and Maltoni, D. Core50: a new dataset
+                                                                        and benchmark for continuous object recognition. In
+de Masson D’Autume, C., Ruder, S., Kong, L., and Yo-                    1st Annual Conference on Robot Learning, CoRL
+  gatama, D. Episodic memory in lifelong language learn-                2017, Mountain View, California, USA, November 13-
+  ing. Advances in Neural Information Processing Systems,               15, 2017, Proceedings, volume 78 of Proceedings
+  32, 2019.                                                             of Machine Learning Research, pp. 17–26. PMLR,
+                                                                        2017. URL http://proceedings.mlr.press/
+Haykin, S. S. Adaptive filter theory. Pearson Education                 v78/lomonaco17a.html.
+  India, 2002.
+                                                                      Lopez-Paz, D. and Ranzato, M. Gradient episodic memory
+He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learn-            for continual learning. Advances in neural information
+  ing for image recognition. In Proceedings of the IEEE                 processing systems, 30, 2017.
+  conference on computer vision and pattern recognition,
+  pp. 770–778, 2016.                                                  Lv, Z., Zhang, S., Tang, K., and Hu, P. Fake audio detection
+                                                                        based on unsupervised pretraining models. In ICASSP
+Huszár, F. On quadratic penalties in elastic weight con-               2022-2022 IEEE International Conference on Acoustics,
+  solidation. CoRR, abs/1712.03847, 2017. URL http:                     Speech and Signal Processing (ICASSP), pp. 9231–9235.
+ //arxiv.org/abs/1712.03847.                                            IEEE, 2022.
+
+                                                                 10
+                      Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+Ma, H., Yi, J., Tao, J., Bai, Y., Tian, Z., and Wang, C. Con-          and Frahm, J. (eds.), Computer Vision - ECCV 2020 -
+ tinual learning for fake audio detection. arXiv preprint              16th European Conference, Glasgow, UK, August 23-28,
+ arXiv:2104.07286, 2021.                                               2020, Proceedings, Part II, volume 12347 of Lecture
+                                                                       Notes in Computer Science, pp. 524–540. Springer, 2020.
+Ma, H., Yi, J., Wang, C., Yan, X., Tao, J., Wang, T., Wang,            doi: 10.1007/978-3-030-58536-5\ 31. URL https://
+ S., Xu, L., and Fu, R. FAD: A chinese dataset for fake                doi.org/10.1007/978-3-030-58536-5_31.
+ audio detection. CoRR, abs/2207.12308, 2022. doi: 10.
+ 48550/arXiv.2207.12308. URL https://doi.org/                        Rusu, A. A., Rabinowitz, N. C., Desjardins, G., Soyer, H.,
+ 10.48550/arXiv.2207.12308.                                            Kirkpatrick, J., Kavukcuoglu, K., Pascanu, R., and Had-
+                                                                       sell, R. Progressive neural networks. arXiv preprint
+Mallya, A. and Lazebnik, S. Packnet: Adding multiple tasks             arXiv:1606.04671, 2016.
+ to a single network by iterative pruning. In Proceedings
+ of the IEEE conference on Computer Vision and Pattern               Schwarz, J., Czarnecki, W., Luketina, J., Grabska-
+ Recognition, pp. 7765–7773, 2018.                                     Barwinska, A., Teh, Y. W., Pascanu, R., and Hadsell,
+                                                                       R. Progress & compress: A scalable framework for con-
+Martı́n-Doñas, J. M. and Álvarez, A. The vicomtech au-               tinual learning. In International Conference on Machine
+ dio deepfake detection system based on wav2vec2 for                   Learning, pp. 4528–4537. PMLR, 2018.
+ the 2022 add challenge. In ICASSP 2022-2022 IEEE In-
+ ternational Conference on Acoustics, Speech and Signal              Serra, J., Suris, D., Miron, M., and Karatzoglou, A. Over-
+ Processing (ICASSP), pp. 9241–9245. IEEE, 2022.                       coming catastrophic forgetting with hard attention to the
+                                                                       task. In International Conference on Machine Learning,
+Monteiro, J., Alam, M. J., and Falk, T. H. An ensemble                 pp. 4548–4557. PMLR, 2018.
+ based approach for generalized detection of spoofing at-
+ tacks to automatic speaker recognizers. In 2020 IEEE                Shah, S., Palmieri, F., and Datum, M. Optimal filtering al-
+ International Conference on Acoustics, Speech and Sig-                gorithms for fast learning in feedforward neural networks.
+ nal Processing, ICASSP 2020, Barcelona, Spain, May                    Neural networks, 5(5):779–787, 1992.
+ 4-8, 2020, pp. 6599–6603. IEEE, 2020. doi: 10.1109/                 Sharma, M. Multi-lingual multi-task speech emotion recog-
+ ICASSP40776.2020.9054558. URL https://doi.                            nition using wav2vec 2.0. In ICASSP 2022 - 2022 IEEE
+ org/10.1109/ICASSP40776.2020.9054558.                                 International Conference on Acoustics, Speech and Sig-
+Müller, N. M., Czempin, P., Dieckmann, F., Froghyar, A.,              nal Processing (ICASSP), pp. 6907–6911, 2022. doi:
+ and Böttinger, K. Does audio deepfake detection general-             10.1109/ICASSP43922.2022.9747417.
+ ize? arXiv preprint arXiv:2203.16263, 2022.                         Tak, H., Todisco, M., Wang, X., Jung, J.-w., Yamagishi,
+                                                                       J., and Evans, N. Automatic speaker verification spoof-
+Nautsch, A., Wang, X., Evans, N. W. D., Kinnunen, T. H.,
+                                                                       ing and deepfake detection using wav2vec 2.0 and data
+  Vestman, V., Todisco, M., Delgado, H., Sahidullah,
+                                                                       augmentation. arXiv preprint arXiv:2202.12233, 2022.
+  M., Yamagishi, J., and Lee, K. A. Asvspoof 2019:
+  Spoofing countermeasures for the detection of synthe-              Todisco, M., Wang, X., Vestman, V., Sahidullah, M., Del-
+  sized, converted and replayed speech. IEEE Trans.                    gado, H., Nautsch, A., Yamagishi, J., Evans, N., Kin-
+  Biom. Behav. Identity Sci., 3(2):252–265, 2021. doi:                 nunen, T., and Lee, K. A. Asvspoof 2019: Future hori-
+ 10.1109/TBIOM.2021.3059479. URL https://doi.                          zons in spoofed and fake audio detection. arXiv preprint
+  org/10.1109/TBIOM.2021.3059479.                                      arXiv:1904.05441, 2019.
+Parisi, G. I., Kemker, R., Part, J. L., Kanan, C., and Wermter,      Tseran, H., Khan, M. E., Harada, T., and Bui, T. D. Natural
+  S. Continual lifelong learning with neural networks: A               variational continual learning. In Continual Learning
+  review. Neural Networks, 113:54–71, 2019. doi: 10.1016/              Workshop@ NeurIPS, volume 2, 2018.
+  j.neunet.2019.01.012. URL https://doi.org/10.
+  1016/j.neunet.2019.01.012.                                         Veaux, C., Yamagishi, J., MacDonald, K., et al. Cstr
+                                                                       vctk corpus: English multi-speaker corpus for cstr voice
+Perez-Rua, J.-M., Zhu, X., Hospedales, T. M., and Xiang,               cloning toolkit. University of Edinburgh. The Centre for
+  T. Incremental few-shot object detection. In Proceedings             Speech Technology Research (CSTR), 2017.
+  of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition, pp. 13846–13855, 2020.                        Wang, H., Dinkel, H., Wang, S., Qian, Y., and Yu, K.
+                                                                      Dual-adversarial domain adaptation for generalized re-
+Prabhu, A., Torr, P. H. S., and Dokania, P. K. Gdumb:                 play attack detection. In Meng, H., Xu, B., and Zheng,
+  A simple approach that questions our progress in con-               T. F. (eds.), Interspeech 2020, 21st Annual Conference
+  tinual learning. In Vedaldi, A., Bischof, H., Brox, T.,             of the International Speech Communication Association,
+
+                                                                11
+                     Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+  Virtual Event, Shanghai, China, 25-29 October 2020,                Zeng, G., Chen, Y., Cui, B., and Yu, S. Continual learning of
+  pp. 1086–1090. ISCA, 2020. doi: 10.21437/Interspeech.                context-dependent processing in neural networks. Nature
+  2020-1255. URL https://doi.org/10.21437/                             Machine Intelligence, 1(8):364–372, 2019.
+  Interspeech.2020-1255.
+                                                                     Zenke, F., Poole, B., and Ganguli, S. Continual learning
+Wang, T., Fu, R., Yi, J., Tao, J., Wen, Z., Qiang, C., and             through synaptic intelligence. In Precup, D. and Teh,
+ Wang, S. Prosody and voice factorization for few-shot                 Y. W. (eds.), Proceedings of the 34th International Con-
+ speaker adaptation in the challenge m2voc 2021. ICASSP                ference on Machine Learning, ICML 2017, Sydney, NSW,
+ 2021 - 2021 IEEE International Conference on Acoustics,               Australia, 6-11 August 2017, volume 70 of Proceedings
+ Speech and Signal Processing (ICASSP), pp. 8603–8607,                 of Machine Learning Research, pp. 3987–3995. PMLR,
+ 2021.                                                                 2017a. URL http://proceedings.mlr.press/
+                                                                       v70/zenke17a.html.
+Wang, X. and Yamagishi, J. Investigating self-supervised
+ front ends for speech spoofing countermeasures. arXiv               Zenke, F., Poole, B., and Ganguli, S. Continual learn-
+ preprint arXiv:2111.07725, 2021.                                      ing through synaptic intelligence. In International Con-
+                                                                       ference on Machine Learning, pp. 3987–3995. PMLR,
+Wang, Y., Stanton, D., Zhang, Y., Skerry-Ryan, R. J., Batten-          2017b.
+ berg, E., Shor, J., Xiao, Y., Ren, F., Jia, Y., and Saurous,
+                                                                     Zhang, Y., Jiang, F., and Duan, Z. One-class learning to-
+ R. A. Style tokens: Unsupervised style modeling, control
+                                                                       wards synthetic voice spoofing detection. IEEE Signal
+ and transfer in end-to-end speech synthesis. In Interna-
+                                                                       Processing Letters, 28:937–941, 2021a.
+ tional Conference on Machine Learning, 2018.
+                                                                     Zhang, Y., Zhu, G., Jiang, F., and Duan, Z. An empirical
+Wu, Y., Chen, Y., Wang, L., Ye, Y., Liu, Z., Guo, Y., and              study on channel effects for synthetic voice spoofing coun-
+ Fu, Y. Large scale incremental learning. In Proceedings               termeasure systems. arXiv preprint arXiv:2104.01320,
+ of the IEEE/CVF Conference on Computer Vision and                     2021b.
+ Pattern Recognition, pp. 374–382, 2019.
+                                                                     Zhao, Y., Huang, W.-C., Tian, X., Yamagishi, J., Das,
+Wu, Z., Kinnunen, T., Evans, N., Yamagishi, J., Hanilçi, C.,          R. K., Kinnunen, T., Ling, Z., and Toda, T. Voice
+ Sahidullah, M., and Sizov, A. Asvspoof 2015: the first                conversion challenge 2020: Intra-lingual semi-parallel
+ automatic speaker verification spoofing and countermea-               and cross-lingual voice conversion. arXiv preprint
+ sures challenge. In Sixteenth annual conference of the                arXiv:2008.12527, 2020.
+ international speech communication association, 2015.
+
+Yamagishi, J., Wang, X., Todisco, M., Sahidullah, M.,
+  Patino, J., Nautsch, A., Liu, X., Lee, K. A., Kinnunen, T.,
+  Evans, N., et al. Asvspoof 2021: accelerating progress in
+  spoofed and deepfake speech detection. arXiv preprint
+  arXiv:2109.00537, 2021.
+
+Yan, X., Yi, J., Tao, J., Wang, C., Ma, H., Wang,
+  T., Wang, S., and Fu, R.         An initial investiga-
+  tion for detecting vocoder fingerprints of fake audio.
+  CoRR, abs/2208.09646, 2022. doi: 10.48550/arXiv.
+  2208.09646. URL https://doi.org/10.48550/
+  arXiv.2208.09646.
+
+Yi, J., Fu, R., Tao, J., Nie, S., Ma, H., Wang, C., Wang,
+  T., Tian, Z., Bai, Y., Fan, C., et al. Add 2022: the first
+  audio deep synthesis detection challenge. In ICASSP
+  2022-2022 IEEE International Conference on Acoustics,
+  Speech and Signal Processing (ICASSP), pp. 9216–9220.
+  IEEE, 2022.
+
+Yoon, J., Yang, E., Lee, J., and Hwang, S. J. Lifelong
+  learning with dynamically expandable networks. arXiv
+  preprint arXiv:1708.01547, 2017.
+
+                                                                12
+                   Do You Remember? Overcoming Catastrophic Forgetting for Fake Audio Detection
+
+A. Appendix
+
+Table 8: The EER(%) on multiple evaluation sets. Model-1 to Model-6 are the models trained using the ASVspoof2019LA
+training set with increasing training steps.
+
+                                                          Evaluation Sets
+                                         Model
+                                                   S       T1       T2       T3
+                                        Model-1   3.751   6.316    7.670    75.198
+                                        Model-2   2.975   8.517    10.000   78.477
+                                        Model-3   1.794   9.988    26.165   85.436
+                                        Model-4   0.258   24.532   46.503   91.473
+                                        Model-5   0.259   25.698   44.741   91.824
+                                        Model-6   0.262   27.872   49.726   92.113
+
+
+
+
+                                                           13
+

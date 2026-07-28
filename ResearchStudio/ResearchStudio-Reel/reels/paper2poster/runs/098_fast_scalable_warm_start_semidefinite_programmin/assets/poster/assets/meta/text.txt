@@ -1,0 +1,2189 @@
+                                                      Fast, Scalable, Warm-Start Semidefinite Programming
+                                                              with Spectral Bundling and Sketching
+                                                                           Rico Angell∗                Andrew McCallum∗
+
+
+
+                                                                                              Abstract
+                                                  While semidefinite programming (SDP) has traditionally been limited to moderate-sized prob-
+                                                  lems, recent algorithms augmented with matrix sketching techniques have enabled solving larger
+arXiv:2312.11801v2 [math.OC] 9 Feb 2024
+
+
+
+
+                                                  SDPs. However, these methods achieve scalability at the cost of an increase in the number
+                                                  of necessary iterations, resulting in slower convergence as the problem size grows. Further-
+                                                  more, they require iteration-dependent parameter schedules that prohibit effective utilization
+                                                  of warm-start initializations important in practical applications with incrementally-arriving
+                                                  data or mixed-integer programming. We present Unified Spectral Bundling with Sketching
+                                                  (USBS), a provably correct, fast and scalable algorithm for solving massive SDPs that can
+                                                  leverage a warm-start initialization to further accelerate convergence. Our proposed algorithm
+                                                  is a spectral bundle method for solving general SDPs containing both equality and inequal-
+                                                  ity constraints. Moveover, when augmented with an optional matrix sketching technique, our
+                                                  algorithm achieves the dramatically improved scalability of previous work while sustaining con-
+                                                  vergence speed. We empirically demonstrate the effectiveness of our method across multiple
+                                                  applications, with and without warm-starting. For example, USBS provides a 500x speed-up
+                                                  over the state-of-the-art scalable SDP solver on an instance with over 2 billion decision variables.
+
+
+                                          1       Introduction
+                                          Semidefinite programming (SDP) is a convex optimization paradigm capable of modeling or ap-
+                                          proximating many practical problems in combinatorial optimization [3], neural network verifica-
+                                          tion [26, 71], robotics [73], optimal experiment design [92], VLSI [91], and systems and control
+                                          theory [15]. Despite their widespread applicability, practitioners often dismiss the use of SDPs
+                                          under the presumption that optimization is intractable at real-world scale. This assumption is
+                                          grounded in the prohibitively high computational complexity of standard SDP solvers [5, 90].
+                                              The main challenge when solving SDPs with standard constrained optimization approaches
+                                          is the high cost of projection onto the feasible region. Projecting a symmetric matrix onto the
+                                          semidefinite cone requires a full eigendecomposition, an operation that scales cubicly with the
+                                          problem dimension. The high computational cost of this single operation severely limits the ap-
+                                          plicability of projected gradient and ADMM-based approaches [18, 69]. Interior point methods,
+                                          the de facto approach for solving small-to-moderate sized SDPs, require even more computational
+                                          resources.
+                                              Projection-free and conditional gradient-based methods have been proposed to avoid the com-
+                                          putational burden of projecting iterates onto the semidefinite cone [10, 104, 106]. These methods
+                                          avoid projection onto the feasible region with various techniques including subgradient descent in
+                                          the dual space and a conditional gradient method on an unconstrained augmented objective func-
+                                          tion. The bulk of the computational burden for these methods is typically an extreme eigenvector
+                                          calculation. The scalablity of these methods is still limited, despite the improved per-iteration
+                                          complexity, since they require storing the entire primal matrix which scales quadratically with the
+                                          problem dimension.
+                                              ∗
+                                             Manning College of Information and Computer Sciences, University of Massachusetts Amherst, Amherst, MA,
+                                          USA. Correspondence to Rico Angell (rangell@cs.umass.edu).
+
+
+
+                                                                                                   1
+    The most well-known method for scaling semidefinte programming without storing the entire
+primal matrix in memory is the Burer–Monteiro (BM) factorization heuristic [21]. The core idea of
+the BM method is to explicitly control the memory usage by restricting the primal matrix to a low-
+rank factorization. However, this method sacrifices the convexity of the problem for scalability. In
+some cases, the BM method either requires having a high rank factorization, leading to burdensome
+memory requirements, or risks optimization getting stuck in local minima [97]. Yurtsever et al.
+[107] extend the conditional gradient augmented Lagrangian approach [106] with a matrix sketching
+technique. This approach avoids storing the entire primal matrix while maintaining the convexity
+of the problem leading to provable convergence for general SDPs. In addition, this method uses
+iteration-dependent parameters prohibiting it from reliably leveraging a warm-start initialization.
+    Spectral bundle methods, first proposed by Helmberg and Rendl [42], are an appealing frame-
+work for solving SDPs due to their low per-iteration computational complexity and fast empir-
+ical convergence. While several spectral bundle methods have been presented in the literature
+[8, 28, 41, 43], previous work considers SDPs with either only equality constraints or only inequal-
+ity constraints. Furthermore, the lack of an efficient standalone implementation has prevented the
+evaluation of spectral bundle method on massive SDPs.
+
+Contributions. We present USBS, a unified spectral bundle method designed for a broader class
+of SDPs and show it is a practical approach for solving large problem instances quickly. USBS
+flexibly allows the user to control the trade-off between per-iteration complexity and the empirical
+speed at which the algorithm converges. In addition, USBS can be augmented with a matrix
+sketching technique that can dramatically improve the scalability of the algorithm while maintain-
+ing its fast convergence. We demonstrate the empirical efficacy of our proposed spectral bundle
+method on three types of practical large SDPs seeing extraordinary performance improvements
+in comparison with the previous state-of-the-art scalable solver for general SDPs. For example,
+USBS is able to obtain a quality solution to an SDP with over 1013 decision variables while the
+previous state-of-the-art fails to reach an accurate solution within 72 hours. In addition, we see
+a 500x speedup over the previous state-of-the-art on an instance with 2 billion decision variables.
+Finally, we find that warm-starting can lead to more than a 100x speedup in the convergence of
+USBS as compared to cold-starting while the previous state-of-the-art often is not able to reliably
+take advantage of a warm-start initialization. We provide a standalone implementation of the al-
+gorithm in pure JAX [19, 36], enabling efficient execution on various hardware (CPU, GPU, TPU)
+and wide-spread use.
+
+
+2     Preliminaries
+2.1   Semidefinite Programming
+We begin with the notation necessary to define the semidefinite programming problem. Let Sn
+be the set of all real symmetric n × n matrices and Sn+ := {X ∈ Sn : X ⪰ 0} be the positive
+semidefinite cone. Let ⟨·, ·⟩ denote the standard inner product for vectors and the Frobenius inner
+product for matrices. For any matrix M ∈ Sn , let λmax (M ) denote the maximum eigenvalue
+of M and let tr(M ) denote the trace of M . Let A : Sn → Rm be a given linear operator and
+A∗ : Rm → Sn be its adjoint, i.e. ⟨AX, y⟩ = ⟨X, A∗ y⟩ for any X ∈ Sn and y ∈ Rm , which take the
+following form,                                
+                                       ⟨A1 , X⟩                 m
+                              AX =       .
+                                          .               ∗
+                                                               X
+                                                 and A y =        yi Ai ,
+                                               
+                                          .
+                                     ⟨Am , X⟩                  i=1
+
+for given matrices Ai ∈ Sn . For any given I ⊂ {1, . . . , m}, let AI denote the linear operator
+restricted to matrices Ai for i ∈ I and yI to be the corresponding subset of rows for any y ∈ Rm .
+In general, we utilize (·)I to extract the corresponding indices from any vector in Rm . Finally, let
+I ′ := {1, · · · , m} \ I be the compliment of I.
+
+                                                 2
+   Given fixed C ∈ Sn , A, b ∈ Rm , and I, the primal (P) and dual (D) semidefinite programs can
+be written as follows:
+                max ⟨C, X⟩                                       minm ⟨b, y⟩
+                 X⪰0                                                          y∈R
+
+                  s.t. AI ′X = bI ′                 (P)                        s.t. C − A∗ y ⪯ 0        (D)
+                       AI X ≤ bI                                                    yI ≥ 0
+     Note that while all SDPs of this form can technically be written as equality constrained SDPs
+(i.e. standard-form SDPs), doing so in practice is ill-advised since the problem dimension, n,
+grows by one for every inequality constraint. In addition, we also represent the primal feasibility
+set as the convex set K := {z ∈ Rm : zI ≤ bI , zI ′ = bI ′ }, and measure the primal infeasibility
+dist(AX, K). We use dist(z, Z) to denote the Euclidean distance from a point z to a closed set Z
+and projZ (z) to denote the Euclidean projection of z onto Z. Equivalently,
+
+                             dist(z, Z) = inf
+                                          ′
+                                              ∥z − z ′ ∥ = ∥z − projZ (z)∥.
+                                             z ∈Z
+
+We denote the solution sets of (P) and (D) by X⋆ and Y⋆ , respectively. We make the standard
+assumption that (P) and (D) satisfy strong duality, namely that the solution sets X⋆ and Y⋆ are
+nonempty, compact, and every pair of solutions (X⋆ , y⋆ ) ∈ X⋆ × Y⋆ has zero duality gap: p⋆ :=
+⟨C, X⋆ ⟩ = ⟨b, y⋆ ⟩ =: d⋆ . Strong duality holds whenever Slater’s condition holds and A is a surjective
+linear operator. Additionally, we say that the SDP satisfies strict complementarity if there exists
+(X⋆ , y⋆ ) such that for induced dual slack matrix Z⋆ := C − A∗ y⋆ , rank(X⋆ ) + rank(Z⋆ ) = n. Strict
+complementarity is satisfied by generic SDPs [4] and many well-structured SDPs [29]. Lastly, we
+denote the maximum nuclear norm of the primal solution set as N(X⋆ ) := supX⋆ ∈X⋆ ∥X⋆ ∥∗ .
+    In many important applications, SDPs take a highly structured and sparse forms that admit
+low-rank solutions. The cost matrix C is often sparse, containing many fewer than n2 non-zero
+entries. Additionally, the number of primal constraints m is often much less n2 , being proportional
+to n or the number of non-zero entries in C. We would like to exploit these features with a provably
+correct, fast and scalable optimization algorithm that can solve any SDP.
+
+2.2    Proximal Bundle Method
+Proximal bundle methods [33, 49, 55, 63] are a class of optimization algorithms for solving un-
+constrained convex minimization problems of the form miny∈Rm f (y), where f : Rm → (−∞, +∞]
+is a proper closed convex function that attains its minimum value, inf f , on some nonempty set.
+At each iteration, the proximal bundle method proposes an update to the current iterate yt by
+applying a proximal step to an approximation of the objective function, fˆt :
+                                                            ρ
+                                   ỹt+1 ← arg min fˆt (y) + ∥y − yt ∥2                                 (1)
+                                            y∈R m           2
+
+where ρ > 0. The next iterate yt+1 is set equal to ỹt+1 only when the decrease in the objective
+value is at least a fixed fraction of the decrease predicted by the model fˆt , i.e.
+
+                                 β(f (yt ) − fˆt (ỹt+1 )) ≤ f (yt ) − f (ỹt+1 )                       (2)
+
+for some fixed β ∈ (0, 1). The iterations where (2) is satisfied (and thus, yt+1 ← ỹt+1 ) are referred
+to as descent steps. Otherwise, the algorithm takes a null step and sets yt+1 ← yt . Regardless of
+whether (2) is satisfied or not, ỹt+1 is used to construct the next model fˆt+1 .
+
+Model Requirements. The model fˆt can take many forms, but is usually constructed using
+subgradients of f at past and current iterates. Let ∂f (y) := {g : f (y ′ ) ≥ f (y)+⟨g, y ′ −y⟩, ∀y ′ ∈ Rm }
+denote the subdifferential of f at y (i.e. the set of subgradients of f evaluated at a point y).
+Following prior work, we require the next model fˆt+1 to satisfy the following mild assumptions:
+
+
+                                                          3
+    1. Minorant.
+                                         fˆt+1 (y) ≤ f (y), ∀y ∈ Rm                              (3)
+
+    2. Subgradient lower bound. For any gt+1 ∈ ∂f (ỹt+1 ),
+
+                             fˆt+1 (y) ≥ f (ỹt+1 ) + ⟨gt+1 , y − ỹt+1 ⟩, ∀y ∈ Rm               (4)
+
+    3. Model subgradient lower bound. The first order optimality conditions for (1) gives the
+       subgradient st+1 := ρ(yt − ỹt+1 ) ∈ ∂ fˆt (ỹt+1 ). After a null step t,
+
+                             fˆt+1 (y) ≥ fˆt (ỹt+1 ) + ⟨st+1 , y − ỹt+1 ⟩, ∀y ∈ Rm             (5)
+The first two conditions serve to guarantee that a new model integrates first-order information
+from the objective at ỹt+1 . The third condition demands the new model to preserve approximation
+accuracy exhibited by the preceding model.
+    Assuming these model requirements, Dı́az and Grimmer [27] proved non-asymptotic conver-
+gence rates for the proximal bundle method under various conditions. We summarize the results
+relevant to this work in Theorem D.1.
+
+
+3     Unified Spectral Bundling
+In this section, we will present USBS, our proposed algorithm for solving the SDP defined in (P)
+and (D), Our proposed spectral bundle method is a unified algorithm for solving SDPs with both
+equality and inequality constraints and can be integrated with a matrix sketching technique for
+dramatically improved scalability as demonstrated in Section 4. To apply the proximal bundle
+method, we consider consider minimizing the following unconstrained objective
+
+                           f (y) := α [λmax (C − A∗ y)]+ + ⟨b, y⟩ + ιY (y),                (pen-D)
+
+where [ · ]+ := max{ · , 0} and Y := {y ∈ Rm : yI ≥ 0}. Minimizing (pen-D) is equivalent to opti-
+mizing (D) in the sense that the optimal solution set and objective are the same (Appendix A.1).
+In the following subsections, we will detail how the model is constructed and how to compute the
+candidate iterates.
+
+3.1    Spectral Bundle Model
+The form of (pen-D) is not quite conducive to defining the model and solving for the candidate
+iterate ỹt+1 . To address this, we will consider an equivalent formulation to (pen-D) that is more
+amenable to this effort. For any fixed α ≥ 2N(X⋆ ), let X := {X ∈ Sn+ : tr(X) ≤ α} be the trace
+constrained subset of the primal domain. Let N := {ν ∈ Rm : νI ≤ 0, νI ′ = 0} be the domain of
+the dual slack variable ν ∈ Rm for the indicator function ιY (·). Then, we can rewrite the following
+equivalent formulation to (pen-D)
+
+                           f (y) =      sup       ⟨C − A∗ y, X⟩ + ⟨b − ν, y⟩.                    (6)
+                                     (X,ν)∈X ×N
+
+We derive this equivalent formulation in Appendix A.2.
+
+Defining the model. This equivalent formulation is clearly just as difficult to optimize as (pen-D),
+but is helpful in defining the model we will utilize in the spectral bundle method. The main idea
+is to consider (6) over a low-dimensional subspace of X such that (3), (4), and (5) are satisfied.
+The subspace we will consider at step t is parameterized by matrices X̄t ∈ Sn+ and Vt ∈ Rn×k and
+is defined as follows                                                 
+                                               ⊤ η tr(X̄t ) + tr(S) ≤ α
+                           Xt := η X̄t + Vt SVt
+                            b                                            .                      (7)
+                                                   η ≥ 0, S ∈ Sk+
+
+                                                     4
+The matrix Vt has k orthonormal column vectors, where k is a small user defined parameter. The
+columns of Vt are partitioned into kc ≥ 1 current eigenvectors and kp ≥ 0 orthonormal vectors
+representing past spectral information. Regardless of the setting of kc and kp , the columns of Vt
+will always include a maximum eigenvector v1 of C − A∗ ỹt , which also means b − αAv1 v1⊤ ∈ ∂f (ỹt ).
+For scalability reasons, we expect k = kc + kp to be relatively small. The matrix X̄t is a carefully
+selected weighted sum of past spectral bounds such that tr(X̄t ) ≤ α and enables the last model
+condition (5) to be satisfied. Hence, the model is
+
+                              fˆt (y) :=       sup        ⟨C − A∗ y, X⟩ + ⟨b − ν, y⟩.                (8)
+                                           (X,ν)∈Xbt ×N
+
+We show that this model satisfies the conditions (3), (4), and (5) in Appendix D.1.
+
+Updating the model. Independent of whether a descent step or null step is taken, the model
+needs to be updated. At every step, we solve the following minimax problem
+                                                                       ρ
+                       minm       sup      ⟨C − A∗ y, X⟩ + ⟨b − ν, y⟩ + ∥y − yt ∥2 ,                 (9)
+                      y∈R
+                              (X,ν)∈Xbt ×N
+                                                                       2
+
+where (ỹt+1 , Xt+1 , νt+1 ) is the minimax solution. The structure of Xbt allows us to rewrite Xt+1 as
+
+                                           Xt+1 = ηt+1 X̄t + Vt St+1 Vt⊤ .                          (10)
+
+To compute X̄t+1 and Vt+1 we first compute an eigendecomposition of St+1 to separate current
+and past spectral information as follows
+
+                                           St+1 = Qp Λp Qp⊤ + Qc Λc Q⊤
+                                                                     c ,                            (11)
+
+where Λp is a diagonal matrix containing the largest kp eigenvalues and Qp ∈ Rk×kp contains the
+corresponding eigenvectors. The diagonal matrix Λc contains the remaining kc eigenvalues and the
+corresponding eigenvectors are contained in the columns of Qc ∈ Rk×kc . Given this decomposition,
+we set the next model’s X̄t+1 as follows
+
+                                     X̄t+1 ← ηt+1 X̄t + Vt Qc Λc Q⊤   ⊤
+                                                                  c Vt .                            (12)
+
+In the case that kp = 0, observe that X̄t = Xt for all t. To update Vt+1 , we first compute the top
+kc orthonormal eigenvectors v1 , . . . , vkc of C − A∗ ỹt+1 . Then, we set Vt+1 to k orthonormal vectors
+that span the columns of [Vt Qp ; v1 , . . . , vkc ] as follows
+                                                                            
+                           Vt+1 ← orthonormalize [Vt Qp ; v1 , . . . , vkc ] ,                       (13)
+
+where we can use QR decomposition to orthonormalize the vectors. If kp = 0, orthonormalization
+is unnecessary and we just set Vt+1 ← [v1 , . . . , vkc ].
+
+3.2   Computing the Candidate Iterate
+We will now discuss how to compute the candidate iterate ỹt+1 by applying a proximal step to the
+current approximation of the objective function (i.e. solve (1)). We show in Appendix A.3 that
+the candidate iterate can be computed as
+                                                 1
+                                     ỹt+1 = yt − (b − νt+1 − AXt+1 ),                              (14)
+                                                 ρ
+
+where (Xt+1 , νt+1 ) ∈ Xbt × N is the solution to the following optimization problem
+
+                                    (Xt+1 , νt+1 ) ∈ arg max ψt (X, ν),                             (15)
+                                                           (X,ν)∈Xbt ×N
+
+
+                                                             5
+Algorithm 1 Unified Spectral Bundling
+ 1: Input: Problem specification (C, A, b, I), parameters (α, ρ, β, kc , kp ), and initialization of X0 =
+    X̄0 , y0 , and orthonormal V0 to fully parameterize fˆ0 and Xb0 .
+ 2: Output: XT , yT
+ 3: for t = 0, 1, . . . , T do
+ 4:   (Xt+1 , νt+1 ) ← arg max ψt (X, ν)
+                       (X,ν)∈Xbt ×N
+                   1
+ 5:   ỹt+1 ← yt − ρ (b − νt+1 − AXt+1 )
+ 6:   if β(f (yt ) − fˆt (ỹt+1 )) ≤ f (yt ) − f (ỹt+1 ) then
+ 7:      yt+1 ← ỹt+1                                                             // descent step
+ 8:   else
+ 9:      yt+1 ← yt                                                                    // null step
+10:   Update fˆt+1 and Xbt+1 using (7), (8), (12), (13).
+11: return XT , yT
+
+
+                                                       1
+where we define ψt (X, ν) := ⟨C, X⟩+⟨b−ν −AX, yt ⟩− 2ρ   ∥b−ν −AX∥2 . To solve for (Xt+1 , νt+1 ) ∈
+Xbt × N, we propose using the alternating maximization algorithm. After initializing ν̃ = 0, the the
+following update steps are repeated until convergence:
+
+                            X̃ ← arg max ψt (X, ν̃)                                                  (16)
+                                     X∈Xbt
+
+                             ν̃ ← arg max ψt (X̃, ν) = projN (b − AX̃ − ρyt )                        (17)
+                                      ν∈N
+
+Clearly ψt is smooth, and in this case the alternating maximization algorithm is known to con-
+verge at a O(1/ε) rate [14]. If ψt happens to also be strongly concave, the rate improves to
+O(log(1/ε)) [61]. We solve (16) using a primal-dual interior point method derived in Appendix B.2.
+
+Feasibility of ỹt+1 . If we substitute νt+1 = projN (b − AXt+1 − ρyt ) into (14), it can be seen that
+the candidate ỹt+1 is always feasible
+                                                                 
+                                               1
+                          ỹt+1 I = max yt I −      bI − AI Xt+1 , 0 ≥ 0,
+                                                 ρ
+
+and is also complementary to the dual slack variable νt+1 , i.e. ⟨ỹt+1 , νt+1 ⟩ = 0. This view allows
+us to see that we can equivalently express the candidate iterate as
+                                                                
+                                                  1
+                               ỹt+1 = projY yt − (b − AXt+1 ) .
+                                                  ρ
+
+The complete algorithm is detailed in Algorithm 1. Notice that USBS has no iteration-dependent
+step-sizes or parameters, making it more amenable to effectively utilize a warm-start initialization.
+It is important to note that the main cost of computing f (yt ) and f (ỹt+1 ) is a maximum eigenvalue
+computation of C −A∗ yt and C −A∗ ỹt+1 , respectively. Lastly, we compute fˆt (ỹt+1 ) using a primal-
+dual interior point method derived in Appendix B.1.
+
+Convergence Rate. Under any setting of the parameters, Theorem 3.1 guarantees sublinear
+convergence for both primal and dual problems, showing that the iterates Xt and yt converge in
+terms of objective gap and feasilibity.
+
+
+
+
+                                                       6
+Theorem 3.1. Suppose strong duality holds. For any fixed ρ > 0, β ∈ (0, 1), kc ≥ 1, kp ≥ 0, and
+α ≥ 2N(X⋆ ), USBS produces iterates Xt ⪰ 0 and yt ∈ Y such that for any ε ∈ (0, 1],
+
+                         penalized dual optimality: f (yt ) − f (y⋆ ) ≤ ε,
+                                                                       √
+                                  primal feasiblity: dist(AXt , K) ≤ ε,
+                                   dual feasiblity: λmax (C − A∗ yt ) ≤ ε,
+                                                                          √
+                           primal-dual optimality: |⟨b, yt ⟩ − ⟨C, Xt ⟩| ≤ ε,
+
+by some iteration O(1/ε3 ). And, if strict complementarity holds, then these conditions are achieved
+by some iteration O(1/ε). Additionally, if Slater’s condition holds and y⋆ is unique, then the
+approximate primal feasibility and approximate primal-dual optimality respectively improve to
+
+                          dist(AXt , K) ≤ ε    and     |⟨b, yt ⟩ − ⟨C, Xt ⟩| ≤ ε.
+
+The proof is of this theorem is given in Appendix D.
+
+
+4    Scaling with Matrix Sketching
+The memory required to store the primal iterates X̄t (similarly Xt ) is prohibitive to scaling SDPs
+to large problem instances. We will utilize a Nyström sketch [37, 39, 56, 87] to track a compressed
+low-rank projection of the primal iterate as it evolves which at any iteration can be used to compute
+a provably accurate low-rank approximation of X̄t .
+    First, notice that the operations carried out by USBS do not require explicitly storing X̄t . In
+fact, if we are not interested in the primal iterates and we only want to solve the dual problem
+(e.g. in the case where we want to test the feasbility of the primal problem), we only need to store
+⟨C, X̄t ⟩, tr(X̄t ), and AX̄t , which can be efficiently maintained with low-rank updates to X̄t (see
+Appendix C for more details). This means if we are interested in the primal iterates, our storage
+of X̄t is independent from the operations of USBS.
+    Consider any iterate X̄t ∈ Sn+ . Let r ∈ {1, . . . , n} be a parameter that trades off accuracy for
+scalability. To construct the Nyström sketch, we sample a random projection matrix Ψ ∈ Rn×r
+such that Ψij ∼ N (0, 1) are sampled i.i.d. The projection of X̄t , or sketch, can be computed as
+Pt = X̄t Ψ ∈ Rn×r . We can efficiently maintain this sketch Pt under low-rank updates made to X̄t ,
+                                                                   
+                                  Pt+1 ← ηt+1 X̄t + Vt Qc Λc Q⊤ V
+                                                               c t
+                                                                  ⊤
+                                                                      Ψ
+                                                                                                 (18)
+                                         = ηt+1 Pt + Vt Qc Λc Q⊤   V
+                                                                 c t
+                                                                     ⊤
+                                                                       Ψ  .
+     Given the sketch Pt and the projection matrix Ψ, we can compute a rank-r approximation to X̄t .
+It is important to note that by applying this Nyström sketching technique the only approximation
+error is in the approximation of X̄t , and all of the error is constant (i.e. the error does not
+compound over time) and comes only from the projection matrix Ψ (and the choice of r). See
+Appendix C for more details.
+
+
+5    Experiments
+We evaluate USBS on three different problem types with and without warm-starting strategies
+against the scalable semidefinite programming algorithm CGAL [106, 107] (with sketching). Yurt-
+sever et al. [107] perform an extensive evaluation against strong SDP solvers, including SeDuMi [81],
+SDPT3 [86], Mosek [9], SDPNAL+[103], and the BM factorization heuristic [21]. They show on
+several applications that CGAL with sketching is by far the standard against which to compare
+for scalable semidefinite programming.
+
+
+
+
+                                                   7
+                                    Table 1: MaxCut data instance statistics.
+
+               fe sphere   hi2010   fe body   me2010   fe tooth   598a   144    auto   netherlands osm   333SP
+      n          16K       25K      45K       70K       78K       111K   145K   449K        2.2M         3.7M
+      nnz(L)    115K       149K     372K      405K      983K      1.6M   2.3M   7.1M        7.1M         25.9M
+
+
+
+
+Figure 1: Convergence time (sec) to moderate relative error tolerance (↓). The time (in seconds)
+for CGAL and USBS to achieve an ε-approximate solution for ε = 10−1 with and without warm-starting on
+99% of initial data on ten DIMACS10 MaxCut instances. The bars marked with † indicate an ε-approximate
+solution was not achieved in 72 hours. The datasets are sorted in ascending order by n, ranging from
+16K to 3.7M (more than 1013 decision variables for 333SP). Note that warm-starting generally improves
+convergence, but does not always (e.g. 598a). We observe USBS achieves an extraordinary improvement
+in convergence over CGAL which fails to reach an accurate solution on 7 out of 10 instances. In contrast,
+USBS is able to reach a solution on all of the problem instances in 28 hours or less without a warm-start
+initialization.
+
+
+   We consider the primal iterate an ε-approximate solution if the relative primal objective sub-
+optimality and relative infeasibility is less than ε, i.e.
+                                ⟨C, X⟩ − ⟨C, X⋆ ⟩                  dist(AX, K)
+                                                  ≤ ε and                      ≤ ε.                              (19)
+                                   1 + ⟨C, X⟩                         1 + ∥b∥
+Computing the relative infeasibility is simple. We do not usually have access to the optimal primal
+objective value ⟨C, X⋆ ⟩ to compute the relative primal objective suboptimality, but we can compute
+an upper bound. See (69) for how we compute this upper bound. We include further experimental
+details in Appendix E and results in Appendix F.
+
+5.1     MaxCut
+The MaxCut problem is a fundamental combinatorial optimization problem and its SDP relaxation
+is a common test bed for SDP solvers. Given an undirected graph, the MaxCut is a partitioning of
+the n vertices into two sets such that the number of edges between the two subsets is maximized.
+The MaxCut SDP relaxation [38] is as follows
+                                 1
+                                   tr(LX) s.t. diag(X) = 1 and X ⪰ 0,
+                                  max                                                             (20)
+                                 4
+where L is the graph Laplacian, diag(·) extracts the diagonal of a matrix into a vector, and 1 ∈ Rn is
+the all-ones vector. In many instances of MaxCut, the graph Laplacian L is sparse and the optimal
+solution is low-rank. This means that we can represent the MaxCut instance with far less than
+O(n2 ) memory and leverage sketching the primal matrix X to improve scalability temendously.
+    We evaluate the CGAL and USBS with and without warm-starting on ten instances from the
+DIMACS10 [11] where n and the number of edges in each graph are shown in Table 1. We warm-start
+each method by dropping the last 1% of vertices from the graph, resulting in a graph with 99% of
+the vertices. We pad the solution from the 99%-sized problem with zeros and rescale as necessary
+to create the warm-start initialization. Figure 1 displays the time (in seconds) taken by CGAL
+and USBS, with and without warm-starting on each of the ten instances, where r = 10.
+
+                                                           8
+5.2   Quadratic Assignment Problem
+The quadratic assignment problem (QAP) is a very difficult but fundamental class of combina-
+torial optimization problems containing the traveling salesman problem, max-clique, bandwidth
+problems, and facilities location problems among others [59]. SDP relaxations have been shown to
+facilitate finding good solutions to large QAPs [109]. For any QAP instance, the goal is to optimize
+an assignment matrix Π which aligns a weight matrix W ∈ Sn and distance matrix D ∈ Sn . The
+number of n × n assignment matrices is n!, so a brute-force search becomes quickly intractable as
+n grows. Generally, QAP instances with n > 30 are intractable to solve exactly.
+    There are many SDP relaxtions for QAPs, but we consider the one presented by [107] and
+inspired by [20, 45] which is
+                                             
+                         min tr (D ⊗ W ) Y
+                         s.t. tr1 (Y) = I, tr2 (Y) = I, G(Y) ≥ 0,
+                              vec(B) = diag(Y), B1 = 1, 1⊤ B = 1⊤ , B ≥ 0,                       (21)
+                                             vec(B)⊤
+                                                    
+                                       1
+                              X :=                     ⪰ 0, tr(Y) = n
+                                     vec(B)     Y
+
+where ⊗ denotes the Kronecker product, tr1 (·) and tr2 (·) denote the partial trace over the first and
+second systems of Kronecker product respectively, G(Y) extracts the entries of Y corresponding to
+the nonzero entries of D ⊗ W , and vec(·) stacks the columns of a matrix one on top of the other
+to form a vector. In many cases, one of D or W is sparse (i.e. O(n) nonzero entries) resulting in
+O(n3 ) total constraints for the SDP.
+    The primal variable X has dimension (n2 + 1) × (n2 + 1) and as a result the SDP relaxation has
+O(n4 ) decision variables. Given the aggressive growth in complexity, most SDP based algorithms
+have difficulty operating on instances where n > 50. To reduce the number of decision variables, we
+sketch X with r = n, resulting in O(n3 ) entries in the sketch and the same number of constraints
+in most natural instances. We show that this enables CGAL and USBS to scale to instances where
+n = 198 (1.5 billion decision variables).
+    We evaluate CGAL and USBS on select large instances from QAPLIB [23] and TSPLIB [72]
+ranging in size from 136 to 198. Provided with each of these QAP instances is the known optimum.
+For many instances, we find that the quality of the permutation matrix produced by the rounding
+procedure does not entirely correlate with the quality of the iterates with respect to the SDP (21).
+Thus, we apply the rounding procedure at every iteration of both CGAL and USBS. Our metric
+for evaluation is relative gap which is computed as follows
+                                          upper bound obtained − optimum
+                        relative gap =                                   .
+                                                     optimum
+We report the lowest value so far of relative gap as best relative gap. CGAL [107] is shown to
+obtain significantly smaller best relative gap than CSDP [20] and PATH [108] on most instances,
+and thus, is a strong baseline for achieving high quality approximate solutions.
+    To create a warm-start initialization, we create a slightly smaller QAP by dropping the final
+row and column of both D and W (i.e. solve a size n − 1 subproblem of the original instance).
+We use the solution to slightly smaller problem to set a warm-start initialization for the original
+problem, rescaling and padding with zeros where necessary. We stopped optimizing after one hour.
+When warm-starting, we optimize the slightly smaller problem for one hour and then optimize the
+original problem for one hour. Figure 2 plots the relative gap and best relative gap against
+time for CGAL and USBS both with and without warm-starting for one TSPLIB instance.
+
+5.3   Interactive Entity Resolution with ∃-constraints
+Angell et al. [7] introduced a novel SDP relaxation of a combinatorial optimization problem that
+arises in automatic knowledge base construction [46, 51, 89]. They consider the problem of in-
+teractive entity resolution with user feedback to correct predictions made by a machine learning
+
+                                                  9
+Figure 2: relative gap (↓) vs. time. We plot the relative gap (y-axis, left) and best relative gap
+(y-axis, right) against time in seconds (x-axis) for one QAP instance, pr144, from TSPLIB (n = 144) over
+one hour of optimization. We observe that for both algorithms the best rounded solution is found early in
+optimization. We observe that USBS is able to leverage a warm-start initialization.
+                             Table 2: Author coreference dataset statistics.
+
+                                 # mentions    # blocks   # clusters   nnz(W )    # features
+           PubMed                    315            5          34        3,973      14,093
+           QIAN                      410           38          77        5,158      10,366
+           SCAD-zbMATH              1,196         120         166       18,608      8,203
+
+
+
+algorithm. Specifically, they introduce ∃-constraints, a new paradigm of interactive feedback for
+correcting entity resolution predictions and presented a novel SDP relaxation as part of a heuris-
+tic algorithm for satisfying ∃-constraints in the predicted entity resolution decisions. This novel
+form of feedback allows users to specify constraints stating the existence of an entity with and
+without certain features. As each ∃-constraint is added to the optimization problem additional
+constraints are added to the SDP relaxation. We use the solution to the SDP without the newest
+∃-constraint to warm-start the solver with the new ∃-constraint added. See Appendix E.3 for more
+details.
+    We evaluate the performance of the CGAL and USBS with and without warm-starting on
+the same three author coreference datasets used in [7]. In these datasets, each mention is an
+author-paper pair and the goal is to identify which author-paper pairs refer to the same author.
+We simulate ∃-constraint generation using the same oracle implemented in [7]. Figure 3 shows
+the cumulative SDP solve time to reach an ε-approximate solution against the number of ∃-
+constraints for each of the three datasets until the perfect entity resolution decsions were predicted
+by the inference algorithm.
+
+
+6    Related Work
+Efficient SDP solving. Due to their wide-spread applicability and importance, methods for
+solving SDPs efficiently have been extensively studied in the literature [3, 18, 29, 34, 67, 68, 84,
+104, 106]. Interior point methods [3, 40, 68] are by far the most widely-used and well-known method
+for solving SDPs. Interior point methods enjoy quadratic convergence, but have incredibly high
+per-iteration complexity, and thus, are impractical for instances having more than a few hundred
+variables. ADMM [18] and splitting-based methods [69] have also been applied to solving SDPs.
+These methods are generally more applicable than interior point methods, but our still restricted
+do to the computationally expensive full eigenvalue decomposition. First-order methods such as
+
+
+                                                   10
+            (a) PubMed                            (b) QIAN                        (c) SCAD-zbMATH
+
+Figure 3: Cumulative SDP solve time (↓) vs. number of ∃-constraints. In each plot (one for
+each author coreference dataset), the x-axis is the number of ∃-constraints generated one after the other
+over time and the y-axis is the the cumulative solve time (in seconds) for each SDP solver to reach a
+relative suboptimality, relative infeasibility, and max absolute infeasibility (i.e. ∥AX − projK (AX)∥∞ ≤ ε)
+of ε = 10−1 . When warm-starting, both solvers are initialized using the solution from the previous SDP
+(with one less ∃-constraint). ∃-constraints are generated until the perfect clustering is predicted. We observe
+that USBS is able to leverage a warm-start initialization. In addition, we observe that the performance gap
+between USBS and CGAL grows as the problem size grows. See Table 3 for dataset sizes and details.
+
+
+conditional gradient augmented Lagrangian [105], primal-dual subgradient algorithms [104], the
+matrix multiplicative weight method [10, 88], and the mirror-prox algorithm with the quantum
+entropy mirror map [66] have by far the lowest per-iteration complexity among all of the methods
+for solving SDPs. This lower per-iteration complexity leads to slower convergence rate for these
+first-order methods.
+     Spectral bundle methods. Helmberg and Rendl [42] were the first to introduce spectral
+bundle methods for equality-constrained SDPs. The biggest difference between the original spectral
+bundle method and our approach is the model where kc = 1 is fixed and kp is chosen by the
+user. We find that larger kc provides better convergence in general and kp is not very helpful
+(and sometimes harmful) to convergence. Several other algorithmic variants of spectral bundle
+methods exist including solving inequality-constrained SDPs [41], trust region-based methods for
+nonconvex eigenvalue optimization [8], and incorporating second-order information to speed up
+empirical convergence [43]. Ding and Grimmer [28] present a spectral bundle method most similar
+to ours for solving equality-constrained SDPs. They prove an impressive set of convergence rates
+under various assumptions, including linear convergence if certain strong assumptions hold. The
+biggest difference between previous work of spectral bundle methods and USBS is the fact that
+USBS has more flexibility and scalability as compared with other methods both in terms of the
+constraints USBS supports in the SDP and the model the user can specify. In addition, this work
+addresses many of the practical implementation questions enabling scalability to instances with
+multiple orders of magnitude more variables.
+     Memory-efficient semidefinte programming. The most widely-known memory efficient
+approach to semidefinite programming is the Burer–Monteiro (BM) factorization heuristic [21].
+Several optimization techniques have been used to optimize the low-rank factorized problem [17,
+22, 53, 74, 78, 98]. Ding et al. [30] present an optimal storage approach to solving SDPs by first ap-
+proximately solving the dual problem and then using the dual slack matrix to solve the primal prob-
+lem efficiently. Yurtsever et al. [107] implement the conditional gradient augmented Lagrangian
+method [106] with the matrix sketching technique in [105] which forms a strong state-of-the-art
+method for scalably solving general SDPs. Ding and Grimmer [28] implements a spectral bundle
+method for solving equality constrained SDPs with the same matrix sketching technique [105].
+
+
+
+
+                                                      11
+7     Conclusion
+In this work, we presented a practical spectral bundle method for solving large SDPs with both
+equality and inequality constraints. We proved non-asymptotic convergence rates under standard
+assumptions for USBS. We showed empirically that USBS is fast and scalable on practical SDP in-
+stances. Additionally, we showed that USBS can more reliably leverage a warm-start initialization
+to accelerate convergence. Lastly, we make our standalone implementation in pure JAX available
+for wide-spread use.
+
+
+Acknowledgements
+This work is funded in part by the Center for Data Science and the Center for Intelligent Infor-
+mation Retrieval at the University of Massachusetts Amherst, and in part by the National Science
+Foundation under grants IIS-1763618 and IIS-1922090, and in part by the Chan Zuckerberg Initia-
+tive under the project Scientific Knowledge Base Construction, and in part by IBM Research AI
+through the AI Horizons Network. The work reported here was performed in part by the Center for
+Data Science and the Center for Intelligent Information Retrieval, and in part using high perfor-
+mance computing equipment obtained under a grant from the Collaborative R&D Fund managed
+by the Massachusetts Technology Collaborative. Rico Angell is partially supported by the National
+Science Foundation Graduate Research Fellowship under grant 1938059. Any opinions, findings
+and conclusions or recommendations expressed in this material are those of the authors and do
+not necessarily reflect those of the sponsor(s).
+
+
+References
+    [1] Dhruv Agarwal, Rico Angell, Nicholas Monath, and Andrew McCallum. Entity linking and
+        discovery via arborescence-based supervised clustering. arXiv preprint arXiv:2109.01242,
+        2021.
+
+    [2] Dhruv Agarwal, Rico Angell, Nicholas Monath, and Andrew McCallum. Entity linking via
+        explicit mention-mention coreference modeling. In Proceedings of the 2022 Conference of the
+        North American Chapter of the Association for Computational Linguistics: Human Language
+        Technologies, 2022.
+
+    [3] Farid Alizadeh. Interior point methods in semidefinite programming with applications to
+        combinatorial optimization. SIAM journal on Optimization, 1995.
+
+    [4] Farid Alizadeh, Jean-Pierre A Haeberly, and Michael L Overton. Complementarity and
+        nondegeneracy in semidefinite programming. Mathematical programming, 1997.
+
+    [5] Farid Alizadeh, Jean-Pierre A Haeberly, and Michael L Overton. Primal-dual interior-point
+        methods for semidefinite programming: convergence rates, stability and numerical results.
+        SIAM Journal on Optimization, 1998.
+
+    [6] Rico Angell, Nicholas Monath, Sunil Mohan, Nishant Yadav, and Andrew McCallum.
+        Clustering-based inference for biomedical entity linking. arXiv preprint arXiv:2010.11253,
+        2020.
+
+    [7] Rico Angell, Nicholas Monath, Nishant Yadav, and Andrew Mccallum. Interactive correla-
+        tion clustering with existential cluster constraints. In Proceedings of the 39th International
+        Conference on Machine Learning, 2022.
+
+    [8] Pierre Apkarian, Dominikus Noll, and Olivier Prot. A trust region spectral bundle method
+        for nonconvex eigenvalue optimization. SIAM Journal on Optimization, 2008.
+
+
+                                                  12
+ [9] Mosek ApS. Mosek optimization toolbox for matlab. User’s Guide and Reference Manual,
+     Version, 2019.
+
+[10] Sanjeev Arora, Elad Hazan, and Satyen Kale. Fast algorithms for approximate semidefi-
+     nite programming using the multiplicative weights update method. In 46th Annual IEEE
+     Symposium on Foundations of Computer Science (FOCS’05), 2005.
+
+[11] David A. Bader, Henning Meyerhenke, Peter Sanders, and Dorothea Wagner. Graph parti-
+     tioning and graph clustering. 10th DIMACS Implementation Challenge Workshop. February
+     13-14, 2012. URL https://www.cise.ufl.edu/research/sparse/matrices/DIMACS10/
+     index.html.
+
+[12] Juhee Bae, Tove Helldin, Maria Riveiro, Slawomir Nowaczyk, Mohamed-Rafik Bouguelia,
+     and Göran Falkman. Interactive clustering: A comprehensive review. ACM Computing
+     Surveys (CSUR), 2020.
+
+[13] Sumit Basu, Danyel Fisher, Steven Drucker, and Hao Lu. Assisting users with clustering
+     tasks by combining metric learning and classification. In Proceedings of the AAAI Conference
+     on Artificial Intelligence, volume 24, 2010.
+
+[14] Amir Beck. On the convergence of alternating minimization for convex programming with
+     applications to iteratively reweighted least squares and decomposition schemes. SIAM Jour-
+     nal on Optimization, 2015.
+
+[15] Dimitris Bertsimas. The achievable region method in the optimal control of queueing systems;
+     formulations, bounds and policies. Queueing systems, 1995.
+
+[16] Olivier Binette and Rebecca C Steorts. (Almost) all of entity resolution. Science Advances,
+     2022.
+
+[17] Nicolas Boumal, Bamdev Mishra, P-A Absil, and Rodolphe Sepulchre. Manopt, a matlab
+     toolbox for optimization on manifolds. The Journal of Machine Learning Research, 2014.
+
+[18] Stephen Boyd, Neal Parikh, Eric Chu, Borja Peleato, Jonathan Eckstein, et al. Distributed
+     optimization and statistical learning via the alternating direction method of multipliers.
+     Foundations and Trends® in Machine learning, 2011.
+
+[19] James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Chris Leary, Dougal
+     Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, et al.
+     Jax: composable transformations of python+ numpy programs. 2018.
+
+[20] José FS Bravo Ferreira, Yuehaw Khoo, and Amit Singer. Semidefinite programming approach
+     for the quadratic assignment problem with a sparse graph. Computational Optimization and
+     Applications, 2018.
+
+[21] Samuel Burer and Renato DC Monteiro. A nonlinear programming algorithm for solving
+     semidefinite programs via low-rank factorization. Mathematical programming, 2003.
+
+[22] Samuel Burer and Renato DC Monteiro. Local minima and convergence in low-rank semidef-
+     inite programming. Mathematical programming, 2005.
+
+[23] Rainer E Burkard, Stefan E Karisch, and Franz Rendl. Qaplib–a quadratic assignment
+     problem library. Journal of Global optimization, 1997.
+
+[24] Jason Chuang and Daniel J Hsu. Human-centered interactive clustering for data analysis.
+     In Conference on Neural Information Processing Systems (NIPS). Workshop on Human-
+     Propelled Machine Learning, 2014.
+
+
+                                              13
+[25] Anni Coden, Marina Danilevsky, Daniel Gruhl, Linda Kato, and Meena Nagarajan. A
+     method to accelerate human in the loop clustering. In Proceedings of the 2017 SIAM Inter-
+     national Conference on Data Mining, pages 237–245. SIAM, 2017.
+[26] Sumanth Dathathri, Krishnamurthy Dvijotham, Alexey Kurakin, Aditi Raghunathan,
+     Jonathan Uesato, Rudy R Bunel, Shreya Shankar, Jacob Steinhardt, Ian Goodfellow, Percy S
+     Liang, et al. Enabling certification of verification-agnostic networks via memory-efficient
+     semidefinite programming. Advances in Neural Information Processing Systems, 2020.
+[27] Mateo Dı́az and Benjamin Grimmer. Optimal convergence rates for the proximal bundle
+     method. SIAM Journal on Optimization, 2023.
+[28] Lijun Ding and Benjamin Grimmer. Revisiting spectral bundle methods: Primal-dual (sub)
+     linear convergence rates. SIAM Journal on Optimization, 2023.
+[29] Lijun Ding and Madeleine Udell. On the simplicity and conditioning of low rank semidefinite
+     programs. SIAM Journal on Optimization, 2021.
+[30] Lijun Ding, Alp Yurtsever, Volkan Cevher, Joel A Tropp, and Madeleine Udell. An optimal-
+     storage approach to semidefinite programming using approximate complementarity. SIAM
+     Journal on Optimization, 2021.
+[31] Dmitriy Drusvyatskiy and Henry Wolkowicz. The many faces of degeneracy in conic opti-
+     mization. Foundations and Trends® in Optimization, 2017.
+[32] Avinava Dubey, Indrajit Bhattacharya, and Shantanu Godbole. A cluster-level semi-
+     supervision model for interactive clustering. In Joint European Conference on Machine
+     Learning and Knowledge Discovery in Databases. Springer, 2010.
+[33] Stefan Feltenmark and Krzysztof C Kiwiel. Dual applications of proximal bundle methods,
+     including lagrangian relaxation of nonconvex problems. SIAM Journal on Optimization,
+     2000.
+[34] Michael P Friedlander and Ives Macedo. Low-rank spectral optimization via gauge duality.
+     SIAM Journal on Scientific Computing, 2016.
+[35] Andrea Frome, Yoram Singer, Fei Sha, and Jitendra Malik. Learning globally-consistent
+     local distance functions for shape-based image retrieval and classification. In 2007 IEEE
+     11th International Conference on Computer Vision, 2007.
+[36] Roy Frostig, Matthew James Johnson, and Chris Leary. Compiling machine learning pro-
+     grams via high-level tracing. Systems for Machine Learning, 2018.
+[37] Alex Gittens. Topics in randomized numerical linear algebra. California Institute of Tech-
+     nology, 2013.
+[38] Michel X Goemans and David P Williamson. Improved approximation algorithms for max-
+     imum cut and satisfiability problems using semidefinite programming. Journal of the ACM
+     (JACM), 1995.
+[39] Nathan Halko, Per-Gunnar Martinsson, and Joel A Tropp. Finding structure with random-
+     ness: Probabilistic algorithms for constructing approximate matrix decompositions. SIAM
+     review, 2011.
+[40] Christoph Helmberg. An interior point method for semidefinite programming and max-cut
+     bounds. 1994.
+[41] Christoph Helmberg and Krzysztof C Kiwiel. A spectral bundle method with bounds. Math-
+     ematical Programming, 2002.
+
+                                              14
+[42] Christoph Helmberg and Franz Rendl. A spectral bundle method for semidefinite program-
+     ming. SIAM Journal on Optimization, 2000.
+[43] Christoph Helmberg, Michael L Overton, and Franz Rendl. The spectral bundle method
+     with second-order information. Optimization Methods and Software, 2014.
+[44] Vicente Hernández, Jose E Román, Andrés Tomás, and Vicente Vidal. Krylov-schur methods
+     in slepc. Universitat Politecnica de Valencia, Tech. Rep. STR-7, 2007.
+[45] Qixing Huang, Yuxin Chen, and Leonidas Guibas. Scalable semidefinite relaxation for max-
+     imum a posterior estimation. In International Conference on Machine Learning. PMLR,
+     2014.
+[46] Robert Iv, Alexandre Passos, Sameer Singh, and Ming-Wei Chang. Fruit: Faithfully reflecting
+     updated information in text. In Proceedings of the 2022 Conference of the North American
+     Chapter of the Association for Computational Linguistics: Human Language Technologies,
+     2022.
+[47] Roy Jonker and Ton Volgenant. A shortest augmenting path algorithm for dense and sparse
+     linear assignment problems. In DGOR/NSOR: Papers of the 16th Annual Meeting of DGOR
+     in Cooperation with NSOR/Vorträge der 16. Jahrestagung der DGOR zusammen mit der
+     NSOR. Springer, 1988.
+[48] Richard M. Karp. Reducibility among Combinatorial Problems, pages 85–103. Springer US,
+     1972.
+[49] Krzysztof C Kiwiel. Efficiency of proximal bundle methods. Journal of Optimization Theory
+     and Applications, 2000.
+[50] Dan Klein, Sepandar D Kamvar, and Christopher D Manning. From instance-level con-
+     straints to space-level constraints: Making the most of prior knowledge in data clustering.
+     Technical report, 2002.
+[51] Jayant Krishnamurthy. Learning to understand natural language with less human effort.
+     Technical report, CARNEGIE-MELLON UNIV PITTSBURGH PA SCHOOL OF COM-
+     PUTER SCIENCE, 2015.
+[52] Harold W Kuhn. The hungarian method for the assignment problem. Naval research logistics
+     quarterly, 1955.
+[53] Brian Kulis, Arun C Surendran, and John C Platt. Fast low-rank semidefinite programming
+     for embedding and clustering. In Artificial Intelligence and Statistics. PMLR, 2007.
+[54] Brian Kulis, Sugato Basu, Inderjit Dhillon, and Raymond Mooney. Semi-supervised graph
+     clustering: a kernel approach. Machine learning, 2009.
+[55] Claude Lemarechal, Jean-Jacques Strodiot, and André Bihain. On a bundle algorithm for
+     nonsmooth optimization. In Nonlinear programming 4. Elsevier, 1981.
+[56] Huamin Li, George C Linderman, Arthur Szlam, Kelly P Stanton, Yuval Kluger, and Mark
+     Tygert. Algorithm 971: An implementation of a randomized algorithm for principal compo-
+     nent analysis. ACM Transactions on Mathematical Software (TOMS), 2017.
+[57] Zhenguo Li, Jianzhuang Liu, and Xiaoou Tang. Pairwise constraint propagation by semidefi-
+     nite programming for semi-supervised classification. In Proceedings of the 25th international
+     conference on Machine learning, 2008.
+[58] Zhenguo Li, Jianzhuang Liu, and Xiaoou Tang. Constrained clustering via spectral regular-
+     ization. In 2009 IEEE Conference on Computer Vision and Pattern Recognition, 2009.
+
+                                               15
+[59] Eliane Maria Loiola, Nair Maria Maia De Abreu, Paulo Oswaldo Boaventura-Netto, Peter
+     Hahn, and Tania Querido. A survey for the quadratic assignment problem. European journal
+     of operational research, 2007.
+
+[60] Zhengdong Lu and Miguel A Carreira-Perpinan. Constrained spectral clustering through
+     affinity propagation. In 2008 IEEE Conference on Computer Vision and Pattern Recognition,
+     pages 1–8. IEEE, 2008.
+
+[61] Zhi-Quan Luo and Paul Tseng. Error bounds and convergence analysis of feasible descent
+     methods: a general approach. Annals of Operations Research, 1993.
+
+[62] Arya Mazumdar and Barna Saha. Clustering with noisy queries, 2017.
+
+[63] Robert Mifflin. An algorithm for constrained optimization with semismooth functions. Math-
+     ematics of Operations Research, 1977.
+
+[64] Leon Mirsky. Symmetric gauge functions and unitarily invariant norms. The quarterly journal
+     of mathematics, 1960.
+
+[65] James Munkres. Algorithms for the assignment and transportation problems. Journal of the
+     society for industrial and applied mathematics, 1957.
+
+[66] Arkadi Nemirovski. Prox-method with rate of convergence o (1/t) for variational inequali-
+     ties with lipschitz continuous monotone operators and smooth convex-concave saddle point
+     problems. SIAM Journal on Optimization, 2004.
+
+[67] Ju E Nesterov. Self-concordant functions and polynomial-time methods in convex program-
+     ming. Report, Central Economic and Mathematic Institute, USSR Acad. Sci, 1989.
+
+[68] Yurii Nesterov and Arkadii Nemirovskii. Interior-point polynomial algorithms in convex
+     programming. SIAM, 1994.
+
+[69] Brendan O’Donoghue, Eric Chu, Neal Parikh, and Stephen Boyd. SCS: Splitting Conic
+     Solver, version 3.1.1. https://github.com/cvxgrp/scs, November 2021.
+
+[70] Michael L Overton. Large-scale optimization of eigenvalues. SIAM Journal on Optimization,
+     1992.
+
+[71] Aditi Raghunathan, Jacob Steinhardt, and Percy S Liang. Semidefinite relaxations for certi-
+     fying robustness to adversarial examples. Advances in neural information processing systems,
+     2018.
+
+[72] Gerhard Reinelt. Tsplib95. Interdisziplinäres Zentrum für Wissenschaftliches Rech-
+     nen (IWR), Heidelberg, 1995. URL http://comopt.ifi.uni-heidelberg.de/software/
+     TSPLIB95/.
+
+[73] David M Rosen, Luca Carlone, Afonso S Bandeira, and John J Leonard. Se-sync: A certifi-
+     ably correct algorithm for synchronization over the special euclidean group. The International
+     Journal of Robotics Research, 2019.
+
+[74] Mehmet Fatih Sahin, Ahmet Alacaoglu, Fabian Latorre, Volkan Cevher, et al. An inexact
+     augmented lagrangian framework for nonconvex optimization with nonlinear constraints.
+     Advances in Neural Information Processing Systems, 2019.
+
+[75] Yusuke Sato and Makoto Iwayama. Interactive constrained clustering for patent document
+     set. In Proceedings of the 2nd international workshop on Patent information retrieval, pages
+     17–20, 2009.
+
+[76] Kathrin Schacke. On the kronecker product. Master’s thesis, University of Waterloo, 2004.
+
+                                               16
+[77] Noam Shental, Aharon Bar-Hillel, Tomer Hertz, and Daphna Weinshall. Computing gaussian
+     mixture models with em using equivalence constraints. Advances in neural information
+     processing systems, 2004.
+
+[78] Mario Souto, Joaquim D Garcia, and Álvaro Veiga. Exploiting low-rank structure in semidef-
+     inite programming by approximate operator splitting. Optimization, 2022.
+
+[79] Daniel A Spielman and Nikhil Srivastava. Graph sparsification by effective resistances. In
+     Proceedings of the fortieth annual ACM symposium on Theory of computing, 2008.
+
+[80] Stefan Sremac, Hugo J Woerdeman, and Henry Wolkowicz. Error bounds and singularity
+     degree in semidefinite programming. SIAM Journal on Optimization, 2021.
+
+[81] Jos F Sturm. Using SeDuMi 1.02, a matlab toolbox for optimization over symmetric cones.
+     Optimization methods and software, 1999.
+
+[82] Jos F Sturm. Error bounds for linear matrix inequalities. SIAM Journal on Optimization,
+     2000.
+
+[83] Shivashankar Subramanian, Daniel King, Doug Downey, and Sergey Feldman. S2AND: A
+     Benchmark and Evaluation System for Author Name Disambiguation. In Proceedings of the
+     ACM/IEEE Joint Conference on Digital Libraries in 2021, 2021.
+
+[84] Michael J Todd. Semidefinite optimization. Acta Numerica, 2001.
+
+[85] Michael J Todd, Kim-Chuan Toh, and Reha H Tütüncü. On the nesterov–todd direction in
+     semidefinite programming. SIAM Journal on Optimization, 1998.
+
+[86] Kim-Chuan Toh, Michael J Todd, and Reha H Tütüncü. Sdpt3—a matlab software package
+     for semidefinite programming, version 1.3. Optimization methods and software, 1999.
+
+[87] Joel A Tropp, Alp Yurtsever, Madeleine Udell, and Volkan Cevher. Fixed-rank approxima-
+     tion of a positive-semidefinite matrix from streaming data. Advances in Neural Information
+     Processing Systems, 2017.
+
+[88] Koji Tsuda, Gunnar Rätsch, and Manfred K Warmuth. Matrix exponentiated gradient
+     updates for on-line learning and bregman projection. Journal of Machine Learning Research,
+     2005.
+
+[89] Mathias Uhlen, Per Oksvold, Linn Fagerberg, Emma Lundberg, Kalle Jonasson, Mattias
+     Forsberg, Martin Zwahlen, Caroline Kampf, Kenneth Wester, Sophia Hober, et al. Towards
+     a knowledge-based human protein atlas. Nature biotechnology, 2010.
+
+[90] Lieven Vandenberghe and Stephen Boyd. Applications of semidefinite programming. Applied
+     Numerical Mathematics, 1999.
+
+[91] Lieven Vandenberghe, Stephen Boyd, and Abbas El Gamal. Optimizing dominant time
+     constant in RC circuits. IEEE Transactions on Computer-Aided Design of Integrated Circuits
+     and Systems, 1998.
+
+[92] Lieven Vandenberghe, Stephen Boyd, and Shao-Po Wu. Determinant maximization with
+     linear matrix inequality constraints. SIAM journal on matrix analysis and applications,
+     1998.
+
+[93] Sharad Vikram and Sanjoy Dasgupta. Interactive bayesian hierarchical clustering. In Inter-
+     national Conference on Machine Learning, 2016.
+
+
+
+
+                                              17
+ [94] Vijay Viswanathan, Kiril Gashteovski, Carolin Lawrence, Tongshuang Wu, and Graham
+      Neubig. Large language models enable few-shot clustering. arXiv preprint arXiv:2307.00524,
+      2023.
+
+ [95] Kiri Wagstaff and Claire Cardie. Clustering with instance-level constraints. AAAI/IAAI,
+      2000.
+
+ [96] Kiri Wagstaff, Claire Cardie, Seth Rogers, Stefan Schrödl, et al. Constrained k-means clus-
+      tering with background knowledge. In Icml, 2001.
+
+ [97] Irene Waldspurger and Alden Waters. Rank optimality for the burer–monteiro factorization.
+      SIAM journal on Optimization, 2020.
+
+ [98] Po-Wei Wang, Wei-Cheng Chang, and J Zico Kolter. The mixing method: low-rank co-
+      ordinate descent for semidefinite programming with diagonal constraints. arXiv preprint
+      arXiv:1706.00476, 2017.
+
+ [99] Kesheng Wu, Andrew Canning, HD Simon, and L-W Wang. Thick-restart lanczos method
+      for electronic structure calculations. Journal of Computational Physics, 1999.
+
+[100] Eric Xing, Michael Jordan, Stuart J Russell, and Andrew Ng. Distance metric learning with
+      application to clustering with side-information. Advances in neural information processing
+      systems, 2002.
+
+[101] Caiming Xiong, David M Johnson, and Jason J Corso. Active clustering with model-based
+      uncertainty reduction. IEEE transactions on pattern analysis and machine intelligence, 2016.
+
+[102] Nishant Yadav, Nicholas Monath, Rico Angell, and Andrew McCallum. Event and entity
+      coreference using trees to encode uncertainty in joint decisions. In Proceedings of the Fourth
+      Workshop on Computational Models of Reference, Anaphora and Coreference, 2021.
+
+[103] Liuqin Yang, Defeng Sun, and Kim-Chuan Toh. Sdpnal+: a majorized semismooth newton-
+      cg augmented lagrangian method for semidefinite programming with nonnegative constraints.
+      Mathematical Programming Computation, 2015.
+
+[104] Alp Yurtsever, Quoc Tran Dinh, and Volkan Cevher. A universal primal-dual convex opti-
+      mization framework. Advances in Neural Information Processing Systems, 2015.
+
+[105] Alp Yurtsever, Madeleine Udell, Joel Tropp, and Volkan Cevher. Sketchy decisions: Convex
+      low-rank matrix optimization with optimal storage. In Artificial intelligence and statistics.
+      PMLR, 2017.
+
+[106] Alp Yurtsever, Olivier Fercoq, and Volkan Cevher. A conditional-gradient-based augmented
+      lagrangian framework. In International Conference on Machine Learning, 2019.
+
+[107] Alp Yurtsever, Joel A Tropp, Olivier Fercoq, Madeleine Udell, and Volkan Cevher. Scalable
+      semidefinite programming. SIAM Journal on Mathematics of Data Science, 2021.
+
+[108] Mikhail Zaslavskiy, Francis Bach, and Jean-Philippe Vert. A path following algorithm for the
+      graph matching problem. IEEE Transactions on Pattern Analysis and Machine Intelligence,
+      2008.
+
+[109] Qing Zhao, Stefan E Karisch, Franz Rendl, and Henry Wolkowicz. Semidefinite programming
+      relaxations for the quadratic assignment problem. Journal of Combinatorial Optimization,
+      1998.
+
+
+
+
+                                                18
+A       Derivations
+A.1     Penalized Dual Objective
+Begin by considering the following Lagrangian formulation of the model problem
+
+                  p⋆ = maxn      min       L(X, y) =         min        max L(X, y) = d⋆ ,        (22)
+                        X∈S+ y∈Rm :yI ≥0                   y∈Rm :yI ≥0 X∈Sn
+                                                                          +
+
+
+where the Lagrangian is defined as
+
+                                  L(X, y) := ⟨C − A∗ y, X⟩ + ⟨b, y⟩.                              (23)
+
+Since X⋆ ⊂ X , we know
+
+                    max min L(X, y) = max min L(X, y) = min max L(X, y).                          (24)
+                   X∈Sn
+                      + y∈Y                X∈X y∈Y                      y∈Y X∈X
+
+Furthermore, it is easy to show the following fact [70],
+
+                                   max      ⟨Z, X⟩ = max{λmax (Z), 0}.                            (25)
+                               X⪰0 , tr(X)≤1
+
+Incorporating (25) with (24) allows us to write an equivalent formulation of the original dual
+problem by defining the penalized dual objective as shown in (pen-D)
+
+                         f (y) := α max{λmax (C − A∗ y), 0} + ⟨b, y⟩ + ιY (y),                (pen-D)
+
+where ιY (·) is the indicator function defined such that ιY (y) = 0 if y ∈ Y and ιY (y) = +∞
+otherwise.
+
+A.2     Equivalent Penalized Dual Objective
+We begin by considering the dual form of the indicator function ιY (·)
+
+                               ιY (y) = sup{−⟨ν, y⟩ : νI ≤ 0, νI ′ = 0}.                          (26)
+
+Define N := {ν ∈ Rm : νI ≤ 0, νI ′ = 0}. Substituting (26) into (pen-D) and utilizing (25) gives
+
+                            f (y) =      sup       ⟨C − A∗ y, X⟩ + ⟨b − ν, y⟩.
+                                      (X,ν)∈X ×N
+
+
+A.3     Candidate Iterate
+Notice that the candidate iterate can be written as follows
+
+                                ỹt+1 = arg min        sup         F (X, ν, y),                   (27)
+                                           y∈Rm     (X,ν)∈Xbt ×N
+
+where
+                                                                      ρ
+                          F (X, ν, y) := ⟨C − A∗ y, X⟩ + ⟨b − ν, y⟩ + ∥y − yt ∥2 .
+                                                                      2
+    To solve for ỹt+1 , start by fixing (X, ν) ∈ Xt × N arbitrarily. Then, completing the square gives
+                                                  b
+                                                                   ρ
+                     arg min F (X, ν, y) = arg min⟨b − ν − AX, y⟩ + ∥y − yt ∥2
+                      y∈R m                 y∈R m                  2
+                                                                               2
+                                                       ρ         1
+                                         = arg min       y − yt + (b − ν − AX)
+                                               y∈Rm    2         ρ
+                                               1
+                                         = yt − (b − ν − AX).
+                                               ρ
+
+                                                      19
+This implies that the candidate iterate can be computed as follows
+                                                              1
+                   ỹt+1 = arg min fˆt (y) + ∥y − yt ∥2 = yt − (b − νt+1 − AXt+1 ),              (28)
+                            y∈R m                             ρ
+
+where (Xt+1 , νt+1 ) ∈ Xbt × N is the solution to the following optimization problem
+                                  (Xt+1 , νt+1 ) ∈ arg max ψt (X, ν),                            (29)
+                                                   (X,ν)∈Xbt ×N
+
+where
+                                                                      1
+                    ψt (X, ν) := ⟨C, X⟩ + ⟨b − ν − AX, yt ⟩ −           ∥b − ν − AX∥2 .          (30)
+                                                                     2ρ
+
+B    Solving Iteration Subproblems
+In this section, we detail the primal-dual path-following interior point methods used to solve the
+small semidefinite program to compute the value fˆt (ỹt+1 ) and the small quadratic semidefinite
+program (16). Before we can derive the algorithms, it is necessary to define the svec operator and
+symmetric Kronecker product [5, 76, 85].
+                                                     n+1
+    For any matrix A ∈ Sn , the vector svec(A) ∈ R( 2 ) is defined as
+                        h     √              √            √              √                  i⊤
+               svec(A) = a11 , 2a21 , . . . , 2an1 , a22 , 2a32 , . . . , 2an2 , . . . , ann .
+                                                                                    n+1          √
+The svec-operator is a structure preserving map between Sn and R( 2 ) where the constant             2
+multiplied by some of the entries ensures that
+                        ⟨A, B⟩ = tr(AB) = svec(A)⊤ svec(B),                  ∀ A, B ∈ Sn .
+                                                                         2
+For any M ∈ Rn×n , let vec(M ) be the map from Rn×n to Rn defined by stacking the columns of
+                                                                                     n+1
+                                                                                          ×n2
+M into a single n2 -dimensional vector. It is also useful to define the matrix U ∈ R( 2 )     which
+maps vec(A) 7→ svec(A) for any A ∈ Sn . Let uij,kl be the entry in the row which defines element
+aij in svec(A) and the column that is multiplied with the element akl in vec(A). Then
+                                  
+                                  1
+                                        i=j=k=l
+                                    1
+                         uij,kl =   √    i = k ̸= j = l, or i = l ̸= j = k
+                                   2
+                                  
+                                   0     o.w.
+As an example, the case when n = 2:
+                                                                   
+                                            1        0    0       0
+                                         U= 0
+                                                   √1    √1      0 .
+                                                      2     2
+                                            0        0    0       1
+Note that U is a unique matrix with orthonormal rows and has the following property
+                          U ⊤ U vec(A) = U ⊤ svec(A) = vec(A),                ∀ A ∈ Sn .
+    The symmetric Kronecker product ⊗s can be defined for any two square matrices G, H ∈ Rn×n
+by its action on a vector svec(A) for A ∈ Sn as follows
+                                               1
+                           (G ⊗s H) svec(A) = svec(HAG⊤ + GAH ⊤ ).
+                                               2
+Alternatively, but equivalently [76], the symmetric Kronecker product can be defined more explic-
+itly using the matrix U defined above as follows
+                                       1
+                             G ⊗s H = U (G ⊗ H + H ⊗ G)U ⊤ ,
+                                       2
+where ⊗ is the standard Kronecker product. We use this latter definition in our implementation.
+
+                                                     20
+B.1     Computing fˆt (ỹt+1 )
+The value fˆt (ỹt+1 ) is the optimum value of the following optimization problem (remember that ν
+can be dropped since ỹt+1 is always feasible)
+
+                               max ⟨C − A∗ ỹt+1 , η X̄t + Vt SVt⊤ ⟩ + ⟨b, ỹt+1 ⟩
+                               s.t. η ≥ 0
+                                     S⪰0
+                                     η + tr(S) ≤ α
+
+This amounts to computing ⟨C − A∗ ỹt+1 , η⋆ X̄t + Vt S⋆ Vt⊤ ⟩ + ⟨b, ỹt+1 ⟩ where (η⋆ , S⋆ ) is a solution
+to the following (small) semidefinite program
+
+                                        min g1⊤ svec(S) + η g2
+                                         s.t. η ≥ 0
+                                                                                                            (31)
+                                              S⪰0
+                                              1 − vI⊤ svec(S) − η ≥ 0
+
+where
+                            g1 = α svec(Vt⊤(A∗ ỹt+1 − C)Vt ),
+                                    α
+                            g2 =        ⟨X̄t , A∗ ỹt+1 − C)⟩,
+                                 tr X̄
+                            vI = svec(I).       (I is the k × k identity matrix)
+    We will use a primal-dual interior point method to solve (31). We follow the well known
+technique for deriving primal-dual interior point methods [40]. We start by defining the Lagrangian
+of the dual barrier problem of (31),
+
+            Lµ (S, η, T, ζ, ω) = g1⊤ svec(S) + ηg2 − svec(S)⊤ svec(T ) − ηζ
+                                                                                                            (32)
+                                    − ω(1 − vI⊤ svec(S) − η) + µ(log det(T ) + log ζ + log ω),
+
+where we introduce a dual slack matrix T ⪰ 0 as complementary to S, a dual slack scalar ζ ≥ 0 as
+complementary to η, a Lagrange multiplier ω ≥ 0 for the trace constraint inequality, and a barrier
+parameter µ > 0. Notice that we have moved from needing to optimize a constrained optimization
+problem to an unconstrained optimization problem. The saddle point solution of (32) is given
+by the solution of the KKT-conditions, which reduces to just the first-order optimality conditions
+since the problem is unconstrained. The first-order optimality conditions of (32) are the following
+system of equations
+
+                                 ∇S Lµ = g1 − svec(T ) + ωvI = 0                                            (33)
+                                  ∇η Lµ = g2 − ζ + ω = 0                                                    (34)
+                                 ∇T Lµ = S − µT −1 = 0                                                      (35)
+                                                   −1
+                                  ∇ζ Lµ = η − µζ        =0                                                  (36)
+                                 ∇ω Lµ = 1 − vI⊤ svec(S) − η − µω −1 = 0                                    (37)
+
+By the strict concavity of log det T , log ζ, and log ω, there exists a unique solution (Sµ , ηµ , Tµ , ζµ , ωµ )
+to this system of equations for any value of the barrier parameter µ > 0. The sequence of these
+solutions as µ → 0 forms the central trajectory (also known as the central path). For a point
+(S, η, T, ζ, ω) on the central trajectory, we can use any combination of (35), (36), and/or (37) to
+solve for µ,
+
+               ⟨S, T ⟩                                 ⟨S, T ⟩ + ηζ + ω(1 − vI⊤ svec(S) − η)
+          µ=           = ηζ = ω(1 − vI⊤ svec(S) − η) =                                       .              (38)
+                 k                                                     k+2
+
+                                                        21
+    The fundamental idea of primal-dual interior point methods is to use Newton’s method to
+follow the central path to a solution of (31). Before we can apply Newton’s method, we must
+linearize the non-linear equations (35), (36), and (37) into an equivalent linear formulation. There
+are several ways one could linearize these equations and the choice of linearization significantly
+impacts the algorithm’s behavior (see [5] or [40] for more on the choice of linearization). We choose
+one standard method linearization, detailed in the following system of equations
+                                                                              
+                                                       g1 − svec(T ) + ωvI
+                                                  
+                                                           g2 − ζ + ω         
+                                                                               
+                   Fµ (θ) = Fµ (S, η, T, ζ, ω) := 
+                                                            ST  − µI           = 0.
+                                                                               
+                                                                                                 (39)
+                                                              ηζ − µ
+                                                                              
+                                                                              
+                                                    ω(1 − vI⊤ svec(S) − η) − µ
+The solution θ⋆ to this system of equations Fµ (θ) = 0 satisfies the first-order optimality condi-
+tions (33)-(37) and is the optimal solution to the barrier problem. We utilize Newton’s method to
+take steps in the update direction ∆θ = (∆S, ∆η, ∆T, ∆ζ, ∆ω) towards θ⋆ . The update direction
+∆θ determined by Newton’s method must satisfy the following equation
+                                         Fµ (θ) + ∇Fµ (∆θ) = 0.
+Hence, the update direction ∆θ is the solution to the following system of equations (after the same
+standard linearization has been applied to the following system as in (39))
+                                          −svec(∆T ) + ∆ω vI = svec(T ) − g1 − ω vI              (40)
+                                                    −∆ζ + ∆ω = ζ − g2 − ω                        (41)
+              −1
+          ω        (1 − vI svec(S) − η)∆ω − vI svec(∆S) − ∆η = µω −1 + vI⊤ svec(S) + η − 1
+                         ⊤                      ⊤
+                                                                                                 (42)
+                              (T ⊗s S −1 ) svec(∆S) + svec(∆T ) = µ svec(S −1 ) − svec(T )       (43)
+                                                    −1               −1
+                                                ζη    ∆η + ∆ζ = µη       −ζ                      (44)
+We can solve this system efficiently by analytically eliminating all variables except svec(∆S). We
+can compute svec(∆S) by solving the following linear matrix equation using an off-the-shelf linear
+system solver
+                     ζη −1
+                                    
+     T ⊗s S −1 +              v  v
+                                I I
+                                   ⊤
+                                       svec(∆S) = vI g2 − vI µη −1 − g1 + µ svec(S −1 )
+                 κ1 ζη −1 + 1
+                                                                                           (45)
+                   −1         −1        −1          −1                −1     ⊤
+            + vI ζη (−κ1 ζη − 1)             −κ1 (µη − g2 − ω) + µω + vI svec(S) + η − 1
+
+where κ1 := ω −1 (1 − vI⊤ svec(S) − η). Then, computing the rest of the update directions ∆η,
+svec(∆T ), ∆ζ, and ∆ω amounts to back-substituting the solution to (45) for svec(∆S) through
+the analytical variable elimination equations.
+    Given how to compute the update directions, the primal-dual interior point method proceeds
+as follows. Initialize the variables θ = (S, η, T, ζ, ω) to an arbitrary strictly feasible point (i.e.
+S ≻ 0, η > 0, T ≻ 0, ζ > 0, and ω > 0). Starting from this primal-dual pair we compute an
+estimate of the barrier parameter as follows
+                                     ⟨S, T ⟩ + ηζ + ω(1 − vI⊤ svec(S) − η)
+                                µ←                                         ,
+                                                   2(k + 2)
+where, as done in [40], we use (38) and divide by two. Then, we compute the update direction ∆θ
+as described above and perform a backtracking line search to find a step size δ ∈ (0, 1] such that
+θ + δ ∆θ is again strictly feasible. Lastly, following [42], we compute a non-increasing estimate of
+the barrier parameter
+                                                                           (
+                     ⟨S, T ⟩ + ηζ + ω(1 − vI⊤ svec(S) − η)                               if δ ≤ 15
+                                                           
+                                                                             1
+  µ ← min µprev , γ                                             where γ = 5        4 2
+                                                                                                   .
+                                    2(k + 2)                                 10 − 10 δ   if δ > 15
+We iterate over these steps until the barrier parameter µ is small enough (e.g. µ < 10−7 ).
+
+                                                     22
+B.2     Solving (16)
+The subproblem (16) can be rewritten as the following (small) quadratic semidefinite program
+
+                                                                  1                              2
+          max ⟨C − A∗ yt , η X̄t + Vt SVt⊤ ⟩ + ⟨b − ν̃, yt ⟩ −      b − ν̃ − A(η X̄t + Vt SVt⊤ )
+                                                                 2ρ                              2
+          s.t. η ≥ 0
+                S⪰0
+                η + tr(S) ≤ α
+
+For this subproblem, unlike the subproblem solved in subsection B.1, we are solving for η and S
+to compute the candidate iterate ỹt+1 , update the primal variable, and update the model. This
+(small) quadratic semidefinite program is equivalent to the following optimization problem
+                   1                                       1
+             min     svec(S)⊤ Q11 svec(S) + η q12
+                                               ⊤
+                                                  svec(S) + η 2 q22 + h⊤
+                                                                       1 svec(S) + η h2
+                   2                                       2
+              s.t. η ≥ 0                                                                             (46)
+                   S⪰0
+                   1 − vI⊤ svec(S) − η ≥ 0
+where
+                                       m
+                                 α2 X
+                          Q11 =          svec(Vt⊤Ai Vt ) svec(Vt⊤Ai Vt )⊤
+                                  ρ
+                                     i=1
+                                    α2                         
+                           q12 =           svec Vt⊤A∗ A X̄t Vt
+                                 ρ tr X̄t
+                                      α2
+                           q22 =         2 AX̄t , AX̄t
+                                ρ tr X̄t
+                                                                  
+                                            ⊤   ∗        1 ∗
+                           h1 = α svec Vt A yt − C − A (b − ν̃) Vt
+                                                         ρ
+                                                                 
+                                   α           ∗        1 ∗
+                           h2 =         X̄, A yt − C − A (b − ν̃)
+                                tr X̄t                  ρ
+                           vI = svec(I)
+    We follow the same derivation procedure as in subsection B.1, so we proceed by including the
+details which differ from the previous section. The Lagrangian of the dual barrier problem of (46)
+is as follows
+                                  1
+           Lµ (S, η, T, ζ, ω) =     svec(S)⊤ Q11 svec(S) + η q12
+                                                               ⊤
+                                                                 svec(S)
+                                  2
+                                      1                                                              (47)
+                                    + η 2 q22 + h⊤                           ⊤
+                                                  1 svec(S) + η h2 − svec(S) svec(T ) − ηζ
+                                      2
+                                    − ω(1 − vI⊤ svec(S) − η) + µ(log det(T ) + log ζ + log ω).
+
+The first-order optimality conditions of (47) yields the following system of equations (after the
+same standard linearization)
+                                                                                
+                                  Q11 svec(S) + η q12 + h1 − svec(T ) + ωvI       F1
+                                        ⊤
+                                       q12 svec(S) + η q22 + h2 − ζ + ω          F2 
+                                                                                  
+                                                                           
+          Fµ (S, η, T, ζ, ω) := 
+                                                  ST − µI                   =: F3  = 0.
+                                                                                   
+                                                                                             (48)
+                                                    ηζ − µ                       F4 
+                                                                                
+                                                                           
+                                                  ⊤
+                                          ω(1 − vI svec(S) − η) − µ               F5
+
+
+
+                                                    23
+The Newton’s method step direction (∆S, ∆η, ∆T, ∆ζ, ∆ω) is determined via the following lin-
+earized system
+
+               Q11 svec(∆S) + ∆η q12 − svec(∆T ) + ∆ω vI = −F1                                   (49)
+                            ⊤
+                          q12 svec(∆S) + ∆ ηq22 − ∆ζ + ∆ω = −F2                                  (50)
+          ω −1 (1 − vI⊤ svec(S) − η)∆ω − vI⊤ svec(∆S) − ∆η = µω −1 + vI⊤ svec(S) + η − 1         (51)
+                           (T ⊗s S −1 ) svec(∆S) + svec(∆T ) = µ svec(S −1 ) − svec(T )          (52)
+                                                 −1               −1
+                                               ζη     ∆η + ∆ζ = µη   −ζ                          (53)
+
+We can solve this system efficiently by analytically eliminating all variables except svec(∆S). We
+can compute svec(∆S) by solving the following linear matrix equation using an off-the-shelf linear
+system solver
+                                                                                 
+          Q11 + T ⊗s S −1 − (κ1 κ2 + 1)−1 q12 (κ1 q12 + vI )⊤ + vI (q12 − κ2 vI )⊤ svec(∆S)
+                                                                                   
+              = q12 (κ1 κ2 + 1)−1 µω −1 + vI⊤ svec(S) + η − 1 + κ1 (F2 − µη −1 + ζ)
+                                                                                           (54)
+                                    −1          −1              −1      ⊤
+                  + vI (κ1 κ2 + 1)       F2 − µη + ζ − κ2 (µω + vI svec(S) + η − 1)
+
+                   − F1 + µ svec(S −1 ) − svec(T ),
+
+where κ1 := ω −1 (1 − vI⊤ svec(S) − η) and κ2 := ζη −1 + q22 . Then, computing the rest of the
+update directions ∆η, svec(∆T ), ∆ζ, and ∆ω amounts to back-substituting the solution to (54)
+for svec(∆S) through the analytical variable elimination equations.
+    We make a single change to the initialization as compared with the interior point method
+presented in subsection B.1. Since this interior point method can be executed multiple times in a
+row with only the value of ν̃ changing as the first step in the alternating maximization algorithm,
+we warm-start initialize θ with the previous execution’s θ⋆ . We observe non-negligible convergence
+improvements over arbitrary initialization as this interior point method procedure is called in
+sequence.
+
+B.3    Remark on Solving Subproblems
+Ding and Grimmer [28] claim that (16) could be solved using (accelerated) projected gradient de-
+scent and describe the method necessary for projection and proper scaling, but they use Mosek [9],
+an off-the-shelf solver, in their experiments. We find that while theoretically possible, projected
+gradient descent does not work well in practice since choosing the correct step size to obtain a high
+quality solution to (16) is difficult and varies between time steps t. We instead use (and advocate
+for) the primal-dual interior point method derived in Appendix B.2.
+
+
+C     Additional Details on Scaling with Matrix Sketching
+The values ⟨C, X̄t ⟩, tr(X̄t ), and AX̄t can be efficiently maintained given low-rank updates to X̄t
+due to the linearity of the operations,
+                                                                                            
+        ⟨C, X̄t+1 ⟩ ← ⟨C, ηt+1 X̄t + Vt Qc Λc Q⊤    ⊤                           ⊤ ⊤
+                                                c Vt ⟩ = ηt+1 ⟨C, X̄t ⟩ + tr Vt Qc CVt Qc Λc    , (55)
+                                                   
+        tr(X̄t+1 ) ← tr ηt+1 X̄t + Vt Qc Λc Q⊤    ⊤
+                                                                             
+                                              c Vt    = ηt+1 tr X̄t + tr Λc ,                     (56)
+                                                   
+          AX̄t+1 ← A ηt+1 X̄t + Vt Qc Λc Q⊤       ⊤
+                                                      = ηt+1 AX̄t + A Vt Qc Λc Q⊤     ⊤
+                                                                                        
+                                              c Vt                                c Vt ,          (57)
+
+where A Vt Qc Λc Q⊤   ⊤ can be computed efficiently since
+                       
+                  c Vt
+                                                                   
+                           A Vt Qc Λc Q⊤ V
+                                       c t
+                                           ⊤
+                                                = tr  V t
+                                                         ⊤ ⊤
+                                                          Qc A  V Q Λ
+                                                               i t c c    .                      (58)
+                                                i
+
+
+                                                    24
+C.1    Nyström Sketch Reconstruction
+Given the sketch Pt and the projection matrix Ψ, we can compute a rank-r approximation to X̄t .
+The approximation is as follows
+
+                         c̄ := P (Ψ⊤ P )+ P ⊤ = (X̄ Ψ)(Ψ⊤ X̄ Ψ)+ (X̄ Ψ)⊤ ,
+                         X                                                                         (59)
+                           t    t     t    t       t        t       t
+
+where + is the Moore-Penrose inverse. The reconstruction is called a Nyström approximation.
+We will almost always compute the best rank-r approximation of X   c̄ for memory efficiency. In
+                                                                     t
+practice, we use the numerically stable implementation of the Nyström approximation provided
+by Yurtsever et al. [107]. The Nyström approximation yields a provably good approximation for
+any sketched matrix. See the following fact from [87],
+
+Fact C.1. Fix X ∈ Sn+ arbitrarily. Let P := XΨ where Ψ ∈ Rn×r has independently sampled
+standard normal entries. For each r′ < r − 1, the Nyström approximation X
+                                                                         b as defined in (59)
+satisfies
+                                                 r′
+                                                       
+                        EΨ X − Xb ≤ 1+
+                                   ∗                      X − [[X]]r ∗ ,                 (60)
+                                             r − r′ − 1
+where EΨ is the expectation with respect to Ψ and [[X]]r is returns an r-truncated singular-value
+decomposition of the matrix X, which is a best rank-r approximation with respect to every unitarily
+invariant norm [64]. If we replace X
+                                   b with [[X]]
+                                            b r , this error bound still remains valid.
+
+C.2    USBS Memory Requirements.
+When we implement USBS using this matrix sketching procedure we see significant decrease in
+time and memory required by USBS. Storing the projection matrix Ψ and Pt requires O(nr)
+memory. Storing ⟨C, X̄t ⟩ and tr(X̄t ) requires O(1) memory, respectively, and storing AX̄t , νt , yt ,
+and ỹt+1 requires O(m) memory. The primal-dual interior point methods require O(k 2 ) and O(k 4 )
+memory, respectively, and storing Vt requires O(nk) memory. This means that the entire memory
+required by USBS is O(nr + nk + m + k 4 ) working memory (not including the memory to store
+the problem data) which for many SDPs is much less than explicitly storing the iterate X̄t which
+requires O(n2 ) memory.
+
+
+D     Proof of Theorem 3.1
+In this section, we present the non-asymptotic convergence results for USBS. First, we summarize
+the relevant results presented by Dı́az and Grimmer [27] in the following theorem.
+
+Theorem D.1. Let β > 0 and ρ > 0 be constant, f : Rm → (−∞, +∞] be a proper closed
+convex function with nonempty n     set of minimizers oY⋆ , and the sequence of models produced by the
+                                ˆ
+proximal bundle method ft+1 : Rm → (−∞, +∞] satisfy the conditions (3), (4), and (5). If the
+iterates yt and subgradients gt+1 are bounded, then the iterates yt have f (yt ) − f (y⋆ ) ≤ ε for all
+t ≥ O(1/ε3 ). Additionally, if f (y) − f (y⋆ ) ≥ O(dist2 (y, Y⋆ )) for all y, then the bound improves to
+f (yt ) − f (y⋆ ) ≤ ε for all t ≥ O(1/ε).
+
+We will use this result to prove the non-asymptotic convergence rates for the spectral bundle
+method.
+   Note the following fact necessary to use Theorem D.1.
+
+Fact D.2. The set {y ∈ Y : f (y⋆ ) ≤ f (y) ≤ f (y0 )} is compact and contains all iterates yt .
+Moreover, the iterates yt and subgradients gt+1 are bounded, i.e. sup t≥0 {dist(yt , Y∗ )} < ∞ and
+sup t≥0 {∥gt+1 ∥ : gt+1 ∈ ∂f (ỹt+1 )} < ∞.
+
+
+
+                                                  25
+Proof. The function f is continuous and proper over the domain Y. It is a well-known fact
+that the level sets of continuous proper functions are compact. Hence, the union of level sets
+{y ∈ Y : f (y⋆ ) ≤ f (y) ≤ f (y0 )} is compact, and therefore, sup t≥0 {dist(yt , Y∗ )} < ∞. The
+subgradients take the form gt+1 = b + αA(vv⊤ ) ∈ ∂f (ỹt+1 ) where v ∈ Rn is a unit-normed vector,
+and thus, ∥gt+1 ∥ < ∞ for all t.
+
+The following lemma guarantees quadratic growth whenever strict complementarity holds.
+Lemma D.3. Let y ∈ Y be arbitrary. Then,
+                                              d
+                                         dist2 (y, Y⋆ ) ≤ O(f (y) − f (y⋆ )),                                        (61)
+where d ∈ {0, 1, . . . , m} is the singularity degree [31, 80, 82]. If strict complementarity holds, then
+d ≤ 1, and if Slater’s condition holds, then d = 0.
+Proof. Let F := {y ∈ Rm : A∗ y − C ∈ Sn+ }. Observe that Y⋆ = Y ∩ F. Since Y⋆ is compact, the
+Hölderian error bound [31, 80, 82] ensures that
+                                              −d             −d
+                                                                     
+                         dist(y, Y⋆ ) ≤ O dist2 (y, Y) + dist2 (y, F) ,
+
+where d ∈ {0, 1, . . . , m} is the singularity degree of the SDP. This implies that for y ∈ Y ,
+                                     d
+                               dist2 (y, Y⋆ ) ≤ O (dist(y, F))
+                                                  ≤ O (α max{λmax (C − A∗ y), 0})
+                                                  ≤ O (f (y) − f (y⋆ )) .
+
+
+The following three lemmas guarantee primal feasiblity, dual feasibility, and primal-dual objective
+optimality given convergence of the penalized dual objective, i.e. f (yt ) − f (y⋆ ) ≤ ε.
+Lemma D.4. At every descent step t,
+                                                             p                 
+                                  dist(AXt+1 , K) ≤ O          f (yt ) − f (y⋆ ) .                                   (62)
+
+Additionally, if Slater’s condition holds and y⋆ is unique, then
+                                     dist(AXt+1 , K) ≤ O(f (yt ) − f (y⋆ )).                                         (63)
+Proof. For any descent step t, it is easy to verify from (14) and (17) that
+                                  projK (AXt+1 ) − AXt+1 ≤ ρ(yt − yt+1 ),
+and therefore,
+                              ∥AXt+1 − projK (AXt+1 )∥2 ≤ ρ2 ∥yt − yt+1 ∥2 .
+To complete the proof we utilize the fact that fˆt (yt+1 ) = miny∈Y fˆt (y) + ρ2 ∥y − yt ∥2 , the fact that
+fˆt (y) ≤ f (y) for all y ∈ Y, and the definition of a descent step, which gives
+     ρ                                                                   f (yt ) − f (yt+1 )   f (yt ) − f (y⋆ )
+       ∥yt+1 − yt ∥2 ≤ fˆt (yt ) − fˆt (yt+1 ) ≤ f (yt ) − fˆt (yt+1 ) ≤                     ≤                   .
+     2                                                                            β                    β
+Assume Slater’s condition holds and y⋆ is unique. Then, using Lemma D.3 gives
+            ∥AXt+1 − projK (AXt+1 )∥2 ≤ ρ2 ∥yt − yt+1 ∥2
+                                                  ≤ ρ2 ∥yt − y⋆ ∥2 + ∥yt+1 − y⋆ ∥2
+                                                                                   
+
+                                                  ≤ O (f (yt ) − f (y⋆ ))2 + O (f (yt+1 ) − f (y⋆ ))2
+                                                                                                     
+
+                                                  ≤ O (f (yt ) − f (y⋆ ))2 .
+                                                                          
+
+
+
+
+                                                           26
+Lemma D.5. Suppose strong duality holds and α ≥ 2N(X⋆ ). Then, at every descent step t,
+
+                                 λmax (C − A∗ yt ) ≤ O(f (yt ) − f (y⋆ )) .                          (64)
+
+Proof. By definition of strong duality, we know that for any X⋆ ∈ X⋆ that ⟨C, X⋆ ⟩ = ⟨b, y⋆ ⟩, and
+equivalently, ⟨X⋆ , A∗ y⋆ − C⟩ = 0. Then, the dual objective gap is bounded as follows
+
+                           ⟨b, yt − y⋆ ⟩ = ⟨AX⋆ , yt − y⋆ ⟩
+                                        = ⟨X⋆ , A∗ (yt − y⋆ )⟩
+                                        = ⟨X⋆ , (A∗ yt − C) − (A∗ y⋆ − C)⟩
+                                        = ⟨X⋆ , A∗ yt − C⟩
+                                        ≥ −∥X⋆ ∥∗ max{λmax (C − A∗ yt ), 0}.
+
+We now utilize this bound to obtain the desired result
+
+   f (yt ) − f (y⋆ ) = ⟨b, yt − y⋆ ⟩ + α max{λmax (C − A∗ yt ), 0} ≥ ∥X⋆ ∥∗ max{λmax (C − A∗ yt ), 0},
+
+where the last inequality is implied by the assumption that α ≥ 2N(X⋆ ) ≥ 2∥X⋆ ∥∗ .
+
+
+Lemma D.6. At every descent step t,
+                                                                        p                    
+                 |⟨b, yt+1 ⟩ − ⟨C, Xt+1 ⟩| ≤ O(f (yt ) − f (y⋆ )) + O        f (yt ) − f (y⋆ ) .     (65)
+
+Additionally, if Slater’s condition holds and y⋆ is unique, then
+
+                              |⟨b, yt+1 ⟩ − ⟨C, Xt+1 ⟩| ≤ O(f (yt ) − f (y⋆ )).                      (66)
+
+Proof. We start by rewriting the primal-dual gap as follows
+
+              ⟨C, Xt+1 ⟩ − ⟨b, yt+1 ⟩ = ⟨C, Xt+1 ⟩ − ⟨AXt+1 , yt+1 ⟩ + ⟨AXt+1 − b, yt+1 ⟩
+                                      = ⟨Xt+1 , C − A∗ yt+1 ⟩ + ⟨AXt+1 − b, yt+1 ⟩.
+
+We will now bound the absolute values of the two resulting terms to bound the desired quantity.
+Using the Cauchy-Schwarz inequality and Lemma D.4 it can be seen
+
+                          |⟨AXt+1 − b, yt+1 ⟩| ≤ ∥AXt+1 − b∥∥yt+1 ∥
+                                                          p                 
+                                               ≤ O ∥yt+1 ∥ f (yt ) − f (y⋆ )
+                                                  p                  
+                                               ≤O    f (yt ) − f (y⋆ ) ,
+
+where the last inequality comes from Fact D.2. Assume Slater’s condition holds and y⋆ is unique.
+Then, using Lemma D.3 gives
+
+                               |⟨AXt+1 − b, yt+1 ⟩| ≤ O (f (yt ) − f (y⋆ )) .
+
+Since Xt+1 ⪰ 0 and tr(Xt+1 ) ≤ α by construction, we can use Lemma D.5 to yield
+
+                          |⟨Xt+1 , C − A∗ yt+1 ⟩| ≤ O(max{C − A∗ yt+1 , 0})
+                                                   ≤ O(f (yt+1 ) − f (y⋆ ))
+                                                   ≤ O(f (yt ) − f (y⋆ )).
+
+The immediately yields the desired result.
+
+
+
+                                                     27
+D.1    Proof of Theorem 3.1
+The overall proof strategy is to use Theorem D.1 to show that the penalized dual gap, f (yt )−f (y∗ ),
+converges at a worst case rate of O(1/ε3 ), which improves to O(1/ε) if Slater’s condition or
+strict complementarity hold. Then, we can use Lemmas D.4, D.5, and D.6 to obtain the stated
+convergence of primal feasibility, dual feasibility, and primal-dual optimality.
+    To apply the result of Theorem D.1, we showed that the norms of the iterates and subgradi-
+ents of f are bounded (Fact D.2), and so all we need to do is show that the model satisfies the
+conditions (3), (4), and (5).
+    Let v be a maximum eigenvector C − A∗ ỹt+1 if λmax (C − A∗ ỹt+1 ) > 0 and v = 0, otherwise.
+Then denote gt+1 = b + αA(vv ⊤ ) ∈ ∂f (ỹt+1 ) as the subgradient of f corresponding v at the
+candidate iterate ỹt+1 . Let st+1 = ρ(yt − ỹt+1 ) ∈ ∂ fˆt (ỹt+1 ) be the aggregate subgradient. Recall
+that at iteration t + 1 the model approximates X by the low-dimensional spectral set
+                       n                                                                 o
+                                          ⊤
+              Xbt+1 := η X̄t+1 + Vt+1 SVt+1   : η tr(X̄t+1 ) + tr(S) ≤ α, η ≥ 0, S ∈ Sk+ .
+
+and therefore the penalized dual objective and model respectively take the following forms for any
+y ∈ Y,
+
+         f (y) = sup ⟨C − A∗ y, X⟩ + ⟨b, y⟩ and fˆt+1 (y) = sup ⟨C − A∗ y, X⟩ + ⟨b, y⟩.                (67)
+                 X∈X                                                   X∈Xbt+1
+
+
+Verifying (3).     The condition (3) follows immediately from (67), since Xbt+1 ⊆ X .
+
+Verifying (4). Since Vt+1 spans v, there exists a vector s ∈ Rk such that Vt+1 s = v. Taking
+η = 0 and S = αss⊤ implies αvv⊤ ∈ Xbt+1 . Hence,
+
+                   fˆt+1 (y) ≥ ⟨C − A∗ y, αvv⊤ ⟩ + ⟨b, y⟩
+                            = ⟨C − A∗ , αvv⊤ ⟩ + ⟨b, ỹt+1 ⟩ + ⟨b + αA(vv⊤ ), y − ỹt+1 ⟩
+                            = f (ỹt+1 ) + ⟨gt+1 , y − ỹt+1 ⟩.
+
+Verifying (5). From the first-order optimality conditions and the update step (14) we know that
+
+                               st+1 = ρ(yt − ỹt+1 ) = b − νt+1 − AXt+1 ,
+                           fˆt (ỹt+1 ) = ⟨C − A∗ ỹt+1 , Xt+1 ⟩ + ⟨b − νt+1 , ỹt+1 ⟩.
+
+To show the desired result, we first want to show that Xt+1 ∈ X bt+1 . If kp = 0, we are done since
+Xt+1 = X̄t+1 . Otherwise, kp ≥ 1. First note that tr(Xt+1 ) ≤ α by construction. Then,
+
+                           Xt+1 = ηt+1 X̄t + Vt St+1 Vt⊤
+                                 = ηt+1 X̄t + Vt (Qp Λp Qp⊤ + Qc Λc Q⊤
+                                                                     c )Vt
+                                                                          ⊤
+
+                                 = ηt+1 X̄t + Vt Qp Λp Qp⊤ Vt⊤ + Vt Qc Λc Q⊤
+                                                                           c Vt
+                                                                               ⊤
+
+                                 = X̄t+1 + Vt Qp Λp Q⊤   ⊤
+                                                     p Vt .
+
+
+Since Vt+1 spans each of the columns of Vt Qp , we can conclude that Xt+1 ∈ X           bt+1 . Thus, for any
+y ∈ Y,
+             fˆt+1 (y) ≥ ⟨C − A∗ y, Xt+1 ⟩ + ⟨b − νt+1 , y⟩ = fˆt (ỹt+1 ) + ⟨st+1 , y − ỹt+1 ⟩.
+
+
+
+
+                                                       28
+E     Experimental Setup and Details
+Following [107], we scale the problem data for all problems such that the following condition holds,
+
+                                        ∥C∥F = tr(X⋆ ) = 1.                                      (68)
+
+In all three problem types, the constraints exactly determine the trace of all optimal solutions.
+Since we know the trace of the optimal solution and we apply problem scaling (68), we can set
+α = 2 for all problem types.
+   Computing the relative infeasibility is simple. As for the relative primal objective suboptimality,
+we do not usually have access to the optimal primal objective value ⟨C, X⋆ ⟩, but we can compute
+an upper bound. For any y ∈ Y,
+
+          f (y) = α max{λmax (C − A∗ y), 0} + ⟨b, y⟩ ≥ ⟨C − A∗ y, X⋆ ⟩ − ⟨b, y⟩ = ⟨C, X⋆ ⟩,
+                                                                                                 (69)
+              =⇒ ⟨C, X⟩ − ⟨C, X⋆ ⟩ ≤ ⟨C, X⟩ − f (y).
+
+We use this upper bound to approximate the relative primal objective suboptimality in our exper-
+iments for USBS. We use the upper bound given in [107] to compute the relative primal objective
+suboptimality for CGAL.
+    For both CGAL and USBS, we compute eigenvectors and eigenvalues using an implementation
+of the thick-restart Lanczos algorithm [44, 99] with 32 inner iterations and a maximum of 10
+restarts. Both CGAL and USBS are implemented using 64-bit floating point arithmetic. Unless
+otherwise specified, we use a CPU machine with 16 cores and up to 128 GB of RAM. Throughout
+the presentation of the experimental results we use ↑ to indicate that higher is better for that
+particular metric and ↓ to indicate lower is better for that particular metric.
+
+E.1     MaxCut
+The MaxCut problem is a fundamental combinatorial optimization problem and its SDP relaxation
+is a common test bed for SDP solvers. Given an undirected graph, the MaxCut is a partitioning of
+the n vertices into two sets such that the number of edges between the two subsets is maximized.
+Formally, the MaxCut problem can be written as follows
+                                        1 ⊤
+                                 max      x Lx     s.t.   x ∈ {±1}n ,                            (70)
+                                        4
+where L is the graph Laplacian. This optimization problem is known to be NP-hard [48], but
+rounding the solution to the SDP relaxation can yield very strong approximate solutions [38].
+
+E.1.1   SDP Relaxation
+For any vector x ∈ {±1}n , the matrix X := xx⊤ is positive semidefinite and all of its diagonal
+entries are exactly one. These implicit constraints allow us to arrive at the MaxCut SDP as follows
+                                 1
+                         max       tr(LX)    s.t. diag(X) = 1 and X ⪰ 0,                         (71)
+                                 4
+where diag(·) extracts the diagonal of a matrix into a vector and 1 ∈ Rn is the all-ones vector.
+A matrix solution X⋆ to (20) does not readily elicit a graph cut. One way to round X⋆ is to
+compute a best rank-one approximation x⋆ x⊤ ⋆ and use sgn(x⋆ ) as an approximate cut. There are
+more sophisticated rounding procedures (e.g. [38]), but this one works quite well in practice.
+    Notice that (20) contains exactly n equality constraints. Additionally, in many instances of
+MaxCut, the graph Laplacian L is sparse and the optimal solution is low-rank. This means that
+we can represent the MaxCut instance with far less than O(n2 ) memory. These attributes make
+sketching the matrix variable X with relatively small r an attractive and effective approach when
+considering the MaxCut problem.
+
+                                                 29
+E.1.2    Rounding
+Both CGAL and USBS maintain a sketch of the primal variable that, along with the test matrix,
+can be used to construct a low-rank approximation of the primal iterate X   b = U ΛU ⊤ where
+U ∈R  n×r has orthonormal columns. Following [107], we evaluate the size of r cuts given by the
+column vectors of sgn(U ) and choose the largest.
+
+E.1.3    Experimental Setup
+We evaluate the CGAL and USBS with and without warm-starting on ten instances from the
+DIMACS10 [11] where n and the number of edges in each graph are shown in Table 1. We warm-
+start each method by dropping the last 1% of vertices from the graph resulting in a graph with
+99% of the vertices. We pad the solution from the 99%-sized problem with zeros and rescale as
+necessary to create the warm-start initialization. Unless otherwise specified, we use the following
+hyperparameters for USBS in our experiments: r = 10, ρ = 0.01, β = 0.25, kc = 10, kp = 1. In
+our experiments, we find that kp > 0 does improve performance slightly. See the implementation
+for more details.
+
+E.2     Quadratic Assignment Problem
+The quadratic assignment problem (QAP) is a very difficult but fundamental class of combina-
+torial optimization problems containing the traveling salesman problem, max-clique, bandwidth
+problems, and facilities location problems among others [59]. SDP relaxations have been shown to
+facilitate finding good solutions to large QAPs [109]. The QAP can be formally defined as follows
+                                      
+                   min tr W ΠDΠ⊤           s.t. Π is an n × n permutation matrix,            (72)
+
+where W ∈ Sn is the weight matrix, D ∈ Sn is the distance matrix, and the goal is to optimize
+for an assignment Π which aligns W and D. The number of n × n permutation matrices is n!,
+so a brute-force search becomes quickly intractable as n grows. Generally, QAP instances with
+n > 30 are intractable to solve exactly. In our experiments, using an SDP relaxation and rounding
+procedure, we can obtain good solutions to QAPs where n is between 136 and 198.
+
+E.2.1    SDP Relaxation
+There are many SDP relaxtions for QAPs, but we consider the one presented by [107] and inspired
+by [20, 45] which is formulated as follows
+                                           
+                        min tr (D ⊗ W ) Y
+                         s.t. tr1 (Y) = I, tr2 (Y) = I, G(Y) ≥ 0,
+                              vec(B) = diag(Y), B1 = 1, 1⊤ B = 1⊤ , B ≥ 0,                       (73)
+                                             vec(B)⊤
+                                                    
+                                       1
+                              X :=                     ⪰ 0, tr(Y) = n
+                                     vec(B)     Y
+
+where ⊗ denotes the Kronecker product, tr1 (·) and tr2 (·) denote the partial trace over the first and
+second systems of Kronecker product respectively, G(Y) extracts the entries of Y corresponding to
+the nonzero entries of D ⊗ W , and vec(·) stacks the columns of a matrix one on top of the other
+to form a vector. In many cases, one of D or W is sparse (i.e. O(n) nonzero entries) resulting in
+O(n3 ) total constraints for the SDP.
+    The primal variable X has dimension (n2 + 1) × (n2 + 1) and as a result the SDP relaxation has
+O(n4 ) decision variables. Given the aggressive growth in complexity, most SDP based algorithms
+have difficulty operating on instances where n > 50. To reduce the number of decision variables, we
+sketch X with r = n, resulting in O(n3 ) entries in the sketch and the same number of constraints
+in most natural instances. We show that this enables CGAL and USBS to scale to instances where
+n = 198 (more than 1.5 billion decision variables and constraints).
+
+
+                                                 30
+E.2.2    Rounding
+We adopt the rounding method presented in [107] to convert an approximate solution of (21) into
+a permutation matrix. Reconstructing an approximation to the primal variable from the sketch
+       b = U ΛU ⊤ where U has shape (n2 + 1) × n. For each column of U , we discard the first
+yields X
+entry of the column vector, reshape the remaining n2 entries into an n × n matrix, and project
+the reshaped matrix onto the set of n × n permutation matrices using the Hungarian method (also
+known as Munkres’ assignment algorithm) [47, 52, 65]. This procedure yields a feasible point to the
+original QAP (72). To get an upper bound for (72), we perform the rounding procedure on each
+column of U and choose the permutation matrix Π which minimizes the objective tr W ΠDΠ⊤ .
+                                                                                                 
+
+
+E.2.3    Experimental Setup
+We evaluate CGAL and USBS on select large instances from QAPLIB [23] and TSPLIB [72] ranging
+in size from 136 to 198. Provided with each of these QAP instances is the known optimum. For
+many instances, we find that the quality of the permutation matrix produced by the rounding
+procedure does not entirely correlate with the quality of the iterates with respect to the SDP (21).
+Thus, we apply the rounding procedure at every iteration of both CGAL and USBS. Our metric
+for evaluation is relative gap which is computed as follows
+                                         upper bound obtained − optimum
+                        relative gap =                                  .
+                                                    optimum
+
+We report the lowest value so far of relative gap as best relative gap. CGAL [107] is shown to
+obtain significantly smaller best relative gap than CSDP [20] and PATH [108] on most instances,
+and thus, is a strong baseline.
+    To create a warm-start initialization, we create a slightly smaller QAP by dropping the final
+row and column of both D and W (i.e. solve a size n − 1 subproblem of the original instance).
+We use the solution to slightly smaller problem to set a warm-start initialization for the original
+problem, rescaling and padding with zeros where necessary. We stopped optimizing after one hour.
+When warm-starting, we optimize the slightly smaller problem for one hour and then optimize the
+original problem for one hour.
+    Following [107], we apply the following scaling of the problem variables in (21)
+
+                   ∥C∥F = tr(X⋆ ) = ∥A∥op = 1      and ∥A1 ∥F = · · · = ∥Am ∥F .                (74)
+
+We use the following hyperparameters for USBS in our experiments: ρ = 0.005, β = 0.25, kc =
+2, kp = 0. In our experiments, we find that kp > 0 does not improve performance. See the
+implementation for more details.
+
+E.3     Interactive Entity Resolution with ∃-constraints
+Angell et al. [7] introduced a novel SDP relaxation of a combinatorial optimization problem that
+arises in an automatic knowledge base construction problem [46, 51, 89]. They consider the problem
+of interactive entity resolution with user feedback to correct predictions made by a machine learning
+algorithm. Entity resolution (also known as coreference resolution or record linkage) is the process
+of identifying which mentions (sometimes referred to as records) of entities refer to the same
+entity [1, 2, 6, 16, 102]. Entity resolution is an important problem central to automated knowledge
+base construction where the correctness of the resulting knowledge base is vital to its usefulness.
+The entity resolution problem is fundamentally a clustering problem where the prefect clusters
+contain all mentions of exactly one entity. Due to the large volumes of raw data frequently
+involved, machine learning approaches are often used to perform entity resolution. To correct
+inevitable errors in the predictions made by these automated methods, human feedback can be
+used to correct errors in entity resolution.
+
+
+                                                 31
+    Utilizing human feedback to guide and correct clustering decisions can be broadly categorized
+into two groups [12]: active clustering (also know as semi-supervised clustering) [62, 75, 93, 94, 101]
+and interactive clustering [13, 24, 25, 32]1 . There are several paradigms of human feedback used to
+steer a clustering algorithm [35, 50, 54, 57, 58, 60, 77, 96, 100], the most common of which is pairwise
+constraints [95] (i.e. statements about whether two points or mentions must or cannot be clustered
+together). Recently, Angell et al. [7] introduced ∃-constraints, a new paradigm of interactive
+feedback for correcting entity resolution predictions and presented a novel SDP relaxation as part
+of a heuristic algorithm for satisfying ∃-constraints in the predicted clustering. This novel form
+of feedback allows users to specify constraints stating the existence of an entity with and without
+certain features.
+
+E.3.1     ∃-constraints
+To define ∃-constraints precisely, we must introduce some terminology and notation. Let the set
+of mentions be represented by the vertex set V of a fully connected graph. We assume that each of
+the mentions v ∈ V has an associated set of discrete features (attributes, relations, other features,
+etc.) that is readily available or can be extracted easily using some automated method. Let
+Φ = {ϕ1 , ϕ2 , . . .} be the set of possible features and Φ(v) ⊆ Φ be the subset of features associated
+with vertex v ∈ V . A clustering C = {C1 , C2S    , . . . , Cm } of vertices V is a set of nonempty sets such
+that Ci ⊆ V , Ci ∩ Cj = ∅ for all i ̸= j, and C∈C C = V . We denote the ground truth clustering
+of the vertices (partitioning mentions into entities) as C ⋆ . Furthermore,   S      for any subset of vertices
+S ⊆ V , we define the set of features associated with S as Φ(S) = v∈S Φ(v). For any cluster Ci ,
+we use Φ(Ci ) as the canonicalization function for a predicted entity, but this framework allows for
+more complex (and even learned) canonicalization functions. When providing feedback, users are
+able to view the features of predicted clusters and then provide one or more ∃-constraints.
+     Formally, a ∃-constraint ξ ⊆ {+, −} × Φ uniquely characterizes a constraint asserting there
+exists a cluster C ∈ C ⋆ such that all of the positive features ξ + := {ϕ ∈ Φ : (+, ϕ) ∈ ξ} are contained
+in the features of C (i.e. ξ + ⊆ Φ(C)) and none of the negative features ξ − := {ϕ ∈ Φ : (−, ϕ) ∈ ξ}
+are contained in the features of C (i.e. ξ − ∩ Φ(C) = ∅). At any given time, let the set of ∃-
+constraints be represented by Ξ. We say that a subset of nodes S ⊆ V satisfies a ∃-constraint ξ
+if ξ + ⊆ Φ(S) and ξ − ∩ Φ(S) = ∅. Note that more than one ground truth cluster can satisfy
+a ∃-constraint. We say that a subset of vertices S ⊆ V is incompatible with a ∃-constraint ξ if
+Φ(S) ∩ ξ − ̸= ∅ and denote this as S ⊥ ξ. Similarly, two ∃-constraints ξa , ξb are incompatible if
+ξa+ ∩ ξb− ̸= ∅ or ξa− ∩ ξb+ ̸= ∅, and is also denoted ξa ⊥ ξb . Furthermore, we say a subset of vertices
+S ⊆ V and a ∃-constraint ξ or two ∃-constraints ξa , ξb are compatible if they are not incompatible
+and denote this as S ̸⊥ ξ and ξa ̸⊥ ξb , respectively. Moreover, we use compatible to describe
+when a subset of vertices S ⊆ V could be part of a cluster that satisfies a certain ∃-constraint
+ξ. This definition allows for Φ(S) ∩ ξ + to be empty, but still enables S to be compatible with
+ξ just as long as Φ(S) ∩ ξ − is empty. Observe that if every mention has a unique feature, the
+∃-constraint framework fully encompasses must-link and cannot-link constraints.
+
+E.3.2     SDP relaxation
+Following [7], the general approach to clustering with ∃-constraints is to jointly cluster the vertices
+and the ∃-constraints, so we include ∃-constraints as additional vertices of the graph V (i.e. Ξ ⊂ V )
+and create corresponding decision variables for each of the ∃-constraints. Additionally, we create
+constraints to ensure that all of the ∃-constraints are satisfied and none of the ∃-constraints are
+incompatible with any of the other members of the predicted clustering. Given a ∃-constraint ξ
+and positive feature ϕ ∈ ξ + , let Γ(ξ, ϕ) := {v ∈ V \ Ξ : ϕ ∈ Φ(v) ∧ Φ(v) ∩ ξ − = ∅} be the set of
+   1
+    Commonly, active clustering is used to describe techniques where the algorithm queries the human for feedback
+about a specific pair or group of points or clusters (akin to active learning) and interactive clustering is used to
+describe techniques where humans observe the clustering output and provide unelicited feedback, typically in the
+form of some type of constraint, to the algorithm.
+
+
+
+                                                        32
+candidate vertices that could satisfy ϕ ∈ ξ + . The resulting integer linear programming problem is
+as follows
+                                                                (P
+                                                                             ⊤                       +
+                                                                   v∈Γ(ξ,ϕ) xv xξ ≥ 1, for all ϕ ∈ ξ
+                                         X
+                   max                          wuv x⊤
+                                                     u x v s.t.                                        (75)
+           xu ,xv ∈{e1 ,e2 ,...,en }
+                                     (u,v)∈V ×V
+                                                                 x⊤
+                                                                  v xξ = 0,            for all v ⊥ ξ
+
+where wuv ∈ R is the pairwise similarity between mentions u and v (usually computed using a
+trained machine learning model trained on pairs of mentions) and ei ∈ Rn is the ith standard
+basis vector. Note that we assume that the wvξ = 0 as in [7]. The first constraint ensures that
+all of the positive features in ξ + are contained in the same cluster as ξ for all ξ ∈ Ξ. The last
+constraint ensures that ξ is not in the same cluster as anything incompatible with it for all ξ ∈ Ξ.
+This problem is intractable to optimize exactly, so we relax (75) to an SDP in the standard way
+as follows                               
+                                         
+                                         
+                                          Xvv = 1,            for all v ∈ V
+                                         
+                                         X ≥ 0,
+                                            uv                 for all u, v ∈ V
+                      max ⟨W, X⟩ s.t. P                                                         (76)
+                      X⪰0                 v∈Γ(ξ,ϕ) Xvξ ≥ 1, for all ϕ ∈ ξ +
+                                         
+                                         
+                                         
+                                         X = 0,
+                                              vξ               for all v ⊥ ξ
+The decision variables are changed from standard basis vectors, whose dot products determine
+whether or not two elements (vertices or ∃-constraints) are in the same cluster, to a positive
+semidefinite matrix where each entry represents the global affinity two elements have for one an-
+other (corresponding to the row and column of the entry). We constrain the diagonal of this positive
+semidefinite matrix to be all ones (representing each element’s affinity with itself) and we enforce
+that all entries in the matrix are non-negative. The constraints ensuring ∃-constraint satisfaction
+are similar to (75). Let W be the (weighted) adjacency matrix of the fully connected graph over
+the n vertices.
+
+E.3.3    Rounding
+The solution X⋆ to (76) is a fractional approximation of the problem we wish to solve. In order to
+infer a predicted clustering, we need some procedure to round the fractional solution to an integer
+solution. Angell et al. [7] propose first building a hierarchical clustering over V using X⋆ as the
+similarity function. Then, a dynamic programming algorithm is used to extract a (predicted) flat
+clustering from the hierarchical clustering which maximizes the number ∃-constraints satisfied and
+the (correlation) clustering objective. For a more detailed description of the rounding procedure,
+see [7]. The predicted clustering is then observed by the human users in terms of the features of each
+predicted cluster enabling the users to provide any additional ∃-constraints to correct the entity
+resolution decisions. We simulate this human feedback loop with an oracle ∃-constraint generator.
+
+E.3.4    Experimental Setup
+We evaluate the performance of the CGAL and USBS with and without warm-starting on the same
+three author coreference datasets used in [7]. In these datasets, each mention is an author-paper
+pair and the goal is to identify which author-paper pairs were written by the same author. As
+standard in author coreference, the datasets are preprocessed into blocks (also known as canopies)
+based on the author’s first name initial and last name (e.g. authors “Rajarshi Das” and “Ravi
+Das” would both be contained in the same block “r das”, but in a different block than “Jane
+Smith”, which would be in “j smith”). Within each block, similarity scores are computed between
+all pairs of mentions using a trained pairwise model [7, 83]. We then perform two additional
+preprocessing steps to convert the many small dense problems into one large sparse problem. We
+aggregate all of these pairwise similarity scores into a block diagonal weight matrix and fill the
+remaining entries with negative one. We then sparsify this highly structured similarity matrix
+using a spectral sparsifier [79]. Table 3 details the dataset statistics including the number of
+non-zeros in the pairwise similarity matrix after spectral sparsification, denoted nnz(W ).
+
+                                                    33
+                             Table 3: Author coreference dataset statistics.
+
+                                 # mentions    # blocks   # clusters   nnz(W )    # features
+           PubMed                    315            5          34        3,973      14,093
+           QIAN                      410           38          77        5,158      10,366
+           SCAD-zbMATH              1,196         120         166       18,608      8,203
+
+
+
+    We simulate ∃-constraint generation using the same oracle implemented in [7]. The oracle has
+access to the features of the ground truth clusters and the features of the predicted clusters output
+by the rounding algorithm and generates a small ∃-constraint which is satisfied by the ground truth
+clustering, but is not satisfied by the predicted clustering. The oracle generates ∃-constraints one
+at a time and added to the optimization problem until the ground truth clustering is predicted. For
+both solvers, we iterate until the relative error tolerance (19) and the following absolute infeasibility
+condition are satisfied
+                                      ∥AX − projK (AX)∥∞ ≤ ε.                                       (77)
+We use ε = 10−1 to determine the stopping condition and find that this is sufficient for the rounding
+algorithm to satisfy nearly all of the ∃-constraints generated by the oracle. We also note that the
+ℓ∞ -norm condition is especially important in this application in order to make sure the relaxed
+∃-constraints are satisfied. Due to the small problem size, we simplify the implementation by using
+variants of CGAL and USBS without sketching.
+    When warm-starting, we predict the values of the expanded primal variable corresponding
+to the newly added ∃-constraint by computing representations of each vertex using a low-rank
+factorization, performing a weighted average of the representations of the positive vertices in the
+newly added ∃-constraint, and expanding the factorization into an initialization of primal variable
+for the new problem. We pad the dual variable with zeros. Since there is no pairwise similarity
+between ∃-constraints and mentions, we find that scaling up the norms of Ai ’s corresponding to the
+constraints Xvv = 1 for all v such that Φ(v) ∩ ξnew ̸= ∅, where ξnew is the newly added ∃-constraint.
+We use the following USBS hyperparameters in our experiments: ρ = 0.01, β = 0.25, kc = 3,
+kp = 0. See the implementation for more details.
+
+
+F     Additional Experimental Results
+F.1    MaxCut
+Figure 4 plots three different convergence measures over time for a large data instance, 144, for a
+total time of 12 hours. For this instance, warm-starting helps achieve a faster convergence rate
+of both relative primal objective suboptimality and relative infeasibility. Additionally, the weight
+of the cut produced from the primal iterates generated by USBS drops in value less when warm-
+starting as compared with CGAL. This is an additional indication that USBS is able to utilize
+the warm-start initialization better than CGAL. Finally, observe that USBS, with and without
+warm-starting, produces a marginally better graph cut than CGAL.
+    figs. 5 and 6 compare USBS’s infeasibility gap against time for different settings of kc and kp on
+the 144 instance from DIMACS10 on both CPU and GPU. figs. 7 and 8 compare USBS’s infeasibility
+gap against time for different settings of kc and kp on the 144 instance from DIMACS10 on both
+CPU and GPU. figs. 9 and 10 compare CGAL and USBS on CPU and GPU for different settings
+of kc and kp on the 144 instance from DIMACS10. We observe anywhere from 10-25x speedup on
+GPU as compared to CPU. We also observe that USBS performs best when kc ≥ kp .
+
+
+
+
+                                                   34
+Figure 4: Convergence measures on instance 144. We solve instance 144 from DIMACS10 and plot
+the primal objective sub-optimality (objective residual, ↓), relative infeasibility (infeasibility gap, ↓), and
+weight of the cut (↑) produced by the rounding procedure. The warm-started runs use 99% of the original
+data to obtain a warm-start initialization. We observe that USBS is able to more reliably leverage a warm-
+start initialization. In these plots, USBS is executed with kc = 8, kp = 8. All runs were executed on a
+compute node with 16 cores and 128GB of RAM.
+
+
+
+
+             (a) kp = 0                           (b) kp = 1                           (c) kp = 2
+
+
+
+
+            (d) kp = 5                            (e) kp = 8                           (f ) kp = 10
+
+Figure 5: Infeasibility gap vs. time for different settings of kc and kp . In each plot, the x-axis is
+time (up to 12 hours) and the y-axis is the relative infeasibility gap. In every case, USBS is cold-started
+on the 144 instance from the DIMACS10 dataset. Each plot considers one value of kp and several values of
+kc . All runs were executed on a compute node with 16 cores and 128GB of RAM. We observe that USBS
+performs best when kc ≥ kp .
+
+
+
+
+                                                      35
+            (a) kp = 0                           (b) kp = 1                           (c) kp = 2
+
+
+
+
+            (d) kp = 5                           (e) kp = 8                           (f ) kp = 10
+
+Figure 6: Infeasibility gap vs. time for different settings of kc and kp . In each plot, the x-axis is
+time (up to 12 hours) and the y-axis is the relative infeasibility gap. In every case, USBS is cold-started on
+the 144 instance from the DIMACS10 dataset. Each plot considers one value of kp and several values of kc .
+All runs were executed on a single NVIDIA GeForce 1080 Ti GPU. We observe that USBS performs best
+when kc ≥ kp .
+
+
+
+
+            (a) kp = 0                           (b) kp = 1                           (c) kp = 2
+
+
+
+
+            (d) kp = 5                           (e) kp = 8                           (f ) kp = 10
+
+Figure 7: Objective gap vs. time for different settings of kc and kp . In each plot, the x-axis is time
+(up to 12 hours) and the y-axis is the primal objective suboptimality. In every case, USBS is cold-started
+on the 144 instance from the DIMACS10 dataset. Each plot considers one value of kp and several values of
+kc . All runs were executed on a compute node with 16 cores and 128GB of RAM. We observe that USBS
+performs best when kc ≥ kp .
+
+
+                                                     36
+            (a) kp = 0                          (b) kp = 1                          (c) kp = 2
+
+
+
+
+            (d) kp = 5                          (e) kp = 8                          (f ) kp = 10
+
+Figure 8: Objective gap vs. time for different settings of kc and kp . In each plot, the x-axis is
+time (up to 12 hours) and the y-axis is the relative primal objective suboptimality. In every case, USBS is
+cold-started on the 144 instance from the DIMACS10 dataset. Each plot considers one value of kp and several
+values of kc . All runs were executed on a single NVIDIA GeForce 1080 Ti GPU. We observe that USBS
+performs best when kc ≥ kp .
+
+
+
+
+         (a) kc = 8, kp = 0                  (b) kc = 8, kp = 1                  (c) kc = 8, kp = 2
+
+
+
+
+         (d) kc = 8, kp = 5                  (e) kc = 8, kp = 8                 (f ) kc = 8, kp = 10
+
+Figure 9: Infeasibility gap vs. time on CPU and GPU. In each plot, the x-axis is time (up to 12
+hours) and the y-axis is the relative infeasibility gap. In every setting of kc and kp , we compare CGAL
+and USBS cold-started on the 144 instance from the DIMACS10 dataset on both a compute node with 16
+cores and 128GB of RAM (CPU) and a single NVIDIA GeForce 1080 Ti GPU (GPU). We observe that USBS
+performs best when kc ≥ kp .
+
+
+                                                    37
+         (a) kc = 8, kp = 0                  (b) kc = 8, kp = 1                  (c) kc = 8, kp = 2
+
+
+
+
+         (d) kc = 8, kp = 5                  (e) kc = 8, kp = 8                 (f ) kc = 8, kp = 10
+
+Figure 10: Objective gap vs. time on CPU and GPU. In each plot, the x-axis is time (up to
+12 hours) and the y-axis is the relative primal objective suboptimality. In every setting of kc and kp , we
+compare CGAL and USBS cold-started on the 144 instance from the DIMACS10 dataset on both a compute
+node with 16 cores and 128GB of RAM (CPU) and a single NVIDIA GeForce 1080 Ti GPU (GPU). We observe
+that USBS performs best when kc ≥ kp .
+
+
+
+
+                                                    38
+F.2    QAP
+Figure 11 and Figure 12 plot relative gap and best relative gap against time (in seconds) for
+three instances, respectively. Figure 11 shows that even for large instances the best relative gap
+is obtained within the first few minutes of the hour of optimization. In these instances, we can
+also observe that USBS not only obtains a better best relative gap, but also is able to leverage
+a warm-start solution to improve performance. Figure 13 shows the best relative gap obtained
+for ten data instances over one hour of optimization. It can be seen that warm-starting does not
+always yield a better best relative gap, but USBS is better able to leverage a warm-start solution
+than CGAL. These results show that warm-starting is a beneficial heuristic for finding a quality
+approximate solution to QAPs. The warm-starting technique used in these experiments is not
+the only possible warm-starting initialization strategy. For examples, one could generate several
+warm-start initializations for (21) by dropping other rows and columns of D and W besides the
+last row and column. Then, after creating n warm-start initializations, we could take the best
+upper bound obtained by optimizing (21) from each of those warm-start initializations.
+
+
+
+
+            (a) pr136                          (b) kroA150                          (c) tai150b
+
+Figure 11: relative gap (↓) vs. time. We plot the relative gap (y-axis) against time in seconds
+(x-axis) for three instances from QAPLIB and TSPLIB. We observe that for both algorithms the best rounded
+solution is found early in optimization. In addition, we observe that USBS is able to more reliably leverage
+a warm-start initialization.
+
+
+
+
+            (a) pr136                          (b) kroA150                          (c) tai150b
+
+Figure 12: best relative gap (↓) vs. time. We plot the best relative gap (y-axis) against time in
+seconds (x-axis) for three instances from QAPLIB and TSPLIB. We observe that USBS is able to more reliably
+leverage a warm-start initialization.
+
+
+
+
+                                                    39
+Figure 13: best relative gap (↓). The best relative gap obtained in one hour of optimization is
+shown for ten instances from QAPLIB and TSPLIB. We observe that on most problem instance that USBS
+produces a better relative gap than CGAL and that a warm-start initialization helps USBS obtain a better
+relative gap. CGAL is much less reliable in leveraging a warm-start initialization.
+
+
+
+
+                                                  40
+F.3    Interactive Entity Resolution with ∃-constraints
+Figure 14 shows the average warm-start SDP
+solve time fold change. Warm-start fold
+change greater than one indicates a speedup
+in solve time while warm-start fold change
+less than one indicates a slowdown in solve
+time. We see that the warm-start fold change
+for CGAL is less than or equal to one, indi-
+cating a slowdown consistent with Figure 3.
+We see that on average warm-starting affords
+USBS a 20-100x speedup on average per ∃-
+constraint. Note that this is much faster than
+the 2-3x we see in Figure 3. This is due to
+the fact that sometimes warm-starting does
+not help USBS, which makes intuitive sense if Figure 14: Average warm-start fold change (↑).
+the warm-start initialization is far away from Warm-start fold change represents the ratio of SDP
+the solution set for the new SDP. We believe solve time without warm-starting divided by the SDP
+that with some further experimentation in- solve time with warm-starting per ∃-constraint. The er-
+                                               ror bars indicate one standard deviation from the mean.
+cluding additional pairwise learned similar-
+                                               We observe that USBS is able to much more reliably
+ities between mentions and ∃-constraints or leverage a warm-start initialization. In addition, we
+different warm-starting strategies we might observe that the performance gap between CGAL and
+be able to mitigate these situations. Regard- USBS grows as the problem size grows.
+less, in most cases, warm-starting provides a
+significant improvement in convergence time when using USBS. We also note that Figure 14 shows
+that warm-starting provides more of a benefit the larger the SDP we are trying to solve.
+
+
+
+
+                                                 41
+

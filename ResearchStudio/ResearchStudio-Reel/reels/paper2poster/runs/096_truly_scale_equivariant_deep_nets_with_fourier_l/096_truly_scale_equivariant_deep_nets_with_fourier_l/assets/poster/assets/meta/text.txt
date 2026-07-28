@@ -1,0 +1,892 @@
+                                                          Truly Scale-Equivariant Deep Nets
+                                                                 with Fourier Layers
+
+
+                                                                   Md Ashiqur Rahman Raymond A. Yeh
+                                                                Department of Computer Science, Purdue University
+                                                                      {rahman79, rayyeh}@purdue.edu
+arXiv:2311.02922v1 [cs.LG] 6 Nov 2023
+
+
+
+
+                                                                                       Abstract
+                                                 In computer vision, models must be able to adapt to changes in image resolu-
+                                                 tion to effectively carry out tasks such as image segmentation; This is known
+                                                 as scale-equivariance. Recent works have made progress in developing scale-
+                                                 equivariant convolutional neural networks, e.g., through weight-sharing and ker-
+                                                 nel resizing. However, these networks are not truly scale-equivariant in practice.
+                                                 Specifically, they do not consider anti-aliasing as they formulate the down-scaling
+                                                 operation in the continuous domain. To address this shortcoming, we directly for-
+                                                 mulate down-scaling in the discrete domain with consideration of anti-aliasing.
+                                                 We then propose a novel architecture based on Fourier layers to achieve truly
+                                                 scale-equivariant deep nets, i.e., absolute zero equivariance-error. Following prior
+                                                 works, we test this model on MNIST-scale and STL-10 datasets. Our proposed
+                                                 model achieves competitive classification performance while maintaining zero
+                                                 equivariance-error. The code is available at https://github.com/ashiq24/
+                                                 Scale_Equivarinat_Fourier_Layer.
+
+
+                                        1   Introduction
+                                        Consider the task of image classification; if an object in the image is scaled (resized), then its
+                                        corresponding object label should remain the same, i.e., scale-invariant. Similarly, for semantic
+                                        segmentation, if an object is scaled, then its corresponding mask should also be scaled accordingly, i.e.,
+                                        scale-equivariant. Similarly, one would expect the features extracted to be scale-equivariant; see Fig. 1
+                                        for illustration. These invariant and equivariant properties are important to many computer vision
+                                        tasks due to the nature of images. A photo of the same scenery can be taken from different distances,
+                                        and objects in the scenes may come in different sizes. Developing representations that effectively
+                                        capture this multi-resolution aspect of images has been a long-standing quest [1, 9, 11, 17, 53].
+                                        Recently, there has been a line of work on developing scale-equivariant convolutions networks [8, 13,
+                                        41, 42, 46] to more effectively learn multi-resolution features. At a high level, these works achieve
+                                        scale-equivariant convolution layers through weight-sharing and kernel resizing, i.e., use the “same”
+                                        but resized kernel across all scales [5]. The innovation of these works is how to properly resize the
+                                        kernel. For example, Bekkers [2] and Sosnovik et al. [41] formulate kernel resizing as a continuous
+                                        operation and then discretize the kernel when implemented in practice. However, this discretization
+                                        leads to non-negligible equivariance error. On the other hand, Worrall and Welling [46] and Sosnovik
+                                        et al. [42] directly formulate kernel resizing in the discrete domain, e.g., using dilation or solving for
+                                        the best kernel given a fixed scale set, and achieve low equivariance-error.
+                                        Despite these successes, we point out that the aforementioned works are not truly scale-equivariant in
+                                        practice. Specifically, these works are derived using a continuous domain down-scaling operation,
+                                        i.e., there is no need to consider anti-aliasing. However, when performing a down-scaling on discrete
+                                        space, the Nyquist theorem [23, 30] tells us that an anti-alias filter is necessary to avoid high-frequency
+                                        content to alias into lower frequencies. The canonical example of aliasing is the “wagon-wheel effect”,
+
+                                        37th Conference on Neural Information Processing Systems (NeurIPS 2023).
+                       Regular CNN                                                 Ours (Scale-
+                                                                                   Equivariant)
+
+
+
+
+         Ideal Down-                 Ideal Down-                     Ideal Down-                  Ideal Down-
+           sampling                    sampling                        sampling                     sampling
+
+
+                                                                                   Ours (Scale-
+                       Regular CNN
+                                                                                   Equivariant)
+
+
+(a) Illustration that regular CNNs are not scale-equivariant. (b) Illustration that our model is scale-equivaraint.
+Figure 1. Comparison of scale-equivariance on CNN vs. our model. For a regular CNN, the features extracted
+from the corresponding high/low image resolution look very different. On the other hand, downsampling the
+high-res feature is guaranteed to achieve the same feature obtained from the low-resolution image.
+
+
+where a wheel in a video appears to be rotating slower or even in reverse from its true rotation. To
+address this gap from prior work, we consider the down-scaling operation directly in the discrete
+domain, taking he anti-aliasing into account.
+In this work, we formulate down-scaling as the ideal downsampling from signal processing [23]. We
+then propose a family of deep nets that are truly scale-equivariant based on this ideal downsampling.
+This involves rethinking all the components in the deep net, including convolution layers, non-
+linearities, and pooling layers.
+With the developed deep net, we focus on the task of image classification. We further point out that
+truly scale-invariant classifiers are not desirable. A truly scale-invariant model’s performance is limited
+by the lowest-resolution image. Instead, the more desirable property is that a high-resolution image
+should achieve a better performance than its corresponding low-resolution image. This motivated us
+to design a classifier architecture suitable for this property.
+Following prior works, we conduct our experiments on the MNIST-scale [40] and STL [4] dataset.
+By design, our method achieves zeros scale equivariance-error both in theory and in practice. In terms
+of accuracy, we compare to recent scale-equivariant CNNs. We found our approach to be competitive
+in classification accuracy and exhibit better data efficiency in low-resource settings.
+Our contributions are as follows:
+ • We formulate down-scaling in the discrete domain with considerations of anti-aliasing.
+ • We propose a family of deep nets that is truly scale-equivariant by designing novel scale-equivariant
+   modules based on Fourier layers.
+ • We conduct extensive experiments validating the proposed approach. On MNIST and STL datasets,
+   the proposed model achieves an absolute zero end-to-end scale-equivariance error while maintain-
+   ing competitive classification accuracy.
+
+
+2    Related Work
+Scale-equivariance and invariance. The notation of scale-equivariance is deeply rooted in image
+processing and computer vision. For example, classic hand-designed scale-invariant features such
+as SIFT [21, 22] have made tremendous contributions to the field of computer vision. Earlier works
+propose to use an image or spatial pyramid to capture the multi-resolution aspect of an image [1, 9, 17]
+by extracting features at several scales in an efficient manner.
+More recently, there have been interests in developing scale-equivariant CNN [2, 8, 13, 41, 42, 46, 54].
+Based on Group-Conv [5], these works achieve scale-equivariance convolution layers through weight-
+sharing and kernel resizing. Different from these works, we consider the down-scaling in the discrete
+domain formulated as ideal downsampling from signal processing. We then develop modules that are
+truly scale-equivariant to enable a deep net that achieves zero equivariance-error measured from end to
+
+
+                                                         2
+end. Finally, we note that there is a rich literature of equivariant deep nets [3, 5, 33, 36–38, 44, 45, 50]
+with numerous applications applied to various domains, e.g., sets [10, 26, 32, 34, 48, 51], graphs [6,
+7, 15, 19, 20, 25, 28, 39, 49], etc. Moreover, several recent studies have also identified and tackled the
+issue of aliasing generated from the pooling layer to attain finer translation equivariance [35, 47, 52]
+and image generation [14].
+Fourier transform in neural networks. Fourier transforms have been previously used in deep
+learning. For example, Mathieu et al. [27] proposes to use Fast Fourier Transform (FFT) to speed
+up CNN training. Fourier transform has also been used to develop network architectures, including
+various convolutional neural networks operating in the Fourier space [16, 31]. Recently, Fourier layers
+are capable of handling inputs of varying resolution, which have been employed in neural operators,
+facilitating applications in partial differential equations and in state space models [18, 29]. Fourier
+convolutions have also found success in low-level image processing tasks, e.g., inpainting [43],
+deblurring [24]. Different from these works, we focus on developing truly scale-equivariant deep nets
+and leverage Fourier layers to achieve this goal.
+
+3   Preliminaries
+We briefly introduce and review the definition of Fourier transform, ideal downsampling, and scale-
+equivariance. For readability, we use 1D data to define these concepts. These ideas are extended to
+2D data with multiple channels when implemented in practice.
+Discrete Fourier Transform (DFT). Given an input vector x ∈ RN , we consider F : RN → CN be
+the discrete Fourier Transform (DFT) which has the form
+                                                             N −1
+                                                          1 X           2π
+                         X = F(x) such that X[k] ≜              x[n]e−j N kn ,                          (1)
+                                                          N n=0
+
+where j denotes the unit imaginary number, i.e., j 2 = −1. The index k in Eq. (1) is commonly
+within the domain of [0, N ]. Note that as Eq. (1) is N -periodic, for readability, we will use k from
+[− N 2−1 , N 2−1 ] where k = 0 corresponds the lowest frequency.
+The corresponding inverse DFT (IDFT) F −1 : CN → RN is defined as
+                                                             N −1
+                                                                           2π
+                                                             X
+                          x = F −1 (X) such that x[n] =             X[k]ej N kn .                       (2)
+                                                              k=0
+
+
+By the convolution property of DFT, the circular convolution between x and a kernel k ∈ RN can be
+represented as the element-wise multiplication in the Fourier domain, i.e.,
+                              F(x ⊛ k) = F(x) ⊙ F(k) = X ⊙ K,                                           (3)
+where ⊛ denotes the circular convolution and ⊙ denotes element-wise multiplication. Unless explicitly
+mentioned, we will represent the input vector with lowercase letters (e.g., x) and its corresponding
+DFT with uppercase letters (e.g., X).
+Down-scaling operation. To reduce the scale (or resolution) of a signal x ∈ RN , one could perform
+a subsampling SubR by a factor of R
+                                       SubR (x)[n] = x[Rn].                                             (4)
+However, naively subsampling leads to aliasing. Hence, anti-aliasing is performed in a multi-rate
+system. In signal processing, the analysis commonly uses the ideal anti-aliasing filter h, which zeros
+out all the high-frequency content, i.e., its DFT H ≜ F(h) is defined as:
+                                                   N
+                             H[k] = 1 if |k| ≤         and 0 otherwise.                                 (5)
+                                                  2R
+See Fig. 2a for an illustration of the ideal anti-aliasing filter.
+In this work, we define the overall down-scaling operation to be the ideal downsampling DR by a
+factor of R, which performs anti-aliasing followed by a subsampling operation:
+                                DR (x) ≜ SubR (h ⊛ x) ∀R < N,                                           (6)
+
+
+                                                     3
+                                                                                              -3                                  -3
+        X                             H                             H!X
+                                                                                              -2                                  -2
+                                                                                              -1                                  -1
+
+
+                      !
+                                        1
+
+                                                      =
+                                                                                              0
+                                                                                              1
+                                                                                                   =                              0
+                                                                                                                                  1
+                                                                                              2                                   2
+                                                                                              3                                   3
+-3 -2 -1 0 1 Frequency      -3 -2 -1 0 1 Frequency           -3 -2 -1 0 1 Frequency           Y                   G̃              X
+
+                      (a) Illustration of ideal anti-aliasing (low-pass) filter.                   (b) Illustration of Claim 1.
+          Figure 2. In (a), we illustrate an ideal low-pass filter showing that it zeros out the high frequencies. In (b), we
+          illustrate the structure described in Claim 1 for a linear G̃. The gray regions correspond to the value being zero.
+
+
+          where their DFT are related by
+                                            F(DR (x)) = F(x) [−N/2R : N/2R] .                                             (7)
+          Scale-equivariance. With the down-scaling operation defined, a deep net g : {R1 , R2 , . . . , RN } 7→
+          {R1 , R2 , . . . , RN } is scale-equivariant if:
+
+                         g(DR (x)) = DR (g(x)) ∀x ∈ {R1 , R2 , . . . , RN } and R < dim(x),                               (8)
+          where {R1 , R2 , . . . , RN } represents the space of input/output signals at different scales. In this
+          paper, we are interested in designing a family of deep nets that satisfies the equality in Eq. (8).
+          Scale-invariance can be defined in a similar manner as
+                           g(DR (x)) = g(x) ∀x ∈ {R1 , R2 , . . . , RN } and R < dim(x).                                  (9)
+
+          Fourier layer. Given a multi-channel input vector, x ∈ RCin ×N and kernel k ∈ RCout ×Cin ×N , where
+          Cin/out is the number of input/output channels, the circular convolution layer is defined as
+                                                                    Cin
+                                                                    X
+                                                              ′
+                                              F((x ⊛ k))[c ] =            X[c] ⊙ K[c′ , c],                             (10)
+                                                                    c=1
+
+          where X and K denotes the DFT of x and k applied independently for each channel.
+
+
+          4    Approach
+
+          Our goal is to design truly scale-equivariant deep nets. To accomplish this goal, we propose scale-
+          equivariant versions of CNN modules, including, the convolution layer, non-linearities, and pooling
+          layers. In Sec. 4.1, we detail the operation for each of the proposed modules. In Sec. 4.2, we
+          demonstrate how to build a classifier that is suitable for image classification with scale-equivariant
+          features. We now explain our overarching design principle for the scale-equivariant modules.
+          From a frequency perspective, as reviewed in Eq. (6), the ideal downsampling operation results in the
+          loss of higher frequency terms of the signal. In other words, if a feature’s frequency terms depend on
+          any higher frequency terms of the input, then it is not scale-equivariant, as the information will be
+          lost after downsampling. We now formally state this observation in Claim 1.
+            Claim 1. Let g denote a deep net such that y = g(x). If this deep net g can be equivalently
+            represented as a set of functions G̃k : C2k+1 → C such that
+                                                 Y[k] = G̃k (X[−k : k]) ∀k                                             (11)
+            then g is scale-equivariant as defined in Eq. (8). In other words, an output’s frequency terms can
+            only have dependencies on the terms in X that are even lower in frequencies. We illustrate this
+            structure with a linear function in Fig. 2b.
+
+
+                                                                    4
+Proof. We denote the deep net’s input and output as x and y with corresponding DFT X and Y.
+We denote the deep net’s down-scaled input and output as x′ = DR (x) and y′ = g(x′ ) with
+corresponding DFT X′ and Y′ . Now assume that g : Rn → Rn ∀n ∈ {1, 2, . . . N } is a deep net
+that satisfies Claim 1 then
+                                             N
+             Y[k]    = G̃k (X[−k : k]) ∀k ≤                                                          (12)
+                                             R
+                             ′             ′
+                     = G̃k (X [−k : k]) = Y [k] Following the property of DR in Eq. (7)              (13)
+                                 ′                                          ′
+Therefore, ∀k ≤ N  R Y[k] = Y [k]. By the definition of ideal downsampling Y = DR (Y)
+concluding that g(DR (x)) = DR (g(x)), i.e., g is scale-equivariant.
+For ease of understanding, here we assume that the deep net’s input and output are of the same size.
+A version with a more relaxed assumption is provided in Appendix Sec. A1.
+
+4.1   Scale Equivariant Fourier Networks.
+
+We now describe the proposed modules and show that they are truly scale-equivariant.
+Spatially local Fourier layer. For computer vision, learning local features is crucial. The Fourier
+layer in Eq. (10) is global in nature. To efficiently learn local features, we propose a localized Fourier
+layer where we constrain the degree of freedom in the kernel K such that the respective spatial kernel
+k is spatially localized.
+Let k ∈ Rd and kl ∈ Rl to be d and l dimensional kernel such that k[i] = kl [i] if i < l otherwise 0,
+i.e., k is spatially local to have a receptive field of size l. We denote K and Kl be the DFT of the
+kernel k and kl respectively. We claim that K can be written as
+                                        l
+                                   2          l−1
+                                 1 X          X           p  m 
+                          K[p] =       Kl [m]     e−2πjn( d − l ) .                                  (14)
+                                 d   l        n=0
+                                     m=− 2
+
+From Eq. (14), instead of modeling all the degrees of freedom in K, we will directly parameterize Kl
+to enforce the learned kernel to be localized spatially. We defer the proof to the Appendix Sec. A2.
+
+ Claim 2. The spatially local Fourier layer is scale-equivariant.
+Proof. The kernel k has a corresponding DFT K. As reviewed, a circular convolution between k and
+input x can be expressed as
+                                    Y[k] = K[k] ⊙ X[k] ∀k.                                           (15)
+Observe that X[k] is a subset of X[−k : k], i.e., Claim 1 is satisfied.
+
+Scale-equivariant non-linearity (σs ). Element-wise non-linearities, e.g., ReLU, in the spatial domain
+are generally not scale-equivariant under the ideal downsampling operation DR . While applying
+element-wise non-linearity in the frequency domain is scale-equivariant, this strategy empirically
+leads to degraded performance on classification tasks. To address this, we propose a scale-equivariant
+non-linearity σs in the spatial domain.
+Given a non-linearity σ, e.g., ReLU, we construct a corresponding scale-equivariant version σs
+that satisfies Claim 1. Let x ∈ RN and y ∈ RN to denote the input and output of σs . We define
+scale-equivariant non-linearity σs (x) = F −1 (Y) where Y takes the following form:
+                                               
+                               
+                               
+                                 F σ ◦ F −1 (X 0 ) [0],               k=0
+                               
+                               
+                                                        
+                                           −1
+                                                      
+                                F σ ◦ F (X − 1 : 1 ) [1],           k=1
+                               
+                               
+                               
+                      Y[k] =      ..                                 ..                   (16)
+                               
+                                  .                                .
+                               
+                                  F σ ◦ F −1 (X − |k| : |k| ) [k], k = k
+                                                         
+                               
+                               
+                               
+                               
+                                ..                                   ..
+                               
+                               
+                                  .                                    .
+
+                                                    5
+∀|k| ≤ N2 and X denotes the DFT of the input, i.e., F(x). In practice, we choose σ to be ReLU in
+our implementation.
+Next, it is generally computationally expensive to achieve equivariance over all scales. In practice, we
+only enforce a set of scales for which we want to achieve equivariance, which can be denoted in terms
+of corresponding resolutions as R = (m, . . . N ) with R[i] < R[i + 1]. To achieve scale-equivariant
+non-linearity over the scales of R, σs = F −1 (Y) can be efficiently computed as
+
+                           R′ [i] R′ [i]                       R′ [i − 1]         R′ [i]
+    Y[k] = F σ ◦ F −1 (X −            :       ) [k] for the i s.t.            < |k| ≤        . (17)
+                                  2       2                             2              2
+                        ′
+Here, the ordered set R = R ∪ {0}. By Eq. (17), all the Fourier coefficients k between any two
+consecutive resolutions in R, i.e., R[i − 1]/2 < |k| ≤ R[i]/2 can be computed by a single Fourier
+transform pair.
+Scale-equivariant pooling. Pooling operation is crucial for deep nets’ scalability to larger images
+and datasets as they make the network more memory and computationally efficient. Commonly used
+pooling operations are max/average pooling, which reduces the input size by the factor of its window
+size w and is not scale-equivariant. To address this, we propose scale-equivariant pooling Poolw s.
+                                                                                                       d
+Let Poolw denote a max/average pooling operation with a window size w and Poolw : Rd → R w .
+                                                                        d
+We define scale-equivariant pooling operation Poolw        d
+                                                     s : R → R
+                                                                   w mapping from x to y where
+      −1
+y = F (Y) follows
+                                                                           d
+                Y[k] = F Poolw (F −1 (X − w|k| : w|k| )) [k] ∀k ≤
+                                                         
+                                                                              .                (18)
+                                                                          2w
+Observe that this pooling layer satisfies Claim 1 by construction. Similar to non-linearity, we can
+enforce the equivariance over the set R following the same formulation in Eq. (17).
+Note that as pooling reduces the size of the output by a factor w, the operation is only scale-equivariant
+at every wth resolution. When the input size is not a multiple of w there is a truncation of the input.
+Time Complexity. We now provide the time complexity of our scale-equivariant Fourier layer and
+compare it with standard group convolutions. Let’s consider a 1D signal of length N and a kernel of
+length K. Our proposed model involves:
+       • A transformation of local filter to global with time complexity O(KN )
+       • A convolution using Fourier transform with time complexity O(N log(N ))
+       • Our scale equivariant non-linearity depends on the size of the group. Let A be the set
+         of group actions. The time complexity of the proposed scale-equivariant non-linearity is
+         O(|A|N log(N )), where |A| denotes the cardinality of the set A.
+So, the time complexity for each layer becomes
+                                     O(|A|N log(N ) + KN ).
+As a comparison, the time complexity of regular group convolution is O(KN |A|) in the first layer
+and O(KN |A|2 ) for all intermediate layers, assuming the cost of group action is a negligible constant
+[12].
+Considering the time complexity of the intermediate layers of group convolutions, our proposed
+method is more efficient when
+                                                                  K
+                 |A|N log(N ) + KN < |A|2 KN =⇒ log(N ) +            < |A|K.
+                                                                 |A|
+So, when K << |A| and log(N ) < |A|K, i.e., assuming the set of group actions of moderate size,
+then our method is faster than group convolutions.
+Modern GPUs are specifically optimized for regular convolution operations that can be performed in
+place. In contrast, the FFT algorithm does not fully capitalize on GPUs’ advantages, primarily due to
+unique memory access patterns and moderate arithmetic intensities. Consequently, our approach is
+unable to harness the full potential of GPUs. When executed on a GPU, regular group convolutions
+implemented as standard convolutions might exhibit comparable or even shorter running times than
+our approach.
+
+
+                                                    6
+4.2   Classifier for equivariant features
+
+A truly scale-invariant, defined in Eq. (9), the model’s performance is limited by the lowest resolution
+as the prediction needs to be the same. In the extreme, the prediction can only depend on a single mean
+pixel. Instead of invariance, we believe that it is more desirable to ensure that a high-resolution image
+achieves a better performance than its down-scaled version, i.e., the performance is scale “consistent”.
+To achieve this property, we propose a suitable classifier architecture and training scheme.
+Classifier. In order to enforce scale-consistency, we need a classifier that outputs a prediction per
+scale. This motivated the following proposed architecture. Let c be a classifier with M classes where
+ŷ = c ◦ g(x) ∈ R|R(x)|×M . R(x) is defined as the set of resolutions smaller than the input resolution
+in the considered scales R. i.e., R(x) = {k : k ≤ dim(x) and k ∈ R}. Here, g is a scale-equivariant
+deep-net that extracts features ϕ = g(x) with corresponding DFT of Φ. Our proposed classifier has
+the form:
+                                                       |k| |k| 
+                                                                   
+                 ŷ[k] = MLP ◦ Pool F −1 PadN (Φ[ −        :     ])    ∀k ∈ R(x)                   (19)
+                                                        2      2
+where PadN is a Fourier padding operation that symmetrically pads zero to either side of the DFT to a
+fixed size N, Pool is a spatial pooling operation and MLP maps the pooled feature to the predicted
+logits ŷ[k] for each scale; Note the MLP is shared across all scales. As we are sharing the MLP, we
+need to ensure that the input sizes are identical. Hence, we padded the features Φ to a fixed size.
+Finally, at test-time, we use the output from ŷ[dim(x)] to make a prediction.
+Training. Given a dataset T = {(x, y)}, we train our model using the sum of two losses. The first
+term is a standard sum of cross entropy loss L over the scales:
+                                        X
+                                              L(ŷ[k], y).                                  (20)
+                                        k∈R(x)
+The second term is a consistency loss to encourage the performance of high-resolution to be better
+than the low-resolution:                                         
+                         X
+                              max L(ŷ[k], y) − L(ŷ[k − 1], y), 0 .                         (21)
+                         k∈R(x)
+
+This is a hinge loss that penalizes the model when the cross entropy loss L on high-resolution features
+(larger k) is greater than that of the low-resolution features (smaller k).
+
+5     Experiments
+To study the effectiveness of our model, we conduct experiments on two benchmark datasets, MNIST-
+scale [40] and STL10 [4], following our theoretical setup using ideal downsampling. In this case,
+the theory exactly matches practice, and our approach achieves perfect scale-equivariance. We also
+conduct experiments comparing the models’ generalization to unseen scales and data efficiency.
+Finally, we conduct experiments using a non-ideal anti-aliasing filter in down-scaling. Under this
+setting, our model no longer achieves zero scale equivariance-error. However, we are interested in
+how the models behave under this mismatch in theory and practice.
+Evaluation metrics. To evaluate task performance, we report classification accuracy. Next, we
+introduce a metric to measure the scale-consistency. Given a sample from the test set, we check
+whether the cross entropy loss is less than or equal to the classification loss of its down-scaled version.
+We compute this as a percentage over the dataset and report the scale-consistent rate defined as:
+                                                                               !
+                                  1 X
+                Scale-Con. =                  Er 1 L(x, y) ≤ L(Dr (x), y) ,                           (22)
+                                |T |
+                                     (x,y)∈T
+where r is uniformly sampled over the set of scales for which we want to achieve equivariance and 1
+denotes the indicator function.
+Finally, we quantify the equivariance-error over the final feature map given by a fully trained model
+on the dataset. The equivariance-error (Equi-Err.) is defined as
+                                                                           2
+                                   1 X X ∥g(Dr (x)) − Dr (g(x))∥2
+                   Equi-Err. =                                      2        .                   (23)
+                                |T ||S|                 ∥g(Dr (x))∥2
+                                        x∈T r∈R
+
+
+                                                    7
+Table 1. Accuracy of different models on MNIST-scale Table 2. Accuracy of different models on MNIST-scale
+(ideal downsampling) with all scales.                (ideal downsampling) with missing scales.
+Models           Acc.↑      Scale-Con.↑ Equi-Err.↓ Models             Acc.↑      Scale-Con.↑ Equi-Err.↓
+CNN             0.9737       0.6621           -        CNN            0.9842      0.7617           -
+Per Res. CNN    0.9388       0.0527           -        Per Res. CNN   0.9763      0.3594           -
+SESN            0.9791       0.6640           -        SESN           0.9892      0.8339           -
+DSS             0.9731       0.6503           -        DSS            0.9884      0.8105           -
+SI-CovNet       0.9797       0.6425           -        SI-CovNet      0.9878      0.6621           -
+SS-CNN          0.9613       0.3105           -        SS-CNN         0.9870      0.3593           -
+DISCO           0.9856       0.5585         0.44       DISCO          0.9914      0.5371         0.35
+Fourier CNN     0.9713       0.2421         0.28       Fourier CNN    0.9820      0.1250         0.23
+Ours            0.9889       0.9716         0.00       Ours           0.9888      0.9366         0.00
+
+
+Here, R is the set of all scales over which we enforce equivariance. We report the average equivariance
+error over the samples of the test set T . We note that this equivariance-error differs from the one
+reported by Sosnovik et al. [42] where they measured the error for the “scale-convolution with weights
+initialized randomly." Contrarily, we measure the equivariance error from end-to-end over trained
+models, which more closely matches how the models are used in practice.
+Baselines. Following prior works in scale-equivariant neural networks [41, 42] we compare to
+baselines: DISCO [42], SI-ConvNet [13], SS-CNN [8], DSS [46], and SESN [41]. For the baseline,
+we follow the architecture and training scheme provided by Sosnovik et al. [42]. We also prepared
+three additional baseline models: (a) standard CNN, (b) Per Res, CNN where we train a separate
+CNN for each resolution in the training set, and (c) Fourier CNN [18] which utilizes Fourier layers.
+
+5.1   MNIST-scale (Ideal downsampling)
+
+Experiment setup. We create the MNIST-scale dataset following the procedure in prior works [13,
+                                                                                              1
+42]. Each image in the original MNIST dataset is randomly downsampled with a factor of ∼ [ 0.3  − 1],
+such that every resolution from 8 × 8 to 28 × 28 contains an equal number of samples. As the baseline
+models (except the Fourier CNN) can not handle images of different resolutions, following prior
+works, lower-resolution images are zero-padded to the original resolution. We do not need to pad the
+input for our model and Fourier CNN. We used 10k, 2k, and 50k for training, validation, and test
+set samples. For this experiment, we enforce equivariance over scales that correspond to the discrete
+resolutions of R = {8, . . . , 28}.
+Implementation details. For the baselines and CNN, we follow the implementation, hyper-
+parameters, and architecture provided in prior works [41, 42]. For Per Res. CNN, we train a separate
+CNN for each resolution. Each of these CNNs uses the architecture of baseline CNN. For Fourier
+CNN, we use the Fourier block introduced in the Fourier Neural operator [18]. Inspired by their
+design, we use 1 × 1 complex convolution in the Fourier domain along with the scale-equivariant
+convolution. We follow the baseline for all training hyper-parameters, except we included a weight
+decay of 0.01.
+Results. In Tab. 1, we report the accuracy of the MNIST-scale dataset. We observe that our approach
+achieved zero equivariance error and the highest accuracy. While all models achieve similar accuracy,
+there is a more notable difference in the scale consistency rate. This means that our model properly
+captures the additional information that comes with increased resolution.
+Generalization to unseen scales. We study the generalization capabilities of the scale-equivariant
+modes to unseen scales; we train them on a dataset with 10k full resolution (28 × 28) MNIST images
+and test on 50k samples of MNIST-scale, i.e., containing different scales. For the baselines, we added
+random scaling argumentation during training. In Tab. 2, we observe that our model can guarantee
+zero equivariance error even for the unseen scales and achieves comparable performance to baselines
+trained with data augmentation.
+Data efficiency. We also conduct experiments studying the data efficiency of the different models.
+Following the same setup as MNIST-scale, we train the models on limited training examples, 5k,
+2.5k, and 1k, of different resolutions and test on 50k samples across all resolutions. In Tab. 3, we
+observe that our model is more data efficient than the baselines. DISCO achieves the second-best
+
+
+                                                   8
+Table 3. MNIST-scale accuracy with different numbers Table 4. The classification accuracy of different models
+of training samples.                                 on STL10-scale dataset.
+ Models / # Samples      5000      2500      1000        Models         Acc.↑     Scale-Con.↑    Equi-Err.↓
+ CNN                    0.9432    0.9389    0.8577       Wide ResNet    0.5596      0.2916          0.16
+ Per Res. CNN           0.9118    0.8392    0.5815       SESN           0.5525      0.4166          0.04
+ DISCO                  0.9794    0.9665    0.9457       DSS            0.5347      0.1979          0.02
+ SESN                   0.9638    0.9402    0.9207       SI-CovNet      0.5588      0.2187          0.03
+ SI-CovNet              0.9641    0.9437    0.9280       SS-CNN         0.4788      0.1979          1.82
+ SS-CNN                 0.9477    0.9259    0.9176       DISCO          0.4768      0.3541          0.06
+ DSS                    0.9654    0.9401    0.9281
+ Fourier CNN            0.9567    0.9419    0.8910       Fourier CNN    0.5844      0.2812          0.19
+ Ours                   0.9835    0.9767    0.9606       Ours           0.7332      0.6770          0.00
+
+
+                                  Table 5. Ablation on consistency loss.
+                                        w/ consistency        w/o consistency
+                           # Samples Acc.↑ Scale-Con.↑ Acc.↑ Scale-Con.↑
+                           5000       0.9835      0.9296     0.9831     0.9150
+                           2500       0.9767      0.8906     0.9755     0.8633
+                           1000       0.9606      0.8183     0.9599     0.8144
+
+
+
+performance. We also see that Per Res. CNN suffers the most when trained with fewer data points, as
+it trains a separate CNN for each scale and does not share parameters across different scales.
+
+Ablation. We perform an ablation on the consistency loss in Eq. (21) over different training set sizes.
+From Tab. 5, we can observe that the consistency loss improves the accuracy of our model as well as
+the scale-consistency. This result validates the effectiveness of the proposed consistency loss.
+
+5.2   STL10-scale (Ideal downsampling)
+
+Experiment setup. Following the same procedure as the MNIST-scale dataset, we create the STL10-
+scale dataset. Each image of the dataset is randomly scaled with a randomly chosen downsampling
+factor between [1 − 2] such that every resolution from 48 to 97 contains an equal number of samples.
+We use 7k, 1k, and 5k samples in our training, validation, and test set. For the baseline models, we
+again zero-pad the downsampled images to the original size.
+Implementation details. For the baseline models, we use the Wide ResNet as the CNN baseline
+following prior work [41, 42]. For Fourier CNN, we use six Fourier blocks followed by a two-layered
+MLP. For our model, we use six scale-equivariant Fourier blocks followed by a two-layer MLP.
+All of the models are trained for 250 epochs with Adam optimizer with an initial learning rate
+of 0.01. The learning rate is reduced by a factor of 0.1 after every 100 epoch. For scalability, we
+consider achieving equivariance over scales that correspond to the discrete resolutions in the set
+R = {48 ≤ 48 + i × 8 ≤ 97} ∀i ∈ {0, 1, 2, . . . }.
+Results. In Tab. 4, we observe that our model achieves zero equivariance error with higher accuracy
+and scale consistency over the baselines. As the baseline models accept a fixed-sized input, the
+downsampled images are zero-padded following prior work’s preprocessing on MNIST-scale. Note,
+MNIST images have a uniform black background, and zero-padding does not create artifacts. However,
+for colored images with diverse backgrounds, such as STL-10, any padding scheme to resize the
+image will cause artifacts. We believe this artifact hurts the performance of baseline models on the
+STL10-scale dataset. However, it is unclear whether there is a more suitable padding strategy.
+
+5.3   MNIST-scale (Non-ideal downsampling)
+
+Ideal interpolation suffers from artifacts known as the ringing effect caused by Gibbs phe-
+nomenon [23]; see the down-scaled image in Fig. 3a. In practice, a non-ideal low-pass filter will be
+used instead. Taking this into consideration, we conduct the experiments using a more commonly
+used anti-aliasing scheme with a Gaussian blur instead of the ideal low-pass filter.
+
+
+                                                     9
+    (a) Learned feature from ideal downsampling.           (b) Learned feature for non-ideal downsampling.
+Figure 3. Feature visualization for ideal and non-ideal downsampling settings. In both settings, our model seems
+to learn spatially local features such as digit contour and edges.
+
+
+            Table 6. The accuracy of different models on MNIST-scale (non-ideal downsampling).
+                           Models            Acc.↑    Scale Con.↑ Equi. Err.↓
+                           CNN               0.9642        0.1033           -
+                           Per Res. CNN      0.9450        0.0742           -
+                           SESN              0.9710        0.6666           -
+                           DSS               0.9772        0.5716           -
+                           SI-CovNet         0.9694        0.4453           -
+                           SS-CNN            0.9670        0.3144           -
+                           DISCO             0.9830        0.4500         0.63
+                           Fourier CNN       0.9745        0.1716         0.29
+                           Ours              0.9880        0.9760         0.05
+
+
+Experiment details. We follow the same experimental setup and training scheme as in MNIST-scale
+with the ideal downsampling experiment. The only difference is that we use a Gaussian kernel to
+perform anti-aliasing.
+Results. From Tab. 6, we observe that our model achieves higher classification accuracy and Scale
+consistency. Importantly, our model achieves lower equivariance error than the baseline despite the
+gap in the theory of non-ideal downsampling.
+
+6    Conclusion
+We propose a family of scale-equivariant deep nets that achieve zero equivariance error measured
+from end to end. We formulate down-scaling in the discrete domain with proper consideration of anti-
+aliasing. To achieve scale-equivariance, we design novel modules based on Fourier layers, enforcing
+that the lower frequency content of output does not depend on the higher frequency content of the
+input. Furthermore, we motivated the scale-consistency property that the performance of higher-
+resolution input should be better than that of the lower resolution and designed a suitable classifier
+architecture. Empirically, our approach achieves competitive accuracy on image classification tasks,
+with improved scale consistency and lower equivariance-error compared to baselines. Similar to
+other equivariant methodologies, defining consistent scales or group actions to achieve equivalence
+before constructing the model is crucial. Moreover, a common challenge all equivariant and invariant
+techniques face is the significant demands on memory and computational resources. In our upcoming
+research, we plan to enhance our approach by applying it to high-resolution image datasets and dense
+prediction tasks, such as instance segmentation.
+
+
+
+
+                                                      10
+References
+ [1] E. H. Adelson, C. H. Anderson, J. R. Bergen, P. J. Burt, and J. M. Ogden. Pyramid methods in
+     image processing. RCA engineer, 1984. 1, 2
+ [2] E. J. Bekkers. B-spline CNNs on Lie groups. In Proc. ICLR, 2020. 1, 2
+ [3] M. M. Bronstein, J. Bruna, Y. LeCun, A. Szlam, and P. Vandergheynst. Geometric deep learning:
+     going beyond euclidean data. IEEE SPM, 2017. 3
+ [4] A. Coates, A. Ng, and H. Lee. An analysis of single-layer networks in unsupervised feature
+     learning. In Proc. AISTATS, 2011. 2, 7
+ [5] T. Cohen and M. Welling. Group equivariant convolutional networks. In Proc. ICML, 2016. 1,
+     2, 3
+ [6] P. de Haan, M. Weiler, T. Cohen, and M. Welling. Gauge equivariant mesh CNNs: Anisotropic
+     convolutions on geometric graphs. In Proc. ICLR, 2021. 3
+ [7] M. Defferrard, X. Bresson, and P. Vandergheynst. Convolutional neural networks on graphs
+     with fast localized spectral filtering. In Proc. NeurIPS, 2016. 3
+ [8] R. Ghosh and A. K. Gupta. Scale steerable filters for locally scale-invariant convolutional neural
+     networks. arXiv preprint arXiv:1906.03861, 2019. 1, 2, 8
+ [9] K. Grauman and T. Darrell. The pyramid match kernel: discriminative classification with sets
+     of image features. In Proc. ICCV, 2005. 1, 2
+[10] J. Hartford, D. Graham, K. Leyton-Brown, and S. Ravanbakhsh. Deep models of interactions
+     across sets. In Proc. ICML, 2018. 3
+[11] K. He, X. Zhang, S. Ren, and J. Sun. Spatial pyramid pooling in deep convolutional networks
+     for visual recognition. IEEE TPAMI, 2015. 1
+[12] L. He, Y. Chen, Y. Dong, Y. Wang, Z. Lin, et al. Efficient equivariant network. In Proc. NeurIPS,
+     2021. 6
+[13] A. Kanazawa, A. Sharma, and D. Jacobs. Locally scale-invariant convolutional neural networks.
+     arXiv preprint arXiv:1412.5104, 2014. 1, 2, 8
+[14] T. Karras, M. Aittala, S. Laine, E. Härkönen, J. Hellsten, J. Lehtinen, and T. Aila. Alias-free
+     generative adversarial networks. In Proc. NeurIPS, 2021. 3
+[15] T. N. Kipf and M. Welling. Semi-supervised classification with graph convolutional networks.
+     In Proc. ICLR, 2017. 3
+[16] R. Kondor, Z. Lin, and S. Trivedi. Clebsch–Gordan Nets: a fully Fourier space spherical
+     convolutional neural network. In Proc. NeurIPS, 2018. 3
+[17] S. Lazebnik, C. Schmid, and J. Ponce. Beyond bags of features: Spatial pyramid matching for
+     recognizing natural scene categories. In Proc. CVPR, 2006. 1, 2
+[18] Z. Li, N. B. Kovachki, K. Azizzadenesheli, B. liu, K. Bhattacharya, A. Stuart, and A. Anandku-
+     mar. Fourier neural operator for parametric partial differential equations. In Proc. ICLR, 2021.
+     3, 8
+[19] I.-J. Liu, R. A. Yeh, and A. G. Schwing. Pic: permutation invariant critic for multi-agent deep
+     reinforcement learning. In Proc. CORL, 2020. 3
+[20] I.-J. Liu, Z. Ren, R. A. Yeh, and A. G. Schwing. Semantic tracklets: An object-centric represen-
+     tation for visual multi-agent reinforcement learning. In Proc. IROS, 2021. 3
+[21] D. G. Lowe. Object recognition from local scale-invariant features. In Proc. ICCV, 1999. 2
+[22] D. G. Lowe. Distinctive image features from scale-invariant keypoints. IJCV, 2004. 2
+
+
+                                                  11
+[23] D. G. Manolakis and V. K. Ingle. Applied digital signal processing: theory and practice.
+     Cambridge university press, 2011. 1, 2, 9
+[24] X. Mao, Y. Liu, F. Liu, Q. Li, W. Shen, and Y. Wang. Intriguing findings of frequency selection
+     for image deblurring. In Proc. AAAI, 2023. 3
+[25] H. Maron, H. Ben-Hamu, N. Shamir, and Y. Lipman. Invariant and equivariant graph networks.
+     In Proc. ICLR, 2019. 3
+[26] H. Maron, O. Litany, G. Chechik, and E. Fetaya. On learning sets of symmetric elements. In
+     Proc. ICML, 2020. 3
+[27] M. Mathieu, M. Henaff, and Y. LeCun. Fast training of convolutional networks through FFTs.
+     arXiv preprint arXiv:1312.5851, 2013. 3
+[28] C. Morris, G. Rattan, S. Kiefer, and S. Ravanbakhsh. SpeqNets: Sparsity-aware permutation-
+     equivariant graph networks. In Proc. ICML, 2022. 3
+[29] E. Nguyen, K. Goel, A. Gu, G. Downs, P. Shah, T. Dao, S. Baccus, and C. Ré. S4nd: Modeling
+     images and videos as multidimensional signals with state spaces. In Proc. NeurIPS, 2022. 3
+[30] H. Nyquist. Certain topics in telegraph transmission theory. Transactions of the American
+     Institute of Electrical Engineers, 1928. 1
+[31] H. Pratt, B. Williams, F. Coenen, and Y. Zheng. FCNN: Fourier convolutional neural networks.
+     In ECML PKDD, 2017. 3
+[32] C. R. Qi, H. Su, K. Mo, and L. J. Guibas. PointNet: Deep learning on point sets for 3D
+     classification and segmentation. In Proc. CVPR, 2017. 3
+[33] S. Ravanbakhsh, J. Schneider, and B. Póczos. Equivariance through parameter-sharing. In Proc.
+     ICML, 2017. 3
+[34] S. Ravanbakhsh, J. Schneider, and B. Poczos. Deep learning with sets and point clouds. In Proc.
+     ICLR workshop, 2017. 3
+[35] R. A. Rojas-Gomez, T.-Y. Lim, A. Schwing, M. Do, and R. A. Yeh. Learnable polyphase
+     sampling for shift invariant and equivariant convolutional networks. In Proc. NeurIPS, 2022. 3
+[36] R. A. Rojas-Gomez, T.-Y. Lim, M. N. Do, and R. A. Yeh. Making vision transformers truly
+     shift-equivariant. arXiv preprint arXiv:2305.16316, 2023. 3
+[37] D. Romero, E. Bekkers, J. Tomczak, and M. Hoogendoorn. Attentive group equivariant
+     convolutional networks. In Proc. ICML, 2020.
+[38] M. Shakerinava and S. Ravanbakhsh. Equivariant networks for pixelized spheres. In Proc.
+     ICML, 2021. 3
+[39] D. I. Shuman, S. K. Narang, P. Frossard, A. Ortega, and P. Vandergheynst. The emerging field
+     of signal processing on graphs: Extending high-dimensional data analysis to networks and other
+     irregular domains. IEEE SPM, 2013. 3
+[40] K. Sohn and H. Lee. Learning invariant representations with local transformations. In Proc.
+     ICML, 2012. 2, 7
+[41] I. Sosnovik, M. Szmaja, and A. Smeulders. Scale-equivariant steerable networks. In Proc.
+     ICLR, 2020. 1, 2, 8, 9
+[42] I. Sosnovik, A. Moskalev, and A. Smeulders. DISCO: accurate discrete scale convolutions. In
+     Proc. BMVC, 2021. 1, 2, 8, 9
+[43] R. Suvorov, E. Logacheva, A. Mashikhin, A. Remizova, A. Ashukha, A. Silvestrov, N. Kong,
+     H. Goka, K. Park, and V. Lempitsky. Resolution-robust large mask inpainting with Fourier
+     convolutions. In Proc. WACV, 2022. 3
+
+
+                                                12
+[44] S. R. Venkataraman, S. Balasubramanian, and R. R. Sarma. Building deep equivariant capsule
+     networks. In Proc. ICLR, 2020. 3
+[45] M. Weiler and G. Cesa. General E(2)-equivariant steerable CNNs. In Proc. NeurIPS, 2019. 3
+[46] D. Worrall and M. Welling. Deep scale-spaces: Equivariance over scale. In Proc. NeurIPS,
+     2019. 1, 2, 8
+[47] J. Xu, H. Kim, T. Rainforth, and Y. Teh. Group equivariant subsampling. In Proc. NeurIPS,
+     2021. 3
+[48] R. A. Yeh, Y.-T. Hu, and A. Schwing. Chirality nets for human pose regression. In Proc.
+     NeurIPS, 2019. 3
+[49] R. A. Yeh, A. G. Schwing, J. Huang, and K. Murphy. Diverse generation for multi-agent sports
+     games. In Proc. CVPR, 2019. 3
+[50] R. A. Yeh, Y.-T. Hu, M. Hasegawa-Johnson, and A. Schwing. Equivariance discovery by learned
+     parameter-sharing. In Proc. AISTATS, 2022. 3
+[51] M. Zaheer, S. Kottur, S. Ravanbakhsh, B. Poczos, R. R. Salakhutdinov, and A. J. Smola. Deep
+     sets. In Proc. NeurIPS, 2017. 3
+[52] R. Zhang. Making convolutional networks shift-invariant again. In Proc. ICML, 2019. 3
+[53] H. Zhao, J. Shi, X. Qi, X. Wang, and J. Jia. Pyramid scene parsing network. In Proc. CVPR,
+     2017. 1
+[54] W. Zhu, Q. Qiu, R. Calderbank, G. Sapiro, and X. Cheng. Scaling-translation-equivariant
+     networks with decomposed convolutional filters. JMLR, 2022. 2
+
+
+
+
+                                               13
+Appendix:
+The appendix is organized as follows:
+       • In Sec. A1, we provide a generalization of Claim 1 and its the complete proof.
+       • In Sec. A2, we provide the complete proof for Eq. (14).
+       • In Sec. A3, we provide additional ablations and experimental results.
+       • In Sec. A4, we provide additional implementation details.
+
+A1    Generalization of Claim 1
+In the main paper, we provide proof where we assume that the input and output of the deep net are of
+the same size. Here, we provide a generalization without such an assumption.
+                                                                                      m
+ Claim 3. Let g denote a deep net such that y = g(x) where x ∈ Rm , y ∈ R a , and m         a is an
+ integer ∀m ∈ N and a ≥ 1. If this deep net g can be equivalently represented as a set of functions
+ G̃k : C2ak+1 → C such that
+                                      Y[k] = G̃k (X[−ak : ak]) ∀k                                (A24)
+ then g is scale-equivariant as defined in Eq. (8) for all scales that creates resolutions at a multiple
+ of a after scaling the input vector x.
+
+Proof. We denote the deep net’s input and output as x and y with corresponding DFT X and Y. We
+further denote that the deep net’s down-scaled input and output as x′ = DR (x) and y′ = g(x′ ) with
+corresponding DFT X′ and Y′ .
+                                 n
+Given a deep net g : Rn → R a ∀n ∈ {1, 2, . . . N } is a deep net that satisfies Claim 3 then
+                                             N
+           Y[k]    = G̃k (X[−ak : ak]) ∀k ≤                                                        (A25)
+                                             R
+                           ′               ′
+                   = G̃k (X [−ak : ak]) = Y [k] Following the property of DR in Eq. (7)            (A26)
+                    N                   ′                                                  ′
+Therefore, ∀k ≤     R   Y[k] = Y [k]. By the definition of ideal downsampling Y = DR (Y),
+g(DR (x)) = DR (g(x)) concluding that g is scale-equivariant. Note that na needs to be an integer for
+  n
+R a to be a valid vector, i.e., the resolution of x needs to be a multiple of a.
+
+A2    Proof for Spatially Localized Fourier Layer in Eq. (14)
+In the main paper, we introduced the parameterization for a spatially localized Fourier layer:
+                                              l
+                                     2         l−1
+                                   1 X         X           p  m 
+                            K[p] =        l
+                                         K [m]     e−2πjn( d − l ) .                                 (14)
+                                   d   l       n=0
+                                            m=− 2
+
+We now provide the derivation.
+
+Proof. From definition of DFT, k can be written as
+                          d−1                 d−1
+                        1X             np   1X l            np
+           K[p]    =          k[n]e−2jπ d =       k [n]e−2jπ d (Ignorig the 0 elements)            (A27)
+                        d n=0               d n=0
+                                  l
+                       d−1 2
+                     1X X               mn      np
+                   =           Kl [m]e2j l e−2jπ d (Using DFT of kernel kl )                       (A28)
+                     d n=0   l
+                                m=− 2
+                            l
+                       2         l−1
+                     1 X         X           p  m 
+                   =        l
+                           K [m]     e−2πjn( d − l ) (Exchanging the Sum)                          (A29)
+                     d   l       n=0
+                         m=− 2
+
+
+
+                                                    14
+                                Pl−1       −2πjnq
+Finally, the Geometric series      n=0 e            can be expressed as
+                    l−1
+                    X                       l−1   sin(l 2q )           sin(l 2q )
+                          e−2πjnq = e−jq 2                   where lim            = l.                  (A30)
+                    n=0
+                                                  sin( 2q )                 q
+                                                                   q→0 sin( )
+                                                                            2
+
+
+
+
+A3     Additional Results
+Additional ablations. We conduct additional ablation studies for the proposed spatially local Fourier
+Layer and scale-equivariant ReLU and report the results in Tab. A1. We observe that there is a drop in
+accuracy of 0.5% when not using spatially local Fourier layers and that the equivariance error greatly
+increases if we do not use our proposed scale-equivariant ReLU.
+
+         Table A1. Ablation of Spatially localized Fourier filter and Scale-equivariant non-linearity
+                   Models                           Acc.↑      Scale-Con.↑ Equi-Err.↓
+                     Ours                             0.9889          0.9716          0.00
+                     Ours w/o Local Filter            0.9835          0.9628          0.00
+                     Ours w/o Scale-equi. ReLU        0.9897          0.9492          7.32
+                     Fourier CNN                      0.9713          0.2421          0.28
+
+Ablation on baseline’s preprocessing (Zero-padding vs. ideal upsampling). In the main paper, all
+the baselines use zero-padding to pre-process images at different resolutions to the same size following
+prior works. However, we suspect that zero-padding on color images may hurt model performance.
+In Tab. A2, we provide additional experimental results by performing an ideal upsampling for the
+baselines. We observe that there are improvements in accuracy for the baseline models. However, our
+proposed model still achieves the best accuracy with the lowest equivariance-error.
+
+Table A2. The classification accuracy of different models on STL10-scale dataset with ideal downsampling. For
+baseline models, images at different scales are resized via an ideal upsampling operation.
+                            Models            Acc.↑     Scale-Con.↑ Equi-Err.↓
+                           Wide ResNet       0.6040          0.4791            0.20
+                           SESN              0.6428          0.5629            0.08
+                           DSS               0.6131          0.6562            0.02
+                           SI-CovNet         0.6722          0.3854            0.03
+                           SS-CNN            0.3246          0.5833            0.04
+                           DISCO             0.5670          0.4791            0.05
+                           Fourier CNN       0.5844          0.2812            0.19
+                           Ours              0.7332          0.6770            0.00
+
+In Tab. A3 and Tab. A4, we report the same ablation of zero-padding vs. ideal upsampling for the
+baselines. For this non-ideal downsampling setting, we observe that DSS has the lowest equivariance
+error, with ours achieving the second best. Our model achieves the highest accuracy out of all the
+models.
+Ablations of the effect of different types of padding on baselines
+In Table A5, we present the classification accuracy of various baselines on the STL1-scale dataset,
+employing ideal-downsampling and padding techniques, including Replicate, Circular, and Reflect.
+
+A4     Additional implementation details
+Please refer to our attached code in the supplementary materials for more implementation details.
+Below, we briefly describe the model architectures. For the MNIST-scale dataset, the spatially
+localized Fourier layers use a locality size of 7 × 7 and 11 × 11. For the SLT10-scale dataset, we use a
+special locality of size 5×5 for all the localized Fourier layers. In both MNIST-scale and STL10-scale
+experiments, we use a 2D max-pooling layer before passing the flattened scale-equivariant spatial
+
+
+                                                        15
+Table A3. The classification accuracy of different mod-     Table A4. The classification accuracy of different mod-
+els on STL10-scale dataset with non-ideal downsam-          els on STL10-scale dataset with non-ideal downsam-
+pling. For baseline models, images at different scales      pling. For baseline models, images at different scales
+are resized via zero-padding.                               are resized via an ideal upsampling operation.
+Models            Acc.↑    Scale-Con.↑ Equi-Err.↓           Models            Acc.↑    Scale-Con.↑ Equi-Err.↓
+Wide ResNet     0.4456       0.3229          1.08           Wide ResNet     0.5952       0.4791          0.75
+SESN            0.5155       0.4687          0.07           SESN            0.6312       0.5208          0.08
+DSS             0.4756       0.3645          0.03           DSS             0.6126       0.5208          0.03
+SI-CovNet       0.5234       0.3958          0.07           SI-CovNet       0.6337       0.4062          0.04
+SS-CNN          0.3418       0.2187          1.72           SS-CNN          0.4855       0.3854          0.05
+DISCO           0.5125       0.4479          0.12           DISCO           0.5191       0.4687          0.04
+Fourier CNN     0.5357       0.5312          0.20           Fourier CNN     0.5357       0.5312          0.20
+Ours            0.7262       0.5624          0.06           Ours            0.7262       0.5624          0.06
+
+
+Table A5. The classification accuracy of different Scale-equivariant baseline models on STL10-scale dataset
+with different padding strategies.
+                                Models       Replicate Circular Reflect
+                               SESN             0.64         0.65       0.50
+                               DSS              0.61         0.48       0.49
+                               SI-CovNet        0.54         0.63       0.63
+                               SS-CNN           0.47         0.50       0.50
+                               DISCO            0.60         0.52       0.44
+
+
+
+feature to the MLP. For the scale-equivariant non-linearity, we also apply instance normalization
+before applying point-wise non-linearity. All the models are trained on a single NVIDIA RTX 3090.
+
+
+
+
+                                                       16
+

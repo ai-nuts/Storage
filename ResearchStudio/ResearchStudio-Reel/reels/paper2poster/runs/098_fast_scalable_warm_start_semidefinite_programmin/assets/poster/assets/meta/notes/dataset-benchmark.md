@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: USBS is evaluated on three problem families: MaxCut on ten DIMACS10 graphs (n from 16K to 3.7M), the quadratic assignment problem on QAPLIB and TSPLIB instances (n from 136 to 198), and interactive entity resolution with ∃-constraints on three author-coreference datasets (PubMed, QIAN, SCAD-zbMATH).
+
+Supporting detail: The MaxCut graphs reach 25.9M nonzeros in the Laplacian and over 10¹³ decision variables (333SP); the QAP relaxation has O(n⁴) decision variables, reaching 1.5 billion at n=198; warm starts are built by dropping the last 1% of MaxCut vertices, the final QAP row/column, or the newest ∃-constraint.
+
+Narration: The method is tested across three very different application areas. The first is MaxCut, using ten graphs from the DIMACS10 collection ranging from sixteen thousand up to three point seven million vertices, the largest yielding more than ten to the thirteenth decision variables. The second is the quadratic assignment problem, a notoriously hard combinatorial problem, using instances from QAPLIB and TSPLIB with sizes up to one hundred ninety-eight, whose SDP relaxation has on the order of n-to-the-fourth variables, reaching one point five billion. The third is interactive entity resolution using existential constraints, on three author-coreference datasets: PubMed, QIAN, and SCAD-zbMATH. In each case, warm starts are constructed naturally from a slightly smaller, closely related problem.

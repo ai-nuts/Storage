@@ -1,0 +1,3 @@
+# Title
+
+Fake audio detectors work well on the data they were trained on, but their accuracy collapses when they meet audio from a new dataset. Fine-tuning on the new data then makes them forget the old, a problem called catastrophic forgetting. This ICML 2023 paper introduces Regularized Adaptive Weight Modification, or RAWM, a continual learning method that adapts how it modifies network weights based on the ratio of genuine to fake utterances, and adds a regularization term so the model remembers the feature distribution of earlier datasets. Without replaying any past samples, RAWM cuts forgetting to roughly one tenth of naive fine-tuning and even generalizes beyond audio to speech emotion recognition and image recognition.

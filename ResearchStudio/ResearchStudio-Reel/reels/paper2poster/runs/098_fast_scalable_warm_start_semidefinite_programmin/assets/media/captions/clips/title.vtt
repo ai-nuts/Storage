@@ -1,0 +1,391 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:05.082
+Semidefinite programming is a powerful tool for
+combinatorial optimization,
+
+00:00:05.162 --> 00:00:09.620
+but it has long been considered too expensive to
+run at real-world scale.
+
+00:00:09.700 --> 00:00:13.910
+This paper introduces USBS, Unified Spectral
+Bundling with Sketching,
+
+00:00:13.990 --> 00:00:18.945
+a provably correct solver that is fast, scales to
+billions of decision variables,
+
+00:00:19.025 --> 00:00:22.799
+and, crucially, can reuse a previous solution as a
+warm start.
+
+00:00:22.879 --> 00:00:26.094
+On a MaxCut instance with over two billion variables,
+
+00:00:26.174 --> 00:00:30.943
+USBS delivers a five-hundred-times speedup over the
+previous state of the art,
+
+00:00:31.023 --> 00:00:36.040
+and warm-starting alone can accelerate convergence
+by more than one hundred times.
+
+00:00:36.420 --> 00:00:39.702
+Semidefinite programs can model an enormous range
+of practical problems,
+
+00:00:39.782 --> 00:00:43.063
+from combinatorial optimization to neural network
+verification and control.
+
+00:00:43.143 --> 00:00:46.425
+But solving them at scale is hard.
+
+00:00:46.505 --> 00:00:49.786
+The classic approaches require projecting onto the
+semidefinite cone,
+
+00:00:49.866 --> 00:00:53.148
+which needs a full eigendecomposition that scales
+cubically with problem size.
+
+00:00:53.228 --> 00:00:56.509
+Recent sketching methods, like CGAL,
+
+00:00:56.589 --> 00:00:59.871
+avoid storing the full matrix and scale much further,
+
+00:00:59.951 --> 00:01:03.232
+but they pay for it: as the problem grows they need
+more and more iterations,
+
+00:01:03.312 --> 00:01:06.594
+so convergence slows down.
+
+00:01:06.674 --> 00:01:09.955
+Worse,
+
+00:01:10.035 --> 00:01:13.317
+they rely on iteration-dependent parameter
+schedules that prevent them from reliably reusing
+
+00:01:13.397 --> 00:01:16.678
+a previous solution as a warm start,
+
+00:01:16.758 --> 00:01:20.040
+which is exactly what many real applications need.
+
+00:01:20.420 --> 00:01:23.810
+In practice, you rarely solve a single SDP in isolation.
+
+00:01:23.890 --> 00:01:25.483
+Data arrives incrementally,
+
+00:01:25.563 --> 00:01:31.555
+or you solve a sequence of tightly-related
+subproblems inside a mixed-integer or interactive loop.
+
+00:01:31.635 --> 00:01:36.017
+In all these settings, each new problem is nearly
+identical to the last,
+
+00:01:36.097 --> 00:01:41.098
+so being able to warm-start from the previous
+solution should give a huge speedup.
+
+00:01:41.178 --> 00:01:46.613
+Spectral bundle methods are an appealing framework
+here: they have low per-iteration cost
+
+00:01:46.693 --> 00:01:48.534
+and fast empirical convergence.
+
+00:01:48.614 --> 00:01:55.288
+But previous spectral bundle methods handled either
+only equality constraints or only inequality constraints,
+
+00:01:55.368 --> 00:02:01.360
+and none had an efficient standalone implementation
+that could be evaluated on truly massive SDPs.
+
+00:02:01.740 --> 00:02:05.289
+This paper presents USBS, a unified spectral bundle
+method with sketching.
+
+00:02:05.369 --> 00:02:08.918
+It makes several contributions.
+
+00:02:08.998 --> 00:02:12.548
+First, it handles general SDPs with both equality
+and inequality constraints,
+
+00:02:12.628 --> 00:02:16.177
+unlike prior spectral bundle methods.
+
+00:02:16.257 --> 00:02:19.806
+Second,
+
+00:02:19.886 --> 00:02:23.435
+it can be augmented with an optional matrix
+sketching technique that dramatically improves
+
+00:02:23.515 --> 00:02:27.065
+scalability while keeping convergence fast.
+
+00:02:27.145 --> 00:02:30.694
+Third, it reliably leverages warm-start initializations.
+
+00:02:30.774 --> 00:02:34.323
+The method comes with provable non-asymptotic
+convergence guarantees,
+
+00:02:34.403 --> 00:02:37.952
+and it exposes parameters that let the user trade
+off per-iteration cost against convergence speed.
+
+00:02:38.032 --> 00:02:41.582
+Finally,
+
+00:02:41.662 --> 00:02:45.211
+the authors release a standalone implementation in
+pure JAX that runs efficiently on CPUs,
+
+00:02:45.291 --> 00:02:48.840
+GPUs, and TPUs.
+
+00:02:49.220 --> 00:02:50.544
+Here is how USBS works.
+
+00:02:50.624 --> 00:02:56.464
+It starts from the dual semidefinite program and
+rewrites it as a single unconstrained objective,
+
+00:02:56.544 --> 00:03:01.774
+a penalized dual that combines the largest
+eigenvalue of C minus A-star y with a linear
+
+00:03:01.854 --> 00:03:05.008
+term and an indicator for the inequality constraints.
+
+00:03:05.088 --> 00:03:09.464
+This penalized objective is then minimized with a
+proximal bundle method.
+
+00:03:09.544 --> 00:03:12.454
+At each iteration, instead of the full objective,
+
+00:03:12.534 --> 00:03:17.703
+USBS builds a cheap lower model over a
+low-dimensional subspace spanned by the current
+
+00:03:17.783 --> 00:03:22.402
+maximum eigenvectors and a few directions carrying
+past spectral information.
+
+00:03:22.482 --> 00:03:27.102
+It proposes a candidate iterate by taking a
+proximal step against this model,
+
+00:03:27.182 --> 00:03:29.055
+solving a small minimax problem.
+
+00:03:29.135 --> 00:03:34.487
+If the true objective decreases by at least a fixed
+fraction of what the model predicted,
+
+00:03:34.567 --> 00:03:36.684
+it accepts the step, a descent step;
+
+00:03:36.764 --> 00:03:40.285
+otherwise it takes a null step but still refines
+the model.
+
+00:03:40.365 --> 00:03:43.764
+Because only a small set of eigenvectors and, optionally,
+
+00:03:43.844 --> 00:03:47.120
+a low-rank sketch of the primal matrix are ever stored,
+
+00:03:47.200 --> 00:03:50.050
+the whole procedure scales to enormous problems.
+
+00:03:50.430 --> 00:03:54.615
+The method is tested across three very different
+application areas.
+
+00:03:54.695 --> 00:03:55.888
+The first is MaxCut,
+
+00:03:55.968 --> 00:04:03.336
+using ten graphs from the DIMACS10 collection
+ranging from sixteen thousand up to three point seven million vertices,
+
+00:04:03.416 --> 00:04:07.919
+the largest yielding more than ten to the
+thirteenth decision variables.
+
+00:04:07.999 --> 00:04:10.911
+The second is the quadratic assignment problem,
+
+00:04:10.991 --> 00:04:13.521
+a notoriously hard combinatorial problem,
+
+00:04:13.601 --> 00:04:18.677
+using instances from QAPLIB and TSPLIB with sizes
+up to one hundred ninety-eight,
+
+00:04:18.757 --> 00:04:22.942
+whose SDP relaxation has on the order of
+n-to-the-fourth variables,
+
+00:04:23.022 --> 00:04:24.979
+reaching one point five billion.
+
+00:04:25.059 --> 00:04:29.626
+The third is interactive entity resolution using
+existential constraints,
+
+00:04:29.706 --> 00:04:33.954
+on three author-coreference datasets: PubMed, QIAN,
+and SCAD-zbMATH.
+
+00:04:34.034 --> 00:04:38.792
+In each case, warm starts are constructed naturally
+from a slightly smaller,
+
+00:04:38.872 --> 00:04:40.320
+closely related problem.
+
+00:04:40.700 --> 00:04:44.398
+The results are striking.
+
+00:04:44.478 --> 00:04:48.177
+On MaxCut,
+
+00:04:48.257 --> 00:04:51.955
+USBS reaches an accurate solution on all ten
+instances in twenty-eight hours or less,
+
+00:04:52.035 --> 00:04:55.733
+even without a warm start, while the previous
+state-of-the-art solver, CGAL,
+
+00:04:55.813 --> 00:04:59.512
+fails to reach an accurate solution on seven of the
+ten instances within seventy-two hours.
+
+00:04:59.592 --> 00:05:03.290
+On an instance with over two billion decision variables,
+
+00:05:03.370 --> 00:05:07.068
+USBS is five hundred times faster than CGAL.
+
+00:05:07.148 --> 00:05:10.847
+On the quadratic assignment and entity-resolution tasks,
+
+00:05:10.927 --> 00:05:14.625
+USBS reaches better relative gaps and lower
+cumulative solve times,
+
+00:05:14.705 --> 00:05:18.403
+and the gap in its favor grows as the problems get larger.
+
+00:05:18.483 --> 00:05:22.182
+Across all three settings, USBS reliably takes
+advantage of warm starts,
+
+00:05:22.262 --> 00:05:25.960
+whereas CGAL often cannot.
+
+00:05:26.340 --> 00:05:28.990
+Two ablations are especially informative.
+
+00:05:29.070 --> 00:05:31.053
+First, warm-starting: for USBS,
+
+00:05:31.133 --> 00:05:36.979
+initializing from the previous solution can speed
+up convergence by more than one hundred
+
+00:05:37.059 --> 00:05:39.242
+times compared with cold-starting,
+
+00:05:39.322 --> 00:05:44.568
+and, importantly, USBS actually realizes this
+benefit while CGAL usually cannot.
+
+00:05:44.648 --> 00:05:50.161
+Second, the model parameters: the number of current
+eigenvectors, kc, matters a lot,
+
+00:05:50.241 --> 00:05:53.689
+and larger values give better convergence in general.
+
+00:05:53.769 --> 00:05:58.949
+This contrasts with the original spectral bundle
+method, which fixed kc to one.
+
+00:05:59.029 --> 00:06:01.612
+The number of past spectral vectors, kp,
+
+00:06:01.692 --> 00:06:06.538
+turns out to be much less helpful and can sometimes
+even harm convergence,
+
+00:06:06.618 --> 00:06:10.200
+so the recommended settings keep kc large and kp small.
+
+00:06:10.580 --> 00:06:15.711
+To summarize the numbers that matter most: a
+five-hundred-times speedup over the previous
+
+00:06:15.791 --> 00:06:20.161
+state of the art on a problem with more than two
+billion decision variables;
+
+00:06:20.241 --> 00:06:24.494
+more than a one-hundred-times convergence speedup
+just from warm-starting;
+
+00:06:24.574 --> 00:06:29.003
+ten out of ten MaxCut instances solved by USBS in
+twenty-eight hours or less,
+
+00:06:29.083 --> 00:06:32.926
+versus only three out of ten for CGAL even given
+seventy-two hours.
+
+00:06:33.006 --> 00:06:37.903
+USBS scales to problems with over
+ten-to-the-thirteenth decision variables and solves
+
+00:06:37.983 --> 00:06:42.060
+quadratic-assignment relaxations with one point
+five billion variables.
+
+00:06:42.440 --> 00:06:43.819
+The takeaway is simple.
+
+00:06:43.899 --> 00:06:49.594
+USBS shows that large-scale semidefinite
+programming does not have to be slow or restricted
+
+00:06:49.674 --> 00:06:51.497
+to a narrow class of problems.
+
+00:06:51.577 --> 00:06:56.764
+By unifying equality and inequality constraints in
+a single spectral bundle method,
+
+00:06:56.844 --> 00:07:01.967
+adding optional sketching for scalability, and
+making warm-starting actually work,
+
+00:07:02.047 --> 00:07:07.043
+it turns SDPs that were previously considered
+intractable into a practical tool,
+
+00:07:07.123 --> 00:07:10.850
+complete with an open, hardware-flexible JAX
+implementation.

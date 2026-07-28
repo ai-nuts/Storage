@@ -1,0 +1,3 @@
+# Title
+
+In computer vision, models should adapt gracefully when image resolution changes, a property called scale-equivariance. This paper, from Purdue University, points out that existing scale-equivariant CNNs are not truly scale-equivariant, because they formulate down-scaling in the continuous domain and ignore anti-aliasing. The authors instead formulate down-scaling directly in the discrete domain with anti-aliasing, and build a new family of deep nets from Fourier layers that achieves absolute zero equivariance error, both in theory and in practice, while staying competitive on classification accuracy.

@@ -1,0 +1,3 @@
+# Title
+
+Spherical CNNs generalize convolutional networks to signals living on the sphere, which makes them a natural fit for molecules and weather data. But until now they were stuck at low resolutions and shallow depths, so they never really competed on large real-world problems. This paper, Scaling Spherical CNNs from Google Research and MIT, shows how to scale these models by a full order of magnitude. With new activations, normalization, residual blocks, and a TPU-optimized implementation, the authors reach state of the art on the QM9 molecular benchmark and become competitive on several weather forecasting tasks.

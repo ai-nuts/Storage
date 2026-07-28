@@ -1,0 +1,1537 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T14:02:57Z",
+  "title": "Scaling Spherical CNNs",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "When we want a network to look at an image, we reach for a convolutional network on a flat grid almost without thinking. But a great deal of scientific data does not live on a plane. A molecule is a cloud of atoms floating in three-dimensional space; the Earth's atmosphere is a field wrapped around a globe. For data like this the right domain is not the plane but the sphere, and the right symmetry is not translation but rotation: a molecule's energy does not change when you spin it, and a weather pattern is the same physical object whether it sits over the Pacific or the Atlantic. Spherical CNNs were built precisely for this setting, replacing planar convolution with a rotation-equivariant convolution on the sphere."
+            },
+            {
+              "type": "paragraph",
+              "text": "The catch is cost. Spherical convolution is most accurate when it is computed in the spectral domain, as products of Fourier coefficients on the sphere and the rotation group, and that is far more expensive than an ordinary planar convolution. Because of this price tag, spherical CNNs stayed small: low resolution, shallow depth, and modest capacity, tested mostly on tiny benchmarks. There was simply no spherical counterpart to the deep planar networks such as VGG-19 that carry modern computer vision, which left the very symmetry that should have made these models shine locked behind a computational bill that few research groups were willing to pay."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2023 paper from Google Research and MIT closes that gap. The authors scale spherical CNNs by a full order of magnitude in both operations and feature resolution, and show that once they are big enough these models can match or beat the equivariant graph neural networks and transformers that dominate molecular and weather modeling. The central lesson is that scaling was not a matter of naively stacking more depth and width: the nonlinearity, the normalization, and the residual block all had to be redesigned, and the whole system rewritten, before a large spherical model could run fast on modern hardware. In what follows we walk through how they did it, and through the evidence that the redesign, rather than the raw increase in size, is what made the difference."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2306.05420   |   Code: https://github.com/google-research/spherical-cnn"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why spherical convolution is expensive"
+            },
+            {
+              "type": "paragraph",
+              "text": "A spherical convolution is defined as an integral over the rotation group SO(3): the filter is rotated by every element of the group and correlated with the signal. Written continuously it reads as an integral of the signal against a rotated kernel over all of SO(3). Discretizing that integral directly is awkward, because there is no arbitrarily dense, perfectly uniform grid on the sphere or on the rotation group. The clean alternative is to move to the spectral domain, where convolution becomes a pointwise product of spherical harmonic coefficients. This is accurate, but the transforms are heavy, and their cost is what had confined spherical CNNs to small problems. Earlier molecular work with spherical CNNs, for instance, used only the QM7 benchmark, which has 7,165 molecules with up to 23 atoms and a single regression target, a small fraction of the scale that graph networks and transformers were already handling with ease."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The recipe for scaling"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's contribution is best read as three ingredients that work together: a hardware-tuned implementation, a redesigned set of core layers, and input representations tailored to each application. None of them is a cosmetic tweak; each one improves both speed and accuracy at the same time, which is exactly the combination a model needs before it can safely grow larger."
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "An implementation built for the accelerator"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first ingredient is a complete rewrite in JAX of the spin-weighted spherical harmonic transforms, tuned to run fast and distributed on TPUs. The most counterintuitive design decision is to compute the Fourier transforms as dense matrix multiplications rather than fast Fourier transforms. On paper an FFT has lower asymptotic complexity, but on a TPU the matrix-multiply units are extraordinarily fast while shuffling data through memory is the real bottleneck, so a dense matmul wins in practice. The rewrite alone is about 3x faster than the original implementation, and because it runs distributed the authors can spread a model across up to 32 TPUs and speed it up by 100x or more. That headroom is what turns a one-order-of-magnitude jump from a wish into an experiment you can actually run."
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "Layers that live in the spectral domain"
+            },
+            {
+              "type": "paragraph",
+              "text": "The second ingredient is a set of new general-purpose layers, most of which operate directly on Fourier coefficients. The centerpiece is a phase collapse nonlinearity. Applying an ordinary pointwise nonlinearity on the sphere breaks equivariance; phase collapse instead takes the modulus of the features, which collapses their phase and restores rotation invariance while preserving the information carried in the nonzero spins. Concretely it updates only the spin-zero component through a learned combination of the original feature and its magnitude, and subsequent convolutions propagate that information back to the nonzero spins. The authors also move batch normalization and pooling into the spectral domain, and design an efficient residual block whose skip connection is added directly between Fourier coefficients rather than in the spatial domain."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "Figure 2. The efficient residual block. Features flow through spin-weighted spherical Fourier transforms (FT) and their inverses (IFT), multiplication with filter coefficients (*K), a phase-collapse activation and spectral batch normalization (BN). The residual connection is added directly in Fourier space rather than in the spatial domain, and optional spectral pooling is folded into the first FT block.",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "Input representations that fit the data"
+            },
+            {
+              "type": "paragraph",
+              "text": "The third ingredient is application-specific input encodings. For molecules the authors introduce a spherical representation that turns a set of atoms and positions into a set of functions on the sphere. Each atom is described by one spherical channel per atom type, and the value at each point on a sphere comes from physically-based, power-law interactions between pairs of atoms, smoothed with a Gaussian kernel and aggregated over atom types. The result is a rotation-friendly encoding that feeds naturally into the spherical network, rather than a hand-built graph, and it lets the model use the same equivariant machinery that makes it a good fit for the atmosphere."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 5.8,
+              "caption": "Figure 3. Encoding a molecule as a set of spherical functions. Each atom becomes one spherical channel per atom type (here Z=2 for the H2O example, so two channels per atom). The value at each point on a sphere comes from physically-based interactions between atom pairs, smoothed with a Gaussian kernel and summed over atom types; the sphere marked H, for example, aggregates the Coulomb interactions involving the hydrogen atoms.",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results on molecules and weather"
+            },
+            {
+              "type": "paragraph",
+              "text": "On the molecular side the target is QM9, a benchmark of 134,000 molecules with up to 29 atoms and 12 regression targets spanning energetic, electronic and thermodynamic properties. Scaling spherical CNNs to QM9 for the first time, the model reaches state of the art, outperforming the previously dominant graph neural networks and transformers on 8 of the 12 targets under the first data split and on 9 of the 12 under the second (the two splits differ mainly in training-set size, with the second using 100,000 examples). On the enthalpy of atomization target the model reaches about 15.25 meV mean absolute error."
+            },
+            {
+              "type": "paragraph",
+              "text": "On the weather side the models are trained on ERA5 reanalysis data through the WeatherBench benchmark, forecasting quantities such as geopotential height (Z500) and temperature (T850, T2M) at 3 and 5 day horizons, with longer tasks reaching out to 28 days. In the simpler two-predictor setting the spherical CNN outperforms the WeatherBench baseline on every metric, and on several temperature metrics it beats even models that were pre-trained on large amounts of simulated data. This is the first demonstration that spherical CNNs are viable neural weather models, though on the hardest iterative forecasts they still trail specialized baselines on some temperature targets."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What actually mattered: an ablation"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the authors argue that redesign, not brute-force scaling, is the key, the ablation is the most instructive table in the paper. Starting from the JAX implementation as a baseline, each new component is switched on in turn, and the table reports its effect on both throughput (steps per second) and error (RMSE) on a QM9 model. The phase collapse activation alone cuts error by 8.0%, spectral batch normalization trims a further 1.4%, and the efficient residual block another 2.4%, and none of them costs accuracy for speed: the residual block and normalization actually run faster while helping the error."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Effect of each modeling contribution on a QM9 model, measured as the change relative to the previous row. Positive step/s is faster; negative RMSE is more accurate.",
+              "headers": [
+                "Contribution",
+                "Delta Steps/s [%]",
+                "Delta RMSE [%]"
+              ],
+              "rows": [
+                [
+                  "JAX implementation (baseline)",
+                  "33.7",
+                  "0.0"
+                ],
+                [
+                  "+ Phase collapse",
+                  "-4.6",
+                  "-8.0"
+                ],
+                [
+                  "+ Spectral batch norm",
+                  "7.8",
+                  "-1.4"
+                ],
+                [
+                  "+ Efficient residual block",
+                  "19.3",
+                  "-2.4"
+                ]
+              ],
+              "note": "Steps/s for the JAX row is the absolute throughput; later rows show the change from adding each component. A separate comparison confirms that phase collapse, spectral pooling and the new molecule representation each beat their prior alternatives, together driving the QM9 enthalpy error to 15.25 meV."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "The clean summary of this work is that spherical CNNs were never fundamentally limited; they were simply poorly scaled. With a redesigned nonlinearity, normalization and residual block, and an implementation tuned to the way accelerators actually spend their time, these models finally reach the scale of real scientific problems, setting the state of the art on molecular property prediction and becoming genuinely competitive neural weather models. There is still a cost: the spectral convolutions remain heavy, training a large model can take days on 32 TPUs, and weather forecasting is not yet solved. But the authors release their JAX implementation as a platform, and the more interesting message is a direction, not a single result: for data that is naturally spherical and rotation-related, equivariance is worth scaling up rather than approximating away."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "当我们想让网络去理解一张图像时，几乎会条件反射地拿出在平面网格上运行的卷积网络。但很多科学数据并不生活在平面上。一个分子是漂浮在三维空间里的一团原子，地球大气则是包裹在球面上的一层场。对这类数据来说，正确的定义域不是平面而是球面，正确的对称性也不是平移而是旋转：把一个分子在空间中旋转，它的能量不会改变；一块天气系统无论落在太平洋还是大西洋上空，都是同一个物理对象。球面 CNN（spherical CNN）正是为这种设定而生的，它用球面上的旋转等变卷积替换了平面卷积。"
+            },
+            {
+              "type": "paragraph",
+              "text": "问题在于代价。球面卷积在谱域（spectral domain）中计算时最为精确，也就是把它写成球面与旋转群上 Fourier 系数的逐点乘积，而这远比一次普通的平面卷积昂贵。正因为这一昂贵的代价，球面 CNN 长期停留在小规模：分辨率低、层数浅、容量有限，多数只在很小的基准上测试。学界始终没有一个可以和 VGG-19 这类支撑现代计算机视觉的深层平面网络相提并论的球面对应物，于是那份本该让这些模型在科学数据上大放异彩的对称性，被锁在了一张鲜有团队愿意支付的算力账单背后。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇发表于 ICML 2023、来自 Google Research 与 MIT 的论文正是要弥合这道鸿沟。作者把球面 CNN 在运算量与特征分辨率两个维度上都扩大了整整一个数量级，并证明一旦规模足够大，这些模型就能追平甚至超过在分子与天气建模中占主导地位的等变图神经网络（graph neural network）与 transformer。核心的教训是：扩展并不是简单地堆更多深度和宽度，而是非线性、归一化、残差块这些核心组件都必须重新设计，整个系统也必须重写，才能在现代硬件上跑得够快。接下来，我们就来看他们是如何做到的，以及为什么真正起决定作用的是这套重新设计，而不是单纯把模型做大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2306.05420   |   代码：https://github.com/google-research/spherical-cnn"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "球面卷积为什么昂贵"
+            },
+            {
+              "type": "paragraph",
+              "text": "球面卷积被定义为在旋转群 SO(3) 上的一个积分：把滤波器按群中每一个元素旋转，再与信号做相关。连续形式下，它就是信号与旋转后的核在整个 SO(3) 上的积分。直接离散化这个积分很棘手，因为球面和旋转群上并不存在一个可以任意加密、又完全均匀的网格。干净的替代方案是转到谱域，在那里卷积变成球谐系数的逐点乘积。这样很精确，但变换本身很重，正是这份代价把球面 CNN 困在了小问题上。举例来说，早期用球面 CNN 做分子的工作只用过 QM7 基准，它有 7,165 个分子、每个分子最多 23 个原子、且只有单一回归目标，规模远小于图网络与 transformer 早已能处理的量级。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "扩展的配方"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇论文的贡献，最好读作三种彼此配合的成分：一套面向硬件优化的实现、一组重新设计的核心层、以及针对每类应用量身定制的输入表示。它们没有一个是表面的小修补；每一项都同时改善了速度与精度，而这恰恰是一个模型想要长大所必需的。"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "为加速器而生的实现"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一种成分，是用 JAX 对自旋加权球谐变换做的一次彻底重写，并针对在 TPU 上快速、分布式运行做了调优。其中最反直觉的设计决策，是把 Fourier 变换写成稠密矩阵乘法，而不是快速 Fourier 变换。纸面上快速 Fourier 变换的渐近复杂度更低，但在 TPU 上矩阵乘法单元极快，真正的瓶颈是数据在内存中的搬运，所以稠密矩阵乘法在实践中反而更划算。仅这次重写就比原始实现快约 3×，而由于可以分布式运行，作者能把一个模型铺到最多 32 个 TPU 上，再提速 100× 甚至更多。正是这份余量，把“扩大一个数量级”从一个愿望变成了真正跑得起来的实验。"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "活在谱域里的各层"
+            },
+            {
+              "type": "paragraph",
+              "text": "第二种成分，是一组新的通用层，其中大多数都直接作用在 Fourier 系数上。核心是相位坍缩（phase collapse）非线性。在球面上直接套用逐点非线性会破坏等变性；相位坍缩则改为对特征取模，把相位坍缩掉以恢复旋转不变性，同时保留非零自旋所携带的信息。具体而言，它只更新自旋为零的分量，方式是把原始特征与其幅值做一个可学习的组合，后续的卷积再把这部分信息传播回非零自旋。作者还把批归一化与池化都搬进了谱域，并设计了一个高效残差块，它的跳跃连接直接加在 Fourier 系数之间，而不是在空间域中相加。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "图 2. 高效残差块。特征依次经过自旋加权球面 Fourier 变换（FT）及其逆变换（IFT）、与滤波器系数相乘（*K）、相位坍缩激活以及谱域批归一化（BN）。残差连接直接加在 Fourier 空间中，而非在空间域中；可选的谱域池化被折进第一个 FT 块里。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "贴合数据的输入表示"
+            },
+            {
+              "type": "paragraph",
+              "text": "第三种成分，是针对具体应用的输入编码。对分子，作者引入了一种球面表示，把一组原子及其坐标转化为球面上的一组函数。每个原子由每种原子类型对应的一个球面通道来描述，而球面上每一点的取值来自成对原子之间基于物理的幂律相互作用，再用高斯（Gaussian）核平滑并按原子类型聚合。得到的是一种对旋转友好的编码，能够自然地喂入球面网络，而不必手工搭建一张图；这也让模型可以复用那套让它同样适配大气数据的等变机制。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 5.8,
+              "caption": "图 3. 把一个分子编码成一组球面函数。每个原子对应每种原子类型的一个球面通道（图中 H2O 例子取 Z=2，故每个原子两个通道）。球面上每一点的取值来自成对原子间基于物理的相互作用，用高斯核平滑并按原子类型求和；例如标着 H 的球面就聚合了涉及氢原子的 Coulomb 相互作用。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "分子与天气上的结果"
+            },
+            {
+              "type": "paragraph",
+              "text": "在分子这一侧，目标是 QM9 基准，它包含 134,000 个分子、每个分子最多 29 个原子、共 12 个回归目标，涵盖能量、电子结构与热力学性质。作者首次把球面 CNN 扩展到 QM9，模型达到了当前最优，在第一种数据划分下于 12 项中的 8 项、在第二种划分下于 12 项中的 9 项上都超过了此前占主导的图神经网络与 transformer（两种划分主要在训练集大小上不同，第二种使用 100,000 个样本）。在原子化焓这一目标上，模型达到约 15.25 meV 的平均绝对误差。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在天气这一侧，模型通过 WeatherBench 基准在 ERA5 再分析数据上训练，预测位势高度（Z500）与温度（T850、T2M）等量在 3 天与 5 天时效上的取值，更长的任务则一直延伸到 28 天。在较简单的双预测量设定下，球面 CNN 在每一项指标上都优于 WeatherBench 基线；在若干温度指标上，它甚至击败了那些在大量模拟数据上做过预训练的模型。这是首次证明球面 CNN 是可行的神经天气模型，尽管在最难的迭代式预报中，它在部分温度目标上仍落后于专门设计的基线。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正起作用的是什么：一次消融"
+            },
+            {
+              "type": "paragraph",
+              "text": "既然作者主张关键在于重新设计而非蛮力扩展，那么消融实验就是全文最能说明问题的一张表。以 JAX 实现为基线，逐一打开每个新组件，表中报告它对吞吐（每秒步数）与误差（RMSE）在一个 QM9 模型上的影响。仅相位坍缩激活一项就把误差降低 8.0%，谱域批归一化再降 1.4%，高效残差块又降 2.4%；而且没有一项是用精度换速度：残差块与归一化在帮助降低误差的同时实际上还跑得更快。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各建模贡献在一个 QM9 模型上的效果，均为相对上一行的变化。步数为正表示更快，RMSE 为负表示更准。",
+              "headers": [
+                "贡献",
+                "Delta Steps/s [%]",
+                "Delta RMSE [%]"
+              ],
+              "rows": [
+                [
+                  "JAX implementation (baseline)",
+                  "33.7",
+                  "0.0"
+                ],
+                [
+                  "+ Phase collapse",
+                  "-4.6",
+                  "-8.0"
+                ],
+                [
+                  "+ Spectral batch norm",
+                  "7.8",
+                  "-1.4"
+                ],
+                [
+                  "+ Efficient residual block",
+                  "19.3",
+                  "-2.4"
+                ]
+              ],
+              "note": "JAX 行的 Steps/s 为绝对吞吐，后续各行显示加入该组件后的变化。另一组对比进一步证实：相位坍缩、谱域池化与新的分子表示各自都胜过其此前的替代方案，共同把 QM9 原子化焓误差压到 15.25 meV。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结语"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作可以干净地总结为一句话：球面 CNN 从来不是被根本性地限制住了，它们只是没有被好好地扩展。有了重新设计的非线性、归一化与残差块，再加上一套贴合加速器实际开销方式的实现，这些模型终于能够触及真实科学问题的规模，在分子性质预测上刷新当前最优，并成为真正有竞争力的神经天气模型。代价当然还在：谱域卷积依旧沉重，训练一个大模型可能要在 32 个 TPU 上花上数天，天气预报也远未被解决。但作者把他们的 JAX 实现作为一个平台开源出来，而更值得记住的信息是一个方向，而非某个单一结果：对于那些天然生活在球面上、又与旋转紧密相关的数据，等变性值得被扩大，而不是被近似掉。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 378.72,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 378.72,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 41.14,
+          "relative_start": 0.5,
+          "relative_end": 41.14,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 41.14,
+          "global_end": 76.55,
+          "relative_start": 41.14,
+          "relative_end": 76.55,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 76.55,
+          "global_end": 119.11,
+          "relative_start": 76.55,
+          "relative_end": 119.11,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 119.11,
+          "global_end": 159.61,
+          "relative_start": 119.11,
+          "relative_end": 159.61,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 159.61,
+          "global_end": 204.21,
+          "relative_start": 159.61,
+          "relative_end": 204.21,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 204.21,
+          "global_end": 239.53,
+          "relative_start": 204.21,
+          "relative_end": 239.53,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 239.53,
+          "global_end": 274.87,
+          "relative_start": 239.53,
+          "relative_end": 274.87,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 274.87,
+          "global_end": 312.44,
+          "relative_start": 274.87,
+          "relative_end": 312.44,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 312.44,
+          "global_end": 347.66,
+          "relative_start": 312.44,
+          "relative_end": 347.66,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 347.66,
+          "global_end": 378.66,
+          "relative_start": 347.66,
+          "relative_end": 378.66,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why spherical convolution is expensive"
+            },
+            {
+              "type": "paragraph",
+              "text": "A spherical convolution is defined as an integral over the rotation group SO(3): the filter is rotated by every element of the group and correlated with the signal. Written continuously it reads as an integral of the signal against a rotated kernel over all of SO(3). Discretizing that integral directly is awkward, because there is no arbitrarily dense, perfectly uniform grid on the sphere or on the rotation group. The clean alternative is to move to the spectral domain, where convolution becomes a pointwise product of spherical harmonic coefficients. This is accurate, but the transforms are heavy, and their cost is what had confined spherical CNNs to small problems. Earlier molecular work with spherical CNNs, for instance, used only the QM7 benchmark, which has 7,165 molecules with up to 23 atoms and a single regression target, a small fraction of the scale that graph networks and transformers were already handling with ease."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "当我们想让网络去理解一张图像时，几乎会条件反射地拿出在平面网格上运行的卷积网络。但很多科学数据并不生活在平面上。一个分子是漂浮在三维空间里的一团原子，地球大气则是包裹在球面上的一层场。对这类数据来说，正确的定义域不是平面而是球面，正确的对称性也不是平移而是旋转：把一个分子在空间中旋转，它的能量不会改变；一块天气系统无论落在太平洋还是大西洋上空，都是同一个物理对象。球面 CNN（spherical CNN）正是为这种设定而生的，它用球面上的旋转等变卷积替换了平面卷积。"
+            },
+            {
+              "type": "paragraph",
+              "text": "问题在于代价。球面卷积在谱域（spectral domain）中计算时最为精确，也就是把它写成球面与旋转群上 Fourier 系数的逐点乘积，而这远比一次普通的平面卷积昂贵。正因为这一昂贵的代价，球面 CNN 长期停留在小规模：分辨率低、层数浅、容量有限，多数只在很小的基准上测试。学界始终没有一个可以和 VGG-19 这类支撑现代计算机视觉的深层平面网络相提并论的球面对应物，于是那份本该让这些模型在科学数据上大放异彩的对称性，被锁在了一张鲜有团队愿意支付的算力账单背后。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇发表于 ICML 2023、来自 Google Research 与 MIT 的论文正是要弥合这道鸿沟。作者把球面 CNN 在运算量与特征分辨率两个维度上都扩大了整整一个数量级，并证明一旦规模足够大，这些模型就能追平甚至超过在分子与天气建模中占主导地位的等变图神经网络（graph neural network）与 transformer。核心的教训是：扩展并不是简单地堆更多深度和宽度，而是非线性、归一化、残差块这些核心组件都必须重新设计，整个系统也必须重写，才能在现代硬件上跑得够快。接下来，我们就来看他们是如何做到的，以及为什么真正起决定作用的是这套重新设计，而不是单纯把模型做大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2306.05420   |   代码：https://github.com/google-research/spherical-cnn"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 41.14,
+        "end": 76.55,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 35.41,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.31,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 41.14,
+          "global_end": 76.55,
+          "relative_start": 0.0,
+          "relative_end": 35.41,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why spherical convolution is expensive"
+            },
+            {
+              "type": "paragraph",
+              "text": "A spherical convolution is defined as an integral over the rotation group SO(3): the filter is rotated by every element of the group and correlated with the signal. Written continuously it reads as an integral of the signal against a rotated kernel over all of SO(3). Discretizing that integral directly is awkward, because there is no arbitrarily dense, perfectly uniform grid on the sphere or on the rotation group. The clean alternative is to move to the spectral domain, where convolution becomes a pointwise product of spherical harmonic coefficients. This is accurate, but the transforms are heavy, and their cost is what had confined spherical CNNs to small problems. Earlier molecular work with spherical CNNs, for instance, used only the QM7 benchmark, which has 7,165 molecules with up to 23 atoms and a single regression target, a small fraction of the scale that graph networks and transformers were already handling with ease."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "球面卷积为什么昂贵"
+            },
+            {
+              "type": "paragraph",
+              "text": "球面卷积被定义为在旋转群 SO(3) 上的一个积分：把滤波器按群中每一个元素旋转，再与信号做相关。连续形式下，它就是信号与旋转后的核在整个 SO(3) 上的积分。直接离散化这个积分很棘手，因为球面和旋转群上并不存在一个可以任意加密、又完全均匀的网格。干净的替代方案是转到谱域，在那里卷积变成球谐系数的逐点乘积。这样很精确，但变换本身很重，正是这份代价把球面 CNN 困在了小问题上。举例来说，早期用球面 CNN 做分子的工作只用过 QM7 基准，它有 7,165 个分子、每个分子最多 23 个原子、且只有单一回归目标，规模远小于图网络与 transformer 早已能处理的量级。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 76.55,
+        "end": 119.11,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 42.56,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.46,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 76.55,
+          "global_end": 119.11,
+          "relative_start": 0.0,
+          "relative_end": 42.56,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The recipe for scaling"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's contribution is best read as three ingredients that work together: a hardware-tuned implementation, a redesigned set of core layers, and input representations tailored to each application. None of them is a cosmetic tweak; each one improves both speed and accuracy at the same time, which is exactly the combination a model needs before it can safely grow larger."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 5.8,
+              "caption": "图 3. 把一个分子编码成一组球面函数。每个原子对应每种原子类型的一个球面通道（图中 H2O 例子取 Z=2，故每个原子两个通道）。球面上每一点的取值来自成对原子间基于物理的相互作用，用高斯核平滑并按原子类型求和；例如标着 H 的球面就聚合了涉及氢原子的 Coulomb 相互作用。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "扩展的配方"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇论文的贡献，最好读作三种彼此配合的成分：一套面向硬件优化的实现、一组重新设计的核心层、以及针对每类应用量身定制的输入表示。它们没有一个是表面的小修补；每一项都同时改善了速度与精度，而这恰恰是一个模型想要长大所必需的。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 119.11,
+        "end": 159.61,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 40.5,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 41.4,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 119.11,
+          "global_end": 159.61,
+          "relative_start": 0.0,
+          "relative_end": 40.5,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "An implementation built for the accelerator"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first ingredient is a complete rewrite in JAX of the spin-weighted spherical harmonic transforms, tuned to run fast and distributed on TPUs. The most counterintuitive design decision is to compute the Fourier transforms as dense matrix multiplications rather than fast Fourier transforms. On paper an FFT has lower asymptotic complexity, but on a TPU the matrix-multiply units are extraordinarily fast while shuffling data through memory is the real bottleneck, so a dense matmul wins in practice. The rewrite alone is about 3x faster than the original implementation, and because it runs distributed the authors can spread a model across up to 32 TPUs and speed it up by 100x or more. That headroom is what turns a one-order-of-magnitude jump from a wish into an experiment you can actually run."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "为加速器而生的实现"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一种成分，是用 JAX 对自旋加权球谐变换做的一次彻底重写，并针对在 TPU 上快速、分布式运行做了调优。其中最反直觉的设计决策，是把 Fourier 变换写成稠密矩阵乘法，而不是快速 Fourier 变换。纸面上快速 Fourier 变换的渐近复杂度更低，但在 TPU 上矩阵乘法单元极快，真正的瓶颈是数据在内存中的搬运，所以稠密矩阵乘法在实践中反而更划算。仅这次重写就比原始实现快约 3×，而由于可以分布式运行，作者能把一个模型铺到最多 32 个 TPU 上，再提速 100× 甚至更多。正是这份余量，把“扩大一个数量级”从一个愿望变成了真正跑得起来的实验。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 159.61,
+        "end": 204.21,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 44.6,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.5,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 159.61,
+          "global_end": 204.21,
+          "relative_start": 0.0,
+          "relative_end": 44.6,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "When we want a network to look at an image, we reach for a convolutional network on a flat grid almost without thinking. But a great deal of scientific data does not live on a plane. A molecule is a cloud of atoms floating in three-dimensional space; the Earth's atmosphere is a field wrapped around a globe. For data like this the right domain is not the plane but the sphere, and the right symmetry is not translation but rotation: a molecule's energy does not change when you spin it, and a weather pattern is the same physical object whether it sits over the Pacific or the Atlantic. Spherical CNNs were built precisely for this setting, replacing planar convolution with a rotation-equivariant convolution on the sphere."
+            },
+            {
+              "type": "paragraph",
+              "text": "The catch is cost. Spherical convolution is most accurate when it is computed in the spectral domain, as products of Fourier coefficients on the sphere and the rotation group, and that is far more expensive than an ordinary planar convolution. Because of this price tag, spherical CNNs stayed small: low resolution, shallow depth, and modest capacity, tested mostly on tiny benchmarks. There was simply no spherical counterpart to the deep planar networks such as VGG-19 that carry modern computer vision, which left the very symmetry that should have made these models shine locked behind a computational bill that few research groups were willing to pay."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2023 paper from Google Research and MIT closes that gap. The authors scale spherical CNNs by a full order of magnitude in both operations and feature resolution, and show that once they are big enough these models can match or beat the equivariant graph neural networks and transformers that dominate molecular and weather modeling. The central lesson is that scaling was not a matter of naively stacking more depth and width: the nonlinearity, the normalization, and the residual block all had to be redesigned, and the whole system rewritten, before a large spherical model could run fast on modern hardware. In what follows we walk through how they did it, and through the evidence that the redesign, rather than the raw increase in size, is what made the difference."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2306.05420   |   Code: https://github.com/google-research/spherical-cnn"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "分子与天气上的结果"
+            },
+            {
+              "type": "paragraph",
+              "text": "在分子这一侧，目标是 QM9 基准，它包含 134,000 个分子、每个分子最多 29 个原子、共 12 个回归目标，涵盖能量、电子结构与热力学性质。作者首次把球面 CNN 扩展到 QM9，模型达到了当前最优，在第一种数据划分下于 12 项中的 8 项、在第二种划分下于 12 项中的 9 项上都超过了此前占主导的图神经网络与 transformer（两种划分主要在训练集大小上不同，第二种使用 100,000 个样本）。在原子化焓这一目标上，模型达到约 15.25 meV 的平均绝对误差。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在天气这一侧，模型通过 WeatherBench 基准在 ERA5 再分析数据上训练，预测位势高度（Z500）与温度（T850、T2M）等量在 3 天与 5 天时效上的取值，更长的任务则一直延伸到 28 天。在较简单的双预测量设定下，球面 CNN 在每一项指标上都优于 WeatherBench 基线；在若干温度指标上，它甚至击败了那些在大量模拟数据上做过预训练的模型。这是首次证明球面 CNN 是可行的神经天气模型，尽管在最难的迭代式预报中，它在部分温度目标上仍落后于专门设计的基线。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 204.21,
+        "end": 239.53,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 35.32,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.22,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 204.21,
+          "global_end": 239.53,
+          "relative_start": 0.0,
+          "relative_end": 35.32,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "When we want a network to look at an image, we reach for a convolutional network on a flat grid almost without thinking. But a great deal of scientific data does not live on a plane. A molecule is a cloud of atoms floating in three-dimensional space; the Earth's atmosphere is a field wrapped around a globe. For data like this the right domain is not the plane but the sphere, and the right symmetry is not translation but rotation: a molecule's energy does not change when you spin it, and a weather pattern is the same physical object whether it sits over the Pacific or the Atlantic. Spherical CNNs were built precisely for this setting, replacing planar convolution with a rotation-equivariant convolution on the sphere."
+            },
+            {
+              "type": "paragraph",
+              "text": "The catch is cost. Spherical convolution is most accurate when it is computed in the spectral domain, as products of Fourier coefficients on the sphere and the rotation group, and that is far more expensive than an ordinary planar convolution. Because of this price tag, spherical CNNs stayed small: low resolution, shallow depth, and modest capacity, tested mostly on tiny benchmarks. There was simply no spherical counterpart to the deep planar networks such as VGG-19 that carry modern computer vision, which left the very symmetry that should have made these models shine locked behind a computational bill that few research groups were willing to pay."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2023 paper from Google Research and MIT closes that gap. The authors scale spherical CNNs by a full order of magnitude in both operations and feature resolution, and show that once they are big enough these models can match or beat the equivariant graph neural networks and transformers that dominate molecular and weather modeling. The central lesson is that scaling was not a matter of naively stacking more depth and width: the nonlinearity, the normalization, and the residual block all had to be redesigned, and the whole system rewritten, before a large spherical model could run fast on modern hardware. In what follows we walk through how they did it, and through the evidence that the redesign, rather than the raw increase in size, is what made the difference."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2306.05420   |   Code: https://github.com/google-research/spherical-cnn"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The recipe for scaling"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's contribution is best read as three ingredients that work together: a hardware-tuned implementation, a redesigned set of core layers, and input representations tailored to each application. None of them is a cosmetic tweak; each one improves both speed and accuracy at the same time, which is exactly the combination a model needs before it can safely grow larger."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "分子与天气上的结果"
+            },
+            {
+              "type": "paragraph",
+              "text": "在分子这一侧，目标是 QM9 基准，它包含 134,000 个分子、每个分子最多 29 个原子、共 12 个回归目标，涵盖能量、电子结构与热力学性质。作者首次把球面 CNN 扩展到 QM9，模型达到了当前最优，在第一种数据划分下于 12 项中的 8 项、在第二种划分下于 12 项中的 9 项上都超过了此前占主导的图神经网络与 transformer（两种划分主要在训练集大小上不同，第二种使用 100,000 个样本）。在原子化焓这一目标上，模型达到约 15.25 meV 的平均绝对误差。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在天气这一侧，模型通过 WeatherBench 基准在 ERA5 再分析数据上训练，预测位势高度（Z500）与温度（T850、T2M）等量在 3 天与 5 天时效上的取值，更长的任务则一直延伸到 28 天。在较简单的双预测量设定下，球面 CNN 在每一项指标上都优于 WeatherBench 基线；在若干温度指标上，它甚至击败了那些在大量模拟数据上做过预训练的模型。这是首次证明球面 CNN 是可行的神经天气模型，尽管在最难的迭代式预报中，它在部分温度目标上仍落后于专门设计的基线。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结语"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作可以干净地总结为一句话：球面 CNN 从来不是被根本性地限制住了，它们只是没有被好好地扩展。有了重新设计的非线性、归一化与残差块，再加上一套贴合加速器实际开销方式的实现，这些模型终于能够触及真实科学问题的规模，在分子性质预测上刷新当前最优，并成为真正有竞争力的神经天气模型。代价当然还在：谱域卷积依旧沉重，训练一个大模型可能要在 32 个 TPU 上花上数天，天气预报也远未被解决。但作者把他们的 JAX 实现作为一个平台开源出来，而更值得记住的信息是一个方向，而非某个单一结果：对于那些天然生活在球面上、又与旋转紧密相关的数据，等变性值得被扩大，而不是被近似掉。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 239.53,
+        "end": 274.87,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 35.34,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.24,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 239.53,
+          "global_end": 274.87,
+          "relative_start": 0.0,
+          "relative_end": 35.34,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why spherical convolution is expensive"
+            },
+            {
+              "type": "paragraph",
+              "text": "A spherical convolution is defined as an integral over the rotation group SO(3): the filter is rotated by every element of the group and correlated with the signal. Written continuously it reads as an integral of the signal against a rotated kernel over all of SO(3). Discretizing that integral directly is awkward, because there is no arbitrarily dense, perfectly uniform grid on the sphere or on the rotation group. The clean alternative is to move to the spectral domain, where convolution becomes a pointwise product of spherical harmonic coefficients. This is accurate, but the transforms are heavy, and their cost is what had confined spherical CNNs to small problems. Earlier molecular work with spherical CNNs, for instance, used only the QM7 benchmark, which has 7,165 molecules with up to 23 atoms and a single regression target, a small fraction of the scale that graph networks and transformers were already handling with ease."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正起作用的是什么：一次消融"
+            },
+            {
+              "type": "paragraph",
+              "text": "既然作者主张关键在于重新设计而非蛮力扩展，那么消融实验就是全文最能说明问题的一张表。以 JAX 实现为基线，逐一打开每个新组件，表中报告它对吞吐（每秒步数）与误差（RMSE）在一个 QM9 模型上的影响。仅相位坍缩激活一项就把误差降低 8.0%，谱域批归一化再降 1.4%，高效残差块又降 2.4%；而且没有一项是用精度换速度：残差块与归一化在帮助降低误差的同时实际上还跑得更快。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各建模贡献在一个 QM9 模型上的效果，均为相对上一行的变化。步数为正表示更快，RMSE 为负表示更准。",
+              "headers": [
+                "贡献",
+                "Delta Steps/s [%]",
+                "Delta RMSE [%]"
+              ],
+              "rows": [
+                [
+                  "JAX implementation (baseline)",
+                  "33.7",
+                  "0.0"
+                ],
+                [
+                  "+ Phase collapse",
+                  "-4.6",
+                  "-8.0"
+                ],
+                [
+                  "+ Spectral batch norm",
+                  "7.8",
+                  "-1.4"
+                ],
+                [
+                  "+ Efficient residual block",
+                  "19.3",
+                  "-2.4"
+                ]
+              ],
+              "note": "JAX 行的 Steps/s 为绝对吞吐，后续各行显示加入该组件后的变化。另一组对比进一步证实：相位坍缩、谱域池化与新的分子表示各自都胜过其此前的替代方案，共同把 QM9 原子化焓误差压到 15.25 meV。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 274.87,
+        "end": 312.44,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 37.57,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 38.47,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 274.87,
+          "global_end": 312.44,
+          "relative_start": 0.0,
+          "relative_end": 37.57,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What actually mattered: an ablation"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the authors argue that redesign, not brute-force scaling, is the key, the ablation is the most instructive table in the paper. Starting from the JAX implementation as a baseline, each new component is switched on in turn, and the table reports its effect on both throughput (steps per second) and error (RMSE) on a QM9 model. The phase collapse activation alone cuts error by 8.0%, spectral batch normalization trims a further 1.4%, and the efficient residual block another 2.4%, and none of them costs accuracy for speed: the residual block and normalization actually run faster while helping the error."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Effect of each modeling contribution on a QM9 model, measured as the change relative to the previous row. Positive step/s is faster; negative RMSE is more accurate.",
+              "headers": [
+                "Contribution",
+                "Delta Steps/s [%]",
+                "Delta RMSE [%]"
+              ],
+              "rows": [
+                [
+                  "JAX implementation (baseline)",
+                  "33.7",
+                  "0.0"
+                ],
+                [
+                  "+ Phase collapse",
+                  "-4.6",
+                  "-8.0"
+                ],
+                [
+                  "+ Spectral batch norm",
+                  "7.8",
+                  "-1.4"
+                ],
+                [
+                  "+ Efficient residual block",
+                  "19.3",
+                  "-2.4"
+                ]
+              ],
+              "note": "Steps/s for the JAX row is the absolute throughput; later rows show the change from adding each component. A separate comparison confirms that phase collapse, spectral pooling and the new molecule representation each beat their prior alternatives, together driving the QM9 enthalpy error to 15.25 meV."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正起作用的是什么：一次消融"
+            },
+            {
+              "type": "paragraph",
+              "text": "既然作者主张关键在于重新设计而非蛮力扩展，那么消融实验就是全文最能说明问题的一张表。以 JAX 实现为基线，逐一打开每个新组件，表中报告它对吞吐（每秒步数）与误差（RMSE）在一个 QM9 模型上的影响。仅相位坍缩激活一项就把误差降低 8.0%，谱域批归一化再降 1.4%，高效残差块又降 2.4%；而且没有一项是用精度换速度：残差块与归一化在帮助降低误差的同时实际上还跑得更快。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各建模贡献在一个 QM9 模型上的效果，均为相对上一行的变化。步数为正表示更快，RMSE 为负表示更准。",
+              "headers": [
+                "贡献",
+                "Delta Steps/s [%]",
+                "Delta RMSE [%]"
+              ],
+              "rows": [
+                [
+                  "JAX implementation (baseline)",
+                  "33.7",
+                  "0.0"
+                ],
+                [
+                  "+ Phase collapse",
+                  "-4.6",
+                  "-8.0"
+                ],
+                [
+                  "+ Spectral batch norm",
+                  "7.8",
+                  "-1.4"
+                ],
+                [
+                  "+ Efficient residual block",
+                  "19.3",
+                  "-2.4"
+                ]
+              ],
+              "note": "JAX 行的 Steps/s 为绝对吞吐，后续各行显示加入该组件后的变化。另一组对比进一步证实：相位坍缩、谱域池化与新的分子表示各自都胜过其此前的替代方案，共同把 QM9 原子化焓误差压到 15.25 meV。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 312.44,
+        "end": 347.66,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 35.22,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.12,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 312.44,
+          "global_end": 347.66,
+          "relative_start": 0.0,
+          "relative_end": 35.22,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "Figure 1. A log-log map of the number of convolutions against feature-map size. Prior spherical CNNs (Esteves'18, Cohen'18, Esteves'20, Cobb'21) sit in the low-compute, low-resolution corner; this work (Ours) reaches an order of magnitude higher, into the range of planar networks such as VGG-19.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "An implementation built for the accelerator"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first ingredient is a complete rewrite in JAX of the spin-weighted spherical harmonic transforms, tuned to run fast and distributed on TPUs. The most counterintuitive design decision is to compute the Fourier transforms as dense matrix multiplications rather than fast Fourier transforms. On paper an FFT has lower asymptotic complexity, but on a TPU the matrix-multiply units are extraordinarily fast while shuffling data through memory is the real bottleneck, so a dense matmul wins in practice. The rewrite alone is about 3x faster than the original implementation, and because it runs distributed the authors can spread a model across up to 32 TPUs and speed it up by 100x or more. That headroom is what turns a one-order-of-magnitude jump from a wish into an experiment you can actually run."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "The clean summary of this work is that spherical CNNs were never fundamentally limited; they were simply poorly scaled. With a redesigned nonlinearity, normalization and residual block, and an implementation tuned to the way accelerators actually spend their time, these models finally reach the scale of real scientific problems, setting the state of the art on molecular property prediction and becoming genuinely competitive neural weather models. There is still a cost: the spectral convolutions remain heavy, training a large model can take days on 32 TPUs, and weather forecasting is not yet solved. But the authors release their JAX implementation as a platform, and the more interesting message is a direction, not a single result: for data that is naturally spherical and rotation-related, equivariance is worth scaling up rather than approximating away."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.4,
+              "caption": "图 1. 卷积数与特征图大小的对数坐标版图。以往的球面 CNN（Esteves'18、Cohen'18、Esteves'20、Cobb'21）都落在低运算量、低分辨率的一角；本工作（Ours）比它们高出一个数量级，进入了 VGG-19 这类平面网络所占据的区间。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结语"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作可以干净地总结为一句话：球面 CNN 从来不是被根本性地限制住了，它们只是没有被好好地扩展。有了重新设计的非线性、归一化与残差块，再加上一套贴合加速器实际开销方式的实现，这些模型终于能够触及真实科学问题的规模，在分子性质预测上刷新当前最优，并成为真正有竞争力的神经天气模型。代价当然还在：谱域卷积依旧沉重，训练一个大模型可能要在 32 个 TPU 上花上数天，天气预报也远未被解决。但作者把他们的 JAX 实现作为一个平台开源出来，而更值得记住的信息是一个方向，而非某个单一结果：对于那些天然生活在球面上、又与旋转紧密相关的数据，等变性值得被扩大，而不是被近似掉。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Scaling Spherical CNNs: making rotation-equivariant networks big enough to win",
+            "subtitle": "Google Research and MIT redesign the core of spherical CNNs and scale them an order of magnitude, reaching state of the art on QM9 and becoming competitive neural weather models."
+          },
+          "zh": {
+            "title": "让球面 CNN 真正长大：一次数量级的扩展",
+            "subtitle": "来自 Google Research 与 MIT 的工作重新设计了球面 CNN 的核心组件，并把模型规模扩大一个数量级，在 QM9 上达到当前最优，同时成为有竞争力的神经天气模型。"
+          }
+        }
+      },
+      "segment": {
+        "start": 347.66,
+        "end": 378.66,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 31.0,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.9,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 347.66,
+          "global_end": 378.66,
+          "relative_start": 0.0,
+          "relative_end": 31.0,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

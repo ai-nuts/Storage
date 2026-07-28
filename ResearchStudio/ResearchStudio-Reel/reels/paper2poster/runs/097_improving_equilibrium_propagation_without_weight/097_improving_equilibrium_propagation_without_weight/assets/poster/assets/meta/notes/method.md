@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Generalized holomorphic EP computes the exact neuronal error vector with finite nudges via a Cauchy integral over an oscillating teaching signal β(t), removing finite-nudge bias even for asymmetric Jacobians and allowing continuous-time estimation without separate phases. A new homeostatic loss penalizes the skew-symmetric part A of the Jacobian at the free fixed point, improving functional symmetry without imposing weight symmetry.
+
+Supporting detail: Bias is shown to scale with A: dβu* = δ − 2S⁻¹Aδ + o(·). The homeostatic loss is estimated with the Hutchinson trace estimator using Gaussian noise samples, and is added to cross-entropy scaled by λ_homeo.
+
+Narration: The method has two parts. To kill the finite-nudge bias, the authors build on holomorphic EP: they drive the network with an oscillating teaching signal and use a Cauchy integral from complex analysis to recover the exact error vector, no matter how large the nudge and even when the Jacobian is asymmetric. Better still, this can be estimated continuously over many oscillation cycles, removing the need for separate free and nudged phases. To tackle the second bias, they show it grows with the skew-symmetric part of the Jacobian, and introduce a homeostatic loss that penalizes exactly that part, estimated efficiently with the Hutchinson trace trick. The key insight is that this improves functional symmetry of the Jacobian without ever forcing the weights to be symmetric.

@@ -1,0 +1,171 @@
+{
+  "title": "NeurIPS 2023: Making Deep Nets Truly Scale-Equivariant, With Zero Error",
+  "subtitle": "Purdue University rebuilds every network layer in the Fourier domain so that resizing an image and running the network commute exactly, not just approximately.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "A cat is a cat whether it fills the frame or sits far away as a handful of pixels. We would like a vision network to behave the same way: shrink the object, and the features should shrink with it, while the predicted label stays put. This property is called scale-equivariance, and a line of scale-equivariant CNNs has pursued it by sharing weights across a bank of resized kernels. The catch is subtle but consequential. These methods are derived on paper in the continuous domain and only later discretized for a real, pixel-grid implementation, and that discretization step leaks. What comes out is a network that is approximately scale-equivariant, carrying a small but stubborn error that never quite reaches zero."
+    },
+    {
+      "type": "paragraph",
+      "text": "A NeurIPS 2023 paper from Purdue University argues that the residual error is not a tuning problem but a modeling one. Down-scaling a discrete signal is a signal-processing operation, and signal processing has a hard rule for it: before you throw away samples, you must low-pass filter, or high frequencies fold down into low ones and corrupt the result. The continuous-domain formulations simply had no place for that anti-aliasing filter. The paper's fix is to formulate down-scaling directly in the discrete domain, with anti-aliasing built in from the first line, and then to rebuild every network component as a Fourier layer that respects it. The payoff is a family of deep nets that is truly scale-equivariant, with an end-to-end equivariance error of exactly zero, by construction rather than by luck."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. Why ordinary CNNs are only approximately scale-equivariant. Feed a high-resolution digit and its ideally down-scaled version through the same CNN and the two feature maps disagree (top vs. bottom, red cross). The property we actually want is the reverse: down-scaling a high-resolution feature should recover exactly the feature computed from the low-resolution input. Building a network where that holds is the paper's goal.",
+      "width_inches": 3.6
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2311.02922  |  Code: https://github.com/ashiq24/Scale_Equivarinat_Fourier_Layer"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The problem: equivariance that isn't quite exact"
+    },
+    {
+      "type": "paragraph",
+      "text": "Scale-equivariance means that if you resize the input, the network's internal features transform in the corresponding way and the final label is unchanged. Recent scale-equivariant networks, such as SESN, DSS, and DISCO, chase this by weight-sharing across scales: the same kernel, resized, is applied at each scale. Derived in the continuous domain, the idea is clean. But real images live on a discrete grid, so the continuous kernels have to be sampled, and that sampling reintroduces exactly the aliasing the continuous math never had to worry about. The result is a measurable equivariance error, on the order of a few tenths in the paper's tables, which means the guarantee these methods advertise holds only approximately."
+    },
+    {
+      "type": "paragraph",
+      "text": "The paper's diagnosis is that the missing ingredient is anti-aliasing. The Nyquist sampling theorem says that when you subsample a discrete signal, you must first remove the frequencies that the coarser grid can no longer represent; skip that step and those high frequencies alias into low ones, the same effect that makes wagon wheels spin backwards on film. Because prior work down-scaled in the continuous domain, there was no natural place to insert this filter. Getting it wrong is precisely what produces the residual error."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The idea: define down-scaling correctly, then obey one frequency rule"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors start by pinning down what down-scaling should mean. They define it as ideal downsampling: first apply an ideal low-pass filter that zeros out every frequency above the new grid's Nyquist limit, then subsample. Figure 2 shows this filtering as a pointwise product in the frequency domain, where the filter keeps a band of low frequencies and discards the rest. With this definition in hand, the anti-aliasing is no longer an afterthought bolted onto a continuous derivation; it is the very definition of the operation the network must be equivariant to."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Ideal downsampling as frequency-domain filtering. The signal spectrum X is multiplied pointwise by an ideal low-pass filter H that is 1 on a band of low frequencies and 0 elsewhere, leaving only the retained low frequencies (H ⊙ X). Removing the high frequencies before subsampling is exactly the anti-aliasing step that prior continuous-domain formulations had no place for.",
+      "width_inches": 5.2
+    },
+    {
+      "type": "paragraph",
+      "text": "From this definition the paper derives its central condition, stated as Claim 1: a deep net is scale-equivariant under ideal downsampling if and only if every output frequency depends only on input frequencies that are equal or lower. Intuitively, information may flow from low frequencies up to high ones but never the other way, so that discarding the high band commutes with running the layer. This single rule, one output frequency reads only equal-or-lower input frequencies, becomes the design constraint that every layer must satisfy."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Rebuilding the network as Fourier layers"
+    },
+    {
+      "type": "paragraph",
+      "text": "Enforcing the frequency rule means redesigning each standard component. The convolution becomes a spatially-local Fourier layer: it operates in the frequency domain but constrains its kernel so the learned features stay spatially local, keeping the useful inductive bias of a CNN while obeying the dependency structure. The non-linearity is applied band by band so it does not mix a high frequency back into a low one. Pooling is likewise re-expressed in the Fourier domain to preserve the same structure. On top of this equivariant feature extractor sits a per-scale classifier that predicts once at every scale while sharing a single MLP across scales through Fourier zero-padding. Because every operation runs in the Fourier domain, a layer costs on the order of |A| N log N + K N, keeping the whole design practical."
+    },
+    {
+      "type": "paragraph",
+      "text": "One more piece ties prediction quality to scale. The authors add a hinge consistency loss that penalizes the model whenever a higher-resolution image is predicted worse than its own down-scaled version. The intuition is simple: more resolution should never hurt, so the loss nudges the higher-resolution prediction to be at least as good as the coarser one, encouraging scale-consistent behavior on top of the exact equivariance the architecture already guarantees."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Results: exactly zero error, and it helps most where it is hardest"
+    },
+    {
+      "type": "paragraph",
+      "text": "The model is evaluated on the two standard scale-equivariance benchmarks, MNIST-scale (resolutions from 8×8 up to 28×28) and STL10-scale (48 up to 97), against baselines including SESN, DSS, SI-CovNet, SS-CNN, DISCO, and a plain Fourier CNN. On MNIST-scale under ideal downsampling with all scales, it reaches 0.9889 accuracy and 0.9716 scale-consistency, the best on every metric, and, crucially, an equivariance error of exactly 0.00 where strong baselines like DISCO still register around 0.44. The zero is not a rounding artifact; it is guaranteed by the construction."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. MNIST-scale accuracy, scale-consistency, and equivariance error under ideal downsampling (all scales). The proposed model leads on every metric, and its equivariance error is exactly zero by construction while the strongest baselines retain a measurable residual.",
+      "headers": [
+        "Model",
+        "Acc. ↑",
+        "Scale-Con. ↑",
+        "Equi-Err. ↓"
+      ],
+      "rows": [
+        [
+          "CNN",
+          "0.9737",
+          "0.6621",
+          "—"
+        ],
+        [
+          "SESN",
+          "0.9791",
+          "0.6640",
+          "—"
+        ],
+        [
+          "DSS",
+          "0.9731",
+          "0.6503",
+          "—"
+        ],
+        [
+          "DISCO",
+          "0.9856",
+          "0.5585",
+          "0.44"
+        ],
+        [
+          "Fourier CNN",
+          "0.9713",
+          "0.2421",
+          "0.28"
+        ],
+        [
+          "Ours",
+          "0.9889",
+          "0.9716",
+          "0.00"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "The advantage widens on the harder benchmark. On STL10-scale, natural color images where approximate methods struggle, the model reaches 0.7332 accuracy against 0.5844 for the next-best Fourier CNN, a gain of roughly 15 points, again with zero equivariance error. It also degrades gracefully under non-ideal downsampling, where the anti-aliasing filter is imperfect and Gibbs ringing appears: even there it stays the best model at 0.9880 accuracy, 0.9760 scale-consistency, and a small 0.05 error. And it is the most data-efficient of the group, reaching 0.9606 accuracy with just 1,000 training samples on MNIST-scale versus DISCO's 0.9457."
+    },
+    {
+      "type": "paragraph",
+      "text": "A feature visualization gives a sense of what the equivariant layers actually learn. Across both ideal and non-ideal downsampling, the model's feature maps trace spatially local structure, the contours and edges of each digit, rather than the diffuse, resolution-dependent patterns an ordinary CNN produces. The spatially-local Fourier convolution is doing what it was designed to do."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. Learned features under ideal (top rows) and non-ideal (bottom) downsampling. From the input digit the model produces feature maps that highlight spatially local structure, digit contours and edges, in both settings, evidence that the spatially-local Fourier convolution keeps a CNN-like inductive bias while remaining exactly scale-equivariant.",
+      "width_inches": 3.9
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Ablation: the consistency loss earns its place"
+    },
+    {
+      "type": "paragraph",
+      "text": "To check that the consistency loss is doing real work rather than riding along, the authors remove it and retrain at several training-set sizes. Both accuracy and scale-consistency drop at every size: at 5,000 samples scale-consistency falls from 0.9296 to 0.9150, and at 2,500 samples from 0.8906 to 0.8633. The loss reliably improves scale-consistent behavior, which is why it stays in the final recipe. The authors also report that applying the non-linearity directly in the frequency domain, though it preserves equivariance, hurt classification, which is why they use a spatial-domain scale-equivariant non-linearity instead."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway"
+    },
+    {
+      "type": "paragraph",
+      "text": "The lasting lesson is to treat scale-equivariance as a signal-processing problem. Once you define down-scaling as ideal, anti-aliased downsampling and require every output frequency to read only equal-or-lower input frequencies, you can assemble a network from Fourier layers that is exactly scale-equivariant, with provably zero error instead of the small residuals that trailed earlier methods."
+    },
+    {
+      "type": "paragraph",
+      "text": "The guarantee is not bought with accuracy. The model matches or beats prior scale-equivariant CNNs and is markedly more data-efficient, with the largest gains showing up on the harder natural-image setting. It is worth being precise about the boundary, though: the exact-zero guarantee lives in the ideal-downsampling regime, where theory and implementation coincide. Under non-ideal downsampling, when the anti-aliasing filter is imperfect and Gibbs ringing creeps in, a small error returns, even if the model still comes out ahead of every baseline."
+    },
+    {
+      "type": "paragraph",
+      "text": "More broadly, the paper is a reminder that many of the \"approximate\" equivariances in deep learning are approximate only because a fundamentally discrete operation was modeled as if it were continuous, and then discretized after the fact. Treating the operation the network must respect as a genuine signal-processing step, with anti-aliasing built in from the start rather than patched in at the end, is what converts an approximate symmetry into an exact one. The same recipe, define the discrete operation correctly and then constrain every layer to commute with it, may well carry over to the many other transformations that deep networks are routinely asked to respect."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2311.02922  |  Code: https://github.com/ashiq24/Scale_Equivarinat_Fourier_Layer"
+    }
+  ]
+}

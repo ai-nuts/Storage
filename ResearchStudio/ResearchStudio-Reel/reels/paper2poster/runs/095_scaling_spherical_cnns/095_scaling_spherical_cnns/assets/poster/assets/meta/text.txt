@@ -1,0 +1,980 @@
+                                               Scaling Spherical CNNs
+
+
+                                Carlos Esteves 1 Jean-Jacques Slotine 2 Ameesh Makadia 1
+
+
+                           Abstract
+       Spherical CNNs generalize CNNs to functions on
+       the sphere, by using spherical convolutions as the
+       main linear operation. The most accurate and effi-
+       cient way to compute spherical convolutions is in
+       the spectral domain (via the convolution theorem),
+       which is still costlier than the usual planar convo-
+       lutions. For this reason, applications of spherical
+       CNNs have so far been limited to small problems
+       that can be approached with low model capacity.
+       In this work, we show how spherical CNNs can
+       be scaled for much larger problems. To achieve
+       this, we make critical improvements including
+       novel variants of common model components, an
+       implementation of core operations to exploit hard-          Figure 1. Previous spherical CNNs were limited to low resolutions
+       ware accelerator characteristics, and application-          and relatively shallow models. In this work, we scale spherical
+       specific input representations that exploit the prop-       CNNs by one order of magnitude and show that they can be com-
+       erties of our model. Experiments show our larger            petitive and even outperform state-of-the-art graph neural networks
+       spherical CNNs reach state-of-the-art on several            and transformers on scientific applications. In the figure, the num-
+                                                                   ber of convolutions in a layer mapping between Cin and Cout
+       targets of the QM9 molecular benchmark, which
+                                                                   channels is counted as Cin Cout , and the feature map size for a
+       was previously dominated by equivariant graph
+                                                                   H×W feature with C channels is the number of entries HW C.
+       neural networks, and achieve competitive perfor-
+       mance on multiple weather forecasting tasks. Our
+       code is available https://github.com/                       Much of the ensuing research into designing spherical
+       google-research/spherical-cnn.                              CNNs (Cohen et al., 2018; Kondor et al., 2018; Esteves
+                                                                   et al., 2020) fulfilled these objectives, providing theoretical
+                                                                   guarantees on rotation equivariance, the ability to learn local
+1. Introduction                                                    and expressive filters, and faithful models of both scalar and
+Spherical convolutional neural networks (Cohen et al., 2018)       vector fields on the sphere.
+were introduced as a response to the convolutional neural          Nonetheless, these models have not impacted many real-
+networks (CNNs) that were central to a series of break-            world applications. One reason is that learning from large
+throughs in computer vision (Krizhevsky et al., 2012; He           datasets requires models with adequate representational ca-
+et al., 2016; Simonyan & Zisserman, 2015; Ronneberger              pacity, and it has not yet been shown that spherical convolu-
+et al., 2015). Given the prevalence of spherical data across       tion layers can be composed to construct such large models
+many applications, it seemed sensible to design neural net-        effectively. See Figure 1 – there is no spherical CNN archi-
+works that possess attributes analogous to those that con-         tecture used in practice analogous to common CNN models
+tribute to the success of planar CNNs, such as translation         such as VGG19 (Simonyan & Zisserman, 2015).
+equivariance, spatial weight sharing, and localized filters.
+                                                                   We are inspired by scientific applications in two areas, drug
+   1
+    Google Research, New York, NY, USA 2 Nonlinear Systems         discovery and climate analysis, that have the potential for
+Laboratoty, MIT, Cambridge, MA, USA. Correspondence to: Car-       broad societal impact. Naturally, both have drawn great in-
+los Esteves <machc@google.com>.                                    terest from the machine learning community – for example
+Proceedings of the 40 th International Conference on Machine       AlphaFold for predicting 3D structure of proteins (Jumper
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright         et al., 2021), and a litany of deep learning approaches for
+2023 by the author(s).                                             molecular property prediction (Wiedera et al., 2020). Prop-
+
+                                                               1
+                                                   Scaling Spherical CNNs
+
+erty prediction of small molecules may also be relevant in           These advancements, along with novel domain-specific in-
+the design of drugs targeting the interaction between two            put feature representations, lead to state of the art perfor-
+proteins. For instance, current cancer drugs based on disrupt-       mance on the QM9 benchmark, which has been mostly dom-
+ing the binding of tumor suppressor p53 and ubiquitin ligase         inated by variations of graph neural networks and transform-
+MDM2 (which targets p53 for degradation) have very low               ers. Our models are also competitive in multiple weather
+efficiency (Sun, 2006). The second area of interest is short         forecasting settings, showing, for the first time, that spheri-
+and medium-range weather forecasting (Ravuri et al., 2021;           cal CNNs are viable neural weather models.
+Lam et al., 2022; Rasp et al., 2020). Climate interventions
+                                                                     This work shows the feasibility of, and introduces best prac-
+are being considered to mitigate the effects of increased
+                                                                     tices for, scaling spherical CNNs. Based on our findings,
+greenhouse gas concentrations in the atmosphere1 . As such
+                                                                     we expect our JAX (Bradbury et al., 2018) implementation
+interventions represent uncharted and potentially dangerous
+                                                                     will provide a platform for further research with spherical
+territory, climate prediction models may prove important to
+                                                                     CNNs targeting real world applications.
+improve their safety and effectiveness.
+Intuitively, both molecular property prediction and climate          2. Related work
+forecasting problems should benefit from spherical CNNs.
+The intrinsic properties of molecules are invariant to rota-         2.1. Spherical CNNs
+tions of the 3D structure (atom positions), so representa-
+                                                                     Spherical CNNs have been introduced as the natural exten-
+tions that are rotation equivariant by design would provide
+                                                                     sion of standard CNNs to the sphere (Cohen et al., 2018;
+a natural way to encode this symmetry. However, QM9 (Ra-
+                                                                     Esteves et al., 2018), with spherical convolutions computed
+makrishnan et al., 2014), a current standard benchmark for
+                                                                     via generalized Fourier transforms, where the translation
+this problem, contains 134K molecules, over 18 times larger
+                                                                     equivariance is generalized to 3D rotation equivariance.
+than the dataset existing spherical CNNs can accommo-
+                                                                     Later work introduced spectral nonlinearities (Kondor et al.,
+date (Rupp et al., 2012). The scale of this problem neces-
+                                                                     2018), and extended the equivariance to conformal transfor-
+sitates models with much greater representation power and
+                                                                     mations (Mitchel et al., 2022).
+computational efficiency.
+                                                                     One set of approaches applies filters directly to discrete
+Similarly, climate forecasting datasets (Rasp et al., 2020)
+                                                                     samples of the spherical input. Perraudin et al. (2019) used
+represent samples of the Earth’s atmospheric state and thus
+                                                                     a rotation equivariant graph CNN based on isotropic filters.
+are ideally represented as spherical signals. Furthermore,
+                                                                     Cohen et al. (2019) considered charts of an icosahedral grid,
+in meaningful forecasting applications, models will rely on
+                                                                     where filters are rotated and shared, yielding approximate
+numerous input variables and the objective is to predict at
+                                                                     rotation equivariance. Shakerinava & Ravanbakhsh (2021)
+a high spatial resolution (e.g. 1◦ angular resolution or 64k
+                                                                     generalized Cohen et al. (2019) to other grids, using less
+samples). Such input and output sizes demand large models.
+                                                                     constrained filters that maintain equivariance.
+In this work we present a systematic and principled approach
+                                                                     Tangentially related are methods that operate on the sphere
+to scale spherical CNNs. Our contributions include
+                                                                     but are not rotation-equivariant (Coors et al., 2018; Jiang
+   • a design of large scale spherical CNN models, which             et al., 2019; Su & Grauman, 2019).
+     includes an efficient implementation of spin-weighted
+     spherical harmonic transforms tailored to TPUs,                 There have been attempts at improving spherical CNN’s
+   • general purpose layers and activations that improve             efficiency. Esteves et al. (2020) introduced spin-weighted
+     expressivity and efficiency,                                    spherical CNNs, which brought anisotropic filters at smaller
+   • application-specific modeling for molecules and                 cost than the full rotation group Fourier transforms. Cobb
+     weather forecasting.                                            et al. (2021) counteracted the feature size expansion caused
+                                                                     by the tensor products in Kondor et al. (2018) with heuris-
+As the contributions listed above hint at, we observe a naive
+                                                                     tics to select the representation type at each layer. McEwen
+scaling of existing spherical CNN architectures (simply in-
+                                                                     et al. (2022) handled high resolution spherical signals by
+creasing depth and/or width) is insufficient. Rather, our
+                                                                     first applying a scattering network with fixed filters (not
+larger models required a measured design that altered mul-
+                                                                     trainable), followed by downsampling and a spherical CNN.
+tiple standard components such as the nonlinearity, batch
+                                                                     Ocampo et al. (2022) approximated the group convolution
+normalization, and residual blocks – all of these improved
+                                                                     integral using a quadrature rule, avoiding expensive general-
+both efficiency and test performance (see Table 1).
+                                                                     ized Fourier transforms. These previous attempts were still
+  1
+    https://www.ametsoc.org/index.                                   limited to small and sometimes contrived applications.
+cfm/ams/about-ams/ams-statements/
+statements-of-the-ams-in-force/                                      In this paper, we scale spherical CNNs to a number of oper-
+climate-intervention                                                 ations and feature resolutions one order of magnitude larger
+
+                                                                 2
+                                                   Scaling Spherical CNNs
+
+than prior work (see Figure 1), and apply them successfully         hedral grids. This orientable CNN model does not offer
+to large benchmarks on molecule and weather modeling,               equivariance to 3D rotations and thus expects inputs to be
+showing that they can be comparable and sometimes surpass           consistently oriented which is true of climate data.
+the state-of-the-art graph and transformer-based models.
+                                                                    Keisler (2022) recently introduced a graph neural network
+                                                                    model inspired by Battaglia et al. (2018). The central com-
+2.2. Deep learning for molecules                                    ponent of this model is a message passing network operating
+There have been many flavors of message-passing graph               on an icosahedral grid. A similar approach is taken in Lam
+neural networks designed specifically for molecules. See            et al. (2022), with a multi-scale mesh graph representation.
+Wiedera et al. (2020) and Han et al. (2022) for relevant sur-       The datasets used in most of the recent deep learning re-
+veys, and a broader discussion not limited to deep learning         search for climate modeling, such as WeatherBench (Rasp
+techniques can be found in von Lilienfeld et al. (2020). Re-        et al., 2020), consists of equiangular grids derived from
+garding the deep learning approaches, much of the recent            reanalysis of the ERA5 data (Hersbach et al., 2020).
+work has focused on 3D equivariant or invariant models.
+Examples of invariant models include SchNet (Schütt et al.,        3. Background
+2017) and DimeNet++ (Klicpera et al., 2020), where the
+update function only uses invariant information such as             Spherical CNNs. The ubiquitous convolutional neural net-
+bond angles or atomic distances. E(n)-equivariant net-              works (CNNs) for image analysis have convolutions on the
+works (Satorras et al., 2021) propose an equivariant up-            plane as their main operation,
+date function for node coordinates that operates on direc-                                     Z
+tional information (displacement between atoms), although                       (f ∗ k)(x) =       f (t)k(x − t) dt,
+the model instantiation for molecules skips this update                                       t∈R2
+leading to strict invariance. Related, Tensor Field Net-
+                                                                    for an input function f and learnable filter k. This opera-
+works (Thomas et al., 2018) also construct an equivariant
+                                                                    tion brings filter sharing between different regions of the
+update function, this one is based on spherical harmon-
+                                                                    image via translation equivariance, which means that given
+ics. Cormorant (Anderson et al., 2019) and Steerable E(3)-
+                                                                    a shifted input f ′ (x) = f (x + h), the convolution output
+equivariant GNNs (Brandstetter et al., 2022) can be seen as
+                                                                    also shifts: (f ′ ∗ k)(x) = (f ∗ k)(x + h). This is one of the
+extensions of TFN, the former noted for using the Clebsch-
+                                                                    main reasons for CNNs high performance.
+Gordan non-linearity, and the latter generalizing to E(n)
+equivariance. PaiNN (Schütt et al., 2021) is a related model       Spherical CNNs generalize this notion to functions on the
+whose gated equivariant update block does not rely on spher-        sphere (f : S 2 7→ R) by using spherical convolutions,
+ical harmonics. This work also closely examines the loss                                      Z
+of directional information in invariant models and finds                     (f ∗ k)(x) =           f (gν)k(g −1 x) dg,    (1)
+equivariance allows for models with reduced model size.                                    g∈SO(3)
+Related to the equivariant graph models are the equivari-
+ant transformer approaches such as TorchMD-Net (Thölke             where SO(3) is the group of 3D rotations (which can be rep-
+& Fabritiis, 2022) which updates scalar and vector node             resented by special orthogonal 3 × 3 matrices), and ν ∈ S 2
+features with self-attention.                                       is a fixed point. Any two points on the sphere S 2 are related
+                                                                    by a rotation in 3D (in technical terms, the sphere is a homo-
+2.3. Deep learning for weather modeling                             geneous space of the group of rotations), and the spherical
+                                                                    convolution is equivariant to 3D rotations. Equation (1)
+Mudigonda et al. (2017) and Weyn et al. (2019) utilize              was adopted by Esteves et al. (2018), while Cohen et al.
+vanilla CNNs for extreme weather segmentation and short-            (2018) lifts from S 2 to SO(3) and performs convolutions
+term forecasting (“NowCasting”), respectively, while Rasp           on the group, which have an almost identical expression to
+& Thuerey (2021) uses a ResNet model. Other methods for             Equation (1) but with x ∈ SO(3).
+NowCasting use UNets (Agrawal et al., 2019) and condi-
+                                                                    Esteves et al. (2020) introduced spin-weighted spherical
+tional generative modeling (Ravuri et al., 2021).
+                                                                    CNNs to overcome the limited expressivity of Esteves et al.
+In Weyn et al. (2020) and Lopez-Gomez et al. (2022), a              (2018) and the computational overhead of Cohen et al.
+cubed sphere representation (projecting the sphere onto six         (2018). Spin-weighted spherical functions are complex-
+planar segments) is proposed. This approach enjoys some of          valued and their phase changes under rotation. They can also
+the computational benefits of traditional CNNs while more           be interpreted as functions on SO(3) (Boyle, 2016) with
+closely observing the underlying spherical topology. Jiang          sparse spectrum. Convolution is computed through products
+et al. (2019) introduces a model for unstructured grids with        of spin-weighted spherical harmonics coefficients (Esteves
+experiments on extreme weather segmentation on icosa-               et al., 2020).
+
+                                                                3
+                                                             Scaling Spherical CNNs
+
+Computing generalized convolutions. Approximating
+                                                                              Table 1. Effects of our modeling and implementation contributions.
+spherical and rotation group convolutions with a discrete
+                                                                              Differences are shown with respect to the results of the previous
+sum is problematic because there is no arbitrarily dense self-                row. A model similar to the one described in Section 5.1.3 for
+similar grid on the sphere and on the rotation group. Hence,                  enthalpy of atomization on QM9 was used for this analysis.
+these convolutions are most efficiently and accurately com-
+puted in the spectral domain, via products of (generalized)                                             ∆ Steps/s [%] ↑      ∆ RMSE [%] ↓
+Fourier coefficients (Driscoll & Healy, 1994; Kostelec &
+Rockmore, 2008; Huffenberger & Wandelt, 2010), which                          JAX implementation             33.7                  0.0
+correspond to the spherical harmonics decomposition coef-                     Phase collapse                 −4.6                 −8.0
+ficients fˆm
+           ℓ
+             for degree ℓ and order m in the case of Equa-                    No ∆ symmetries                16.3                  0.0
+tion (1). Even the fastest algorithms for spherical and rota-                 Use DFT                        21.4                  0.0
+tion group convolutions are still much slower than a planar
+                                                                              Spectral batch norm             7.8                 −1.4
+convolution with a 3 × 3 kernel on modern devices, which
+has so far limited the applications of spherical CNNs.                        Efficient residual             19.3                 −2.4
+
+In this paper, we adapt the algorithm of Huffenberger &
+Wandelt (2010) for computing spin-weighted transforms,
+                                                                                            q
+                                                                                              2ℓ+1
+                                                                              where αℓ =       4π . Again, the Wigner ∆ symmetries
+                      Z
+                 ˆℓ
+               s fm =    f (x)s Ymℓ (x) dx,          (2)
+                                                                              imply Gm′ m = (−1)m+s G(−m′ )m so the full G is recon-
+                         S2                                                   structed by computing only half of its values.
+                         X X
+               f (x) =                   ˆℓ    ℓ
+                                       s fm s Ym (x),               (3)
+                                                                              The algorithm just described was adopted and implemented
+                          ℓ    |m|≤ℓ
+                                                                              in TensorFlow (Abadi et al., 2016) with no changes by
+where s Ymℓ is the spin-weighted spherical harmonic of spin                   Esteves et al. (2020). In this work, we offer a complete
+s, degree ℓ, and order m, and 0 Ymℓ corresponds to the stan-                  rewrite in JAX, tuned for TPUs. This is by itself faster, but
+dard spherical harmonic Ymℓ . The forward transform imple-                    we also propose modifications to the algorithm to further
+mentation rewrites Equation (2) as                                            improve its speed (see Section 4.2).
+                      r           ℓ
+   ˆℓ         s   m+s   2ℓ + 1 X                                              4. Method
+  f
+ s m  = (−1)    i                    ∆ℓm′ m ∆ℓm′ (−s) Im′ m ,
+                          4π    ′     m =−ℓ                                   We contribute a fast implementation of spin-weighted spher-
+                                                                    (4)       ical CNNs in JAX, optimized for TPUs, that can run dis-
+                                                                              tributed in dozens of devices. The implementation is about
+where ∆ℓm,m′ = dℓm,m′ (π/2) is the Wigner ∆ function, dℓ                      3× faster than the original, and the ability to run distributed
+is a Wigner (small) d matrix, and Im′ m is an inner product                   can speed it up 100× or more (we use up to 32 TPUs).
+with f over the sphere, computed by extending f to the
+torus and evaluating standard fast Fourier transforms (FFTs)                  Moreover, we introduce a new nonlinearity, normalization
+on it. Symmetries of the Wigner ∆ enable rewriting the sum                    layer, and residual block architecture that are more accurate
+in Equation (4) with half the number of terms as                              and efficient than the alternatives. Table 1 summarizes the
+                                                                              effects on efficiency and accuracy.
+  ℓ
+  X                                    ℓ
+                                       X
+         ∆ℓm′ m ∆ℓm′ (−s) Im′ m =              ∆ℓm′ m ∆ℓm′ (−s) Jm′ m ,       4.1. Modeling
+m′ =−ℓ                                 m′ =0
+                                                                    (5)       Phase collapse nonlinearity. Designing equivariant nonlin-
+                                                                              earities for equivariant neural networks containing vector
+where Jm′ m = Im′ m + (−1)m+s I−m′ m for m′ > 0 and                           or tensor features is challenging. A number of equivari-
+J0m = I0m .                                                                   ant activations appear in the literature (Weiler et al., 2018;
+The inverse transform rewrites Equation (3) as                                Kondor et al., 2018; de Haan et al., 2021; Xu et al., 2022)
+                                                                              and typically the best performing one is problem-dependent.
+               ℓ
+               X      ℓ
+                      X           ′
+                                                                              Spin-weighted spherical CNNs require specialized activa-
+ f (θ, ϕ) =                   eim θ eimϕ Gm′ m ,                    (6)       tions for nonzero spin features, and Esteves et al. (2020)
+              m′ =−ℓ m=−ℓ                                                     chose a simple magnitude thresholding.
+                              X
+  Gm′ m = (−1)s im+s              αℓ ∆ℓ(−m′ )(−s) ∆ℓ(−m′ )m s fˆm
+                                                                ℓ
+                                                                  ,           Guth et al. (2021) introduced phase collapse nonlineari-
+                              ℓ                                               ties for complex-valued planar CNNs with wavelet filters,
+                                                                    (7)       motivated by 1) translation invariance is usually desirable
+
+                                                                          4
+                                                       Scaling Spherical CNNs
+
+for image classification, 2) in the spectral domain, trans-              the computation of the higher frequency coefficients within
+lations correspond to phase shifts, 3) when applying com-                a spin-spherical Fourier transform. Spectral pooling is also
+plex wavelet filters to images, which yields complex feature             conceptually different than spatial because it is a global
+maps, input translations approximately correspond to fea-                operation while spatial pooling is localized.
+ture phase shifts, 4) using the modulus as part of the acti-
+                                                                         One potential issue with spectral pooling is in residual lay-
+vation collapses the phase, achieving translation invariance
+                                                                         ers, where the downsampling happens in the first Fourier
+and increasing class separability.
+                                                                         transform, so the downsampled spatial input is never com-
+We adapt these ideas to spin-weighted spherical functions;               puted and hence cannot be used in the skip-connection. Our
+in our case, we want rotation invariance (or equivariance) for           solution is to add the residual connection between Fourier
+functions on the sphere. The features are complex-valued                 coefficients, which is enabled by the spectral batch nor-
+and an input rotation results in phase shifts when the spin              malization described earlier. Figure 2 shows our residual
+number is nonzero. Thus, using the modulus as part of the                block. Table 1 shows it is faster and performs better than
+activation eliminates these shifts and brings some degree of             the alternative with spatial pooling and batch norms.
+invariance. The activation mixes all spins but only updates
+the zero-spin features. Since the nonzero spin features are
+unaffected, no information is lost by collapsing the phase.
+Formally, let x0 ∈ CC be the stack of C channels of zero
+                                                                         Figure 2. Our efficient residual block contains spin-weighted spher-
+spin at some position on the sphere, and x ∈ CSC be a stack              ical Fourier transforms (FT) and inverses (IFT), multiplication with
+of all S spins in the feature map (including zero). We apply             filter coefficients (∗K), activation (σ) and spectral batch normal-
+                                                                         ization (BN). The residual connection happens in Fourier space.
+                 x0 ← W1 x0 + W2 |x| + b,                                Optionally, spectral pooling is performed at the first FT block.
+where W1 , W2 and b are learnable parameters. This oper-
+ation updates only the spin zero; subsequent convolutions                4.2. Efficient TPU implementation
+propagate information to the nonzero ones. Table 6 shows
+                                                                         We implement the spin-weighted spherical harmonics trans-
+this nonlinearity brings sizeable performance improvements.
+                                                                         forms aiming for fast execution on TPUs (Jouppi et al.,
+Spectral batch normalization. Previous spherical CNNs                    2017)2 . This drives our design decisions and sometimes
+computed spherical convolutions on the spectral domain                   departs from the optimal implementation for CPUs as in-
+and batch normalization on the spatial domain. Batch                     troduced by Huffenberger & Wandelt (2010). The main
+normalization requires approximating the statistics with a               difference is that TPUs perform matrix multiplications ex-
+quadrature rule in the spatial domain. Moreover, in the                  tremely fast, but memory manipulations like slicing and
+spin-weighted case, zero and nonzero spins need different                concatenating tensors may quickly become a bottleneck.
+treatments, which is inefficient.
+                                                                         In particular, the use of Wigner ∆ symmetries to reduce
+We propose to compute the batch normalization in the spec-               the number of elements computed in Equations (4) and (7)
+tral domain instead. Consider that 1) the coefficient 0 f ℓ              requires slicing, modifying and reconstructing the original
+for ℓ = 0 corresponds to the function average, and 2) the                tensors in order to cut the number of operations in half. It
+variance of the rest of the coefficients is the variance of the          turns out this is slower on TPU than just computing twice
+function. The normalization is then computed by 1) setting               as many operations without the intermediate steps for the
+   0                                                                     architecture we consider, so we skip the computation of
+0 f to zero and 2) dividing all coefficients by the variance.
+Similarly, a learnable bias is applied by directly setting 0 f 0 ,       Jnm (Equation (5)) completely, and compute all entries of
+and a learnable scale is applied to all coefficients.                    Gnm (Equation (7)) in a single step.
+The spectral batch norm is shown to be faster and more                   Furthermore, Huffenberger & Wandelt (2010) leverage the
+accurate than the spatial one in Table 1. It also enables a              Fast Fourier transform (FFT) algorithm to reduce asymp-
+faster residual block as described next.                                 totic complexity of the standard Fourier transforms (from
+                                                                         O(n2 ) to O(n log n)). While there are on-device imple-
+Spectral pooling and efficient residual block. In contrast
+                                                                         mentations of the FFT, it turns out that in our cases it is
+with Esteves et al. (2020), and similarly to Cohen et al.
+                                                                         significantly faster to compute Fourier transforms as ma-
+(2018), we perform pooling in the spectral domain, which
+                                                                         trix multiplications via the discrete Fourier transform (DFT)
+proves to be faster and more accurate. This is because
+                                                                         matrix. This is because, in a typical neural network pass,
+the spatial pooling is sensitive to the sampling grid so it
+                                                                         we will compute thousands of Fourier transforms (one for
+is only approximately rotation-equivariant; it also requires
+                                                                         each channel for each convolution), but the resolution of
+approximation with quadrature weights which adds to the
+                                                                            2
+errors. Spectral pooling is implemented by simply skipping                      The implementation is compatible with GPUs as well.
+
+                                                                     5
+                                                   Scaling Spherical CNNs
+
+each transform is relatively small (up to n = 256 in our
+experiments), so the constant terms dominate and there is
+no benefit in reducing the asymptotic complexity. Table 1
+quantifies the efficiency increase of these changes.
+
+5. Experiments
+5.1. Molecular property regression
+We first demonstrate scaling spherical CNNs for molecu-              Figure 3. We represent a molecule with a set of Z functions on the
+lar property regression from atoms and their positions in            sphere for each atom, where Z is the number of atom types in the
+space, a task that was so far dominated by rotation equiv-           dataset. Consider the H2 O molecule in the figure and let Z = 2;
+ariant graph neural networks and transformer-based models            the rectangles show the two channels for each atom. The values
+(Wiedera et al., 2020; Klicpera et al., 2020; Liao & Smidt,          on the sphere come from physically-based interactions between
+2022; Thölke & Fabritiis, 2022). Previous applications of           pairs of atoms, smoothed with a Gaussian kernel, and aggregated
+spherical CNNs (Cohen et al., 2018; Kondor et al., 2018;             over atom types. For example, the sphere marked with an H on
+Cobb et al., 2021) considered only the QM7 (Rupp et al.,             the top right sums up the Coulomb forces between the oxygen the
+2012) dataset, which has 7165 molecules with up to 23                two hydrogen atoms.
+atoms, and a single regression target. However, the much             input channel of atom i corresponding to atom type z as
+larger QM9 (Ramakrishnan et al., 2014) dataset, which                                                           (x·r    )2
+                                                                                                X zi zj       − β|rij |
+contains 134 000 molecules with up to 29 atoms and 12                               fiz (x) =             e            ij    ,
+different regression targets, has supplanted QM7 as the stan-                                       |r |p
+                                                                                                z =z ij
+                                                                                                j
+dard benchmark for this task. The molecules are described
+by their atom types and 3D positions, and labeled with geo-          where β and p are hyperparameters. We set β such that
+metric, energetic, electronic, and thermodynamic properties          the value is reduced by 95% at 45◦ away from rij . We
+such as enthalpies and free energies of atomization.                 stack the features for p = 2 and p = 6, which correspond
+                                                                     to the power laws of Coulomb and van der Waals forces,
+In this section, we report the first results of spherical CNNs       respectively. These powers have been shown to perform
+on QM9. The main reason to employ spherical CNNs for                 well by Huang & von Lilienfeld (2016) and we confirm
+this task is their equivariance to 3D rotations, since the           their findings in our setting.
+molecule properties do not change under rotations. A sec-
+ondary reason is that we can design rich physically-based            Thus, a molecule with N atoms in a dataset containing Z
+features when mapping from molecule to sphere.                       different atom types is represented by 2N Z feature maps.
+                                                                     The input representation contains global information since
+5.1.1. S PHERICAL REPRESENTATION OF MOLECULES                        it aggregates interactions between all atoms, however the
+                                                                     power law makes it biased towards nearby atoms. Figure 3
+The first step for applying spherical CNNs is to represent           depicts the spherical representation of an H2 O molecule.
+the molecule as spherical functions. Cohen et al. (2018)
+proposed a map where spheres are placed around each atom,            This representation is computed on-device using JAX primi-
+and points on each sphere are assigned a Coulomb-like quan-          tives and thus is differentiable, enabling future applications
+tity using the charge of the central atom and the distances          such as predicting molecule deformations or interactions.
+between points on the sphere and other atoms.
+                                                                     5.1.2. A RCHITECTURE AND TRAINING
+We propose an alternative formulation which performs better
+in practice (see Table 6). Our spherical functions have no           We first apply a spherical CNN separately to the input fea-
+assigned radius, so they only contain directional information.       tures, at 32 × 32 resolution, for each atom (up to 29 on
+The values of these functions are constructed from an inverse        QM9). The model contains one standard spin-spherical con-
+power law computed from pairs of atoms, spread out with              volutional block followed by 5 residual blocks as depicted
+a Gaussian decay. The input consists of one set of features          in Figure 2 (for a total of 11 convolutional layers) with 64
+per atom, with one channel per atom type in the dataset.             to 256 channels per layer. Our method’s computational cost
+We sum the contributions of all atoms of the same type.              roughly scales linearly with the number of atoms.
+Formally, let zi be the atomic number of atom i and rij              This first step results in one feature map per atom. We then
+the displacement between atoms i and j, we define the one            apply global average pooling which results in a set of feature
+                                                                     vectors, one per atom. Two different methods are used for
+                                                                     aggregating this set to obtain per-molecule predictions. The
+                                                                     first method, used for most of the QM9 targets, applies
+
+                                                                 6
+                                                          Scaling Spherical CNNs
+
+
+Table 2. QM9 mean average errors (MAE). We scale spherical CNNs for QM9 for the first time, and show they are competitive with the
+previously dominant equivariant graph neural networks and transformers. We compare on two splits found in the literature, where “Split 1”
+has a larger training set. Our model outperforms the baselines on 8 out of 12 targets in “Split 1” and 9 out of 12 targets in “Split 2”.
+
+                                    µ      α       ϵHOMO    ϵLUMO    ϵgap   < R2 >     zpve     U0      U     H     G      Cv
+                                                                                                                           cal
+                                   [D]    [a30 ]   [meV]    [meV]   [meV]    [a20 ]   [meV]   [meV]   [meV] [meV] [meV] [ mol K]
+
+          DimeNet++ (2020)        0.030 0.044      24.6      19.5   32.6     0.331     1.21    6.32    6.28     6.53    7.56    0.023
+          PaiNN (2021)            0.012 0.045      27.6      20.4   45.7     0.066     1.28    5.85    5.83     5.98    7.35    0.024
+Split 1
+          TorchMD-Net (2022)      0.011 0.059      20.3      17.5   36.1     0.033     1.84    6.15    6.38     6.16    7.62    0.026
+          Ours                    0.016 0.049      21.6      18.0   28.8     0.027     1.15    5.65    5.72     5.69    6.54    0.022
+          EGNN (2021)             0.029 0.071      29.0      25.0   48.0     0.106     1.55   11.00   12.00    12.00   12.00    0.031
+Split 2   SEGNN (2022)            0.023 0.060      24.0      21.0   42.0     0.660     1.62   15.00   13.00    16.00   15.00    0.031
+          Equiformer (2022)       0.014 0.056      17.0      16.0   33.0     0.227     1.32   10.00   11.00    10.00   10.00    0.025
+          Ours                    0.017 0.049      22.3      19.1   29.8     0.028     1.19    5.96    5.98     5.97    6.97    0.023
+
+
+a DeepSets (Zaheer et al., 2017) or PointNet (Qi et al.,                & Thuerey, 2021; Lopez-Gomez et al., 2022; Keisler, 2022).
+2017) aggregation, similarly to Cohen et al. (2018). The
+                                                                        Furthermore, we speculate that rotation equivariance can be
+second method applies a self-attention transformer (Vaswani
+                                                                        beneficial, not in the global sense since inputs are aligned,
+et al., 2017) with four layers and four heads, and is applied
+                                                                        but in the local sense where local patterns can appear at
+only to the polarizability α and electronic spatial extent
+                                                                        different orientations at different locations.
+< R2 >, which require more refined reasoning between the
+atom features for accurate prediction. It is common in the              We evaluate large spherical CNNs on different settings us-
+literature to use different aggregation for these and other             ing ERA5 reanalysis data (Hersbach et al., 2020), which
+targets (Thölke & Fabritiis, 2022; Schütt et al., 2021).              combines meteorological observations with simulation mod-
+                                                                        els to provide atmospheric data such as wind speed and
+We train for 2000 epochs on 16 TPUv4 with batch size 16;
+                                                                        temperatures uniformly sampled in time and space.
+training runs at around 37 steps/s.
+                                                                        5.2.1. W EATHER B ENCH
+5.1.3. R ESULTS
+                                                                        The WeatherBench (Rasp et al., 2020) benchmark is based
+Table 2 shows our results on the QM9 dataset. There are two
+                                                                        on ERA5 data, where the data is provided in hourly
+different splits used in the literature, the major difference
+                                                                        timesteps for 40 years, for a total of around 350 000 exam-
+being that “Split 1” uses a training set of 110 000 elements
+                                                                        ples. The dataset is accompanied by simple baseline models
+while “Split 2” uses 100 000. We evaluate our model on
+                                                                        for predicting geopotential height at 500 hPa (Z500) and
+both splits and compare against the relevant models. Our
+                                                                        temperature at 850 hPa (T850) at t + 3 days and t + 5 days
+model outperforms the baselines on 8 out of 12 targets in
+                                                                        given the values at t. In follow-up work, Rasp & Thuerey
+“Split 1” and 9 out of 12 targets in “Split 2”.
+                                                                        (2021) applied deep residual networks to similar targets, but
+                                                                        now taking a much larger number of predictors including
+5.2. Weather forecasting                                                geopotential, wind speed, specific humidity at 7 vertical
+We now analyze large spherical CNNs for weather forecast-               levels, temperature at 2 m (T2M), total precipitation, and
+ing. A unique challenge here is that accurate recordings of             solar radiation. Each predictor is sampled at t, t − 6h and
+weather data are limited to the last few decades, and thus              t − 12h, and the constants land-sea mask, orography, and
+the limited training data motivates a search for the right              latitude are included as features, for a total of 117 channels.
+inductive biases for best generalization.                               In both settings, the inputs are sampled at 32×64 resolution.
+One potential issue to consider is that the Earth has specific          Architecture and training. We follow Rasp & Thuerey
+topography and orientation in space which influence the                 (2021) and train a spherical CNN with an initial block fol-
+weather, and input atmospheric data is always aligned, so               lowed by 19 residual blocks (as in Figure 2) and no pooling,
+one could argue that global rotation equivariance is unnec-             for a total of 39 spherical convolutional layers, all with
+essary or even harmful. We claim, however, that equivari-               128 channels. We train one model to directly predict Z500,
+ance is not harmful because we can simply include constant              T850 and T2M at 3 days ahead, and another to predict 5
+feature channels such as the latitude, longitude, land-sea              days ahead. We train for 4 epochs on 16 TPUv4 with batch
+mask and orography at each point. In fact, current neural               size 32; training runs at around 8.9 steps/s.
+weather models (NWMs) do include these constants (Rasp
+
+                                                                    7
+                                                                   Scaling Spherical CNNs
+
+Results. Table 3 shows the results on the test set which                             forecast 28 channels corresponding to 1 to 28 days T2M.
+comprises years 2017 and 2018. We outperform the baseline
+                                                                                     Architecture and training. We used WeatherBench data at
+on all metrics in the simpler setting that takes two predictors,
+                                                                                     128×128 resolution, which has similar number of samples
+and show lower temperature errors on the second setting
+                                                                                     to the 6×48×48 cubemap. We implement a spherical UNet
+with 117 predictors. The spherical CNN even outperforms
+                                                                                     with 9 spherical convolutional layers with 128 channels
+models that are pre-trained on large amounts of simulated
+                                                                                     each. We train for 5 epochs on 16 TPUv4 with batch size
+data on some metrics. We notice that models tend to overfit,
+                                                                                     32; training runs at around 13 steps/s.
+and Rasp & Thuerey (2021) employ dropout and learning
+rate decay based on validation loss to mitigate the issue.                           Results. Table 4 shows a comparison against 3 models
+We did not use these methods, which might explain our                                introduced by Lopez-Gomez et al. (2022) over the test set
+underperforming the geopotential target.                                             (2017 to 2021). HeatNet has a loss biased towards high
+                                                                                     temperatures, ExtNet is biased towards both hot and cold
+Table 3. WeatherBench results. We report the RMSE on geopo-                          extremes, while GenNet uses a standard L2 loss like our
+tential height (Z500) and temperature at two verticals (T850 and                     model. Our model nearly matches GenNet’s performance,
+T2M). The top block follows the protocol from Rasp et al. (2020),                    even when using a small subset of the predictors.
+the middle follows Rasp & Thuerey (2021). A “cont” superscript
+indicates a continuous model that takes the lead time as input.
+                                                                                     Table 4. Temperature at 2 m (T2M) prediction, following the pro-
+Spherical CNNs generally outperform conventional CNNs on this
+                                                                                     tocol and comparing against baselines from Lopez-Gomez et al.
+task, and even outperform models pre-trained (superscript “pre”)
+                                                                                     (2022). Our model nearly matches the best baseline performance,
+on large amounts of simulated data on most temperature metrics.
+                                                                                     even when using only a small subset of predictors.
+                                     3 days                      5 days
+                                                                                                                           T2M RMSE [K]
+                          Z500       T850     T2M     Z500       T850     T2M                   Predictors 1 day   2 days 4 days 7 days 14 days   28 days
+                         [m2 /s2 ]    [K]     [K]    [m2 /s2 ]    [K]      [K]
+                                                                                      ExtNet       20      1.15    1.64    2.11   2.31    2.40     2.42
+  2 predictors                                                                        HeatNet      20      1.26    1.77    2.23   2.42    2.50     2.53
+Rasp et al. (2020)         626       2.87      -       757       3.37      -          GenNet       20      1.13    1.60    2.03   2.22    2.31     2.34
+Ours                       531       2.38      -       717       3.03      -
+                                                                                      Ours          5      1.24    1.63    2.04   2.27    2.39     2.46
+  117 predictors
+Rasp & Thuereycont         331       1.87     1.60     545       2.57     2.06
+Rasp & Thuerey             314       1.79     1.53     561       2.82     2.32
+Ours                       329       1.62     1.29     601       2.57     1.89       5.2.3. I TERATIVE HIGH RESOLUTION FORECASTING
+  Pretrained                                                                         Keisler (2022) proposed an iterative graph neural network
+Rasp & Thuereypre          268       1.65     1.42     523       2.52     2.03
+                                                                                     for weather forecasting. In this setting, predictors and tar-
+Rasp & Thuereypre,cont     284       1.72     1.48     499       2.41     1.92
+                                                                                     gets have the same cardinality such that the model can be
+                                                                                     iterated repeatedly to forecast longer ranges, where a sin-
+                                                                                     gle iteration produces the forecast 6 h ahead. Temperature,
+5.2.2. G LOBAL TEMPERATURE FORECASTING
+                                                                                     geopotential height, specific humidity and the three com-
+Lopez-Gomez et al. (2022) proposed the task of extreme                               ponents of the wind speed, are all sampled at 13 vertical
+heat forecasting from short to subseasonal (up to 28 days                            levels, for a total of 78 predictors and targets, at 180×360
+head) timescales. Current physics-based weather models                               resolution. The dataset comprises the years 1979 to 2020
+cannot forecast such long lead times, which motivates the                            with one example every 3 h, for a total of 120 000 examples.
+use of machine learning. In contrast with Rasp et al. (2020)
+                                                                                     Architecture and training. We use the same data as Keisler
+and Rasp & Thuerey (2021), Lopez-Gomez et al. (2022)
+                                                                                     (2022), but at 256×256 resolution, which has approximately
+does consider the spherical topology and employ an approx-
+                                                                                     the same number of samples as the baseline.
+imately uniform cubical sampling on the sphere.
+                                                                                     We implement a spherical UNet with 7 convolutional layers
+Data used for this task is averaged over 24 h, and sampled
+                                                                                     and a single round of subsampling, because a too large
+daily, resulting in around 15 000 examples. Furthermore,
+                                                                                     receptive field should not be necessary for predicting 6 h
+data that is not present in WeatherBench is used, such as
+                                                                                     ahead iteratively. The model is repeated up to 12 steps
+soil moisture, longwave radiation and vorticity. For the
+                                                                                     during training, for a total of 84 convolutional layers.
+task we consider, Lopez-Gomez et al. (2022) used 20 pre-
+dictors while we use only the 5 that are present in Weath-                           We train in 3 stages. The first uses 4 rollout steps (24 h) for
+erBench, namely temperature at 2 m (T2M), geopotential                               50 epochs on 32 TPUv4 with batch size 32, and is followed
+height at 300 hPa, 500 hPa and 700 hPa and incoming ra-                              by 10 epochs with 8 rollout steps (48 h) and 10 epochs with
+diation. Lopez-Gomez et al. (2022) applied a UNet-like                               12 rollout steps (72 h). Training runs at around 0.92 steps/s,
+(Ronneberger et al., 2015) model on a 6×48×48 cubemap to                             0.35 steps/s and 0.24 steps/s for each stage.
+
+                                                                                 8
+                                                        Scaling Spherical CNNs
+
+Results. Table 5 and Figure 4 show the results. Our model                  the most important factors for high performance in this task
+tends to perform better at geopotential but worse at temper-               are the input and feature maps resolutions.
+ature forecasts. Keisler (2022) employs a different training
+procedure where the resolution changes in each stage, and
+                                                                           Table 7. Effects of scaling. We report the RMSE for geopotential
+the results are smoothed during evaluation.                                at 500 hPa (Z500) and temperature at 850 hPa (T850), predicting
+                                                                           6 h ahead following Keisler (2022). Top row shows our base model.
+                                                                           The next block reduces the input resolution. The following row
+Table 5. Iterative weather forecasting, following the protocol from
+                                                                           uses separable convolutions in every other layer, which reduces
+Keisler (2022). We compare results for 24h, 72h and 120h lead
+                                                                           the number of convolutions but keeps the feature size constant.
+times, and report the RMSE. Our model tends to perform better at
+                                                                           The final block reduces the number of channels per layer, which
+geopotential but worse at the temperature forecasts.
+                                                                           reduces both the number of operations and feature size.
+                      1 day             3 days          5 days
+                   Z500 T850         Z500 T850       Z500 T850
+                                                                                                                                Z500 T850
+Keisler (2022)     64.9 0.730        175.5 1.17      344.7 1.78                       channels   convolutions   feature size
+                                                                                                                               [m2 /s2 ] [K]
+Ours               58.3 0.827        167.2 1.26      340.0 1.91
+                                                                            256×256     100%      3.0 × 105     8.4 × 107      34.93   0.62
+                                                                                                          5              7
+                                                                            192×192     100%      3.0 × 10      4.7 × 10       39.68   0.74
+5.3. Ablations                                                              128×128     100%      3.0 × 105     2.1 × 107      46.39   0.87
+                                                                             64×64      100%      3.0 × 105     5.2 × 106      69.60   1.08
+Activation, pooling, molecule representation. We train                      256×256     100%      1.6 × 105     8.4 × 107      36.24   0.65
+a small model with five spherical convolutional layers to
+regress the enthalpy of atomization H on QM9; it is trained                 256×256     75%       1.7 × 105     6.3 × 106      36.65   0.65
+                                                                            256×256     50%       7.4 × 104     4.2 × 106      41.34   0.71
+for 250 epochs (in contrast with 2000 epochs in Section 5.1).
+We compare the effect of replacing each of our main contri-
+butions and show that each of them increases performance.
+Specifically, we compare against the magnitude activation                  6. Discussion
+used in Esteves et al. (2020), the gated activation introduced
+by Weiler et al. (2018), which we implement by learning a                  Limitations. The major limitation of our models is still
+spin 0 feature map that is squashed and pointwise-multiplies               the computational cost – our best results require training
+each channel. We also compare against the spherical molec-                 up to 4 days on 32 TPUv4, which can be expensive. As a
+ular representation introduced by Cohen et al. (2018). Ta-                 comparison, the baseline for weather (Keisler, 2022) trains
+ble 6 shows the results.                                                   in 5.5 days on a single GPU, and the baseline for molecules
+                                                                           (Liao & Smidt, 2022) trains in 3 days on a single GPU.
+
+Table 6. Effects of activation, pooling, molecule representation.          From the point of view of the applications, there are con-
+We employ a phase collapse activation, compared against the gated          cerns of how much a model trained on reanalysis is useful
+nonlinearity of Weiler et al. (2018) and the magnitude thresholding        for forecasting the real weather, and whether models super-
+of Esteves et al. (2020). We employ spectral pooling, compared             vised by chemical properties at some level of theory like
+against the spatial pooling from Esteves et al. (2020). We introduce       QM9 are useful to estimate the true properties.
+a novel spherical representation of molecules, compared against
+the one by Cohen et al. (2018).                                            Conclusion. Spherical CNNs possess numerous qualities
+                                                                           that makes them appealing for modeling spherical data or
+                                      Molecule        QM9/H                rotational symmetries. We have introduced an approach
+  Activation       Pooling
+                                    representation   MAE (meV)             to scaling these models so they can be utilized on larger
+  Ours             Ours             Ours                15.25              problems, and our initial results already reach state of the
+                                                                           art or comparable performance on molecule and weather
+  Ours             Esteves et al.   Ours                16.13              prediction tasks. We hope this work and supporting imple-
+  Weiler et al.    Ours             Ours                16.70              mentation will allow the research community to revisit this
+  Esteves et al.   Ours             Ours                17.01              powerful class of models for important large scale problems.
+  Ours             Ours             Cohen et al.        20.90
+
+                                                                           Acknowledgments
+Effects of scaling. In this experiment, we investigate
+how the resolutions and model capacity affect accuracy                     We thank Stephan Hoyer, Stephan Rasp, and Ignacio Lopez-
+in weather forecasting. As in Section 5.2.3, we follow the                 Gomez for helping with data processing and evaluation, and
+protocol of Keisler (2022), but only supervising and evaluat-              Fei Sha, Vivian Yang, Anudhyan Boral, Leonardo Zepeda-
+ing the forecasts 6 h in the future. Table 7 shows the results;            Núñez, and Avram Hershko for suggestions and discussions.
+
+                                                                       9
+                                                   Scaling Spherical CNNs
+
+References                                                              hedral CNN. In Proceedings of the 36th International
+                                                                        Conference on Machine Learning, ICML 2019, 2019.
+Abadi, M., Barham, P., Chen, J., Chen, Z., Davis, A.,
+  Dean, J., Devin, M., Ghemawat, S., Irving, G., Isard,               Cohen, T. S., Geiger, M., Köhler, J., and Welling, M. Spher-
+  M., Kudlur, M., Levenberg, J., Monga, R., Moore, S.,                  ical CNNs. In International Conference on Learning
+  Murray, D. G., Steiner, B., Tucker, P., Vasudevan, V.,                Representations, 2018. URL https://openreview.
+ Warden, P., Wicke, M., Yu, Y., and Zheng, X. Tensorflow:               net/forum?id=Hkbd5xZRb.
+ A system for large-scale machine learning. In 12th
+ USENIX Symposium on Operating Systems Design and                     Coors, B., Condurache, A. P., and Geiger, A. Spherenet:
+ Implementation (OSDI 16), pp. 265–283, 2016. URL                       Learning spherical representations for detection and clas-
+  https://www.usenix.org/system/files/                                  sification in omnidirectional images. In Proceedings of
+  conference/osdi16/osdi16-abadi.pdf.                                   the European Conference on Computer Vision (ECCV),
+                                                                        September 2018.
+Agrawal, S., Barrington, L., Bromberg, C., Burge, J.,
+  Gazen, C., and Hickey, J. Machine learning for pre-                 de Haan, P., Weiler, M., Cohen, T., and Welling, M. Gauge
+  cipitation nowcasting from radar images. arXiv preprint               equivariant mesh cnns: Anisotropic convolutions on geo-
+  arXiv:1912.12132, 2019.                                               metric graphs. In 9th International Conference on Learn-
+Anderson, B., Hy, T. S., and Kondor, R. Cormorant: Covari-              ing Representations, ICLR 2021, Virtual Event, Austria,
+  ant molecular neural networks. In Advances in Neural                  May 3-7, 2021, 2021. URL https://openreview.
+  Information Processing Systems, pp. 14510–14519, 2019.                net/forum?id=Jnspzp-oIZE.
+
+Battaglia, P., Hamrick, J. B. C., Bapst, V., Sanchez, A.,             Driscoll, J. R. and Healy, D. M. Computing fourier trans-
+  Zambaldi, V., Malinowski, M., Tacchetti, A., Raposo, D.,              forms and convolutions on the 2-sphere. Advances in
+  Santoro, A., Faulkner, R., Gulcehre, C., Song, F., Ballard,           applied mathematics, 15(2):202–250, 1994.
+  A., Gilmer, J., Dahl, G. E., Vaswani, A., Allen, K., Nash,
+                                                                      Esteves, C., Allen-Blanchette, C., Makadia, A., and Dani-
+  C., Langston, V. J., Dyer, C., Heess, N., Wierstra, D.,
+                                                                        ilidis, K. Learning SO(3) equivariant representations
+  Kohli, P., Botvinick, M., Vinyals, O., Li, Y., and Pascanu,
+                                                                        with spherical cnns. In The European Conference on
+  R. Relational inductive biases, deep learning, and graph
+                                                                        Computer Vision (ECCV), September 2018.
+  networks. arXiv, 2018. URL https://arxiv.org/
+  pdf/1806.01261.pdf.                                                 Esteves, C., Makadia, A., and Daniilidis, K. Spin-weighted
+Boyle, M. How should spin-weighted spherical functions                  spherical CNNs. In Advances in Neural Information
+  be defined? Journal of Mathematical Physics, 57(9):                   Processing Systems, 2020.
+  092504, Sep 2016. ISSN 1089-7658. doi: 10.1063/
+                                                                      Gastegger, M., Behler, J., and Marquetand, P. Machine
+ 1.4962723. URL http://dx.doi.org/10.1063/
+                                                                        learning molecular dynamics for the simulation of in-
+  1.4962723.
+                                                                        frared spectra. Chem. Sci., 8:6924–6935, 2017. doi:
+Bradbury, J., Frostig, R., Hawkins, P., Johnson, M. J., Leary,         10.1039/C7SC02267K. URL http://dx.doi.org/
+  C., Maclaurin, D., Necula, G., Paszke, A., VanderPlas, J.,            10.1039/C7SC02267K.
+  Wanderman-Milne, S., and Zhang, Q. JAX: composable
+  transformations of Python+NumPy programs, 2018. URL                 Gasteiger, J., Groß, J., and Günnemann, S. Directional
+  http://github.com/google/jax.                                         message passing for molecular graphs. CoRR, 2020. URL
+                                                                        http://arxiv.org/abs/2003.03123v2.
+Brandstetter, J., Hesselink, R., van der Pol, E., Bekkers,
+  E. J., and Welling, M. Geometric and physical quantities            Guth, F., Zarka, J., and Mallat, S. Phase collapse in neural
+  improve E(3) equivariant message passing. In Interna-                 networks. CoRR, 2021. URL http://arxiv.org/
+  tional Conference on Learning Representations, ICLR,                  abs/2110.05283v1.
+  2022.
+                                                                      Han, J., Rong, Y., Xu, T., and Huang, W. Geometrically
+Cobb, O., Wallis, C. G. R., Mavor-Parker, A. N., Marig-                 equivariant graph neural networks: A survey. arXiv
+  nier, A., Price, M. A., d’Avezac, M., and McEwen, J.                  preprint arXiv:2202.07230, 2022.
+  Efficient generalized spherical {cnn}s. In International
+  Conference on Learning Representations, 2021.                       He, K., Zhang, X., Ren, S., and Sun, J. Deep residual
+                                                                        learning for image recognition. In IEEE Conference on
+Cohen, T., Weiler, M., Kicanaoglu, B., and Welling, M.                  Computer Vision and Pattern Recognition (CVPR), June
+  Gauge equivariant convolutional networks and the icosa-               2016.
+
+                                                                 10
+                                                    Scaling Spherical CNNs
+
+Hersbach, H., Bell, B., Berrisford, P., Hirahara, S., Horányi,          Nikolov, S., Jain, R., Adler, J., Back, T., Petersen, S.,
+  A., Muñoz-Sabater, J., Nicolas, J., Peubey, C., Radu,                 Reiman, D., Clancy, E., Zielinski, M., Steinegger, M.,
+  R., Schepers, D., Simmons, A., Soci, C., Abdalla, S.,                  Pacholska, M., Berghammer, T., Bodenstein, S., Silver,
+  Abellan, X., Balsamo, G., Bechtold, P., Biavati, G.,                   D., Vinyals, O., Senior, A. W., Kavukcuoglu, K., Kohli,
+  Bidlot, J., Bonavita, M., De Chiara, G., Dahlgren, P.,                 P., and Hassabis, D. Highly accurate protein structure
+  Dee, D., Diamantakis, M., Dragani, R., Flemming, J.,                   prediction with AlphaFold. Nature, 596(7873):583–589,
+  Forbes, R., Fuentes, M., Geer, A., Haimberger, L., Healy,              2021.
+  S., Hogan, R. J., Hólm, E., Janisková, M., Keeley, S.,
+  Laloyaux, P., Lopez, P., Lupu, C., Radnoti, G., de Ros-              Keisler, R. Forecasting global weather with graph neural
+  nay, P., Rozum, I., Vamborg, F., Villaume, S., and                     networks. CoRR, 2022. URL http://arxiv.org/
+  Thépaut, J.-N. The era5 global reanalysis. Quarterly                  abs/2202.07575v1.
+  Journal of the Royal Meteorological Society, 146(730):
+ 1999–2049, 2020. doi: https://doi.org/10.1002/qj.3803.                Kingma, D. P. and Ba, J. Adam: a method for stochastic op-
+  URL https://rmets.onlinelibrary.wiley.                                 timization. CoRR, 2014. URL http://arxiv.org/
+  com/doi/abs/10.1002/qj.3803.                                           abs/1412.6980v9.
+
+Huang, B. and von Lilienfeld, O. A. Communication: Un-                 Klicpera, J., Giri, S., Margraf, J. T., and Günnemann, S.
+  derstanding molecular representations in machine learn-                Fast and uncertainty-aware directional message passing
+  ing: The role of uniqueness and target similarity. The                 for non-equilibrium molecules. CoRR, 2020. URL http:
+ Journal of Chemical Physics, 145(16):161102, 2016. doi:                 //arxiv.org/abs/2011.14115v2.
+ 10.1063/1.4964627. URL https://doi.org/10.
+ 1063/1.4964627.                                                       Kondor, R., Lin, Z., and Trivedi, S. Clebsch–gordan nets: a
+                                                                         fully fourier space spherical convolutional neural network.
+Huffenberger, K. M. and Wandelt, B. D. Fast and exact                    In Advances in Neural Information Processing Systems,
+  spin-s spherical harmonic transforms. The Astrophysical                pp. 10138–10147, 2018.
+ Journal Supplement Series, 189(2):255–260, jul 2010.
+  doi: 10.1088/0067-0049/189/2/255.                                    Kostelec, P. J. and Rockmore, D. N. Ffts on the rotation
+Jiang, C. M., Huang, J., Kashinath, K., Prabhat, Marcus, P.,             group. Journal of Fourier Analysis and Applications, 14
+   and Nießner, M. Spherical cnns on unstructured grids. In              (2):145–179, 2008.
+   International Conference on Learning Representations,
+                                                                       Krizhevsky, A., Sutskever, I., and Hinton, G. E. Imagenet
+   (ICLR), 2019.
+                                                                         classification with deep convolutional neural networks.
+Jouppi, N. P., Young, C., Patil, N., Patterson, D. A., Agrawal,          In Pereira, F., Burges, C., Bottou, L., and Weinberger,
+  G., Bajwa, R., Bates, S., Bhatia, S., Boden, N., Borchers,             K. (eds.), Advances in Neural Information Processing
+  A., Boyle, R., luc Cantin, P., Chao, C., Clark, C., Coriell,           Systems, volume 25, 2012.
+  J., Daley, M., Dau, M., Dean, J., Gelb, B., Ghaem-
+  maghami, T. V., Gottipati, R., Gulland, W., Hagmann,                 Lam, R., Sanchez-Gonzalez, A., Willson, M., Wirnsberger,
+  R., Ho, C. R., Hogberg, D., Hu, J., Hundt, R., Hurt, D.,               P., Fortunato, M., Pritzel, A., Ravuri, S., Ewalds, T.,
+  Ibarz, J., Jaffey, A., Jaworski, A., Kaplan, A., Khaitan, H.,          Alet, F., Eaton-Rosen, Z., Hu, W., Merose, A., Hoyer,
+  Killebrew, D., Koch, A., Kumar, N., Lacy, S., Laudon, J.,              S., Holland, G., Stott, J., Vinyals, O., Mohamed, S.,
+  Law, J., Le, D., Leary, C., Liu, Z., Lucke, K., Lundin, A.,            and Battaglia, P. Graphcast: Learning skillful medium-
+  MacKean, G., Maggiore, A., Mahony, M., Miller, K., Na-                 range global weather forecasting, 2022. URL https:
+  garajan, R., Narayanaswami, R., Ni, R., Nix, K., Norrie,               //arxiv.org/abs/2212.12794.
+  T., Omernick, M., Penukonda, N., Phelps, A., Ross, J.,
+  Ross, M., Salek, A., Samadiani, E., Severn, C., Sizikov,             Liao, Y.-L. and Smidt, T. Equiformer: Equivariant graph at-
+  G., Snelham, M., Souter, J., Steinberg, D., Swing, A.,                 tention transformer for 3d atomistic graphs. CoRR, 2022.
+  Tan, M., Thorson, G., Tian, B., Toma, H., Tuttle, E., Va-              URL http://arxiv.org/abs/2206.11990.
+  sudevan, V., Walter, R., Wang, W., Wilcox, E., and Yoon,
+  D. H. In-datacenter performance analysis of a tensor                 Lopez-Gomez, I., McGovern, A., Agrawal, S., and Hickey,
+  processing unit. In ISCA. ACM, 2017.                                   J. Global extreme heat forecasting using neural weather
+                                                                         models. Artificial Intelligence for the Earth Systems,
+Jumper, J., Evans, R., Pritzel, A., Green, T., Figurnov, M.,             pp. 1 – 41, 2022. doi: 10.1175/AIES-D-22-0035.1.
+  Ronneberger, O., Tunyasuvunakool, K., Bates, R., Žı́dek,              URL https://journals.ametsoc.org/view/
+  A., Potapenko, A., Bridgland, A., Meyer, C., Kohl, S.                  journals/aies/aop/AIES-D-22-0035.1/
+  A. A., Ballard, A. J., Cowie, A., Romera-Paredes, B.,                  AIES-D-22-0035.1.xml.
+
+                                                                  11
+                                                  Scaling Spherical CNNs
+
+McEwen, J., Wallis, C., and Mavor-Parker, A. N. Scatter-              S. Skilful precipitation nowcasting using deep generative
+ ing networks on the sphere for scalable and rotationally             models of radar. Nature, 597:672–677, September 2021.
+ equivariant spherical CNNs. In International Conference
+ on Learning Representations, 2022.                                 Ronneberger, O., Fischer, P., and Brox, T. U-Net: Convolu-
+                                                                      tional networks for biomedical image segmentation. In
+Mitchel, T. W., Aigerman, N., Kim, V. G., and Kazh-                   International Conference on Medical Image Computing
+ dan, M. Möbius convolutions for spherical cnns. In                  and Computer Assisted Intervention, 2015.
+ SIGGRAPH ’22: Special Interest Group on Computer
+                                                                    Rupp, M., Tkatchenko, A., Müller, K.-R., and Von Lilien-
+ Graphics and Interactive Techniques Conference, Van-
+                                                                      feld, O. A. Fast and accurate modeling of molecular
+ couver, BC, Canada, August 7 - 11, 2022, pp. 30:1–30:9,
+                                                                      atomization energies with machine learning. Physical
+ 2022. doi: 10.1145/3528233.3530724. URL https:
+                                                                      review letters, 108(5):058301, 2012.
+ //doi.org/10.1145/3528233.3530724.
+                                                                    Satorras, V. G., Hoogeboom, E., and Welling, M. E(n) equiv-
+Mudigonda, M., Kim, S., Mahesh, A., Kahou, S., Kashinath,             ariant graph neural networks. CoRR, abs/2102.09844,
+ K., Williams, D., Michalski, V., O’Brien, T., and Prabhat,           2021.      URL https://arxiv.org/abs/2102.
+ M. Segmenting and tracking extreme climate events using              09844.
+ neural networks. In Deep Learning for Physical Sciences
+ (DLPS) Workshop, held with NIPS Conference, 2017.                  Schütt, K., Kindermans, P.-J., Felix, H. E. S., Chmiela, S.,
+                                                                      Tkatchenko, A., and Müller, K.-R. Schnet: A continuous-
+Ocampo, J., Price, M. A., and McEwen, J. D. Scalable and              filter convolutional neural network for modeling quantum
+  equivariant spherical cnns by discrete-continuous (disco)           interactions. In Advances in Neural Information Process-
+  convolutions. CoRR, 2022. URL http://arxiv.                         ing Systems, pp. 992–1002, 2017.
+  org/abs/2209.13603v1.
+                                                                    Schütt, K., Unke, O., and Gastegger, M. Equivariant mes-
+Perraudin, N., Defferrard, M., Kacprzak, T., and Sgier, R.            sage passing for the prediction of tensorial properties and
+  Deepsphere: Efficient spherical convolutional neural net-           molecular spectra. In Meila, M. and Zhang, T. (eds.),
+  work with healpix sampling for cosmological applica-                Proceedings of the 38th International Conference on Ma-
+  tions. Astronomy and Computing, 27:130–146, 2019.                   chine Learning, volume 139 of Proceedings of Machine
+                                                                      Learning Research, pp. 9377–9388. PMLR, 18–24 Jul
+Qi, C. R., Su, H., Mo, K., and Guibas, L. J. Pointnet: Deep
+                                                                      2021.
+  learning on point sets for 3d classification and segmen-
+  tation. Proc. Computer Vision and Pattern Recognition             Shakerinava, M. and Ravanbakhsh, S. Equivariant networks
+  (CVPR), IEEE, 1(2):4, 2017.                                         for pixelized spheres. In Proceedings of the 38th Inter-
+                                                                      national Conference on Machine Learning, ICML 2021,
+Ramakrishnan, R., Dral, P. O., Rupp, M., and von Lilienfeld,          18-24 July 2021, Virtual Event, pp. 9477–9488, 2021.
+  O. A. Quantum chemistry structures and properties of                URL http://proceedings.mlr.press/v139/
+  134 kilo molecules. Scientific Data, 1, 2014.                       shakerinava21a.html.
+Rasp, S. and Thuerey, N. Data-driven medium-range                   Simonyan, K. and Zisserman, A. Very deep convolutional
+  weather prediction with a resnet pretrained on climate              networks for large-scale image recognition. In Interna-
+  simulations: a new model for weatherbench. Journal                  tional Conference on Learning Representations, 2015.
+  of Advances in Modeling Earth Systems, 13(2):nil, 2021.
+  doi: 10.1029/2020ms002405. URL http://dx.doi.                     Su, Y. and Grauman, K. Kernel transformer networks for
+  org/10.1029/2020MS002405.                                           compact spherical convolution. In IEEE Conference
+                                                                      on Computer Vision and Pattern Recognition, CVPR
+Rasp, S., Dueben, P. D., Scher, S., Weyn, J. A., Mouatadid,           2019, Long Beach, CA, USA, June 16-20, 2019, pp.
+  S., and Thuerey, N. Weatherbench: a benchmark data set              9442–9451, 2019. doi: 10.1109/CVPR.2019.00967. URL
+  for data-driven weather forecasting. Journal of Advances            http://openaccess.thecvf.com/content_
+  in Modeling Earth Systems, 12(11):nil, 2020. doi: 10.               CVPR_2019/html/Su_Kernel_Transformer_
+  1029/2020ms002203. URL http://dx.doi.org/                           Networks_for_Compact_Spherical_
+  10.1029/2020MS002203.                                               Convolution_CVPR_2019_paper.html.
+Ravuri, S., Lenc, K., Willson, M., Kangin, D., Lam,                 Sun, Y. E3 ubiquitin ligases as cancer targets and
+  R., Mirowski, P., Fitzsimons, M., Athanassiadou, M.,                biomarkers. Neoplasia, 8(8):645–654, 2006. ISSN
+  Kashem, S., Madge, S., Prudden, R., Mandhane, A.,                   1476-5586. doi: https://doi.org/10.1593/neo.06376.
+  Clark, A., Brock, A., Simonyan, K., Hadsell, R., Robin-             URL       https://www.sciencedirect.com/
+  son, N., Clancy, E., Arribas Herranz, A., and Mohamed,              science/article/pii/S1476558606800035.
+
+                                                               12
+                                                  Scaling Spherical CNNs
+
+Thölke, P. and Fabritiis, G. D. Torchmd-net: Equivariant           Inc., 2017.  URL https://proceedings.
+  transformers for neural network based molecular poten-            neurips.cc/paper/2017/file/
+  tials. In International Conference on Learning Represen-          f22e4747da1aa27e363d86d40ff442fe-Paper.
+  tations, 2022. URL https://openreview.net/                        pdf.
+  forum?id=zNHzqZ9wrRB.
+Thomas, N., Smidt, T., Kearnes, S., Yang, L., Li, L.,
+  Kohlhoff, K., and Riley, P. Tensor field networks:
+  Rotation-and translation-equivariant neural networks for
+  3d point clouds. arXiv preprint arXiv:1802.08219, 2018.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+  L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Attention
+  is all you need. CoRR, 2017. URL http://arxiv.
+  org/abs/1706.03762v5.
+von Lilienfeld, O. A., Müller, K.-R., and Tkatchenko, A.
+  Exploring chemical compound space with quantum-based
+  machine learning. Nature Reviews Chemistry, 4(7):347–
+  358, Jul 2020.
+Weiler, M., Geiger, M., Welling, M., Boomsma, W., and
+ Cohen, T. S. 3d steerable cnns: Learning rotationally
+ equivariant features in volumetric data. In Advances
+ in Neural Information Processing Systems, pp. 10381–
+ 10392, 2018.
+Weyn, J. A., Durran, D. R., and Caruana, R. Can machines
+ learn to predict weather? using deep learning to pre-
+ dict gridded 500-hpa geopotential height from historical
+ weather data. Journal of Advances in Modeling Earth
+ Systems, 11(8):2680–2693, 2019.
+Weyn, J. A., Durran, D. R., and Caruana, R. Improving data-
+ driven global weather prediction using deep convolutional
+ neural networks on a cubed sphere. Journal of Advances
+ in Modeling Earth Systems, 12(9), sep 2020.
+Wiedera, O., Kohlbachera, S., Kuenemann, M., Garona, A.,
+ Ducrota, P., Seidela, T., and ThierryLanger. A compact
+ review of molecular property prediction with graph neural
+ networks. Drug Discovery Today: Technologies, 37:1–12,
+ 2020.
+Xu, Y., Lei, J., Dobriban, E., and Daniilidis, K. Unified
+  fourier-based kernel and nonlinearity design for equivari-
+  ant networks on homogeneous spaces. In International
+ Conference on Machine Learning, ICML 2022, 17-23
+ July 2022, Baltimore, Maryland, USA, pp. 24596–24614,
+  2022. URL https://proceedings.mlr.press/
+ v162/xu22e.html.
+Zaheer, M., Kottur, S., Ravanbakhsh, S., Poczos, B.,
+  Salakhutdinov, R. R., and Smola, A. J. Deep sets.
+  In Guyon, I., Luxburg, U. V., Bengio, S., Wallach,
+  H., Fergus, R., Vishwanathan, S., and Garnett,
+  R. (eds.), Advances in Neural Information Pro-
+  cessing Systems, volume 30. Curran Associates,
+
+                                                               13
+                                                       Scaling Spherical CNNs
+
+A. Appendix                                                               and we reduced it by a factor of 10 at each subsequent state.
+A.1. Experimental details                                                 A.1.3. W EATHER B ENCH
+We use the Adam (Kingma & Ba, 2014) optimizer and a                       For the experiments in Section 5.2.1, we use 64×64 inputs
+cosine decay on the learning rate with one epoch linear                   and feature maps, while the baseline is at 32×64. Since the
+warmup in all experiments.                                                spherical harmonic transform algorithm we use requires the
+The inputs of all models are conventional spherical functions             same number of samples along both axes, we upsample the
+(zero spin). The first layer maps it to features of spins zero            inputs from 32×64 to 64×64. We minimize the L2 loss for
+and one, which are mapped back to spin zero at the last                   this and all weather experiments.
+spherical convolutional layer. This last feature is complex-
+valued, which we convert to real by taking the magnitude.                 A.1.4. G LOBAL TEMPERATURE FORECASTING
+                                                                          For the experiments in Section 5.2.2, we implement
+A.1.1. M OLECULAR PROPERTY REGRESSION
+                                                                          a spherical UNet with feature maps of resolutions
+For the experiments in Section 5.1, we use five spherical                 [1282 , 642 , 642 , 322 , 322 , 322 , 322 , 642 , 642 , 1282 , 1282 ],
+residual blocks with resolutions [322 , 162 , 162 , 82 , 82 ] and         and 128 channels on all convolutional layers, which
+[64, 128, 128, 256, 256] channels per layer. We minimize                  are followed by batch normalization and phase collapse
+the L1 loss with a maximum learning rate of 10−4 .                        activation. Features in the downsampling layers are
+                                                                          concatenated to the same resolutions in the upsampling
+Our model applies the spherical CNN independently to each                 layers.
+atom’s features, followed by global average pooling, re-
+sulting in one feature vector per atom. These are further
+                                                                          A.2. Extra experiments
+processed by a DeepSets or transformer, as explained in
+Section 5.1. Finally, we map the set of atom feature vectors              FFT vs DFT. One of our perhaps surprising findings is that
+to the regression target in three different ways, depending on            computing Fourier transforms via DFT matrix multiplica-
+the target. The dipole moment µ relates to the displacement               tion is faster than using the fast Fourier transform (FFT)
+between atoms and the center of mass, so we use a weighted                algorithm. Here, we investigate whether this remains true
+average by the displacements to aggregate the atom features               for larger input resolutions. We train shallow models with
+(as Gastegger et al. (2017)), followed by a small MLP. We                 only two spin-spherical convolutional layers on the protocol
+compute the electronic spatial extent < R2 > similarly,                   of Keisler (2022), with upsampled inputs to 512 × 512 and
+but using the distance to the center of mass squared as the               768 × 768. Table 8 shows the results when running on 32
+weights, following Schütt et al. (2021). For the other tar-              TPUv4 with batch size of one per device. The direct DFT
+gets, which are energy-related, we use the atom types as the              method performs better than FFT on TPU even at higher
+weights.                                                                  resolutions, due the TPU greatly favoring computing a large
+                                                                          matrix multiplication instead of running multiple steps on
+Following Gasteiger et al. (2020), we estimate ϵgap as
+                                                                          smaller inputs.
+ϵHOMO − ϵLUMO , using the predictions from models the
+trained for ϵHOMO and ϵLUMO , without training a model
+specifically for the gap.                                                 Table 8. Training time comparison of a shallow model using DFT
+                                                                          and FFT for Fourier transform computation, varying the input
+A.1.2. I TERATIVE HIGH RESOLUTION WEATHER                                 resolution.
+        FORECASTING                                                                    FT method       resolution         steps/s
+We implement a spherical UNet similar to the one                                       DFT             256 × 256           28.5
+in Appendix A.1.4, with feature maps of resolu-                                        FFT             256 × 256           18.7
+tions [2562 , 2562 , 1282 , 1282 , 1282 , 1282 , 2562 , 2562 ] and                     DFT             512 × 512           12.6
+[128, 128, 256, 256, 256, 256, 128, 128] channels per layer,
+                                                                                       FFT             512 × 512            5.8
+which are followed by batch normalization and phase col-
+lapse                                                                                  DFT             768 × 768            5.1
+                                                                                       FFT             768 × 768            1.8
+Similarly to Keisler (2022), we concatenate a few constant
+fields to the 78 predictors; namely, the orography, land-sea
+mask, latitude (sine), longitude (sine and cosine), hour of               TPUs vs GPUs While we made design decisions with TPUs
+the year, and hour of the day.                                            in mind, the model can also run on GPUs. We evaluated
+The maximum learning rate for the first stage is 2 × 10−4 ,               our model for molecules (Section 5.1) on 8 V100 GPUs,
+                                                                          with batch size of 1 per device, and it trains at 13.1 steps/s.
+
+                                                                     14
+                                                  Scaling Spherical CNNs
+
+In comparison, the same model trains at 35.6 steps/s on 16
+TPUv4.
+Visualization Figure 4 shows a sequence of predictions of
+our model for a few variables, compared to the ground truth.
+
+
+
+
+                                                               15
+                                                       Scaling Spherical CNNs
+
+
+
+
+Figure 4. One day rollout of a few predictions of our model. Top two rows: specific humidity at 850 hPa (Q850). Middle two rows:
+geopotential height at 500 hPa (Z500). Bottom two rows: temperature at 850 hPa (T500). The first column shows the input values at
+t = 0, and subsequent columns shows 6 h steps. On each group of two rows, the top shows the ground truth and the bottom one shows our
+predictions. Our predictions show that large spherical CNNs are capable of producing high resolution outputs with high frequency details.
+
+
+
+
+                                                                  16
+

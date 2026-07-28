@@ -1,0 +1,7 @@
+# Method
+
+Core claim: RAWM builds on OWM's projector P (orthogonal to the subspace of previous inputs) and adds a second projector Q scaled by the genuine-to-fake ratio β; the final modification direction R combines normalized P and Q so updates adapt per batch while a distillation-style regularization preserves the old distribution.
+
+Supporting detail: Weights update as W ← W + R·G for new tasks, where G is the scaled back-prop gradient; the regularization replicates the pre-trained model into a frozen teacher and a fine-tuned student, matching softened softmax outputs via a modified cross-entropy loss weighted by coefficient η.
+
+Narration: RAWM starts from the orthogonal projector P of OWM, which points the update away from the subspace spanned by previous inputs. On top of it, the method builds a second projector Q that is orthogonal to P and scaled by the ratio beta of genuine to fake utterances in the batch. The two projectors are normalized and combined into a modified direction R, so when a batch is mostly genuine the update leans toward preserving old knowledge, and otherwise it leans toward learning the new data. For datasets recorded under very different conditions, a regularization term treats the frozen pre-trained model as a teacher and forces the fine-tuned student to match its softened outputs, remembering the old inference distribution. Crucially, none of this replays past samples.
