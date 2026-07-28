@@ -1,0 +1,1306 @@
+     DRAGONN: Distributed Randomized Approximate Gradients of Neural
+                              Networks
+
+
+       Zhuang Wang * 1 Zhaozhuo Xu * 1 Xinyu Crystal Wu 1 Anshumali Shrivastava 1 2 T. S. Eugene Ng 1
+
+
+                        Abstract                                 tensors is infeasible due to the limited memory resources
+                                                                 of Graphic Processing Unit (GPU) (Owens et al., 2008).
+     Data-parallel distributed training (DDT) has be-
+                                                                 To overcome this obstacle, data-parallel distributed train-
+     come the de-facto standard for accelerating the
+                                                                 ing (DDT) becomes a widely adopted paradigm. In this
+     training of most deep learning tasks on massively
+                                                                 paradigm, the data loader partitions the dataset according
+     parallel hardware. In the DDT paradigm, the
+                                                                 to the number of workers. Next, each worker only trains on
+     communication overhead of gradient synchroniza-
+                                                                 its own partition. Then, the model gradients generated from
+     tion is the major efficiency bottleneck. A widely
+                                                                 each worker are synchronized. Finally, the weights at each
+     adopted approach to tackle this issue is gradi-
+                                                                 worker is updated by the synchronized gradients. This data
+     ent sparsification (GS). However, the current GS
+                                                                 parallelism can scale the training of neural network over
+     methods introduce significant new overhead in
+                                                                 large numbers of GPUs with reduced total training time.
+     compressing the gradients, outweighing the com-
+     munication overhead and becoming the new ef-                Communication Bottleneck in Gradient Synchroniza-
+     ficiency bottleneck. In this paper, we propose              tion: The innovations of hardware accelerators (Luo et al.,
+     DRAGONN, a randomized hashing algorithm for                 2018; NVIDIA, 2021) and domain-specific software opti-
+     GS in DDT. DRAGONN can significantly reduce                 mization (Chen et al., 2018; Zheng et al., 2020; Chetlur
+     the compression time by up to 70% compared to               et al., 2014) have dramatically reduced the iteration time
+     state-of-the-art GS approaches, and achieve up to           of DNN training jobs. This trend results in more frequent
+     3.52× speedup in total training throughput.                 gradient synchronization in DDT. However, it is difficult for
+                                                                 the cloud network bandwidth to keep up with the pace of the
+                                                                 computation-related improvement (Sapio et al., 2019; Bai
+1. Introduction                                                  et al., 2021). Moreover, the number of GPUs for DNN train-
+                                                                 ing keeps increasing due to the ever-growing training dataset,
+Recent years have witnessed the popularity of Deep Learn-        which further worsens the communication time (Jiang et al.,
+ing (DL) in both research and industrial communities. Deep       2020; Thakur et al., 2005). The communication overhead in
+Neural Networks (DNN) trained on massive amount of               DDT has become a well-known performance bottleneck as
+data have experienced significant success in computer vi-        each GPU needs to transmit the full gradients for synchro-
+sion (Dosovitskiy et al., 2020; Tolstikhin et al., 2021), lan-   nization (Fei et al., 2021; Huang et al., 2019; Aji & Heafield,
+guage processing (Vaswani et al., 2017; Radford et al.,          2017; Lin et al., 2017).
+2019), recommendation systems (Naumov et al., 2019) and
+geophysics (Desai et al., 2021).                                 Gradient Sparsification for Efficient Communication:
+                                                                 Gradient sparsification (GS) (Strom, 2015; Aji & Heafield,
+The Need for Data-parallel Distributed Training: Re-             2017; Shi et al., 2021; Stich et al., 2018; Barnes et al., 2020)
+cently, multilayer perceptron (MLP) models have demon-           has great potential to alleviate the communication bottle-
+strated improvement over state-of-the-art (SOTA) DL bench-       neck. GS approaches only select a subset of the original
+marks (Tolstikhin et al., 2021; Liu et al., 2021). However,      gradients for synchronization. There exists two well-known
+these MLP models introduce million-scale weight tensors.         GS paradigms, namely exact TopK (Aji & Heafield, 2017)
+As a result, large batch training over these giant weight        and approximate TopK, such as deep gradient compression
+  *
+    Equal contribution 1 Computer Science Department, Rice       (DGC) (Lin et al., 2017) and MSTopk (Shi et al., 2021). The
+University, Houston, TX, USA 2 ThirdAI Corp, Houston, TX,        exact TopK method selects the exact top-k gradients while
+USA. Correspondence to: Anshumali Shrivastava <anshu-            approximate TopK selects the gradients with values greater
+mali@rice.edu>, T. S. Eugene Ng <eugeneng@cs.rice.edu>.          than an estimated threshold. Both approaches can save up
+Proceedings of the 39 th International Conference on Machine     to 99.9% of the gradient exchange in DDT while preserving
+Learning, Baltimore, Maryland, USA, PMLR 162, 2022. Copy-        the iteration-wise performance towards convergence. Ap-
+right 2022 by the author(s).                                     proximate TopK can achieve higher practical training speed
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+than exact TopK because of the reduced overhead of sorting           DRAGONN achieves up to 3.52× speedup in total
+operations.                                                          training time over DGC. Moreover, we provide detailed
+                                                                     micro-benchmarks that suggest DRAGONN saves up
+Overhead in Gradient Sparsification: Unfortunately,
+                                                                     to 70% of the compression time of current GS methods
+we have seen minimal practical benefits of the GS algo-
+                                                                     while reducing the decoding overhead from linear with
+rithms (Agarwal et al., 2021; Xu et al., 2021). The main
+                                                                     the number of GPUs to nearly constant.
+reason comes from the overhead in compressing the gra-
+dients. The SOTA GS system (Lin et al., 2017) requires
+exact operations that extract approximate top gradients and     2. Background and Motivation
+write them into memory for communication. The algorith-
+                                                                2.1. Data-parallel Distributed Training
+mic level design of such operations leads to significant time
+costs that limit the efficiency improvement of GS systems.      Data-intensive training of neural networks (NN) on powerful
+So far, there have been few demonstrations that the current     Graphic Processing Unit (GPU) (Owens et al., 2008) boosts
+GS in any form can achieve the expected total acceleration      the success of Deep Leaning (DL) (LeCun et al., 2015).
+over full gradient synchronization.                             Given massive amount of training examples, data-parallel
+                                                                distributed training (DDT) (Shallue et al., 2019; Ben-Nun &
+Given the efficiency bottleneck of GS algorithms in DDT, it
+                                                                Hoefler, 2019; Li et al., 2020) has become one of the most
+is natural to ask the following question.
+                                                                popular paradigms to scale out DL with multiple GPUs. In
+Is there any technique that can overcome the compression        this paradigm, the training set is partitioned into multiple
+overhead of GS in DDT while maintaining the iteration wise      subsets. Each GPU has a replica of the training model that
+convergence?                                                    trains on a specific subset. In each iteration, each GPU
+                                                                consumes a mini-batch from its allocated subset as the input
+In this paper, we answer this question by proposing DRAG-
+                                                                of the training. Next, it propagates the mini-batch through
+ONN, a randomized hashing algorithm for GS. We argue
+                                                                the NN model and calculates the loss function via forward
+that it is unnecessary to use exact operations on GPUs (i.e.,
+                                                                propagation. Then, it uses the loss value to compute the
+parallel prefix sum (Blelloch, 1990; Harris et al., 2007))
+                                                                gradients of each parameter in backward propagation. Fi-
+because only approximate top-k gradients are required. To
+                                                                nally, it synchronizes the gradient updates from all GPUs
+resolve this exact-approximate mismatch, DRAGONN pro-
+                                                                to update the model parameters with a certain optimizer,
+vides a randomized hashing algorithm that directly assigns
+                                                                such as SGD (Zinkevich et al., 2010) and Adam (Kingma
+memory locations for each value in the approximate top-
+                                                                & Ba, 2014). Training a DNN model is a process to refine
+k gradients. In this way, DRAGONN naturally supports
+                                                                the model parameters with the above steps iteratively until
+massively parallel gradient extraction as multiple threads
+                                                                its convergence. In this paper, we focus on the synchronous
+can write the gradients simultaneously. Moreover, we per-
+                                                                DDT because of its wide adoption (Abadi et al., 2016; Jiang
+form a series of system-level optimizations to maximize the
+                                                                et al., 2020; Sergeev & Del Balso, 2018; Li et al., 2020).
+efficiency of DRAGONN.
+Our Contributions: The main contributions of this paper         2.2. Communication Bottleneck in DDT
+are summarized as follows:
+                                                                The single-GPU iteration time of DNN training jobs has
+   • We propose DRAGONN, a randomized hashing algo-             been significantly reduced thanks to the advancement of
+     rithm for GS in the DDT of neural networks. Through        both DNN accelerators and domain-specific compiler tech-
+     the hashing algorithm, we significantly reduce the com-    niques. For example, the iteration time of ResNet50 with
+     pression overhead in GS while preserving the iteration     one GPU has decreased by 22× in the last six years (Sun
+     wise accuracy. We also upper bound its compression         et al., 2019). However, the cloud network bandwidth has
+     error and provide a theoretical analysis on the general-   only seen a roughly 10× increase in the same period (Zhou
+     ization error of the models trained via DRAGONN.           et al., 2020). This imbalance between the fast-growing
+                                                                computing capability and the slower-growing communica-
+   • We perform system-level optimizations of DRAGONN.          tion bandwidth worsens the communication-computation
+     We first introduce efficiency-aware tensor selection       tense in DDT. It has been reported that the communication
+     over the neural network so that we only perform GS         time for gradient synchronization accounts for over 60%
+     on tensors leading to overall efficiency improvement.      of the total time for the training of BERT (Devlin et al.,
+     We also introduce a sparse decoding method to ensure       2018) or other Transformer models across 16 AWS EC2
+     that the decoding overhead does not increase linearly      instances, each with 8 NVIDIA V100 GPUs, in a 100Gbps
+     with the number of GPUs.                                   network (Bai et al., 2021). We denote the total overhead as
+   • Our extensive evaluation in vision and recommenda-         the cumulative time spent in procedures other than forward
+     tion shows that to reach the same level of convergence,    and backward propagation in the DDT of neural networks.
+                                        DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+                1.0
+                         DGC w. 1e-3                                            Full
+
+
+
+
+                                                  Total overhead (ms)
+                                                                                                            Table 1. The number of operations in existing approximate TopK
+Compression/Total
+
+                         DGC w. 1e-2                                            DGC
+                                                                                TopK                        and hashing-based gradient compression algorithms to get the
+                0.5                                                 101                                     indices of the top gradients on CPUs and GPUs. d and l are the
+                                                                                                            number of gradients and of gradients greater than the threshold.
+                                                                                                            (comp. compare)
+                0.0 220 221 222 223 224 225 226 227                 100   219     221 223 225         227      GS               CPU                  GPU
+                           Tensor size (Bytes)                                  Tensor size (Bytes)
+                                                                                                                                                     2d comp.,2d − 2 add.,
+                                                                                                               Threshold        d comp.
+                              (a)                                                  (b)                                                               d − 1 swap.
+                                                                                                               Hashing          d comp., l hash.     d comp., l hash.
+Figure 1. (a) the ratio between compression overhead and total                                                 Lower bound d comp.                   d comp.
+overhead in different tensor size (bytes). (b) The total overhead in
+data-parallel distributed training versus tensor size (bytes).
+
+                                                                                                            between the communication time and compression over-
+                                                                                                            head. Because compression competes for GPU resources
+2.3. The Need for Approximate TopK GS
+                                                                                                            with backward propagation, it delays the training and thus
+In current GS approaches, exact TopK (Aji & Heafield,                                                       degrades the performance.
+2017) selects the exact top-k gradients at the cost of pro-
+                                                                                                            Moreover, for smaller tensor that compression overhead
+hibitive compression overhead. Deep gradient compression
+                                                                                                            does not exceed 50% of the total overhead, the existence of
+(DGC) (Lin et al., 2017) achieves the SOTA performance in
+                                                                                                            compression procedure still degrades the practical perfor-
+DDT. It first estimates the kth largest absolute value from a
+                                                                                                            mance. To demonstrate this, we study the total overhead of
+subset where each gradient in this set is uniformly sampled
+                                                                                                            full gradient synchronization and DGC as the tensor size
+from the gradient tensor. Next, DGC uses this approxi-
+                                                                                                            increases when we communicate the tensor over 16 Nvidia
+mate value as a threshold. Only gradients with absolute
+                                                                                                            V100 GPUs via compression ratio 0.001. Figure 1(b) shows
+values greater than this threshold is selected for synchro-
+                                                                                                            that for tensor size smaller than 221 bytes, the full gradi-
+nization, as shown in Algorithm 3. The main reason for
+                                                                                                            ent synchronization outperforms DGC in efficiency even if
+DGC’s outstanding performance is that the approximate
+                                                                                                            DGC can significantly save the network traffic volume. It is
+TopK operation balances the trade-offs between accuracy
+                                                                                                            because there is a constant overhead to launch GPU kernels
+and efficiency. It preserves the accuracy by synchronizing
+                                                                                                            for compression (Sergeev & Del Balso, 2018; Wang et al.,
+gradients with large absolute values while reduces the com-
+                                                                                                            2021) and it is even greater than the saved communication
+pression overhead in exact sorting. Therefore, it stands out
+                                                                                                            time for small tensors. The exact TopK always performs
+as a major benchmark in GS.
+                                                                                                            worse than the full gradient synchronization.
+2.4. The Limitations of Previous Approximate GS                                                             To fully unleash the benefits of GS for DDT, we must design
+                                                                                                            efficient compression algorithms to minimize the compres-
+Our experimental observation shows that DGC still intro-                                                    sion overhead while preserving the performance in conver-
+duces costly compression overhead, which degrades the                                                       gence. In addition, we must carefully enable compression
+training performance of DDT in practice. For instance, if                                                   for tensors to avoid the over-compression penalties.
+we perform DGC for vision transformer (Dosovitskiy et al.,
+2020) on 16 Nvidia V100 GPUs with 0.001 compression
+ratio in a 25Gbps network, the expected speedup over full                                                   3. DRAGONN: A Hashing-based Compressor
+gradient synchronization is 2.81×. However, in practice,                                                    3.1. The Inefficiencies of Previous Approximate GS
+we could only observe 2.14× speedup.
+                                                                                                            Although DGC (Lin et al., 2017) can reduce the overhead of
+To further evaluate the impact of compression procedure in                                                  sorting operations, its compression overhead still greatly di-
+DGC, we study the ratio between the compression overhead                                                    lutes the benefits gained from communication time savings.
+and the total overhead in the DDT of a tensor over 16 Nvidia                                                The performance bottleneck of DGC lies in the process of
+V100 GPUs. We present this ratio versus the tensor size in                                                  extracting the indices of the top gradients (Lines 2-3 in Al-
+Figure 1(a) with compression ratio 0.001 and 0.01. From                                                     gorithm 3, Appendix B). When the compression operation
+the figure, we observe that when the tensor size exceeds 224                                                is performed on CPUs, it needs d comparison operations to
+bytes, the compression overhead outweighs other overheads                                                   determine the gradients greater than the threshold, where
+such as communication overhead and becomes the major                                                        d is the number of gradients in a tensor 1 . Note that this
+efficiency bottleneck. The communication time has been                                                      is the lower bound of the number of operations to extract
+significantly reduced and it can be close to the communica-                                                 the top gradients. It then writes the selected gradients along
+tion latency after compression. However, the compression
+                                                                                                               1
+overhead increases with the tensor size. So does the gap                                                           There is no need to have the mask with CPU compression.
+                                  DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+                  (a) DGC                             (b) Ours
+                                                                                    Algorithm 1 DRAGONN
+       1   0       3     5    2     1     1   0       3       5       2   1
+                                                                                      Input: gradient G, threshold t, memory size m, hash function h
+                        Mask with thr=2                           Hash with thr=2
+                                                                                      Output: Gc , I
+       0   0       1     1    1     0             2       4       3
+                                                                                      d ← len(G)
+               Select nonzero indices                         Values                  I ← -1m
+       2   3       4                              3       2       5                   for i = 0 to d − 1 do
+               Values                                                                   if |G[i]| ≥ t then
+       3   5       2                                                                        j ← h(i)
+                                                                                            I[j] ← i
+                                                                                        end if
+Figure 2. (a) The DGC algorithm for extracting top gradients and                      end for
+write it into the memory (b) DRAGONN. We overcome the over-                           Gc = G[I]
+head of nonzero indices selection by direct hashing.
+
+
+with their indices into the memory sequentially. GPUs are                           index is overwritten by the latter ones. After this step, the
+widely used to speed up compression operations (Xu et al.,                          indices of the top gradients are extracted. It then obtains
+2021). Parallel prefix sum (Harris et al., 2007) is the SOTA                        the gradients based on the indices. An index −1 indicates
+algorithm to select nonzero indices to accelerate this pro-                         that there is no index written into this position. DRAGONN
+cess (Meta, 2022; Google, 2022). In order to avoid the                              sets this index and the corresponding gradient to 0. Figure 2
+sequential memory writing issue, it performs 2d compari-                            compares DGC and DRAGONN. The difference lies in how
+son, 2(d − 1) add , and d − 1 swap operations, resulting                            they extract the indices of the top gradients.
+in scanning the tensor multiple times and incurring non-                            Algorithm Complexity. DRAGONN has d comparison
+negligible overheads (refer to Appendix C). The numbers                             operations and l hashing operations, where l is the number
+of operations to get the indices of the top gradients are in                        of gradients greater than the threshold, to get the indices of
+Table 1.                                                                            the top gradients with both CPUs and GPUs for compres-
+The number of memory access in DGC’s compression op-                                sion, as shown in Table 1. In addition, unlike parallel prefix
+erations with GPUs is around 7× higher than the lower                               sum, there is no dependency among the hashing operations.
+bound 2 . Moreover, parallel prefix sum builds a balanced                           The lower bound of the overhead is d comparison opera-
+binary tree for parallel computing, leading to O(log d) steps                       tions as it has to at least scan and compare all the gradients
+in a sequence. These two factors explain the high compres-                          once. Therefore, the hashing-based GS can achieve the
+sion overheads of DGC (and other existing approximate GS                            near-optimal performance for approximate TopK gradient
+algorithms) observed in Section 2.4.                                                compression.
+
+Unnecessary Exact Algorithm for Approximate Gradi-                                  Strength in Parallel Computing. The critical path in ap-
+ent Compression: DGC is an approximate gradient com-                                proximate GS is the sequential memory writing for the in-
+pression algorithm, but its performance bottleneck lies in                          dices of top gradients (Line 14 in Algorithm 3). In contrast,
+parallel prefix sum, which is an exact algorithm. We argue                          DRAGONN writes an index into the position based on the
+that replacing parallel prefix sum with an approximate algo-                        mapped integer and it allows for hash collisions (refer to
+rithm does not affect the performance in the convergence                            Section A.2 for the analysis). Because memory writing is an
+of GS in DDT. Moreover, the approximate algorithm could                             atomic operation on GPUs (Owens et al., 2008), it guaran-
+significantly reduce the compression overhead.                                      tees that there is exact one valid index in the position when
+                                                                                    hash collisions occur. Multiple threads can perform the hash
+3.2. DRAGONN                                                                        functions and memory writing simultaneously without extra
+                                                                                    operations. An interesting property of DRAGONN is that,
+We design DRAGONN, a hashing-based compression algo-                                unlikely DGC, the indices in the memory are in random
+rithm to minimize the compression overhead, as shown in                             orders. Because gradients are independent with each other
+Algorithm 1. It allocates memory for the indices in advance                         in the memory, the order of them does not affect the results
+according to the compression rate. It first compares the gra-                       and there is no need to sort them.
+dient values with the threshold. If a gradient (or its absolute
+                                                                                    Moreover, we provide a theoretical analysis on the conver-
+value) is no less than the threshold, its index is mapped into
+                                                                                    gence and generalization of DRAGONN in Appendix A.
+an integer within a range, i.e., from 0 to m−1. It then writes
+the index into the memory with the offset of the mapped
+integer. If multiple indices are mapped into the same integer,                      4. Deploying DRAGONN in Practice
+they are written into the same position and the previous
+                                                                                    DRAGONN is a tensor wise approximate GS with near-
+   2
+       There are two memory accesses in add and swap operations.                    optimal compression overhead. As a DNN model typi-
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Algorithm 2 DDT via DRAGONN                                      We develop a general cost-benefit analysis to determine
+  Input: weights θ, learning rate η, number of gradients d       the set of tensors that should be compressed to avoid over-
+  Output: g̃                                                     compression penalties. We must ensure that the compression
+  g := stochastic gradient(θ)                                    time is smaller than the communication time savings:
+  if Tcomp (d) < Tfull (d) − Tspr (d) then // Eq.(1)                            Tcomp (d) < Tfull (d) − Tspr (d),          (1)
+     gc := DRAGONN(g)
+     gm := communicate(gc )                                      where d is the number of gradients in a tensor, Tcomp (d) is
+     g̃ := sparse decode(gm )                                    the compression time, Tfull (d) and Tspr (d) are the communi-
+  else                                                           cation time without and with compression, respectively.
+     g̃ = allreduce(g)                                           Suppose the number of workers involved in the training is K,
+  end if                                                         the network bandwidth is B, and the size of each gradient is
+                                                                 A. The communication cost models follow the analysis in
+                                                                 the literature (Patarasuk & Yuan, 2009; Thakur et al., 2005;
+                                                                 Fei et al., 2021). There are many available communication
+cally consists of multiple tensors, a practical challenge we
+                                                                 schemes for the gradient synchronization (Jiang et al., 2020;
+must address is how to deploy and optimize DRAGONN in
+                                                                 Sergeev & Del Balso, 2018; Xu et al., 2021; Bai et al., 2021),
+DDT for better efficiency improvement. In this section, we
+                                                                 while we take Ring Allreduce and Allgather as the examples
+present the system-level optimizations for the performance
+                                                                 to quantify the cost-benefit analysis.
+of DRAGONN in practice. We start with an overview of
+components in the GS based DDT system via DRAGONN.               Ring Allreduce is a widely-adopted Allreduce algorithm for
+Then, we introduce the efficiency-aware tensor selection.        gradient synchronization in DDT without compression (Li
+Finally, we introduce the sparse decoding technique to im-       et al., 2020; Sergeev & Del Balso, 2018). The communica-
+prove the aggregation efficiency.                                tion time for a tensor with the size of dA is
+                                                                                                          dA
+4.1. Overview                                                                   T (d) = 2(K − 1)(α +          ),
+                                                                                                          KB
+Algorithm 2 describes the DDT via DRAGONN. Given                 where α is the one-way network latency between workers.
+a tensor with d gradients, DRAGONN first determines              However, the aggregation operations of compressed gradi-
+whether GS has benefits based on a cost-benefit analysis         ents are not associative, which makes compressed tensors
+considering both the system configuration and compression        not allreducible (Agarwal et al., 2021). Allgather is com-
+algorithm (Section 4.2). If there are no benefits, it directly   monly used for the gradient synchronization with gradient
+synchronizes the tensor with Allreduce without compres-          compression (Xu et al., 2021; Wang et al., 2021). Hence,
+sion. Otherwise, it compresses the tensor via DRAGONN            the communication time after compression becomes
+and resorts to other collective communication operations
+(e.g., Allgather) for the communication. Each worker then                                               γdA
+                                                                              Tcomp (d) = (K − 1)(α +        ),
+receives the compressed tensors and decodes them with the                                                B
+proposed sparse decoding mechanism (Section 4.3).                where γdA is the tensor size after compression. Therefore,
+                                                                 we show that
+4.2. Efficiency-aware Tensor Selection
+                                                                   Tfull (d) − Tspr (d) = (K − 1)(α + (1/K − γ)dA/B)
+A strawman to deploy DRAGONN in DDT is to apply it
+on all tensors in a DNN model (Xu et al., 2021; Shi et al.,      Note that other collective communication operations can
+2021). Unfortunately, it incurs over-compression penalties       also be applied to this cost-model analysis.
+and harms overall performance (Bai et al., 2021). In the
+                                                                 The compression time consists of two parts: encoding time
+DDT of a DNN model with multiple tensors, the communi-
+                                                                 and decoding time. Given a compression algorithm and the
+cation time is mainly contributed by large tensors and small
+                                                                 compression ratio, we can easily profile both the encoding
+tensors are not the culprit of the poor scalability. Because
+                                                                 and decoding time offline as a function of the number of
+the communication latency can dominate the communica-
+                                                                 gradients in a tensor. We then have the cost model for the
+tion time for small messages (Nvidia, 2018; Sergeev &
+                                                                 compression time Tcomp (d).
+Del Balso, 2018; Li et al., 2020), there are no benefits to
+further reduce the size of small tensors due to the communi-     We compare Tcomp (d) and Tfull (d) − Tspr (d) to decide
+cation latency. Moreover, compression incurs computational       whether it has benefits to enable compression for a tensor.
+overheads and competes for GPU resources with training.          The decision depends on the tensor size, the compression
+Hence, there is no guarantee that compressing tensors can        algorithm, the compression ratio, the number of workers,
+always improve the training performance.                         the network bandwidth, and the computing capacity.
+                                         DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+                 1e3                                                  1e3                                                  1e3                                                 1e5
+                       FULL                                     1.5         FULL                                                 FULL
+                                                                                                                                                                           3
+                                                                                                                                                                                     FULL
+             4         DGC
+                       DRAGONN
+                                                                            DGC                                      2.0         DGC                                                 DGC
+                                                                                                                                                                                     DRAGONN
+                                                                            DRAGONN                                              DRAGONN
+
+
+
+
+                                                                                                                                                             Samples/sec
+Images/sec
+
+
+
+
+                                                   Images/sec
+
+
+
+
+                                                                                                        Images/sec
+             3
+                       TopK
+                       Linear-Scaling                           1.0         TopK
+                                                                            Linear-Scaling                           1.5         TopK
+                                                                                                                                 Linear-Scaling                            2
+                                                                                                                                                                                     TopK
+                                                                                                                                                                                     Linear-Scaling
+
+             2                                                                                                       1.0
+                                                                0.5                                                                                                        1
+             1                                                                                                       0.5
+             0                                                  0.0                                                  0.0                                                   0
+                       4           8          16                            4           8          16                            4           8          16                           4           8          16
+                           The number of GPUs                                   The number of GPUs                                   The number of GPUs                                  The number of GPUs
+                           (a) ResNet50                     (b) ViT                      (c) MLP-Mixer                     (d) XML
+                             Figure 3. The DDT speed with different number of GPUs via different GS approaches for four DNN models.
+
+
+                                                                                                                     network bandwidth connecting machines is 25Gbps. The
+Table 2. Overall Training speedups of DRAGONN over DGC and
+                                                                                                                     machines run Debian 10 operating system and the software
+FULL when reaching 94% accuracy in Cifar10 and 80% accuracy
+in Wiki10-31K.                                                                                                       environment includes CUDA 11.0, PyTorch-1.8.0, NCCL-
+   Speedups ResNet50 ViT              MLP-Mixer  XML                                                                 2.7.8., and Hovorod-0.19.1. Memory momentum correc-
+   DGC           1.42×      2.15×     1.72×      3.52×                                                               tion (Lin et al., 2017) is used as the error-feedback mecha-
+   FULL          2.40×      2.45×     6.04×      35.9×                                                               nism to preserve the training accuracy of all the evaluated
+                                                                                                                     scarification algorithms.
+
+4.3. Sparse Decoding                                                                                                 5.1. Main Results
+Because the compressed tensors are not allreducible, each                                                            We present the results that demonstrate our method’s ad-
+worker receives K compressed tensors after communica-                                                                vantage in neural network training over DGC (Lin et al.,
+tion and they must be decoded before the weight updates.                                                             2017) and TopK (Aji & Heafield, 2017). Specifically, we
+To handle this, current GS approaches first decode each                                                              would like to answer the following questions: (1) What are
+compressed tensor into a dense format and then perform                                                               the total speedups of DRAGONN over DGC and TopK? (2)
+aggregation operations (dense decoding) (Xu et al., 2021;                                                            Does DRAGONN preserve the iteration wise convergence
+Wang et al., 2021). This procedure generates a sparse-to-                                                            in test accuracy as full synchronization (FULL)?
+dense overhead that linearly increases with the number of
+GPUs. As the sparse-to-dense conversion and aggregation                                                              Settings: We compare the performance of DRAGONN
+operations are non-negligible on GPUs, the decoding proce-                                                           against DGC, TopK and full synchronization in the data-
+dure could greatly degrade the final performance.                                                                    parallel distributed training of four deep models. For vi-
+                                                                                                                     sual recognition, we choose ResNet50 (He et al., 2016),
+We design a sparse decoding mechanism to reduce the de-                                                              Vision Transformer (ViT) (Dosovitskiy et al., 2020) and
+coding time. Because the index-value pairs in compressed                                                             MLP-Mixer (Tolstikhin et al., 2021) for study. The input
+tensors are independent from each other, we batch these K                                                            image size is set to 224 × 224 × 3 for all these models. We
+compressed tensors, i.e., concatenate all of them, for one                                                           set the evaluation metric to be the accuracy. We evaluate
+decoding operation. After decoding, there is only one dense                                                          DRAGONN and baseline methods on the DDT of ResNet50
+tensor so that we need no aggregation operations. This                                                               over ImageNet-1K (Deng et al., 2009) dataset. We use
+batching mechanism is also applicable to other GS algo-                                                              Adam (Kingma & Ba, 2014) as optimizer with batch size
+rithms, such as DGC, TopK, and MSTopk (Shi et al., 2021).                                                            64 and learning rate 0.1. After linearly warming up the
+The sparse decoding is equivalent to dense decoding and it                                                           learning rate, we reduce by 10 on the 30th, 60th and 80th
+can support the indices in any order.                                                                                epochs. We also evaluate DRAGONN and baseline meth-
+                                                                                                                     ods over ViT and MLP-Mixer on fine-tuning tasks: given
+5. Experiment                                                                                                        weights pretrained on ImageNet-21k (Ridnik et al., 2021),
+                                                                                                                     we perform DDT on Cifar10 (Krizhevsky et al., 2009). We
+In this section, we demonstrate the efficiency of our ap-                                                            set Adam (Kingma & Ba, 2014) as optimizer with learning
+proach in DDT. We start with presenting the testbed. Next,                                                           rate 10−5 and batch size 32.
+we present an evaluation of our approach over end-to-end
+training. Finally, we showcase several micro-benchmarks                                                              Moreover, we compare the performance of our method
+as an ablation study.                                                                                                against DGC for DDT over giant weight tensors. We choose
+                                                                                                                     multi-label classification to showcase this comparison. We
+Testbed: We perform experiments on 16 Nvidia Tesla V100-                                                             use the Wiki10-31K dataset in the extreme classification
+32GB GPUs. Each machine has 8 GPUs, 96 CPU cores                                                                     repository (Bhatia et al., 2016). There are 14146 training
+(Intel Xeon 8260 at 2.40GHz) and 256 GB of RAM. The                                                                  samples and 6616 test samples. We embed the input fea-
+GPU-to-GPU interconnection is supported by PCIE and the
+                                                 DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+            1.00
+                                                                                    0.98                                                                                   0.8
+            0.75                                                                                                                0.9
+                                                                                                                                                                           0.6
+Accuracy
+
+
+                                                                                    0.96
+
+
+
+
+                                                                                                                     Accuracy
+
+
+
+
+                                                                                                                                                                Accuracy
+                                                                         Accuracy
+                                                                                                                                0.8
+            0.50                                 FULL                                                      FULL                                       FULL
+                                                                                                                                                                           0.4                     FULL
+                                                 DGC                                0.94                   DGC                  0.7                   DGC                                          DGC
+            0.25                                 DRAGONN                                                   DRAGONN                                    DRAGONN              0.2                     DRAGONN
+                                                 TopK                               0.92                   TopK                 0.6                   TopK                                         TopK
+            0.00              25 50 75 100                                                                                                                                 0.0
+                                                                                           0   250      500 750   1000                0   250      500 750   1000             0   10      20        30       40
+                               Iteration (×103)                                                      Iteration                                  Iteration                              Iteration
+                            (a) ResNet50                                    (b) ViT                    (c) MLP-Mixer                                                               (d) XML
+                                                            Figure 4. Convergence comparison of four DNN models with different GS.
+
+
+
+                      103         DGC                                              Dense                                        speedup over full synchronization.
+                                                                             5
+                                                            Decoding time (ms)
+     Encoding time (ms)
+
+
+
+
+                                  DRAGONN                                          Sparse
+                      102         TopK                                       4                                                  Discussion: The speedup of DRAGONN over DGC in-
+                      101                                                    3                                                  creases with the number of GPUs. This phenomenon demon-
+                                                                             2                                                  strates DRAGONN’s strength in scalable DDT. Moreover,
+                      100
+                                                                             1
+                            222       224     226     228                                                                       we expect that DRAGONN will become more beneficial
+                                   Tensor size (Byte)                        0 4 GPUs 8 GPUs            16 GPUs                 in faster networks (e.g., NVLink for the GPU-to-GPU in-
+                 (a)                         (b)                                                                                terconnection or 100Gbps network bandwidth) because the
+Figure 5. (a) the encoding time of various compression algorithms                                                               ratio of communication to compression overheads shifts
+in different tensor sizes (bytes) (b) the decoding time of dense                                                                to the latter. Furthermore, the performance improvements
+decoding and sparse decoding.
+                                                                                                                                of MLP-Mixer and ViT are consistent as long as the input
+tures following (Chen et al., 2020) and only train on the                                                                       images have the same shape. Therefore, the advantages of
+last linear layer. The last layer has input 4096 and outputs                                                                    DRAGONN are further validated.
+30938. As we set the linear layer without bias, we perform
+distributed training over a single giant tensor with 126.72M                                                                    5.2. Micro-benchmarks
+parameters. The batch size is 256. We use learning rate
+                                                                                                                                In this section, we would like to investigate the components
+0.001 for Wiki10-31K. For evaluation, we denote accuracy
+                                                                                                                                in DRAGONN that help its speedup in DDT. We evaluate
+as the P @1 ( top-1 accuracy) as our metrics. We denote the
+                                                                                                                                the effectiveness of DRAGONN’s three components: 1)
+model as XML.
+                                                                                                                                the hashing-based compressor, 2) efficiency-aware tensor
+Speedups: we present the DDT speed on 4, 8 and 16 GPUs                                                                          selection, and 3) sparse decoding.
+of DRAGONN and baselines in Figure 3. As shown in
+                                                                                                                                Figure 5(a) compares the encoding time of TopK (Aji &
+the figure, when we perform DDT over 16 GPUs, DRAG-
+                                                                                                                                Heafield, 2017), DGC, and DRAGONN over various tensor
+ONN performs 2.40× speedup over full synchronization in
+                                                                                                                                sizes with the compression ratio 0.001. We can see that
+ResNet50, while DGC performs 1.68× speedup. DRAG-
+                                                                                                                                exact TopK algorithm performs much worse than approx-
+ONN performs 2.61× speedup over full synchronization
+                                                                                                                                imate TopK algorithms. Therefore, we only provide the
+in ViT, while DGC performs 2.14× speedup. DRAG-
+                                                                                                                                comparison of DRAGONN with DGC. DRAGONN has up
+ONN performs 2.57× speedup over full synchronization in
+                                                                                                                                to 70% lower encoding time than DGC thanks to its efficient
+MLP-Mixer, while DGC performs 2.06× speedup. DRAG-
+                                                                                                                                memory writing on GPUs. For a tensor with 512MB, the en-
+ONN performs 22.4× speedup over full synchronization in
+                                                                                                                                coding time of DRAGONN and DGC is 13.2ms and 35.4ms,
+XML, while DGC performs 10.2× speedup. Meanwhile,
+                                                                                                                                respectively. As a comparison, the model size of XML with
+TopK (Aji & Heafield, 2017) introduces large overhead in
+                                                                                                                                Wiki10-31K dataset is 507MB and its single-GPU iteration
+compression and has the slowest speed. These results an-
+                                                                                                                                time is 25 ms. Therefore, DRAGONN reduces the major
+swer the first question: DRAGONN achieves significant
+                                                                                                                                overhead in the DDT of XML. In addition, we observe that
+speedups over baselines in various tasks.
+                                                                                                                                the encoding time almost keeps constant with the compres-
+Convergence: We present the iteration wise convergence of                                                                       sion ratio ranging from 0.0001 to 0.01, which is consistent
+DDT with four models in Figure 4(b). We observe that both                                                                       with the number of operations listed in Table 1.
+DRAGONN and TopK approximate the full synchronization
+                                                                                                                                Figure 5(b) compares the performance of dense decoding
+better than DGC. For XML, it takes even 1.6× more itera-
+                                                                                                                                and sparse decoding with the tensor size as 64MB and the
+tions for DGC than DRAGONN to converge. Combining
+                                                                                                                                compression ratio as 0.001. The decoding time of dense de-
+the iteration wise performance and time wise speedup on 16
+                                                                                                                                coding linearly increases with the number of GPUs because
+GPUs, we summarize the total time speedup of DRAGONN
+                                                                                                                                of the conversion from sparse tensors into dense formats.
+over baselines in Table 2. These results indicate that DRAG-
+                                                                                                                                In contrast, the decoding time of sparse decoding keeps
+ONN achieves at most 3.52× speedup over DGC and 35.9×
+                                       DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+                           Compute.          Sync.                                    Compute.      Sync.                                              Compute.          Sync.                                                    Compute.         Sync.
+     FULL                                                FULL                                                   FULL                                                                                       DGC
+     DGC                                                 DGC                                                    DGC
+                                                                                                                                                                                 DRAGONN
+DRAGONN                                             DRAGONN                                                DRAGONN
++Selection                                                                                                                                                                       +Selection
+                                                    +Selection                                             +Selection
++Decoding                                           +Decoding                                              +Decoding                                                             +Decoding
+         0.0               0.1         0.2      0.3          0.0                0.2    0.4 0.6 0.8     1.0          0.0                               0.2        0.4      0.6                                    0.00     0.02     0.04 0.06      0.08
+                             Time cost (s)                                            Time cost (s)                                                      Time cost (s)                                                            Time cost (s)
+                    (a) ResNet50                                                 (b) ViT                                                   (c) MLP-Mixer                                                                   (d) XML
+
+Figure 6. Impacts of the three components (hashing-based compressor, efficient-aware tensor selection and sparse decoding) on the
+per-iteration time costs of the computation (Compute.) and synchronization (Sync.).
+
+
+                                                                     1e5                                                                  2.0    QSGD
+                                                                                                                                                                                                           2.0          QSGD
+
+
+
+
+                                                                                                                to full synchronization
+
+
+
+
+                                                                                                                                                                                 to full synchronization
+                                                                                                                Speedups normalized
+
+
+
+
+                                                                                                                                                                                 Speedups normalized
+             0.8                                                                                                                                 DGC                                                                    DGC
+                                                               2.0                                                                               DRAGONN                                                                DRAGONN
+                          SignSGD
+                                                 Samples/sec
+
+
+
+
+             0.6                                               1.5
+  Accuracy
+
+
+
+
+                          DGC                                                                                                             1.5                                                              1.5
+             0.4          DRAGONN                              1.0
+                          Random
+             0.2                                               0.5
+                                                                                                                                          1.0                                                              1.0
+             0.0                                               0.0                                                                              1/4       1/8 1/16 1/32                                            1/4        1/8 1/16 1/32
+                0    50       100    150      200                    SignSGD   DGC DRAGONN Random                                                       Compression ratio                                                   Compression ratio
+                           Iteration                                           Compressor
+                                                                                                                       (a) MLP-Mixer                   (b) ViT
+                           (a)                                                 (b)
+                                                                                                             Figure 8. Training speedups versus the compression ratios.
+Figure 7. For DDT of XML Wiki10-31K model over 16GPUs, we
+plot (a) accuracy versus number of iteration, (b) training speed of
+SignSGD, DGC, Random Sampling (Random) and DRAGONN.
+                                              1                                                              random sampling (Random) (Stich et al., 2018) and
+We set the compression ratio of SignSGD as 32    (minimum permit-
+                                          −3
+ted ratio). We set compression ratio as 10 for other methods.                                                SignSGD (Karimireddy et al., 2019), which is a 1-bit quan-
+                                                                                                             tization algorithm. The evaluated model is XML on Wiki10-
+                                                                                                             31K dataset and the number of GPUs is 16. Note that the
+constant thanks to the batching mechanism. Note that the                                                     compression ratio is 32 1
+                                                                                                                                       for SignSGD and 10−3 for others.
+speedups of sparse decoding is over K×, where K is the                                                       Figure 7(a) shows that DRAGONN outperforms baselines
+number of GPUs, because it also saves the computational                                                      with less iterations to converge, even when SignSGD keeps
+overhead of aggregations.                                                                                    31.25× gradient values than DRAGONN. Figure 7(b) dis-
+We then evaluate the individual performance gains of the                                                     plays the training speed of four methods. DRAGONN out-
+three components in end-to-end training with 16 GPUs.                                                        performs DGC and SignSGD with faster speed. Although
+The computation latency is the time for forward and back-                                                    random sampling outperforms DRAGONN in the training
+ward propagation, and it keeps constants in DDT (Zhang                                                       speed, it requires 15.1× iterations to converge. Overall,
+et al., 2020; Li et al., 2020). The synchronization latency                                                  DRAGONN achieves 14.1× speedup over random sam-
+combines the communication and compression time. It                                                          pling. We also compare the speedups of DRAGONN, DGC,
+can overlap with computation in the training of ResNet50,                                                    and QSGD (Alistarh et al., 2017) in different compression
+ViT, and MLP-Mixer, as shown in Figure 6(b) and 6(c).                                                        ratio for ViT and MLP-Mixer in Figure 8.
+The speedups of DRAGONN-only (i.e., only applying the
+hashing-based compressor) over DGC are 1.33×, 1.21×,                                                         6. Related Work
+and 1.25× for ResNet50, ViT, and MLP-Mixer in terms
+of the synchronization latency. The two system optimiza-                                                     Besides DGC, many GS algorithms are proposed to ad-
+tion techniques can further increase the speedups to 1.92×,                                                  dress the communication bottlenecks by reducing the traffic
+1.35×, and 1.39×, respectively. Because XML has only                                                         volume. The TopK algorithm (Aji & Heafield, 2017) is a
+one layer, there is no overlap between its computation and                                                   well-known GS paradigm to reduce the traffic volume for
+synchronization. Figure 6(d) shows that the speedup of                                                       distributed training. Unfortunately, its exorbitant operation
+DRAGONN-only for its synchronization latency is 1.91×.                                                       overhead outruns the saved communication time and can
+The sparse decoding mechanism can further increase the                                                       harm the practical performance (Xu et al., 2021; Shi et al.,
+speedup to 4.33×.                                                                                            2021; Agarwal et al., 2021). RandomK (Stich et al., 2018)
+                                                                                                             and its extension (Barnes et al., 2020) randomly selects a
+                                                                                                             subset of gradient for synchronization, but they may down-
+5.3. More Comparisons
+                                                                                                             grade the model’s performance in convergence rate. Among
+In this section, we compare DRAGONN with two other                                                           the method proposed above, the compression time still per-
+representative compression algorithms, i.e., GS with                                                         forms as the major efficiency bottleneck. MSTopk (Shi et al.,
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+2021) also notices the compression overhead in DGC, but          References
+the focus is the threshold search process and it compresses
+                                                                 Abadi, M., Barham, P., Chen, J., Chen, Z., Davis, A., Dean,
+all tensors for communication.
+                                                                   J., Devin, M., Ghemawat, S., Irving, G., Isard, M., Kudlur,
+Because the aggregation operations of sparse tensors are not       M., Levenberg, J., Monga, R., Moore, S., Murray, D. G.,
+associative (Xu et al., 2021; Agarwal et al., 2021), Allre-        Steiner, B., Tucker, P., Vasudevan, V., Warden, P., Wicke,
+duce (Thakur et al., 2005) cannot be used for the gradi-           M., Yu, Y., and Zheng, X. Tensorflow: A system for
+ent synchronization of compression-enabled DDT. Several            large-scale machine learning. In USENIX Symposium on
+algorithms, such as Ok-Topk (Li & Hoefler, 2022), Spar-            Operating Systems Design and Implementation (OSDI),
+CML (Renggli et al., 2019), and gTopk (Shi et al., 2019),          pp. 265–283, 2016.
+are recently proposed to optimize communication for the
+aggregation of sparse tensors after compression operation.       Agarwal, S., Wang, H., Venkataraman, S., and Papail-
+However, DRAGONN focuses on directly minimizing the                iopoulos, D. On the utility of gradient compres-
+operation cost in extracting the topk elements before com-         sion in distributed training systems. arXiv preprint
+munication. DRAGONN and these algorithms solve differ-             arXiv:2103.00543, 2021.
+ent problems and thus, are orthogonal and complementary.         Aji, A. F. and Heafield, K. Sparse communication for dis-
+Other than gradient sparsification, quantization is another        tributed gradient descent. In Conference on Empirical
+popular types of gradient compression algorithms. It de-           Methods in Natural Language Processing, 2017.
+creases the precision of gradients to reduce the traffic vol-
+                                                                 Alistarh, D., Grubic, D., Li, J., Tomioka, R., and Vojnovic,
+ume. Gradients in FP32 can be mapped to fewer bits, such
+                                                                   M. QSGD: Communication-efficient SGD via gradient
+as 8 bits (Dettmers, 2015; Alistarh et al., 2017), 2 bits (Wen
+                                                                   quantization and encoding. In Advances in Neural Infor-
+et al., 2017), and even 1 bit (Seide et al., 2014; Karimireddy
+                                                                   mation Processing Systems, pp. 1709–1720, 2017.
+et al., 2019). The compression rate of quantization is at most
+32×, much lower than that of GS. These works focus on the        Bai, Y., Li, C., Zhou, Q., Yi, J., Gong, P., Yan, F., Chen, R.,
+design of compression algorithms, but they do not consider         and Xu, Y. Gradient compression supercharged high-
+the system-level optimization for the overall performance.         performance data parallel dnn training. In The 28th
+                                                                   ACM Symposium on Operating Systems Principles (SOSP
+7. Conclusion                                                      2021), 2021.
+
+In this work, we propose DRAGONN: a randomized gra-              Barnes, L. P., Inan, H. A., Isik, B., and Özgür, A. rtop-k: A
+dient sparsification (GS) algorithm for data-parallel dis-         statistical estimation approach to distributed sgd. IEEE
+tributed training (DDT) of neural networks. We identify the        Journal on Selected Areas in Information Theory, 1(3):
+overhead of current GS approaches and propose a hashing-           897–907, 2020.
+based randomized algorithm to tackle this bottleneck. We
+show that, with our compression techniques, DRAGONN              Basu, D., Data, D., Karakus, C., and Diggavi, S. Qsparse-
+achieves up to 3.52× speedup over the current state-of-the-        local-sgd: Distributed sgd with quantization, sparsifica-
+art GS algorithm. Moreover, the promising scalability of           tion and local computations. Advances in Neural Infor-
+DRAGONN indicates its strength in DDT with increasing              mation Processing Systems, 32, 2019.
+number of workers. We hope DRAGONN would open the                Ben-Nun, T. and Hoefler, T. Demystifying parallel and dis-
+door for more randomized algorithm in DDT.                         tributed deep learning: An in-depth concurrency analysis.
+                                                                   ACM Computing Surveys (CSUR), 52(4):1–43, 2019.
+8. Acknowledgement
+                                                                 Bhatia, K., Dahiya, K., Jain, H., Kar, P., Mittal,
+Zhuang Wang, Xinyu Crystal Wu and T. S. Eugene Ng                  A., Prabhu, Y., and Varma, M.          The extreme
+are supported by the National Science Foundation CNS-              classification repository: Multi-label datasets and
+1718980, CNS-1801884, and CNS-1815525. Zhaozhuo Xu                 code, 2016.      URL http://manikvarma.org/
+and Anshumali Shrivastava are supported by the National            downloads/XC/XMLRepository.html.
+Science Foundation IIS-1652131, BIGDATA-1838177,
+AFOSR-YIP FA9550-18-1-0152, the ONR DURIP Grant,                 Blelloch, G. E. Prefix sums and their applications. In Sythe-
+the ONR BRC grant on Randomized Numerical Linear Al-               sis of parallel algorithms, pp. 35—60. Morgan Kaufmann
+gebra and the Ken Kennedy Institute BP fellowship. We              Publishers Inc., 1990.
+would like to thank Ben Coleman and Zhenwei Dai for              Carter, J. L. and Wegman, M. N. Universal classes of hash
+helpful discussions, and the anonymous reviewers for their         functions. Journal of computer and system sciences, 18
+valuable feedback.                                                 (2):143–154, 1979.
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Chen, B., Liu, Z., Peng, B., Xu, Z., Li, J. L., Dao, T., Song,    He, K., Zhang, X., Ren, S., and Sun, J. Deep residual learn-
+  Z., Shrivastava, A., and Re, C. Mongoose: A learnable             ing for image recognition. In Proceedings of the IEEE
+  lsh framework for efficient neural network training. In           conference on computer vision and pattern recognition,
+  International Conference on Learning Representations,             pp. 770–778, 2016.
+  2020.
+                                                                  Huang, Y., Cheng, Y., Bapna, A., Firat, O., Chen, D., Chen,
+Chen, T., Moreau, T., Jiang, Z., Zheng, L., Yan, E., Shen,          M., Lee, H., Ngiam, J., Le, Q. V., Wu, Y., et al. Gpipe:
+  H., Cowan, M., Wang, L., Hu, Y., Ceze, L., et al. {TVM}:          Efficient training of giant neural networks using pipeline
+  An automated end-to-end optimizing compiler for deep              parallelism. Advances in neural information processing
+  learning. In 13th {USENIX} Symposium on Operating                 systems, 32:103–112, 2019.
+  Systems Design and Implementation ({OSDI} 18), pp.
+  578–594, 2018.                                                  Jiang, Y., Zhu, Y., Lan, C., Yi, B., Cui, Y., and Guo, C. A uni-
+                                                                     fied architecture for accelerating distributed {DNN} train-
+Chetlur, S., Woolley, C., Vandermersch, P., Cohen, J.,               ing in heterogeneous gpu/cpu clusters. In 14th {USENIX}
+  Tran, J., Catanzaro, B., and Shelhamer, E. cudnn:                  Symposium on Operating Systems Design and Implemen-
+  Efficient primitives for deep learning. arXiv preprint             tation ({OSDI} 20), pp. 463–479, 2020.
+  arXiv:1410.0759, 2014.
+                                                                  Karimireddy, S. P., Rebjock, Q., Stich, S. U., and Jaggi, M.
+Deng, J., Dong, W., Socher, R., Li, L.-J., Li, K., and Fei-Fei,     Error feedback fixes signsgd and other gradient compres-
+  L. Imagenet: A large-scale hierarchical image database.           sion schemes. 2019.
+  In 2009 IEEE conference on computer vision and pattern
+  recognition, pp. 248–255. Ieee, 2009.                           Kingma, D. P. and Ba, J. Adam: A method for stochastic
+                                                                    optimization. arXiv preprint arXiv:1412.6980, 2014.
+Desai, A., Xu, Z., Gupta, M., Chandran, A., Vial-Aussavy,
+                                                                  Krizhevsky, A., Hinton, G., et al. Learning multiple layers
+  A., and Shrivastava, A. Raw nav-merge seismic data to
+                                                                    of features from tiny images. 2009.
+  subsurface properties with mlp based multi-modal infor-
+  mation unscrambler. Advances in Neural Information              LeCun, Y., Bengio, Y., and Hinton, G. Deep learning. nature,
+  Processing Systems, 34, 2021.                                     521(7553):436–444, 2015.
+Dettmers, T. 8-bit approximations for parallelism in deep         Li, P., Li, X., and Zhang, C. H. Re-randomized densifica-
+  learning. arXiv preprint arXiv:1511.04561, 2015.                  tion for one permutation hashing and bin-wise consistent
+                                                                    weighted sampling. Advances in Neural Information Pro-
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. Bert:
+                                                                    cessing Systems, 32, 2019.
+  Pre-training of deep bidirectional transformers for lan-
+  guage understanding. arXiv preprint arXiv:1810.04805,           Li, S. and Hoefler, T. Near-optimal sparse allreduce for dis-
+  2018.                                                             tributed deep learning. arXiv preprint arXiv:2201.07598,
+                                                                    2022.
+Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,
+  D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M.,      Li, S., Zhao, Y., Varma, R., Salpekar, O., Noordhuis, P., Li,
+  Heigold, G., Gelly, S., et al. An image is worth 16x16            T., Paszke, A., Smith, J., Vaughan, B., Damania, P., et al.
+ words: Transformers for image recognition at scale. In             Pytorch distributed: experiences on accelerating data par-
+ International Conference on Learning Representations,              allel training. Proceedings of the VLDB Endowment, 13
+  2020.                                                             (12):3005–3018, 2020.
+
+Fei, J., Ho, C.-Y., Sahu, A. N., Canini, M., and Sapio, A.        Li, X. and Li, P. Rejection sampling for weighted jaccard
+  Efficient sparse collective communication and its applica-        similarity revisited. In Proceedings of the AAAI Confer-
+  tion to accelerate distributed deep learning. In Proceed-         ence on Artificial Intelligence, volume 35, pp. 4197–4205,
+  ings of the 2021 ACM SIGCOMM 2021 Conference, pp.                 2021a.
+  676–691, 2021.
+                                                                  Li, X. and Li, P. C-minhash: Rigorously reducing k permu-
+Google.   TensorFlow where(). https://www.                          tations to two. arXiv preprint arXiv:2109.03337, 2021b.
+  tensorflow.org/api_docs/python/tf/
+ where, 2022.                                                     Lin, Y., Han, S., Mao, H., Wang, Y., and Dally, W. J.
+                                                                    Deep gradient compression: Reducing the communica-
+Harris, M., Sengupta, S., and Owens, J. D. Parallel prefix          tion bandwidth for distributed training. The International
+  sum (scan) with cuda. GPU gems, 3(39):851–876, 2007.              Conference on Learning Representations (ICLR), 2017.
+                     DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Liu, H., Dai, Z., So, D. R., and Le, Q. V. Pay attention to    Sapio, A., Canini, M., Ho, C.-Y., Nelson, J., Kalnis, P., Kim,
+  mlps. arXiv preprint arXiv:2105.08050, 2021.                   C., Krishnamurthy, A., Moshref, M., Ports, D. R., and
+                                                                 Richtárik, P. Scaling distributed machine learning with in-
+Luo, L., Nelson, J., Ceze, L., Phanishayee, A., and Krishna-     network aggregation. arXiv preprint arXiv:1903.06701,
+  murthy, A. Parameter hub: a rack-scale parameter server        2019.
+  for distributed deep neural network training. In Proceed-
+  ings of the ACM Symposium on Cloud Computing, pp.            Seide, F., Fu, H., Droppo, J., Li, G., and Yu, D. 1-bit stochas-
+  41–54, 2018.                                                   tic gradient descent and its application to data-parallel
+                                                                 distributed training of speech dnns. In Fifteenth Annual
+Meta. PyTorch nonzero(). https://pytorch.org/                    Conference of the International Speech Communication
+ docs/stable/generated/torch.nonzero.                            Association, 2014.
+ html, 2022.
+                                                               Sergeev, A. and Del Balso, M. Horovod: fast and easy
+Mitzenmacher, M. and Upfal, E. Probability and computing:        distributed deep learning in tensorflow. arXiv preprint
+ Randomization and probabilistic techniques in algorithms        arXiv:1802.05799, 2018.
+ and data analysis. Cambridge university press, 2017.
+                                                               Shallue, C. J., Lee, J., Antognini, J., Sohl-Dickstein, J.,
+Naumov, M., Mudigere, D., Shi, H. M., Huang, J., Sun-            Frostig, R., and Dahl, G. E. Measuring the effects of
+  daraman, N., Park, J., Wang, X., Gupta, U., Wu, C.,            data parallelism on neural network training. Journal of
+  Azzolini, A. G., Dzhulgakov, D., Mallevich, A., Cher-          Machine Learning Research, 20:1–49, 2019.
+  niavskii, I., Lu, Y., Krishnamoorthi, R., Yu, A., Kon-
+                                                               Shi, S., Wang, Q., Zhao, K., Tang, Z., Wang, Y., Huang, X.,
+  dratenko, V., Pereira, S., Chen, X., Chen, W., Rao, V.,
+                                                                 and Chu, X. A distributed synchronous sgd algorithm
+  Jia, B., Xiong, L., and Smelyanskiy, M. Deep learning
+                                                                 with global top-k sparsification for low bandwidth net-
+  recommendation model for personalization and recom-
+                                                                 works. In 2019 IEEE 39th International Conference on
+  mendation systems. CoRR, abs/1906.00091, 2019. URL
+                                                                 Distributed Computing Systems (ICDCS), pp. 2238–2247.
+  https://arxiv.org/abs/1906.00091.
+                                                                 IEEE, 2019.
+Nvidia.      Nccl  lantecy.    https://                        Shi, S., Zhou, X., Song, S., Wang, X., Zhu, Z., Huang, X.,
+  developer.nvidia.com/blog/                                     Jiang, X., Zhou, F., Guo, Z., Xie, L., et al. Towards
+  scaling-deep-learning-training-nccl/,                          scalable distributed training of deep learning on public
+  2018.                                                          cloud clusters. Proceedings of Machine Learning and
+NVIDIA. A Timeline of Innovation for NVIDIA. https:              Systems, 3, 2021.
+ //www.nvidia.com/en-us/about-nvidia/                          Shrivastava, A. and Li, P. Densifying one permutation
+ corporate-timeline/, 2021.                                      hashing via rotation for fast near neighbor search. In
+                                                                 International Conference on Machine Learning, pp. 557–
+Owens, J. D., Houston, M., Luebke, D., Green, S., Stone,
+                                                                 565. PMLR, 2014.
+ J. E., and Phillips, J. C. Gpu computing. Proceedings of
+ the IEEE, 96(5):879–899, 2008.                                Stich, S. U., Cordonnier, J.-B., and Jaggi, M. Sparsified sgd
+                                                                  with memory. In Proceedings of the 32nd International
+Patarasuk, P. and Yuan, X. Bandwidth optimal all-reduce al-       Conference on Neural Information Processing Systems,
+  gorithms for clusters of workstations. Journal of Parallel      pp. 4452–4463, 2018.
+  and Distributed Computing, 69(2):117–124, 2009.
+                                                               Strom, N. Scalable distributed dnn training using commod-
+Radford, A., Wu, J., Child, R., Luan, D., Amodei, D.,             ity gpu cloud computing. In Sixteenth Annual Conference
+  Sutskever, I., et al. Language models are unsupervised          of the International Speech Communication Association,
+  multitask learners. OpenAI blog, 1(8):9, 2019.                  2015.
+Renggli, C., Ashkboos, S., Aghagolzadeh, M., Alistarh,         Sun, P., Feng, W., Han, R., Yan, S., and Wen, Y. Optimizing
+  D., and Hoefler, T. Sparcml: High-performance sparse           network performance for distributed dnn training on gpu
+  communication for machine learning. In Proceedings             clusters: Imagenet/alexnet training in 1.5 minutes. arXiv
+  of the International Conference for High Performance           preprint arXiv:1902.06855, 2019.
+  Computing, Networking, Storage and Analysis, pp. 1–15,
+  2019.                                                        Thakur, R., Rabenseifner, R., and Gropp, W. Optimization
+                                                                 of collective communication operations in MPICH. The
+Ridnik, T., Ben-Baruch, E., Noy, A., and Zelnik-Manor, L.        International Journal of High Performance Computing
+  Imagenet-21k pretraining for the masses, 2021.                 Applications, 19(1), 2005.
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Tolstikhin, I., Houlsby, N., Kolesnikov, A., Beyer, L., Zhai,
+  X., Unterthiner, T., Yung, J., Keysers, D., Uszkoreit, J.,
+  Lucic, M., et al. Mlp-mixer: An all-mlp architecture for
+  vision. arXiv preprint arXiv:2105.01601, 2021.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+  L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. Atten-
+  tion is all you need. In Advances in neural information
+  processing systems, pp. 5998–6008, 2017.
+Wang, Z., Wu, X., and Ng, T. Mergecomp: A compres-
+ sion scheduler for scalable communication-efficient dis-
+ tributed training. arXiv preprint arXiv:2103.15195, 2021.
+
+Wen, W., Xu, C., Yan, F., Wu, C., Wang, Y., Chen, Y., and
+ Li, H. Terngrad: Ternary gradients to reduce communica-
+ tion in distributed deep learning. In Advances in neural
+ information processing systems, pp. 1509–1519, 2017.
+Xu, H., Ho, C.-Y., Abdelmoniem, A. M., Dutta, A., Bergou,
+  E. H., Karatsenidis, K., Canini, M., and Kalnis, P. Grace:
+  A compressed communication framework for distributed
+  machine learning. In Proc. of 41st IEEE Int. Conf. Dis-
+  tributed Computing Systems (ICDCS), 2021.
+Zhang, Z., Chang, C., Lin, H., Wang, Y., Arora, R., and
+  Jin, X. Is network the bottleneck of distributed training?
+  In Proceedings of the Workshop on Network Meets AI
+  and ML, NetAI ’20, pp. 8–13. Association for Computing
+  Machinery, 2020. ISBN 9781450380430.
+Zheng, L., Jia, C., Sun, M., Wu, Z., Yu, C. H., Haj-Ali,
+  A., Wang, Y., Yang, J., Zhuo, D., Sen, K., et al. Ansor:
+  Generating high-performance tensor programs for deep
+  learning. In 14th {USENIX} Symposium on Operating
+  Systems Design and Implementation ({OSDI} 20), pp.
+  863–879, 2020.
+Zhou, X., Urata, R., and Liu, H. Beyond 1 tb/s intra-data
+  center interconnect technology: Im-dd or coherent? Jour-
+  nal of Lightwave Technology, 38(2):475–484, 2020.
+Zinkevich, M., Weimer, M., Smola, A. J., and Li, L. Paral-
+  lelized stochastic gradient descent. In NIPS, volume 4,
+  pp. 4. Citeseer, 2010.
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Appendix
+A. Theoretical Analaysis
+In this section, we perform the theoretical analysis on DRAGONN for gradient sparsification. We start with providing
+the settings. Next, we bound the compression error of DRAGONN. Next, we present the generalization error bound for
+DRAGONN. Finally, we bound the memory coverage of DRAGONN and provide some case study.
+
+A.1. Settings
+Notations: We use Pr[] and E[] for probability and expectation. We use max(S) and min(S) to denote the maximum and
+                                                                       Pd
+minimum value in the set S ∈ N. For a vector x ∈ Rd , we use ∥x∥2 := ( i=1 x2i )1/2 to denote its ℓ2 norm.
+In this paper, we study the function g(θ; x, y) parameterized by θ ∈ Rd with respect to data-label pair (x, y). Let D denotes
+the dataset. In the distributed setting with K nodes, we generate D1 , D2 , . . . , DK so that each node trains on its own subset
+Di ⊂ D. We would like the ℓ2 norm of the gradient of g(θ; x, y) with respect to θ to be bounded as:
+Definition A.1 (Bounded gradient norm). Given a loss function g(θ; x, y) with respect to a dataset D, we say the gradient
+∇θ g(θ; x, y) is G bounded if for any x ∈ D,
+
+                                                    ∥∇θ g(θ; x, y)∥22 ≤ G2 ,
+
+where G > 0 is the upper bound of the gradient norm.
+                                                                             1
+                                                                               PK
+In our work, we would like to optimize the empirical risk f (θ) = K               i=1 E(x,y)∼Di [g(θ; x, y)]. Let fi (θ) =
+E(x,y)∼Di [g(θ; x, y)]. We would like the function fi (θ) to be L-smooth defined as below
+Definition A.2 (Smoothness). We say the loss function f : Rd → R is L-smooth if for any a, b ∈ Rd ,
+
+                                                                            L
+                                        f (b) ≤ f (a) + ⟨∇f (a), b − a⟩ +     ∥b − a∥22 .
+                                                                            2
+
+Note that these settings are standard in related literature (Bhatia et al., 2016; Barnes et al., 2020).
+
+A.2. Compression Error
+In this section, we upper bound the compression error of the hashing-based compressor shown in Figure 2. We start with
+defining the compression error.
+Definition A.3 (Compression error). For a weight θ ∈ Rd , let ϕ(θ) : Rd → Rd denotes the operation that satisfy θ. We
+define the compression error as ∥θ = ϕ(θ)∥22 .
+
+The error results from the selection of gradients and the hash collisions in the memory writing of the gradient indices. In this
+work, we use the propriety of universal hashing function (Carter & Wegman, 1979) defined as below:
+Definition A.4 (Universal hashing (Carter & Wegman, 1979)). Let m ∈ N+ . A family of function H is a universal hashing
+function if it follows that for any h : N → [m] from family H, for any x, y ∈ N
+
+                                                                          1
+                                                    Pr[h(x) = h(y)] ≤       .
+                                                                          m
+
+Universal hashing is the foundation of most hashing algorithms (Shrivastava & Li, 2014; Li et al., 2019; Li & Li, 2021a;b).
+Next, we present several supporting lemmas to upper bound the compression error. We first provide the probability of a
+successful memory writing for a gradient.
+Lemma A.5. Given a universal hashing function h : N → [m] from family H, for a set of values S = {s1 , s2 , · · · , sn } ⊂ R,
+we show that for i ∈ [n],
+
+                                                                                  m − 1 n−i
+                                   E [1(i = max({j ∈ [n]|h(j) = h(i)}))] = (           )
+                                                                                   m
+                      DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Proof. We start with showing that
+
+                                Pr[i = max({j|h(j) = h(i)})] = Pr[∀j > i, h(j) ̸= h(i)]
+                                                                 m − 1 n−i
+                                                             = (      )
+                                                                  m
+
+Therefore, following the definition of expectation, we have
+
+                                                                                  m − 1 n−i
+                                     E [1(i = max({j|h(j) = h(i)}))] = (               )
+                                                                                   m
+
+
+
+
+Next, we show the upper bound of the approximation errors introduced by hashing.
+Lemma A.6. Let m, n ∈ N and n > m. Let S = {s1 , s2 , · · · , sn } ⊂ R denotes an n-point set of values. Let
+τ = max(S)/ min(S). we have
+
+                                       n                       n−i !                   n
+                                       X                m−1                              X
+                                               1−                        s2i ≤ (1 − γ)         s2i
+                                       i=1
+                                                         m                               i=1
+
+           m         m−1 n
+where γ = nτ 2 (1 − ( m ) ).
+
+
+
+
+Proof. Let smax = max(S) and smin = min(S). We show that
+
+                                                    n             n
+                                                    X             X  m − 1 n−i 2
+                                         (1 − γ)          s2i −       (1 − (
+                                                                          ) )si
+                                                   i=1     i=1
+                                                                      m
+                                                n                        n−i !
+                                               X
+                                                    2                m−1
+                                             =     si 1 − γ − 1 +
+                                               i=1
+                                                                      m
+                                                n
+                                                                        !
+                                                               n−i
+                                               X
+                                                    2    m−1
+                                             =     si                −γ
+                                               i=1
+                                                          m
+                                                              m−1 n
+                                             ≥ s2min (m(1 − (    ) ) − s2max nγ
+                                                               m
+                                                              m−1 n
+                                             ≥ s2min (m(1 − (    ) ) − τ 2 nγ) = 0
+                                                               m
+
+where the first and second steps are reorganzations, the third step follows by the definition of smax and smin , the forth step
+follows from the definition of τ , the last step follows from the definition of γ.
+
+Lemma A.7. Let S = {s1 , s2 , · · · , sn } ⊂ R denotes an n-point set of values. Let τ = max(S)/ min(S). Given an
+universal hashing function h : N → [m] from family H, we show that
+                                         " n                                                         #
+                                          X                                      2
+                                     E         (1 − 1 (i = max({j|h(j) = h(i)}))) s2i
+                                         i=1
+                                                    n
+                                                    X
+                                     ≤ (1 − γ)            s2i
+                                                    i=1
+
+           m         m−1 n
+where γ = nτ 2 (1 − ( m ) ).
+                       DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Proof.
+                                              " n                                                 #
+                                               X                                      2
+                                          E           (1 − 1 (i = max{j|h(j) = h(i)})) s2i
+                                              i=1
+                                          n
+                                          X          h                                   i
+                                                                                       2
+                                      =         s2i E (1 − 1 (i = max{j|h(j) = h(i)}))
+                                          i=1
+                                          n
+                                          X                n
+                                                           X
+                                      =         s2i − 2             s2i E [1(i = max{j|h(j) = h(i)})]
+                                          i=1                i=1
+                                              n
+                                              X
+                                                      s2i E 1(i = max{j|h(j) = h(i)})2
+                                                                                      
+                                          +
+                                              i=1
+                                          n
+                                          X               n
+                                                          X
+                                      =         s2i −           s2i E [1(i = max{j|h(j) = h(i)})]
+                                          i=1             i=1
+                                          n                              n−i !
+                                          X                         m−1
+                                      =         s2i       1−
+                                          i=1
+                                                                     m
+                                                      n
+                                                      X
+                                      ≤ (1 − γ)              s2i
+                                                       i=1
+                                                                                                            
+where the first and second steps are reorganzations, the third step follows from E 1(i = max{j|h(j) = h(i)})2 =
+E [1(i = max{j|h(j) = h(i)})], the forth step follows from Lemma A.5, the fifth step follows form Lemma A.6.
+
+Finally, we provide the upper bound of the compression error for DRAGONN.
+Lemma A.8. For a weight θ ∈ Rd , let ϕ(θ) denotes an sparsification operation (see Definition A.3) that takes top n values
+of θ and keep the value that has been successfully hashed it into the memory via universal hashing function, we show that
+
+                                                                           m(1 − ( m−1 n
+                                                                                    m ) )
+                                          E∥θ − ϕ(θ)∥ ≤ (1 −                              )∥θ∥2
+                                                                                dτ 2
+
+Proof. Let {θ1 , · · · , θn } denotes the top n values. Let {θn+1 , · · · , θd } the rest of the values. We show that
+
+                                                                                nτ 2     n         d
+                                                                    m(1 − ( m−1
+                                                                             m )     ) X 2        X
+                                 E∥θ − ϕ(θ)∥ ≤ (1 −                                   )     θj +       θj2
+                                                                            n           j=1      j=n+1
+                                                          d                              n
+                                                          X             m(1 − ( m−1 n
+                                                                                 m ) )n
+                                                                                        X
+                                                      ≤         θj2 −                      θ2
+                                                          j=1
+                                                                             nτ 2     d j=1 j
+                                                                    m(1 − ( m−1 n
+                                                                             m ) )
+                                                      = (1 −                       )∥θ∥2
+                                                                         dτ 2
+
+
+where the first step follows from Lemma A.7, the second step follows from θi ≥ θj if i ≤ n and j > n. the last step is an
+reorganization.
+
+A.2.1. G ENERALIZATION E RROR
+In this section, we showcase the upper bound of the generalization error if we follow the setting in (Basu et al., 2019; Barnes
+et al., 2020). The upper bound is shown in Theorem A.9.
+                               Pk
+Theorem A.9. Let f (θ) = k1 i=1 E(x,y)∼Di [g(θ; x, y)] denotes a L-smooth (Definition A.2) empirical risk function with
+                                                                                   1
+∇θ g(θ; x, y) being G bounded (Definition A.1). Let the learning rate to be η = 2L   . Starting from a weight θ0 , after T step
+                       DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+Algorithm 3 Existing approximate TopK GS
+  Input: gradient G, tensor size d, threshold t
+  Output: Gc , I
+  mask ← |G| > t
+  d ← len(mask)
+  I←∅
+  s←0
+  sprev ← 0
+  for i = 0 to d − 1 do
+     s ← s + mask[i]
+     if s > sprev then
+        I ←I ∪i
+        sprev ← s
+     end if
+  end for
+  Gc = G[I]
+
+
+we would obtain a θT through stochastic gradient descent with DRAGONN compressor (Algorithm 1) such that
+                                                       8LE[f (θ0 ) − f ∗ ] 2G2     8
+                                  E[∥∇f (θT )∥22 ] ≤                      +    + ( 2 − 6)G2
+                                                              T             Kd    ϵ
+            m(1−( m−1 n
+                   m ) )
+where ϵ =       dτ 2     .
+
+                                                                                         m(1−( m−1 n
+                                                                                                m ) )
+The proof of the theorem is done by applying the compression error ϵ =                       dτ 2     in Lemma A.8 in to the setting of
+(Basu et al., 2019).
+
+A.2.2. M EMORY C OVERAGE
+In this section, we discuss the memory coverage of DRAGONN. Due to the collision of the universal hashing function.
+The exists empty memory locations if we write n gradient values into m locations. We relate this problem as a Balls-
+and-Bins (Mitzenmacher & Upfal, 2017) problem: given n balls, we want to toss them into m bins via universal hashing.
+We start with indexing the balls with {1, · · · , n} and then hash the index for each ball via a universal hashing function
+                                                                         1 n
+h : N → [m]. Therefore, the probability of one bin being empty (1 − m     ) . Moreover, let X be the number of empty bins.
+Let x be the ratio of empty bins in this m bins, for any 0 < ϵ < 1, we have.
+Lemma A.10 (Bound on the ratio of empty bins (Mitzenmacher & Upfal, 2017)). Let x be the ratio of empty bins in m bins.
+             1 n
+Let p = (1 − m ) . We bound the coverage x as,
+                                                                                     2
+                                                                             e−mϵ /3p
+                                                  P (|x − p| ≥ ϵ) ≤ 2e         √
+                                                                                 m
+
+We provide several examples to illustrate this bound. If we set m = 1024, n = 1024 and ϵ = 0.1, with probability at
+least 0.95, we have 0.36 ≤ x ≤ 0.38. If we set m = 512, n = 1024 and ϵ = 0.1, with probability at least 0.8 we have
+0.13 ≤ x ≤ 0.14.
+
+B. Baseline Algorithm
+We present existing approximate TopK GS in Algorithm 3.
+
+C. Parallel Prefix Sum
+This section describes the definition of prefix sum and the parallel prefix sum algorithm with CUDA (Harris et al., 2007).
+Following (Blelloch, 1990), we define the prefix-sum operation as:
+Definition C.1. The prefix-sum operation performs as follow: given a binary associative operator ⊕, for an n entries array
+
+                                                        [a0 , a1 , . . . , an−1 ],
+                            DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+                                                                                                                            1                           3                               5                             7
+                                                                                                                   x[0]   ∑i=0
+                                                                                                                                 x[i]    x[2]         ∑i=0
+                                                                                                                                                                x[i]   x[4]        ∑i=4
+                                                                                                                                                                                              x[i]   x[6]           ∑i=0
+                                                                                                                                                                                                                              x[i]
+
+                                                                                                                                                                                                                           Zero
+
+                                                                                                                                                                                                                          0
+                                                                                                                            1                           3                               5
+                                                                                                         Level 0   x[0]   ∑i=0
+                                                                                                                                 x[i]    x[2]         ∑i=0
+                                                                                                                                                                x[i]   x[4]       ∑i=4
+                                                                                                                                                                                              x[i]   x[6]
+                                                   3                    5                    7
+          Level 0   x[0]       1
+                            ∑i=0 x[i]            ∑i=0
+                                                        x[i]   x[4]   ∑i=4
+                                                                             x[i]   x[6]   ∑i=0
+                                                                                                  x[i]
+
+                                                                                                                                                            0
+                                                                                                                            1                                                           5                             3
+                                                                                                         Level 1   x[0]   ∑i=0
+                                                                                                                                 x[i]    x[2]                          x[4]       ∑i=4
+                                                                                                                                                                                              x[i]   x[6]           ∑i=0
+                                                                                                                                                                                                                              x[i]
+                              1                    3                    5                    7
+          Level 1   x[0]    ∑i=0
+                                   x[i]   x[2]   ∑i=0
+                                                        x[i]   x[4]   ∑i=4
+                                                                             x[i]   x[6]   ∑i=4
+                                                                                                  x[i]
+
+
+
+                                                                                                                            0
+                                                                                                                                                        1                               3                             5
+                              1                    3                    5                    7           Level 2   x[0]                  x[2]         ∑i=0
+                                                                                                                                                                x[i]   x[4]       ∑i=0
+                                                                                                                                                                                              x[i]   x[6]           ∑i=0
+                                                                                                                                                                                                                              x[i]
+          Level 2   x[0]    ∑i=0
+                                   x[i]   x[2]   ∑i=2
+                                                        x[i]   x[4]   ∑i=4
+                                                                             x[i]   x[6]   ∑i=6
+                                                                                                  x[i]
+
+
+
+                                                                                                                                                                                                       5              6
+                                                                                                                    0
+                                                                                                                                          1             2                3              4
+          Level 3   x[0]     x[1]         x[2]    x[3]         x[4]    x[5]         x[6]    x[7]         Level 3           x[0]         ∑i=0
+                                                                                                                                               x[i]
+                                                                                                                                                      ∑i=0
+                                                                                                                                                                x[i] ∑
+                                                                                                                                                                         i=0
+                                                                                                                                                                               x[i] ∑
+                                                                                                                                                                                        i=0
+                                                                                                                                                                                              x[i] ∑
+                                                                                                                                                                                                       i=0
+                                                                                                                                                                                                             x[i]
+                                                                                                                                                                                                                    ∑i=0
+                                                                                                                                                                                                                              x[i]
+
+
+                           (a) The up-sweep phase                                                                                (b) The down-sweep phase
+
+                    Figure 9. An illustration of the up-sweep and down-sweep phases of parallel prefix sum algorithm.
+
+
+Algorithm 4 The up-sweep phase
+  Input: array x, number of elements d
+  for i = 0 to log2 d − 1 do
+    for r = 0 to d − 1 by 2i+1 in parallel do
+        x[r + 2i+1 − 1] ← x[r + 2i − 1] + x[r + 2i+1 − 1]
+    end for
+  end for
+
+
+Algorithm 5 The down-sweep phase
+  Input: array x, number of elements d
+  x[d − 1] ← 0
+  for i = log2 d to 0 by −1 do
+    for r = 0 to d − 1 by 2i+1 in parallel do
+        x[r + 2i+1 − 1] ← x[r + 2i − 1] + x[r + 2i+1 − 1]
+    end for
+  end for
+
+
+
+we return the array
+
+                                                                  [a0 , (a0 ⊕ a1 ), . . . , (a0 ⊕ a1 ⊕ . . . an−1 )].
+
+
+We consider ⊕ as addition in this paper.
+Given an input, parallel prefix sum conceptually constructs a balanced binary tree. It sweeps the data to and from the root of
+tree to compute the prefix sum. Suppose a binary tree has d leaves, it has log d levels and the number of nodes in each level
+i ∈ [0, log d) is 2i . Parallel prefix sum has two phases: up-sweep phase and down-sweep phase. In the up-sweep phase,
+as shown in Figure 9(a), the algorithm traverses the tree from leaves to root to calculate partial sums at internal nodes. In
+the down-sweep phase, as shown in Figure 9(b), it traverse back up the tree from the root. The partial sums calculated in
+the up-sweep phase are used to build the scan in place on the array. The algorithms of the two phases are illustrated in
+Algorithm 4 and Algorithm 5
+After the prefix-sum operation for the mask, DGC needs to compare each element with its neighbor on its left-hand side to
+extract the indices. If it is greater than its neighbor, DGC writes the index of this element into the position with the offset of
+its value.
+DGC needs d comparison operations to get the mask, (d − 1) add operations for up-sweep phase, (d − 1) add operations and
+(d − 1) swap operations for down-sweep phase, and d comparison operations after prefix-sum operation. In total, DGC uses
+2d comparison operations, 2(d − 1) add operations, and (d − 1) swap operations to extract the indices of top-k gradients.
+                               DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks
+
+D. Experiments over BERT.
+We fine-tune BERT-base for the question-answering task. The dataset is SQuAD1.1, the batch size is 1024 tokens, and the
+compression ratio is 0.1%.
+
+                   1e4                                                                        Compute.        Sync.
+                         FULL
+               6         DGC
+                         DRAGONN
+                                                                         FULL
+  Tokens/sec
+
+
+
+
+                         TopK                                            DGC
+               4         Linear-Scaling
+                                                                    DRAGONN
+               2                                                    +Selection
+                                                                    +Decoding
+               0
+                         4           8          16                           0.0        0.5     1.0 1.5 2.0      2.5
+                             The number of GPUs                                                Time cost (s)
+                               (a) Training speed                                     (b) Impacts breakdown
+                                                    Figure 10. Experiments on BERT-base.
+Figure 10(a) shows the training speed with different numbers of GPUs via different compressors. With 16 GPUs, DRAGONN
+performs 1.34x speedup over DGC and 3.5x speedup over full synchronization. Moreover, Figure 10(b) breaks down the
+impacts of the three techniques proposed in DRAGONN.
+

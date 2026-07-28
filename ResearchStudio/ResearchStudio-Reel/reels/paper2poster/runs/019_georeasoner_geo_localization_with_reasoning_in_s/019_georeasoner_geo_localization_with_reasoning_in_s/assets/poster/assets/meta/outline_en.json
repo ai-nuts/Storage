@@ -1,0 +1,255 @@
+{
+  "title": "ICML 2024 | Teaching a Vision-Language Model to Explain Where a Photo Was Taken",
+  "subtitle": "GeoReasoner curates 'locatable' street views and borrows human clues from geo-games to beat larger geo-localization models, and to justify every guess.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Show a person a random street photo and, given a few seconds, they can often name the country and sometimes the city. They do it by reading clues: the script on a shop sign, the color of a license plate, the style of a lamppost, which side of the road the cars keep to. The online communities behind games like GeoGuessr and Tuxun have turned this skill into a craft, cataloguing thousands of such tells. Machine geo-localization systems, by contrast, tend to hand back a bare coordinate and no explanation a person could follow."
+    },
+    {
+      "type": "paragraph",
+      "text": "That silence is the problem GeoReasoner sets out to fix. Presented at ICML 2024 by researchers from HKUST (Guangzhou), Tongji University, and collaborators, the paper argues that street-view geo-localization carries two entangled blind spots. The data problem: street-view datasets are polluted with images shot in tunnels, against blank walls, or of roadside greenery, none of which contain a usable clue. The reasoning problem: retrieval and classification models are black boxes that return a location with no explanation a human can inspect or trust. GeoReasoner treats the two as one, fixing data quality and interpretability together."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. Three paradigms for street-view geo-localization. Retrieval-based methods (top-left) match a query against a geo-tagged gallery; classification-based methods (bottom-left) bin the globe into cells; GeoReasoner's LVLM-based approach (right) predicts a location together with a human-readable reason, and screens training images by locatability.",
+      "width_inches": 5.8
+    },
+    {
+      "type": "paragraph",
+      "text": "Its recipe is to pair a large vision-language model (LVLM) with human inference knowledge harvested from geo-games, and to feed the model only street views that are actually locatable. The payoff is a system that beats the strongest comparable LVLM, Qwen-VL, by 25.02% at the country level and 38.61% at the city level in F1, and edges out a specialist built for geo-localization on far less data while still showing its work at every step."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2406.18572    Code: https://github.com/lingli1996/GeoReasoner"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Two blind spots: dirty data and black-box predictions"
+    },
+    {
+      "type": "paragraph",
+      "text": "Retrieval-based methods find the nearest neighbor in a geo-tagged gallery and return its coordinates; their accuracy is capped by how complete that gallery is, which is expensive to curate. Classification-based methods carve the map into cells and predict a cell; they ignore semantic cues such as the text on a signboard and, like retrieval, cannot say why. Both also inherit whatever noise sits in the training set, and street-view collections are noisy. A model trained on images with no findable content learns very little, so the authors start by cleaning the data itself."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Quantifying whether an image can be located at all"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors' first move is to make locatability measurable. Intuitively, a street view is locatable when it contains something a person could reason from, a legible sign, a distinctive facade, a landmark, and unlocatable when it is a tunnel wall or a hedge that could be anywhere. The contrast is stark once you put a number on it."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "caption": "Figure 5. What locatability looks like. Top row: highly locatable street views (loc. = 0.70 to 0.71) carry signboards, distinctive architecture, and landmarks. Bottom row: low-locatability views (loc. = 0.08 to 0.19) show a tunnel, a blank wall, and generic vegetation, with no usable geographic clue.",
+      "width_inches": 4.1
+    },
+    {
+      "type": "paragraph",
+      "text": "Concretely, locatability is a weighted sum over the semantic content of an image. MaskFormer segments each street view into classes (building, sky, vehicle, vegetation, and so on) and reports the area ratio of each. Sentence-BERT then scores how relevant each class is to the textual clues mined from geo-games, producing a weight per class. The locatability of an image is the dot product of its class-area vector with these relevance weights. Images scoring above a threshold of 0.4 are kept; applying the filter shrinks a raw pool of 130,000 street views down to roughly 70,000 high-quality ones."
+    },
+    {
+      "type": "paragraph",
+      "text": "The relevance weights themselves come from a CLIP image-text pairing network, which learns to align pictures with words without any extra manual labels."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. The locatability quantization network. A CLIP pairing of street-view images against text clues mined from geo-games yields an image-text similarity matrix, which is reduced to a single locatability score per image.",
+      "width_inches": 5.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Text clues from the games (for example, green signs with white lettering indicate highways in South Korea) are embedded by a text encoder; street views are embedded by an image encoder; the similarity between the two modalities gives each image a single locatability score. Beyond the game clues that already exist, the network needs no extra manual annotation to do its job."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "GeoReasoner: reason first, then localize"
+    },
+    {
+      "type": "paragraph",
+      "text": "With clean data in hand, the model is built on Qwen-VL, a vision encoder, a vision-language adapter, and a pre-trained LLM, and fine-tuned in two stages with lightweight LoRA adapters, so the base weights stay frozen throughout."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. GeoReasoner's architecture and two-stage fine-tuning. Built on Qwen-VL (Vision Encoder, VL Adapter, pre-trained LLM), it first learns country-level reasoning (Stage 1, LoRA 1) on game clues, then sharpens city-level prediction (Stage 2, LoRA 2) on curated street views; at inference it returns country, city, and reasons.",
+      "width_inches": 5.9
+    },
+    {
+      "type": "paragraph",
+      "text": "Stage 1, reasoning tuning, trains LoRA 1 on about 3,000 text-image clue pairs from GeoGuessr and Tuxun, teaching the model to name a country and explain the visual evidence for it. Stage 2, location tuning, stacks a second adapter, LoRA 2, and trains on the 70,000 curated street views, sharpening fine-grained city-level prediction. At inference the model answers in a fixed JSON form, country, city, and a list of reasons, so every prediction ships with its justification attached."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Results: smaller data, higher accuracy, and an explanation"
+    },
+    {
+      "type": "paragraph",
+      "text": "On a held-out set of street views, GeoReasoner reaches a country-level F1 of 0.9033 and a city-level F1 of 0.8585. That is 25.02% above Qwen-VL at the country level and 38.61% above it at the city level. More striking, it slightly surpasses StreetCLIP, a model built specifically for geo-localization and trained on 1.1M street views, despite using only 70,000 of them."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Precision, Recall, and F1 for country-level and city-level geo-localization. * marks the model trained on high-locatability street views; GeoReasoner leads both F1 columns.",
+      "headers": [
+        "Model",
+        "Country P",
+        "Country R",
+        "Country F1",
+        "City P",
+        "City R",
+        "City F1"
+      ],
+      "rows": [
+        [
+          "StreetCLIP",
+          " 0.7943",
+          " 1.00",
+          " 0.8854",
+          " 0.7457",
+          " 1.00",
+          " 0.8543"
+        ],
+        [
+          "LLaVA",
+          " 0.4029",
+          " 1.00",
+          " 0.5744",
+          " 0.2400",
+          " 1.00",
+          " 0.3871"
+        ],
+        [
+          "Qwen-VL",
+          " 0.5829",
+          " 0.95",
+          " 0.7225",
+          " 0.3743",
+          " 0.89",
+          " 0.5270"
+        ],
+        [
+          "GPT-4V",
+          " 0.8917",
+          " 0.34",
+          " 0.4923",
+          " 0.5083",
+          " 0.31",
+          " 0.3851"
+        ],
+        [
+          "ViT*",
+          " 0.7100",
+          " 1.00",
+          " 0.8304",
+          " 0.6762",
+          " 1.00",
+          " 0.8068"
+        ],
+        [
+          "GeoReasoner*",
+          " 0.8237",
+          " 1.00",
+          " 0.9033",
+          " 0.7521",
+          " 1.00",
+          " 0.8585"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "Where do the gains come from? An ablation on data composition isolates the effect of quality alone, holding the training budget fixed."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure7.png",
+      "caption": "Figure 7. Data quality drives accuracy. As the share of high-locatability images in training rises from 0% to 100%, both country-level (blue) and city-level (orange) accuracy climb steadily, confirming that curation, not just volume, powers the gains.",
+      "width_inches": 5.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Holding everything else fixed and varying only the fraction of high-locatability images in the training mix, accuracy rises steadily at both levels as that fraction grows from 0% to 100%. Quality, not sheer volume, is doing the work here."
+    },
+    {
+      "type": "paragraph",
+      "text": "Numbers aside, the qualitative behavior is really the point of the paper, and it is easiest to appreciate side by side."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure8.png",
+      "caption": "Figure 8. Geo-localization with reasoning, side by side. For three street views, GeoReasoner matches or beats LLaVA, Qwen-VL, and GPT-4V, and unlike the black-box baselines it explains each prediction (correct answers in green, useful clues in blue).",
+      "width_inches": 5.4
+    },
+    {
+      "type": "paragraph",
+      "text": "On a Singapore street the ComfortDelGro taxi gives GeoReasoner the answer; on the Las Vegas Strip it reads the neon and the replica landmarks; in Lhasa it cites Tibetan script and the Chinese flag. LLaVA and Qwen-VL often miss or guess without support, and while GPT-4V reasons well, GeoReasoner matches it on a fraction of a specialist's training budget."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "What the two stages each contribute"
+    },
+    {
+      "type": "paragraph",
+      "text": "A second ablation separates the two fine-tuning stages. Starting from the Qwen-VL baseline (0.7225 / 0.5270 country/city F1), reasoning tuning alone lifts the model to 0.8215 / 0.5813, and location tuning alone to 0.8766 / 0.8255. Only with both stacked does GeoReasoner reach 0.9033 / 0.8585. Location tuning supplies most of the city-level precision, while reasoning tuning adds a further lift and, crucially, supplies the explanations that make each answer legible."
+    },
+    {
+      "type": "table",
+      "caption": "Table 2. Ablation over the two fine-tuning stages. Reasoning tuning and location tuning are complementary; the full two-stage model wins on every F1.",
+      "headers": [
+        "Model",
+        "Reasoning",
+        "Location",
+        "Country F1",
+        "City F1"
+      ],
+      "rows": [
+        [
+          "Qwen-VL",
+          "✗",
+          "✗",
+          " 0.7225",
+          " 0.5270"
+        ],
+        [
+          "w/o location tuning",
+          "✓",
+          "✗",
+          " 0.8215",
+          " 0.5813"
+        ],
+        [
+          "w/o reasoning tuning",
+          "✗",
+          "✓",
+          " 0.8766",
+          " 0.8255"
+        ],
+        [
+          "GeoReasoner",
+          "✓",
+          "✓",
+          " 0.9033",
+          " 0.8585"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway"
+    },
+    {
+      "type": "paragraph",
+      "text": "GeoReasoner's headline lesson is that you do not need millions of street views to build a state-of-the-art geo-localizer; you need the right images and the right knowledge. Quantifying which views are locatable, and borrowing the inference tricks humans use to win geo-games, lets a two-stage LVLM match or beat specialist models on a fraction of the data while explaining every call. The honest boundary: the model still stumbles on genuine ambiguity, unable to tell the real Eiffel Tower in Paris from its replicas in Las Vegas and Hangzhou, and its knowledge reaches only as far as the clues the game communities have written down. Even so, it points a practical path toward geo-localization that is at once interpretable and efficient with training data."
+    }
+  ]
+}

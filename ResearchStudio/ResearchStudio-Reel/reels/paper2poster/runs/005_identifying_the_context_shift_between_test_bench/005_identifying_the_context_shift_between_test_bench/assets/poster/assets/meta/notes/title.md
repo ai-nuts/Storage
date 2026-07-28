@@ -1,0 +1,3 @@
+# Title
+
+Machine learning models often look excellent on benchmark datasets, then break the moment they hit real production data. This paper by Matthew Groh at the MIT Media Lab argues that the usual explanation, distribution shift, is the wrong frame. Distribution shift only measures that two datasets differ; it never tells you why. Groh introduces context shift, the semantically meaningful changes in how data are created, collected, and curated that actually drive those failures, and lays out three concrete ways to address it: leaning on human intuition and expert knowledge, building dynamic benchmarks, and clearly stating a model's limitations.

@@ -1,0 +1,412 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:04.975
+This paper studies a puzzling training instability
+in behavior cloning.
+
+00:00:05.055 --> 00:00:09.787
+When you train a policy network with minibatch
+stochastic gradient descent,
+
+00:00:09.867 --> 00:00:14.278
+the long-horizon reward can swing wildly from one
+iterate to the next,
+
+00:00:14.358 --> 00:00:17.550
+even though the behavior cloning loss barely moves.
+
+00:00:17.630 --> 00:00:22.233
+The authors trace this to what they call gradient
+variance amplification,
+
+00:00:22.313 --> 00:00:27.879
+where tiny stochastic gradient noise gets amplified
+into catastrophic error accumulation
+
+00:00:27.959 --> 00:00:31.921
+through the closed loop between the policy and its
+environment.
+
+00:00:32.001 --> 00:00:33.974
+Most standard fixes do not help,
+
+00:00:34.054 --> 00:00:39.941
+but taking an exponential moving average of the
+weights turns out to be remarkably effective,
+
+00:00:40.021 --> 00:00:43.790
+and the same story holds for autoregressive
+language models.
+
+00:00:44.170 --> 00:00:47.490
+Imagine training a robot controller by imitation.
+
+00:00:47.570 --> 00:00:51.999
+You watch the training loss, and it drops smoothly
+and stays low.
+
+00:00:52.079 --> 00:00:53.526
+Everything looks fine.
+
+00:00:53.606 --> 00:00:58.244
+But if you actually deploy the policy and measure
+how well it walks,
+
+00:00:58.324 --> 00:01:02.961
+the score jumps around violently from one training
+step to the next.
+
+00:01:03.041 --> 00:01:04.973
+This paper is about that gap.
+
+00:01:05.053 --> 00:01:08.442
+The single-step imitation loss is calm and stable,
+
+00:01:08.522 --> 00:01:14.201
+yet the thing you truly care about, the
+long-horizon reward, is oscillating wildly.
+
+00:01:14.281 --> 00:01:19.266
+And because it is expensive to roll out and
+evaluate at every checkpoint,
+
+00:01:19.346 --> 00:01:21.694
+you usually never see these swings,
+
+00:01:21.774 --> 00:01:26.620
+which means whichever checkpoint you happen to grab
+could be a bad one.
+
+00:01:27.000 --> 00:01:30.121
+Modern deep learning is full of feedback loops.
+
+00:01:30.201 --> 00:01:35.094
+A language model's next token depends on the tokens
+it already generated.
+
+00:01:35.174 --> 00:01:39.317
+A robot's next observation depends on the action it
+just took.
+
+00:01:39.397 --> 00:01:44.834
+But when we train these systems, we almost always
+optimize a surrogate objective,
+
+00:01:44.914 --> 00:01:49.806
+like next-token prediction, that pretends the
+feedback loop is not there.
+
+00:01:49.886 --> 00:01:52.599
+That surrogate tends to improve smoothly,
+
+00:01:52.679 --> 00:01:56.277
+which lulls us into thinking training is well behaved.
+
+00:01:56.357 --> 00:01:59.479
+The authors argue this is a dangerous illusion,
+
+00:01:59.559 --> 00:02:04.792
+and that the real culprit behind the instability is
+not the data or the model,
+
+00:02:04.872 --> 00:02:07.380
+but the noise in the optimizer itself.
+
+00:02:07.760 --> 00:02:11.461
+The paper makes three main contributions.
+
+00:02:11.541 --> 00:02:15.243
+First,
+
+00:02:15.323 --> 00:02:19.024
+through an extensive study of two hundred and
+seventy-eight distinct interventions,
+
+00:02:19.104 --> 00:02:22.806
+it diagnoses these reward oscillations and names
+the mechanism gradient variance amplification,
+
+00:02:22.886 --> 00:02:26.587
+or G V A,
+
+00:02:26.667 --> 00:02:30.369
+the propagation of minibatch stochastic gradient
+noise through the closed-loop dynamics.
+
+00:02:30.449 --> 00:02:34.150
+Second, it shows the problem is algorithmic rather
+than statistical,
+
+00:02:34.230 --> 00:02:37.931
+and that an exponential moving average of the
+weights fixes it,
+
+00:02:38.011 --> 00:02:41.713
+even though most standard mitigations fail.
+
+00:02:41.793 --> 00:02:45.494
+Third,
+
+00:02:45.574 --> 00:02:49.276
+it demonstrates the exact same phenomenon and the
+same cure in autoregressive language models,
+
+00:02:49.356 --> 00:02:53.057
+and complements everything with a convex theory vignette.
+
+00:02:53.137 --> 00:02:56.839
+The upshot is a call to treat iterate averaging as
+an essential design choice,
+
+00:02:56.919 --> 00:03:00.620
+a stabilizer that belongs alongside your optimizer
+and your scheduler.
+
+00:03:01.000 --> 00:03:06.875
+The approach is first to carefully separate the two
+possible causes of the oscillations.
+
+00:03:06.955 --> 00:03:12.086
+Is it a statistical problem, meaning not enough
+data, or a computational one,
+
+00:03:12.166 --> 00:03:15.334
+meaning something about the optimization itself?
+
+00:03:15.414 --> 00:03:20.612
+By ablating away the statistical difficulty and
+still seeing the oscillations,
+
+00:03:20.692 --> 00:03:24.740
+the authors pin the blame on gradient variance
+amplification.
+
+00:03:24.820 --> 00:03:26.973
+Then they test the natural fixes.
+
+00:03:27.053 --> 00:03:30.086
+Aggressively decaying the learning rate helps,
+
+00:03:30.166 --> 00:03:35.567
+and dramatically increasing the batch size helps,
+but both cost a lot of compute.
+
+00:03:35.647 --> 00:03:38.139
+The star of the paper is much cheaper.
+
+00:03:38.219 --> 00:03:42.808
+You simply keep a running exponential moving
+average of your weights,
+
+00:03:42.888 --> 00:03:44.364
+updating it every step,
+
+00:03:44.444 --> 00:03:50.184
+defined by theta-tilde at time t plus one equals
+one minus gamma times the old average
+
+00:03:50.264 --> 00:03:52.417
+plus gamma times the new iterate.
+
+00:03:52.497 --> 00:03:57.154
+A supporting theorem shows that in a simple
+deterministic environment,
+
+00:03:57.234 --> 00:04:03.177
+a tiny perturbation that barely changes the
+imitation loss can blow up the rollout reward
+
+00:04:03.257 --> 00:04:05.410
+gap exponentially in the horizon.
+
+00:04:05.790 --> 00:04:09.941
+The experiments span two very different domains.
+
+00:04:10.021 --> 00:04:14.172
+For continuous control, the authors use classic
+MuJoCo locomotion tasks,
+
+00:04:14.252 --> 00:04:18.403
+with Walker2d as the primary testbed and Hopper,
+HalfCheetah, Ant,
+
+00:04:18.483 --> 00:04:22.634
+and Humanoid for breadth.
+
+00:04:22.714 --> 00:04:26.865
+They clone from strong expert policies over a long
+horizon of a thousand steps,
+
+00:04:26.945 --> 00:04:31.095
+and they deliberately set the dataset size so that
+overfitting is not the issue.
+
+00:04:31.175 --> 00:04:35.326
+For language,
+
+00:04:35.406 --> 00:04:39.557
+they train two hundred and seventy million
+parameter Transformers on TinyStories,
+
+00:04:39.637 --> 00:04:43.788
+a small synthetic dataset of simple children's
+stories that keeps the setup tractable
+
+00:04:43.868 --> 00:04:48.019
+while still exhibiting the phenomenon.
+
+00:04:48.099 --> 00:04:52.250
+Reward is averaged over twenty initial conditions
+so the oscillations are not just measurement noise.
+
+00:04:52.630 --> 00:04:54.757
+The headline finding is striking.
+
+00:04:54.837 --> 00:05:01.379
+Plotting rollout reward against training step
+reveals dramatic swings between consecutive iterates,
+
+00:05:01.459 --> 00:05:05.593
+and zooming in shows a jagged, almost fractal
+reward landscape,
+
+00:05:05.673 --> 00:05:09.406
+all while the behavior cloning loss sits flat and smooth.
+
+00:05:09.486 --> 00:05:13.820
+That jaggedness is completely invisible in the
+one-step objective.
+
+00:05:13.900 --> 00:05:16.563
+Now apply the exponential moving average,
+
+00:05:16.643 --> 00:05:22.181
+and those oscillations are dramatically damped,
+across architectures, dataset sizes,
+
+00:05:22.261 --> 00:05:27.465
+and multiple tasks, with no change to the learning
+rate schedule or batch size.
+
+00:05:27.545 --> 00:05:31.612
+And the same butterfly effect shows up in language
+generation,
+
+00:05:31.692 --> 00:05:38.703
+where two nearly identical training checkpoints
+produce stories that diverge into totally different plots.
+
+00:05:38.783 --> 00:05:44.990
+Here too the moving average tames the instability
+and even yields the lowest-perplexity model.
+
+00:05:45.370 --> 00:05:48.984
+The ablations are what make the diagnosis convincing.
+
+00:05:49.064 --> 00:05:53.165
+The oscillations refuse to go away as you vary
+dataset size,
+
+00:05:53.245 --> 00:05:59.089
+swap a multilayer perceptron for a Transformer,
+scale the model, or add regularizers.
+
+00:05:59.169 --> 00:06:02.992
+Only genuine variance reduction consistently calms them,
+
+00:06:03.072 --> 00:06:07.941
+which is exactly what you would predict if gradient
+noise is the cause.
+
+00:06:08.021 --> 00:06:13.795
+On the fix side, the moving average works best when
+you update it every single step,
+
+00:06:13.875 --> 00:06:19.719
+use an initial burn-in period, and anneal the
+averaging rate with a polynomial decay.
+
+00:06:19.799 --> 00:06:23.761
+Skip the burn-in, or update the average only occasionally,
+
+00:06:23.841 --> 00:06:26.201
+and its stabilizing power degrades.
+
+00:06:26.281 --> 00:06:29.546
+Learning rate decay and giant batches also work,
+
+00:06:29.626 --> 00:06:33.170
+but they cost far more compute for the same benefit.
+
+00:06:33.550 --> 00:06:35.615
+A few numbers anchor the study.
+
+00:06:35.695 --> 00:06:43.225
+The empirical investigation covers two hundred and
+seventy-eight distinct interventions in continuous control.
+
+00:06:43.305 --> 00:06:46.961
+The rollouts run over a horizon of one thousand steps,
+
+00:06:47.041 --> 00:06:53.188
+and the theory shows the error amplification
+constant grows exponentially in that horizon.
+
+00:06:53.268 --> 00:06:54.641
+On the language side,
+
+00:06:54.721 --> 00:07:01.075
+the models are two hundred and seventy million
+parameter Transformers trained on TinyStories.
+
+00:07:01.155 --> 00:07:09.239
+The key contrast in the theory is that a
+perturbation changes the behavior cloning loss by only order H delta squared,
+
+00:07:09.319 --> 00:07:14.635
+but can change the rollout reward by order H times
+e to the H delta minus one,
+
+00:07:14.715 --> 00:07:15.950
+an exponential gap.
+
+00:07:16.330 --> 00:07:18.803
+The takeaway is simple and actionable.
+
+00:07:18.883 --> 00:07:24.850
+Stochastic gradient noise is completely harmless
+for the one-step training loss you watch,
+
+00:07:24.930 --> 00:07:28.075
+but once your model sits inside a feedback loop,
+
+00:07:28.155 --> 00:07:31.032
+that same noise gets amplified into chaotic,
+
+00:07:31.112 --> 00:07:33.786
+catastrophic failures over long horizons.
+
+00:07:33.866 --> 00:07:36.944
+They call this gradient variance amplification.
+
+00:07:37.024 --> 00:07:39.968
+The good news is that the fix is almost free.
+
+00:07:40.048 --> 00:07:44.806
+Keep an exponential moving average of your weights,
+and you get a cheap,
+
+00:07:44.886 --> 00:07:46.754
+broadly effective stabilizer.
+
+00:07:46.834 --> 00:07:51.054
+Whether you are training a robot controller or a
+language model,
+
+00:07:51.134 --> 00:07:55.421
+iterate averaging deserves to be a standard part of
+the pipeline,
+
+00:07:55.501 --> 00:07:59.520
+right next to your optimizer and your learning rate
+schedule.

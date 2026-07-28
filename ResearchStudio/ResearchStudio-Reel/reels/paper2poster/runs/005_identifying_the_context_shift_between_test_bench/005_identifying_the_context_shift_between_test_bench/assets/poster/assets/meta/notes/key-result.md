@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: A single AlexNet facial-expression model scores anywhere from 48.6% (SFEW) to 94.8% (MultiPie) across seven benchmarks, versus a 14.2% random baseline, showing that a single benchmark badly predicts real-world performance. Re-created ImageNet and CIFAR-10 test sets dropped state-of-the-art accuracy 3-15%, and a leading DFDC deepfake detector assigned only 2% and 8% likelihood to real deepfakes of world leaders.
+
+Supporting detail: In dermatology, evaluation benchmarks contained as little as 2.7% of people with the second-darkest Fitzpatrick skin type and a single person with the darkest, and the DDI dataset exposed systematically higher error rates on dark skin.
+
+Narration: The headline evidence is how wildly performance swings with the benchmark. One facial expression model, built on AlexNet, ranges from just 48.6 percent accuracy on SFEW to 94.8 percent on MultiPie, against a random baseline of 14.2 percent, so which benchmark you pick determines the story you tell. The pattern generalizes: when researchers faithfully recreated the ImageNet and CIFAR-10 test sets, state-of-the-art accuracy fell by three to fifteen percent. And a leading DFDC deepfake detector assigned only two and eight percent likelihood to genuine deepfakes of Kim Jong-un and Vladimir Putin, precisely the high-context videos that matter in the real world. In dermatology, benchmarks that barely include dark skin let systematic errors hide in plain sight.

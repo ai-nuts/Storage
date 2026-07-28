@@ -1,0 +1,3 @@
+# Title
+
+Schrödinger Bridges connect two probability distributions with a diffusion process, but nearly every existing solver is heavy: it stacks several neural networks, needs adversarial min-max training, and can take hours on a GPU. This paper introduces LightSB, a lightweight Schrödinger Bridge solver. By parameterizing the Schrödinger potential as a Gaussian mixture and treating its logarithm as an energy function, LightSB turns the problem into one simple, non-minimax optimization objective with closed-form components. The result solves Schrödinger Bridges in moderate dimensions in minutes on a CPU, with no painful hyperparameter tuning, and is provably a universal approximator of Schrödinger Bridges.

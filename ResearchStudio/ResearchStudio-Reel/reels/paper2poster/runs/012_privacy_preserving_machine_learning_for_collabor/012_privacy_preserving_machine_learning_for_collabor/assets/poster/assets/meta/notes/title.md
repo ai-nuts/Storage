@@ -1,0 +1,3 @@
+# Title
+
+Organizations increasingly want to pool their data to build better machine learning models, but privacy policies and intellectual property laws often make raw data sharing impossible. This paper introduces a privacy-preserving framework that uses autoencoders to turn sensitive tabular data into obfuscated latent-space embeddings. Instead of exchanging raw features, collaborating peers share only these encoded representations, then join them to train a shared downstream model. Across three public benchmarks, the encoded data preserves predictive power, with performance dropping by less than ten percentage points while the original features stay hidden.

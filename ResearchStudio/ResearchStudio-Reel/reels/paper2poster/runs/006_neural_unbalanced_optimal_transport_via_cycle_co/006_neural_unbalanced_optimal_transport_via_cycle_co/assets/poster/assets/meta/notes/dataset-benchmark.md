@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: A single-cell melanoma drug-response dataset measured with 4i imaging over 25 drug treatments at t = 0h, 8h, 24h, comprising two co-cultured melanoma cell lines identified by mutually exclusive markers (MelA⁺ and Sox9⁺). A synthetic 2D three-cluster Gaussian-mixture benchmark with controlled cluster-proportion imbalance is also used.
+
+Supporting detail: Control cells (DMSO vehicle) form the source; perturbed populations at 8h and 24h form the targets. Proliferation and apoptosis markers (Ki67, ClCasp3) provide biological validation.
+
+Narration: The method is evaluated on two settings. The first is a synthetic benchmark: a two-dimensional mixture of three Gaussian clusters, where the target keeps the same clusters but changes their proportions and shifts them in space, across three scenarios of increasing imbalance. The second is a real single-cell perturbation dataset, generated with the imaging technology called 4i, that tracks two co-cultured melanoma cell lines responding to twenty-five different drugs. Cells are measured at zero, eight, and twenty-four hours, with control cells exposed only to a vehicle serving as the source and the perturbed populations serving as targets. The two cell lines are distinguished by mutually exclusive protein markers, MelA and Sox9, and additional markers for proliferation and cell death allow the predicted mass changes to be checked against biology.

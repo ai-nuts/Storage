@@ -1,0 +1,7 @@
+# Method
+
+Core claim: ICFG expresses the enhanced intermediate distribution as $q^\theta(x_t\mid c,\beta) \propto q^\theta(x_t)\left[q^\theta(x_t\mid c)/q^\theta(x_t)\right]^{\beta}$ with β = w+1, then Taylor-expands the score predictor εθ(xt|βc) around β = 1. The first-order term reproduces CFG; the second-order term, estimated using a middle point m, injects extra information at sampling time without altering training.
+
+Supporting detail: A training policy (Algorithm 1) rescales the condition by a correlation metric r(x,c) so the model can assess guidance strength; a strict (Algorithm 2) and a practical non-strict (Algorithm 3) sampler realize second-order ICFG on pretrained Stable Diffusion using only a few extra score evaluations.
+
+Narration: Here is the mechanism. The authors write the guided distribution as the unconditional distribution times the ratio of conditional to unconditional, raised to a power beta, where beta equals w plus one. They take a Taylor expansion of the score predictor in beta, evaluated at beta equals one. The first-order term is exactly classifier-free guidance. The second-order term is new: it is estimated using a middle point m between zero and one, and needs only one extra score evaluation at a scaled condition, m times c. Because everything comes from the already-trained network, second-order ICFG drops into a pretrained Stable Diffusion with a few lines of code, controlled by a first-order weight w and a second-order weight v.

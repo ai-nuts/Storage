@@ -1,0 +1,3 @@
+# Title
+
+Graph neural networks power everything from citation search to recommendation, but they are alarmingly easy to fool by injecting a few malicious nodes into the graph. This paper, from the Hong Kong Polytechnic University and published at ICML 2024, presents the first collective certified robustness scheme against graph injection attacks. Instead of certifying each node in isolation, which is hopelessly pessimistic, the authors certify a whole set of target nodes at once by formulating the worst-case attacker as an optimization problem, then relaxing that hard integer program into a linear program that solves in about a minute. The payoff is dramatic: on Citeseer, the certified ratio jumps from zero percent to over eighty percent.

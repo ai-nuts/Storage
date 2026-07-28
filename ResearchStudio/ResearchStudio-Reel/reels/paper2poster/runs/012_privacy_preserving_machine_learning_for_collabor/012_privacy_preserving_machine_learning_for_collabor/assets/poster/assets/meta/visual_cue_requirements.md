@@ -1,0 +1,327 @@
+# paper2video visual cue requirements for ppt-master
+
+Use this file while authoring the deck. It is not a design style; it is a semantic anchor contract for video highlights.
+
+For each slide, create 2-5 visible content groups whose IDs, `<title>`, `<desc>`, or `data-cue-label` match the requested anchor IDs. Keep the highlight target on real content, not headers, captions, logos, or background chrome.
+
+The final cue renderer uses translucent point highlights centered on these regions, so the region should wrap the specific diagram/card/chart area being discussed. Prefer a stable SVG group id beginning with `cue_`; include the narration keywords in `<desc>` or `data-cue-label` so the matcher can confirm semantic overlap instead of guessing from layout alone.
+
+## Slide 01: title
+
+Heading: Title
+
+### Cue 1: `cue_s01_c1_organizations_increasingly_want_pool`
+
+- Preferred role: `content`
+- Cue keywords: `organizations, increasingly, want, pool, their, build, better, machine, learning, models`
+- Narration: Organizations increasingly want to pool their data to build better machine learning models, but privacy policies and intellectual property laws often make raw data sharing impossible.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s01_c1_organizations_increasingly_want_pool" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords organizations, increasingly, want, pool, their, build in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s01_c2_introduces_privacy_preserving_framew`
+
+- Preferred role: `method`
+- Cue keywords: `introduces, privacy-preserving, framework, autoencoders, turn, sensitive, tabular, obfuscated, latent-space, embeddings`
+- Narration: This paper introduces a privacy-preserving framework that uses autoencoders to turn sensitive tabular data into obfuscated latent-space embeddings.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s01_c2_introduces_privacy_preserving_framew" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords introduces, privacy-preserving, framework, autoencoders, turn, sensitive in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s01_c3_instead_exchanging_raw_features_coll`
+
+- Preferred role: `method`
+- Cue keywords: `instead, exchanging, raw, features, collaborating, peers, share, only, these, encoded`
+- Narration: Instead of exchanging raw features, collaborating peers share only these encoded representations, then join them to train a shared downstream model.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s01_c3_instead_exchanging_raw_features_coll" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords instead, exchanging, raw, features, collaborating, peers in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s01_c4_across_three_public_benchmarks_encod`
+
+- Preferred role: `result`
+- Cue keywords: `across, three, public, benchmarks, encoded, preserves, predictive, power, performance, dropping`
+- Narration: Across three public benchmarks, the encoded data preserves predictive power, with performance dropping by less than ten percentage points while the original features stay hidden.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s01_c4_across_three_public_benchmarks_encod" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords across, three, public, benchmarks, encoded, preserves in title/desc so the matcher can verify semantic overlap.
+
+## Slide 02: problem
+
+Heading: Problem
+
+### Cue 1: `cue_s02_c1_common_real_world_situation_two_comp`
+
+- Preferred role: `content`
+- Cue keywords: `common, real-world, situation, two, companies, hold, different, set, variables, about`
+- Narration: A common real-world situation is two companies that each hold a different set of variables about the same group of users. If they could combine their features, both could predict a shared target variable far more accurately and make better decisions.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s02_c1_common_real_world_situation_two_comp" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords common, real-world, situation, two, companies, hold in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s02_c2_but_sensitive_privacy_policies_intel`
+
+- Preferred role: `content`
+- Cue keywords: `but, sensitive, privacy, policies, intellectual, property, laws, forbid, handing, over`
+- Narration: But the data is sensitive, so privacy policies and intellectual property laws forbid handing over the raw features, even when the communication channel between them is secure.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s02_c2_but_sensitive_privacy_policies_intel" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords but, sensitive, privacy, policies, intellectual, property in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s02_c3_collaboration_cancelled_potential_bo`
+
+- Preferred role: `content`
+- Cue keywords: `collaboration, cancelled, potential, boost, performance, lost`
+- Narration: The collaboration is cancelled, and the potential boost in model performance is lost.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s02_c3_collaboration_cancelled_potential_bo" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords collaboration, cancelled, potential, boost, performance, lost in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s02_c4_core_problem_tackles_how_let`
+
+- Preferred role: `content`
+- Cue keywords: `core, problem, tackles, how, let, such, peers, share, their, information`
+- Narration: The core problem this paper tackles is how to let such peers share their information, and keep the predictive power of the original features, without ever exposing the raw sensitive data.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s02_c4_core_problem_tackles_how_let" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords core, problem, tackles, how, let, such in title/desc so the matcher can verify semantic overlap.
+
+## Slide 03: motivation
+
+Heading: Motivation
+
+### Cue 1: `cue_s03_c1_academia_industry_built_several_priv`
+
+- Preferred role: `method`
+- Cue keywords: `academia, industry, built, several, privacy-preserving, strategies, but, limits, encryption, approaches`
+- Narration: Academia and industry have built several privacy-preserving strategies, but each has limits. Encryption approaches like homomorphic encryption offer strong security yet are hard to deploy in real settings because of their technology requirements.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s03_c1_academia_industry_built_several_priv" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords academia, industry, built, several, privacy-preserving, strategies in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s03_c2_federated_learning_decentralizes_acr`
+
+- Preferred role: `method`
+- Cue keywords: `federated, learning, decentralizes, across, devices, but, assumes, every, peer, holds`
+- Narration: Federated learning decentralizes training across devices, but it assumes every peer holds the same kind of information, so it cannot handle two peers that contribute different features.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s03_c2_federated_learning_decentralizes_acr" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords federated, learning, decentralizes, across, devices, but in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s03_c3_differential_privacy_masks_individua`
+
+- Preferred role: `method`
+- Cue keywords: `differential, privacy, masks, individual, values, adding, noise, which, significantly, reduce`
+- Narration: Differential privacy masks individual values by adding noise, which can significantly reduce data utility. Linear dimensionality reduction such as Principal Component Analysis obfuscates features but may lose important nonlinear relationships.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s03_c3_differential_privacy_masks_individua" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords differential, privacy, masks, individual, values, adding in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s03_c4_these_gaps_motivate_new_approach`
+
+- Preferred role: `method`
+- Cue keywords: `these, gaps, motivate, new, approach, deep, representation, learning, encode, while`
+- Narration: These gaps motivate a new approach that uses deep representation learning to encode data while keeping its predictive structure intact.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s03_c4_these_gaps_motivate_new_approach" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords these, gaps, motivate, new, approach, deep in title/desc so the matcher can verify semantic overlap.
+
+## Slide 04: contribution
+
+Heading: Contribution
+
+### Cue 1: `cue_s04_c1_makes_three_main_contributions`
+
+- Preferred role: `content`
+- Cue keywords: `makes, three, main, contributions`
+- Narration: The paper makes three main contributions.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s04_c1_makes_three_main_contributions" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords makes, three, main, contributions in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s04_c2_first_reviews_existing_privacy_prese`
+
+- Preferred role: `result`
+- Cue keywords: `first, reviews, existing, privacy-preserving, machine, learning, approaches, expose, their, limitations`
+- Narration: First, it reviews existing privacy-preserving machine learning approaches to expose their limitations and the room for improvement.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s04_c2_first_reviews_existing_privacy_prese" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords first, reviews, existing, privacy-preserving, machine, learning in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s04_c3_second_proposes_concrete_framework_w`
+
+- Preferred role: `method`
+- Cue keywords: `second, proposes, concrete, framework, which, peer, trains, autoencoder, shares, only`
+- Narration: Second, it proposes a concrete framework in which each peer trains an autoencoder, shares only the latent-space representation of its data, and then joins these embeddings to train a shared supervised model.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s04_c3_second_proposes_concrete_framework_w" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords second, proposes, concrete, framework, which, peer in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s04_c4_third_validates_framework_three_publ`
+
+- Preferred role: `method`
+- Cue keywords: `third, validates, framework, three, public, datasets, spanning, regression, classification, across`
+- Narration: Third, it validates the framework on three public datasets spanning regression and classification, and across five experimental scenarios, ranging from a raw-data baseline to non-naive multitask autoencoders that also predict the target variable during encoding.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s04_c4_third_validates_framework_three_publ" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords third, validates, framework, three, public, datasets in title/desc so the matcher can verify semantic overlap.
+
+## Slide 05: method
+
+Heading: Method
+
+### Cue 1: `cue_s05_c1_framework_inserts_one_extra_step`
+
+- Preferred role: `method`
+- Cue keywords: `framework, inserts, one, extra, step, usual, data-sharing, pipeline, instead, merging`
+- Narration: The framework inserts one extra step into the usual data-sharing pipeline. Instead of merging raw datasets, each peer first passes its features through an autoencoder to obtain a latent-space representation, an obfuscated version of the data ready to be shared.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s05_c1_framework_inserts_one_extra_step" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords framework, inserts, one, extra, step, usual in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s05_c2_peers_join_these_representations_sha`
+
+- Preferred role: `content`
+- Cue keywords: `peers, join, these, representations, shared, observation, train, single, supervised, combined`
+- Narration: The peers then join these representations using a shared observation ID and train a single supervised model on the combined embeddings to predict the same target.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s05_c2_peers_join_these_representations_sha" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords peers, join, these, representations, shared, observation in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s05_c3_autoencoder_fixed_across_all_experim`
+
+- Preferred role: `method`
+- Cue keywords: `autoencoder, fixed, across, all, experiments, conclusions, reflect, framework, not, network`
+- Narration: The autoencoder is fixed across all experiments so conclusions reflect the framework, not network tuning: the encoder has four layers going from N input features through hidden sizes 128, 64, and 40 down to an embedding of size M, and the decoder mirrors it back up to N.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s05_c3_autoencoder_fixed_across_all_experim" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords autoencoder, fixed, across, all, experiments, conclusions in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s05_c4_every_layer_relu_loss_mean`
+
+- Preferred role: `method`
+- Cue keywords: `every, layer, relu, loss, mean, absolute, error, adam, optimizer, learning`
+- Narration: Every layer uses ReLU, the loss is Mean Absolute Error, and training uses the Adam optimizer with a learning rate of 0.0001. In the non-naive scenarios, the autoencoder becomes a multitask network that also predicts the objective variable, so the encoding is guided by the downstream prediction task.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s05_c4_every_layer_relu_loss_mean" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords every, layer, relu, loss, mean, absolute in title/desc so the matcher can verify semantic overlap.
+
+## Slide 06: dataset-benchmark
+
+Heading: Dataset / Benchmark
+
+### Cue 1: `cue_s06_c1_test_framework_under_realistic_varie`
+
+- Preferred role: `guidance`
+- Cue keywords: `test, framework, under, realistic, varied, conditions, authors, chose, three, public`
+- Narration: To test the framework under realistic and varied conditions, the authors chose three public datasets. House Pricing has about twenty-one thousand observations and twelve features, with a regression target predicting house price in US dollars.
+- Authoring: Create or label one visible guidance region for this narration chunk. Use id="cue_s06_c1_test_framework_under_realistic_varie" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords test, framework, under, realistic, varied, conditions in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s06_c2_mnist_numbers_thirty_five_thousand_o`
+
+- Preferred role: `result`
+- Cue keywords: `mnist, numbers, thirty-five, thousand, observations, seven, hundred, eighty-four, features, treated`
+- Narration: MNIST Numbers has thirty-five thousand observations and seven hundred eighty-four features, treated as tabular data for a ten-class digit classification task. Buzz in Social Media has over eighty-seven thousand observations and seventy-seven features, again a regression task.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s06_c2_mnist_numbers_thirty_five_thousand_o" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords mnist, numbers, thirty-five, thousand, observations, seven in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s06_c3_together_they_cover_regression_class`
+
+- Preferred role: `result`
+- Cue keywords: `together, they, cover, regression, classification, small, large, feature, sets, different`
+- Narration: Together they cover regression and classification, small and large feature sets, and different feature types, letting the authors probe how robust and scalable the encoding approach is.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s06_c3_together_they_cover_regression_class" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords together, they, cover, regression, classification, small in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s06_c4_all_experiments_ran_modest_setup`
+
+- Preferred role: `content`
+- Cue keywords: `all, experiments, ran, modest, setup, two-core, intel, xeon, cpu, 2.3`
+- Narration: All experiments ran on a modest setup: a two-core Intel Xeon CPU at 2.3 gigahertz, an Nvidia K80 or T4 GPU with twelve gigabytes of memory, and twelve gigabytes of RAM.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s06_c4_all_experiments_ran_modest_setup" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords all, experiments, ran, modest, setup, two-core in title/desc so the matcher can verify semantic overlap.
+
+## Slide 07: key-result
+
+Heading: Key Result
+
+### Cue 1: `cue_s07_c1_central_finding_sharing_encoded_repr`
+
+- Preferred role: `content`
+- Cue keywords: `central, finding, sharing, encoded, representations, instead, raw, features, barely, hurts`
+- Narration: The central finding is that sharing encoded representations instead of raw features barely hurts predictive performance.
+- Authoring: Create or label one visible content region for this narration chunk. Use id="cue_s07_c1_central_finding_sharing_encoded_repr" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords central, finding, sharing, encoded, representations, instead in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s07_c2_house_pricing_raw_data_baseline_reac`
+
+- Preferred role: `method`
+- Cue keywords: `house, pricing, raw-data, baseline, reaches, test, r-squared, about, ninety, percent`
+- Narration: On House Pricing, the raw-data baseline reaches a test R-squared of about ninety percent, and the two-peer scenario using individual autoencoders still reaches about eighty-nine percent, an almost negligible drop despite the data being obfuscated.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s07_c2_house_pricing_raw_data_baseline_reac" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords house, pricing, raw-data, baseline, reaches, test in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s07_c3_buzz_social_media_baseline_r_squared`
+
+- Preferred role: `result`
+- Cue keywords: `buzz, social, media, baseline, r-squared, around, ninety-six, percent, encoded, scenarios`
+- Narration: On Buzz in Social Media, the baseline R-squared is around ninety-six percent and the encoded scenarios stay in the high eighties to low nineties. For MNIST digit classification, test accuracy moves from ninety-two percent at baseline down to the mid-eighties under encoding.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s07_c3_buzz_social_media_baseline_r_squared" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords buzz, social, media, baseline, r-squared, around in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s07_c4_importantly_non_naive_multitask_scen`
+
+- Preferred role: `method`
+- Cue keywords: `importantly, non-naive, multitask, scenarios, where, autoencoder, guided, target, variable, recover`
+- Narration: Importantly, the non-naive multitask scenarios, where the autoencoder is guided by the target variable, recover much of this gap, showing that shaping the latent space with the downstream task improves results.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s07_c4_importantly_non_naive_multitask_scen" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords importantly, non-naive, multitask, scenarios, where, autoencoder in title/desc so the matcher can verify semantic overlap.
+
+## Slide 08: ablation-study
+
+Heading: Ablation Study
+
+### Cue 1: `cue_s08_c1_experiments_organized_ablation_acros`
+
+- Preferred role: `method`
+- Cue keywords: `experiments, organized, ablation, across, five, scenarios, isolate, design, decision`
+- Narration: The experiments are organized as an ablation across five scenarios that isolate each design decision.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s08_c1_experiments_organized_ablation_acros" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords experiments, organized, ablation, across, five, scenarios in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s08_c2_scenario_zero_raw_data_baseline_priv`
+
+- Preferred role: `method`
+- Cue keywords: `scenario, zero, raw-data, baseline, privacy, protection, scenario, one, single, shared`
+- Narration: Scenario zero is the raw-data baseline with no privacy protection. Scenario one uses a single shared autoencoder to encode one combined dataset. Scenario two simulates two peers, each with its own autoencoder, whose embeddings are then joined.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s08_c2_scenario_zero_raw_data_baseline_priv" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords scenario, zero, raw-data, baseline, privacy, protection in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s08_c3_scenarios_three_four_repeat_one`
+
+- Preferred role: `method`
+- Cue keywords: `scenarios, three, four, repeat, one, two, but, make, autoencoder, non-naive`
+- Narration: Scenarios three and four repeat one and two but make the autoencoder non-naive: it becomes a multitask network that also predicts the objective variable during encoding. The clear pattern is that the non-naive variants beat their naive counterparts.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s08_c3_scenarios_three_four_repeat_one" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords scenarios, three, four, repeat, one, two in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s08_c4_buzz_social_media_test_r_squared`
+
+- Preferred role: `method`
+- Cue keywords: `buzz, social, media, test, r-squared, rises, about, ninety-one, half, percent`
+- Narration: On Buzz in Social Media, the test R-squared rises from about ninety-one and a half percent with the naive shared autoencoder to about ninety-four percent with the non-naive version, and on MNIST accuracy climbs from eighty-eight to ninety-one percent. Guiding the latent space with the target variable clearly helps.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s08_c4_buzz_social_media_test_r_squared" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords buzz, social, media, test, r-squared, rises in title/desc so the matcher can verify semantic overlap.
+
+## Slide 09: headline-numbers
+
+Heading: Headline Numbers
+
+### Cue 1: `cue_s09_c1_few_numbers_capture_impact_across`
+
+- Preferred role: `method`
+- Cue keywords: `few, numbers, capture, impact, across, all, cases, replacing, raw, features`
+- Narration: A few numbers capture the impact. Across all use cases, replacing raw features with shared latent representations dropped downstream performance by less than ten percentage points, while the reconstruction error of the autoencoder ranged from five to eleven percent.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s09_c1_few_numbers_capture_impact_across" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords few, numbers, capture, impact, across, all in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s09_c2_house_pricing_test_r_squared_fell`
+
+- Preferred role: `method`
+- Cue keywords: `house, pricing, test, r-squared, fell, only, ninety, point, two, nine`
+- Narration: On House Pricing, test R-squared fell only from ninety point two nine percent at baseline to eighty-nine point three three percent with two individual autoencoders.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s09_c2_house_pricing_test_r_squared_fell" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords house, pricing, test, r-squared, fell, only in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s09_c3_buzz_social_media_non_naive_shared`
+
+- Preferred role: `method`
+- Cue keywords: `buzz, social, media, non-naive, shared, autoencoder, reached, ninety-four, percent, r-squared`
+- Narration: On Buzz in Social Media, the non-naive shared autoencoder reached ninety-four percent R-squared against a ninety-six percent baseline.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s09_c3_buzz_social_media_non_naive_shared" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords buzz, social, media, non-naive, shared, autoencoder in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s09_c4_shared_autoencoders_correctly_estima`
+
+- Preferred role: `method`
+- Cue keywords: `shared, autoencoders, correctly, estimated, between, ninety-six, ninety-eight, percent, observations, per`
+- Narration: And the shared autoencoders correctly estimated between ninety-six and ninety-eight percent of observations per feature, confirming that the embeddings retain the core structure of the data.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s09_c4_shared_autoencoders_correctly_estima" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords shared, autoencoders, correctly, estimated, between, ninety-six in title/desc so the matcher can verify semantic overlap.
+
+## Slide 10: takeaway
+
+Heading: Takeaway
+
+### Cue 1: `cue_s10_c1_takeaway_simple_instead_exchanging_r`
+
+- Preferred role: `method`
+- Cue keywords: `takeaway, simple, instead, exchanging, raw, sensitive, collaborating, organizations, share, latent-space`
+- Narration: The takeaway is simple: instead of exchanging raw sensitive data, collaborating organizations can share the latent-space embeddings produced by autoencoders.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s10_c1_takeaway_simple_instead_exchanging_r" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords takeaway, simple, instead, exchanging, raw, sensitive in title/desc so the matcher can verify semantic overlap.
+
+### Cue 2: `cue_s10_c2_keeps_original_features_private_yet`
+
+- Preferred role: `result`
+- Cue keywords: `keeps, original, features, private, yet, preserves, most, predictive, power, performance`
+- Narration: This keeps the original features private yet preserves most of the predictive power, with performance dropping by less than ten percentage points across three benchmarks.
+- Authoring: Create or label one visible result region for this narration chunk. Use id="cue_s10_c2_keeps_original_features_private_yet" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords keeps, original, features, private, yet, preserves in title/desc so the matcher can verify semantic overlap.
+
+### Cue 3: `cue_s10_c3_making_autoencoder_aware_downstream`
+
+- Preferred role: `method`
+- Cue keywords: `making, autoencoder, aware, downstream, task, narrows, gap, even, further`
+- Narration: Making the autoencoder aware of the downstream task narrows the gap even further.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s10_c3_making_autoencoder_aware_downstream" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords making, autoencoder, aware, downstream, task, narrows in title/desc so the matcher can verify semantic overlap.
+
+### Cue 4: `cue_s10_c4_authors_point_custom_per_dataset_aut`
+
+- Preferred role: `method`
+- Cue keywords: `authors, point, custom, per-dataset, autoencoders, formal, measures, privacy, strength, next`
+- Narration: The authors point to custom per-dataset autoencoders and formal measures of privacy strength as the next steps toward deploying this in real organizational settings.
+- Authoring: Create or label one visible method region for this narration chunk. Use id="cue_s10_c4_authors_point_custom_per_dataset_aut" when possible; otherwise include this value in data-cue-label/title/desc. Also include the cue keywords authors, point, custom, per-dataset, autoencoders, formal in title/desc so the matcher can verify semantic overlap.

@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: Three public benchmarks span both task types and varied feature sizes: House Pricing (21,613 obs, 12 features, regression), MNIST Numbers (35,000 obs, 784 features, multiclass classification), and Buzz in Social Media (87,488 obs, 77 features, regression).
+
+Supporting detail: The datasets were chosen to vary downstream task, dimensionality, and feature type, testing the framework's robustness and scalability. Training used an Intel Xeon CPU (2.30 GHz, 2 cores), an Nvidia K80/T4 GPU with 12 GB memory, and 12 GB RAM.
+
+Narration: To test the framework under realistic and varied conditions, the authors chose three public datasets. House Pricing has about twenty-one thousand observations and twelve features, with a regression target predicting house price in US dollars. MNIST Numbers has thirty-five thousand observations and seven hundred eighty-four features, treated as tabular data for a ten-class digit classification task. Buzz in Social Media has over eighty-seven thousand observations and seventy-seven features, again a regression task. Together they cover regression and classification, small and large feature sets, and different feature types, letting the authors probe how robust and scalable the encoding approach is. All experiments ran on a modest setup: a two-core Intel Xeon CPU at 2.3 gigahertz, an Nvidia K80 or T4 GPU with twelve gigabytes of memory, and twelve gigabytes of RAM.

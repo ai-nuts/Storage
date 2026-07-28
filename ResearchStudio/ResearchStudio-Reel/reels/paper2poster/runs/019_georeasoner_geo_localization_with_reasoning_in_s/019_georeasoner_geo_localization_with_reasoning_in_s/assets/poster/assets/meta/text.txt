@@ -1,0 +1,911 @@
+                                                         GeoReasoner: Geo-localization with Reasoning in Street Views
+                                                                   using a Large Vision-Language Model
+
+
+                                                                        Ling Li 1 Yu Ye 2 Yao Zhou 3 Bingchuan Jiang 4 Wei Zeng 1 5
+
+
+                                                                                                                Retrieval-based approaches                                                     LVLM-based approaches
+                                                                    Abstract
+                                                                                                                                                         0.96
+                                                                                                                                  [ lat, lon ]                                                             External Knowledge
+                                                 This work tackles the problem of geo-localization               Input
+                                                                                                                                  [ lat, lon ]
+                                                                                                                                                         0.61                   Output
+arXiv:2406.18572v4 [cs.CV] 22 Nov 2025
+
+
+
+
+                                                                                                                Image                                                           [ lat, lon ]                                 0.83
+                                                                                                                                                                 [ lat, lon ]                  Training
+                                                 with a new paradigm using a large vision-                                                                                                                                             LVLM
+                                                                                                                                                         0.24                                   Phase
+                                                                                                                                  [ lat, lon ]                                                                        LOC.   0.37
+                                                                                                                                                                                                                      QNT.
+                                                 language model (LVLM) augmented with human                                                                                                                                  0.19
+
+                                                 inference knowledge. A primary challenge here                  Classiﬁcation-based approaches
+
+                                                 is the scarcity of data for training the LVLM -                             Images
+                                                                                                                                              C1
+                                                                                                                                              C2
+                                                                                                                                                                                                                                    Answer
+                                                                                                                Training                                                                                     Input
+                                                                                                                                                                                Model
+                                                 existing street-view datasets often contain numer-              Phase                  C1         C2      ...     ...
+                                                                                                                                                                                                            Image
+                                                                                                                                                                                                                                      Geo
+                                                                                                                            Geo Cells   C3         C4      ...     ...
+                                                                                                                                                                                               Inference
+                                                                                                                                                                                                                         LVLM       Location
+                                                                                                                                        ...        ...     ...     ...
+
+                                                 ous low-quality images lacking visual clues, and                                       ...        ...     ...   ...
+                                                                                                                                                                                                 Phase
+                                                                                                                                                                                                            Input                   Reasons
+                                                 lack any reasoning inference. To address the data-             Inference     Input
+                                                                                                                                              Model                      Classiﬁcation                     Question
+                                                                                                                  Phase      Image                                          Result
+                                                 quality issue, we devise a CLIP-based network to
+                                                 quantify the degree of street-view images being               Figure 1. Different paradigms in existing and the proposed geo-
+                                                 locatable, leading to the creation of a new dataset           localization approaches: retrieval-based (left-top), classification-
+                                                 comprising highly locatable street views. To en-              based (left-bottom), and our LVLM-based (right).
+                                                 hance reasoning inference, we integrate external
+                                                 knowledge obtained from real geo-localization
+                                                 games, tapping into valuable human inference                  vided into two categories: retrieval-based and classification-
+                                                 capabilities. The data are utilized to train GeoRe-           based. Retrieval-based approaches entail identifying the
+                                                 asoner, which undergoes fine-tuning through ded-              most similar image within a geo-tagged image gallery and re-
+                                                 icated reasoning and location-tuning stages. Qual-            turning the corresponding geographical location (Zhu et al.,
+                                                 itative and quantitative evaluations illustrate that          2022; Lin et al., 2022; Zhang et al., 2023b). However, the
+                                                 GeoReasoner outperforms counterpart LVLMs by                  methods rely on the diversity and comprehensiveness of
+                                                 more than 25% at country-level and 38% at city-               the geo-tagged image gallery, which can be challenging to
+                                                 level geo-localization tasks, and surpasses Street-           curate. Alternatively, classification-based approaches par-
+                                                 CLIP performance while requiring fewer training               tition the Earth’s surface into distinct regions and assign
+                                                 resources. The data and code are available at                 the input image to a specific region (Clark et al., 2023; Pra-
+                                                 https://github.com/lingli1996/GeoReasoner.                    manick et al., 2022; Müller-Budack et al., 2018; Seo et al.,
+                                                                                                               2018; Weyand et al., 2016). While these methods leverage
+                                                                                                               shared visual features within a single region, they may ne-
+                                         1. Introduction                                                       glect valuable semantic information (e.g., signboard texts)
+                                                                                                               crucial for geo-localization. More importantly, these classi-
+                                         Street-view geo-localization seeks to predict geographical            fication methods often operate as black-box models, lacking
+                                         locations for the given street-view images. The significance          reasoning capabilities for users to interpret.
+                                         of street-view geo-localization is evident in a variety of ap-
+                                         plications, spanning social studies (Ye et al., 2019b), urban         Achieving street view-based geo-localization with reasoning
+                                         planning (Shen et al., 2018), and navigation (Chalvatzaras            capability poses a considerable challenge. This study intro-
+                                         et al., 2022). As shown in Figure 1 (left), existing frame-           duces a new paradigm that facilitates geo-localization with
+                                         works for street-view geo-localization can be mainly di-              reasoning capability for street-view images, as depicted in
+                                                                                                               Figure 1(right). The paradigm leverages an LVLM for its ex-
+                                             1
+                                               The Hong Kong University of Science and Technol-                cellent capability in handling multi-modal visual and textual
+                                         ogy (Guangzhou) 2 Tongji University 3 Independent Researcher          inputs and incorporates external knowledge learned from
+                                         4
+                                           Information Engineering University 5 The Hong Kong University       various online games for the reasoning procedure. Specifi-
+                                         of Science and Technology. Correspondence to: Bingchuan Jiang
+                                         <jbc021@163.com>.                                                     cally, we introduce the concept of locatability as a metric
+                                                                                                               to quantify the degree of locatability in street-view images.
+                                                                                                               On this basis, we devise a CLIP-based visual-text pairing
+
+                                                                                                           1
+             GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+network to match large-scale Google Street View (GSV) im-              maintenance (Campbell et al., 2019; Li et al., 2021). This
+ages with 3K finely reasoned text-image pairs from online              study places an emphasis on geo-localization based on street
+games, to tackle the challenge of the absence of a high-               views. Specifically, drawing motivation from Zhang et al.
+quality street-view dataset. The process filters through over          (2018), we delineate the distribution of scene elements to
+70K GSV images with geo-tags, all of which exhibit a high              quantify the degree of locatability in street views. Highly
+degree of locatability.                                                locatable street-view images are curated to train an LVLM
+                                                                       that surpasses existing geo-localization models.
+Next, we construct an LVLM model, named GeoReasoner,
+to overcome the difficulty of integrating reasoning capabil-
+ity in geo-localization. The training procedures of GeoRe-             2.2. Image-based Geo-localization
+asoner are divided into two folds: reasoning tuning and                Geo-localization entails determining spatial coordinates on
+location tuning. In the first stage, we utilize the 3K reasoned        the Earth’s surface, with broad applications in practical sce-
+text-image pairs encapsulating human inference knowledge,              narios, including tracking individual trajectories (Cheng
+to fine-tune a well-trained LVLM model with LoRA (Hu                   et al., 2022) and positioning autonomous vehicles (Chal-
+et al., 2022) for reasoning adaptation. In the second stage,           vatzaras et al., 2022). This study focuses on image-based
+we leverage the curated 70K high-locatability GSV images               geo-localization, utilizing image data as input. Research
+dataset, to further fine-tune the LVLM model with another              on image-based geo-localization can be primarily classi-
+LoRA stacked on the first one for location tuning. We assess           fied into two approaches: retrieval-based (Zhu et al., 2022;
+GeoReasoner in terms of accuracy for both country-level                Lin et al., 2022; Zhang et al., 2023b) and classification-
+(i.e., predicting the country in which a street view is located)       based (Clark et al., 2023; Pramanick et al., 2022; Müller-
+and city-level (i.e., predicting the city in which a street view       Budack et al., 2018; Seo et al., 2018; Weyand et al., 2016).
+is located) geo-localization. The results demonstrate that
+GeoReasoner outperforms the other counterparts by more                 The retrieval-based approach involves the sequential match-
+than 25% at the country-level geo-localization and 38% at              ing of a single image with a gallery of overhead views, each
+the city-level geo-localization with reasoning on our test             labeled with geographical coordinates, and identifying the
+dataset. Notably, GeoReasoner performs slightly better than            result with the highest matching as the location. However,
+StreetCILP (Haas et al., 2023), which was trained on a sub-            the utilization of this method is limited due to its require-
+stantially larger dataset of 1.1 million geo-tagged street-view        ment for additional reference datasets. The classification-
+images. We also evaluate GeoReasoner against state-of-                 based approach, exemplified by Weyand et al. (2016), in-
+the-art models for geo-localization using open benchmark               volves subdividing the Earth’s surface into thousands of
+datasets. The results show that GeoReasoner achieves com-              geographical cells and predicting the geographical unit to
+parable performance with only 10k Flickr images used for               which an image belongs. The prediction effectiveness can be
+training. The main contributions of our work are:                      boosted with a dataset comprising millions of street views,
+                                                                       whilst the granularity is influenced by the number of subdi-
+    • We present a new paradigm that leverages an LVLM
+                                                                       vided geographical cells. As such, many studies have been
+       and external knowledge of human inference for geo-
+                                                                       devoted to learning to corresponding multi-level features at
+       localization with reasoning from street-view images.
+                                                                       different granularity (Vo et al., 2017), or multi-pair features
+   • We introduce the concept of locatability and devise a             for different tasks (Müller-Budack et al., 2018; Pramanick
+     CLIP-based network to quantify the degree of locata-              et al., 2022; Vivanco Cepeda et al., 2024).
+     bility in street-view images.                                     We approach image-based geo-localization with a novel
+   • We propose GeoReasoner, an LVLM that outperforms                  paradigm. Specifically, we integrate semantic visual con-
+     existing geo-localization models and provides detailed            cepts that offer locatable features (Luo et al., 2022; Theiner
+     reasoning for the inferred results.                               et al., 2022), and incorporate human reasoning knowledge
+                                                                       learned from geo-localization games using an LVLM.
+2. Related work
+                                                                       2.3. Vision-Language Models
+2.1. Street Views
+                                                                       The emergence of Large Language Models (LLMs) has sig-
+Street views, as the realm of physical environments rou-               nificantly impacted various tasks related to natural language
+tinely accessed and engaged with in daily life, bear signifi-          processing. These models exhibit remarkable performance
+cant relevance to human perception (Ye et al., 2019b) and              in tasks such as text generation (Zhang et al., 2023a) and
+urban design (Shen et al., 2018). Analyses of street views             text-based question answering (Shao et al., 2023), owing to
+contribute to decision-making support (Ye et al., 2019a),              their robust and versatile capabilities. As a result, research
+improved understanding of urban social and economic struc-             attention has shifted towards exploring prompt engineering
+tures (Bai et al., 2023b), and traffic asset monitoring and            techniques to enhance the performance of LLMs in down-
+
+                                                                   2
+                                 GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+  External Knowledge
+                                                                                                                 from the Google Street View1 (GSV). To enrich the
+                                              Text                                                               diversity of the dataset, we first selected the top global
+                                            Encoder
+                                                                                                                 cities according to the Globalization and World Cities
+ Green signs with white lettering provide
+ highway information in South Korea.
+                                                            T1    T2    T3     Tm                                Study Group and Network (GaWC) ranking. Next, we
+  Street-view Images                                  I1   I1 T1 I1 T2 I1 T3   I1 Tm                             utilized the global OpenStreetMap2 (OSM) geographic
+                                                      I2   I2 T1 I2 T2 I2 T3   I2 Tm                             database to obtain the vector data of the road network
+                                             Image                                                               in these urban areas. The road network was passed to
+                                            Encoder   I3   I3 T1 I3 T2 I3 T3   I3 Tm
+                                                                                       Locatability              ArcPy, a Python site package of ArcGIS, to automati-
+                                                                                         Metric
+                                                      In   In T1 In T2 In T3   In Tm                             cally extract sampling points at 4000-meter intervals
+                                                                                                                 and generate a CSV table containing information about
+Figure 2. The locatability quantization network devises a CLIP-                                                  these sampling points. Subsequently, we employed
+based visual-text pairing approach to predict the locatability metric.                                           the GSV API interface to compile a comprehensive
+                                                                                                                 dataset. This dataset encompassed street-view images
+stream tasks (Wei et al., 2022; Yao et al., 2024; Dai et al.,
+                                                                                                                 captured from four distinct directions - front, back, left,
+2023; Xu et al., 2023; Ying et al., 2024).
+                                                                                                                 and right - of each sampling point. Considering the
+Large vision-language models (LVLMs) integrate visual en-                                                        impact of data sparsity and image similarity, we ran-
+coders with LLMs, exhibiting remarkable effectiveness in                                                         domly selected two of the four views from each data
+visual question-answering tasks (Liu et al., 2024; Bai et al.,                                                   point, denoted as [Ix , Iy ], where x ∈ (lef t, right),
+2023a; Rao et al., 2023). This study harnesses the capabili-                                                     y ∈ (f ront, back). The process has yielded a total of
+ties of LVLMs to address geo-localization of street views.                                                       over 130k street-view images with geo-tags collected
+However, the optimal utilization of LVLMs remains a chal-                                                        from 72 cities in 48 countries.
+lenging issue, particularly due to the absence of high-quality
+training data and a lack of reasoning capabilities. We over-                                                 • Textual Clues. Textual clues often serve a pivotal
+come these challenges through an innovative paradigm and                                                       role in delineating the geographical locations of street-
+the thoughtful design of model architecture, contributing to                                                   view images. Two prominent games, GeoGuessr3 and
+a more effective utilization of LVLMs in this domain.                                                          Tuxun4 , which focus on geo-localization through street
+                                                                                                               views, offer a potential solution to this gap. Their com-
+                                                                                                               munities have collaboratively curated a well-organized
+3. GeoReasoner                                                                                                 collection of textual clues, used for pinpointing geo-
+This section outlines our approach to addressing two chal-                                                     graphical locations across various countries and cities.
+lenges: 1) the absence of a high-quality street-view geo-                                                      These clues, maintained by both players and adminis-
+localization dataset (discussed in Sect. 3.1), and 2) the diffi-                                               trators, provide valuable domain knowledge that aids
+culty of integrating reasoning in geo-localization (discussed                                                  in identifying and evaluating key geographical fea-
+in Sect. 3.2), when constructing GeoReasoner.                                                                  tures in street views. While such datasets now ex-
+                                                                                                               ist (Luo et al., 2022), there are no readily available
+3.1. Locatability-Enhanced Data Curation                                                                       image-text data pairs specifically tailored for LVLM
+                                                                                                               training. To bridge this gap, we gathered image-text
+Throughout the development of this work, we observed vari-                                                     pairs for geo-localization from these two open-source
+ations in the degree of locatability among different street                                                    communities. Subsequently, we utilized the BERT-
+views. For example, the images featuring textual signboards                                                    based Named Entity Recognition (NER) (Kenton &
+or prominent landmarks (e.g., Eiffel Tower) are easily lo-                                                     Toutanova, 2019) model to clean and filter text that
+catable, whilst those captured in a tunnel or obscured by a                                                    lacked specific geographical location information. In
+wall tend to be less locatable. Refer to Figure 4 for further                                                  this way, we collected a total of over 3K textual clues
+illustration. Simply merging all these street-view images to                                                   that encapsulate rich geo-localization information. For
+train an LVLM is not an optimal approach, as the inclusion                                                     instance, “houses in central Chile are more likely to
+of poor-quality data can adversely affect the training effi-                                                   have terracotta tiled roofs”. Each clue is paired with a
+ciency of updating an LVLM (Radford et al., 2021). To this                                                     corresponding street-view image.
+end, we introduce locatability, a metric that quantifies the
+level of locatability of street-view images. We then devise                                               With the GSV images and textual clues, our subsequent task
+a CLIP-based visual-text pairing network to produce the                                                   is to filter GSV images with a high degree of locatability, for
+desired locatability metric for an input street-view image,
+                                                                                                             1
+as shown in Figure 2. The network naturally incorporates                                                       https://www.google.com/streetview
+                                                                                                             2
+data from two perspectives:                                                                                    https://www.openstreetmap.org
+                                                                                                             3
+                                                                                                               https://www.geoguessr.com
+                                                                                                             4
+      • Street-View Images. We collected street-view images                                                    https://tuxun.fun
+
+                                                                                                      3
+                            GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+               STAGE 1 Reasoning Tuning                                                                           STAGE 2 Location Tuning
+                                                                                  Q:                                                                                         Q:
+                           Vision Encoder                                         Which country is the                      Vision Encoder                                   Which country
+Training
+
+
+                                                                                  image located?                                                                             and city is the
+                                                                                                                                                                             image located?
+                              VL Adapter                             Game         Explain the reason.                         VL Adapter                          GSV
+                                                                    images                                                                                      images
+
+                                                                  { ' country': 'India’                                                                       { ' country': 'Switzerland’
+                LoRA 1           Pre-trained LLM                     'reasons': 'Indian signboard’ }               LoRA 1   LoRA 2    Pre-trained LLM                'city': 'Zurich’ }
+
+
+                         Street Image                                                                                                         Answer
+                                                                                                                                               { 'country': 'South Korea',
+Inference
+
+
+
+
+                                              Vision Encoder                                            VL Adapter                                    'city': 'Seoul',
+                                                                                                                                                 'reasons': ['Address bar at the top
+            Input
+
+
+
+
+                                                                                                                                                              shows the address is in
+                                                                                               Question                                                       Seoul', 'The picture is a street
+                                                                                                                       LoRA 1 LoRA 2                          view', 'The writing on the
+                    According to the content of the image, please think step by step and deduce in
+                    which country and city the image is most-likely located and give the most                                                                 picture is in    Korean']
+                    important reason.Output in JSON format, e.g. {'country': '', 'city': '' ,'reasons':''}.            Pre-trained LLM         }
+
+
+Figure 3. The architecture of GeoReasoner consists of three modules: Vision Encoder, VL Adapter and Pre-trained LLM. The model
+undergoes a two-fold supervised fine-tuning process: reasoning tuning and location tuning, to enable geo-localization with reasoning.
+
+the purpose of training an LVLM. To achieve this, we design                                                        3.2. Geo-localization with Reasoning
+a CLIP-based visual-text pairing network. As depicted in
+                                                                                                                   While many models (e.g., Clark et al. (2023); Pramanick
+Figure 2, the GSV images undergo processing by an image
+                                                                                                                   et al. (2022); Müller-Budack et al. (2018); Seo et al. (2018);
+encoder that deduces the image attributes.
+                                                                                                                   Weyand et al. (2016)) exist for image-based geo-localization,
+Here, we first use MaskFormer (Cheng et al., 2021) to pre-                                                         these models typically predict locations without providing
+dict segmentation masks for various classes in GSV images,                                                         the inference process. This introduces several limitations:
+such as buildings, sky, and vehicles. We then compute an                                                           First, the models operate as black boxes without providing
+n-length vector Iseg , which quantifies the area ratio of each                                                     insights, making it challenging for users to interpret. This
+mask class, where n represents the number of classes. Sub-                                                         obstacle impedes further refinement of the geo-localization
+sequently, we utilize Sentence-BERT (Reimers & Gurevych,                                                           model. More importantly, studies have demonstrated that
+2019) to measure the similarity between textual clues and                                                          integrating the reasoning process can enhance the capabili-
+semantic segmentation labels, yielding an m × n matrix                                                             ties of LLMs (Qiao et al., 2023). Therefore, our objective
+M , where m is the number of textual clues. After that, we                                                         is to construct an LVLM for image-based geo-localization
+normalize M using min-max normalization, and set val-                                                              with reasoning capability.
+ues lower than the threshold to zero, resulting in another
+                                                                                                                   Model Architecture. Figure 3 illustrates the architecture of
+m × n matrix M̂ . We reduce M̂ to an n-length vector by
+                                                                                                                   the proposed model GeoReasoner, which is based on Qwen-
+calculating the mean across its rows, and then normalize
+                                                                                                                   VL (Bai et al., 2023a). GeoReasoner consists of three mod-
+it to obtain wloc . This vector represents the importance
+                                                                                                                   ules: Vision Encoder, Vision-Language (VL) Adapter and
+of each semantic segmentation label for geo-localization.
+                                                                                                                   Pre-trained LLM. Specifically, the Vision Encoder module
+With the segmentation mask ratio Iseg and the correspond-
+                                                                                                                   employs the Vision Transformer (ViT) (Dosovitskiy et al.,
+ing weight wloc , the locatability metric of a GSV image is
+                                                                                                                   2021) architecture. The input street-view images are re-
+computed through the multiplication and accumulation of
+                                                                                                                   sized to a specific resolution and then divided into a set
+the respective values, as follows:
+                                                                                                                   of image patches. To refine image patches into sequential
+                                                                                                                   representations compatible with an LLM, the VL Adapter
+                                                                 n
+                                                                 X                                                 is introduced. In the VL Adapter, the sequence of visual
+                locatability(Iseg , wloc ) =                            Iseg (k) · wkloc ,             (1)         features is initially condensed to a fixed length to address
+                                                                 k=1                                               efficiency challenges posed by the substantial number of
+                                                                                                                   visual feature sequences. Subsequently, the processed visual
+where Iseg (k) denotes pixel ratio of the k-th class in the                                                        features are integrated with the LLM using cross-attention
+segmentation mask Iseg .                                                                                           mechanisms. Following this, the compressed visual feature
+                                                                                                                   sequence and text sequence are passed to the Pre-trained
+A higher locatability value indicates a higher degree of
+                                                                                                                   LLM module, which functions as a decoder for generating
+visual clues exhibited in a GSV image for geo-localization,
+                                                                                                                   the answer.
+while a lower value suggests the opposite. Empirically,
+we selected a threshold value of 0.4 for filtering locatable                                                       Supervised Fine-tuning. The overall model undergoes a
+GSV images. This resulted in over 70k highly locatable                                                             staged pre-training process that is divided into two folds:
+images with geo-tags passing to the next stage for training                                                        reasoning tuning and location tuning. In the first stage, our
+an LVLM.                                                                                                           objective is to enhance the model’s reasoning capability
+
+                                                                                                              4
+              GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+
+
+
+      loc. = 0.70           loc. = 0.70           loc. = 0.71
+
+
+
+
+                                                                           Figure 5. The relationship between building proportion and the
+                                                                           degree of locatability in street views. The locatability metric peaks
+                                                                           when the building proportion is approximately 0.2.
+
+      loc. = 0.08           loc. = 0.14           loc. = 0.19              distinguished by prominent localizable attributes. The left
+                                                                           image features the Korean language on a signboard, the mid-
+Figure 4. Locatability examples. Top row: the street views are
+                                                                           dle image captures the distinctive Art Nouveau architectural
+highly locatable by signboards, architectural styles, and landmarks.
+Bottom row: no visual clues for locating the street views.
+                                                                           style commonly found in Switzerland, and the right image
+                                                                           shows an art & design museum in India. In contrast, street
+by utilizing textual clues paired with street-view images                  views in the bottom row display lower locatability degrees.
+collected from geo-localization games. The input street-                   The left image resembles a tunnel, lacking additional dis-
+view image & question, and the output answer are formatted                 cernible information for accurate localization. Similarly, the
+as prompts in the following manner:                                        middle image is occluded by a wall, and the right image
+                                                                           faces common vegetation that is available worldwide.
+                                                                           For the proposed locatability metric in Equation 1, we also
+                                                                           evaluated the relationship between building proportion and
+                                                                           the degree of locatability of street views. The results are
+                                                                           shown in Figure 5. The locatability metric slightly increases
+Here, we can only provide reasoning at the country level due
+                                                                           as the building proportion ranges from 0 to 0.2, but de-
+to the granularity exhibited in the image-text pairs. Never-
+                                                                           creases as the building proportion continues to increase.
+theless, this reasoning procedure is sufficient to facilitate the
+                                                                           The results indicate that buildings are not the sole determi-
+second stage of location tuning. Next, we integrate the prior
+                                                                           nant of locatability. As the proportion of buildings increases,
+knowledge of country information with highly locatable
+                                                                           the street-view images transition from panoramic to close-
+GSV images with geo-tags to infer the fine-grained city-
+                                                                           up views, leading to reduced information availability and
+level location information. We utilize a similar prompt for-
+                                                                           consequently diminishing the degree of locatability.
+mat as in the first stage but without a reasoning requirement.
+Both stages are fine-tuned from the pre-trained Qwen-VL                    The qualitative analysis indicates the effectiveness of the
+with LoRA, which contributes to the overall performance                    locatability quantization network in predicting locatability
+improvement of Qwen-VL in both the reasoning and lo-                       degrees of street-view images. Furthermore, the prediction
+cation tuning stages, allowing the model to better capture                 aligns with human inference knowledge harvested from real
+complex relationships within the image-text pairs.                         geo-localization games, providing the ground truths for fine-
+
+4. Experiments
+We conduct a series of experiments to evaluate the effective-
+ness of the locatability-enhanced geo-localization dataset
+(Sect. 4.1) and the model GeoReasoner for geo-localization
+with reasoning (Sect. 4.2).
+
+4.1. Experiments on Locatability-Enhanced Dataset
+4.1.1. Q UALITATIVE C OMPARISON
+                                                                           Figure 6. Quantitative comparison of country- and city-level geo-
+Figure 4 presents examples of the predicted locatability
+                                                                           localization accuracy by different models trained on mixed datasets
+degrees of different street-view images by our locatability
+                                                                           with varying proportions of high locatable GSV images.
+quantization network. The top row showcases street views
+
+                                                                       5
+                         GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+  Input Question
+    According to the content of the image, please think step by step and deduce in which country and city the image is most-likely located and give the most important reason.Output in JSON format, e.g. {'country': '', 'city': '' ,'reasons':''}.
+
+                                                                                                  Ground Truth               'country': 'Singapore'           'city': 'Singapore'
+ Input Image
+
+
+
+
+                                                                                                        LLaVA                                                                                                                        Qwen-VL
+                                                                                                           'country': 'United States'          'city': 'Miami'                    'country': 'Malaysia'         'city': 'Kuala Lumpur'
+                                                                                                       'reason': 'The presence of palm trees and a blue car parked on            'reason': 'There are tall buildings, a ComfortDelGro taxi, and
+                                                                                                       the side of the road are indicative of a warm climate, which is           people walking on the sidewalk.'
+                                                                                                       commonly associated with Miami, Florida. Additionally, the image
+                                                                                                       shows a busy city street with people walking and cars driving,
+                                                                                                       which is consistent with the urban environment of Miami.'                                                                  GeoReasoner
+                                                                                                                                                                                  'country': 'Singapore'          'city': 'Singapore'
+                                                                                                        GPT-4V                                                                   'reason': ['The ComfortDelGro taxi is a recognizable symbol of
+                                                                                                           'country': 'Singapore'          'city': 'Singapore'                   Singapore's public transportation system.', 'The small size of the
+                                                                                                       'reason': 'The image features tropical trees, the car has a license       island nation and the need to accommodate a large population
+                                                                                                       plate that is consistent with Singapore's format, and the architec-       have led to the development of high-density residential areas
+                                                                                                       ture of the buildings suggests a modern, urban environment                such as Tiong Bahru.', 'The city-state has a tropical climate with
+                                                                                                       typical of Singapore. Additionally, the taxi has 'COMFORT' written        high humidity and rainfall, which has influenced the development
+                                                                                                       on it, which is a taxi company operating in Singapore.'                   of urban green spaces such as parks and gardens.']
+
+
+                                                                                                  Ground Truth               'country': 'United States'             'city': 'Las Vegas'
+ Input Image
+
+
+
+
+                                                                                                        LLaVA                                                                                                                        Qwen-VL
+                                                                                                           'country': 'United States'          'city': 'New York'                 'country': 'United States'          'city': 'Las Vegas'
+                                                                                                       'reason': 'The presence of the New York sign and the tall buildings       'reason': 'The neon lights and busy streets are iconic to Las Vegas,
+                                                                                                       in the background, along with the busy street filled with cars, all       Nevada.'
+                                                                                                       indicate that the image is most likely taken in New York City.'
+
+
+                                                                                                        GPT-4V
+                                                                                                           'country': 'United States'          'city': 'Las Vegas'                                                                GeoReasoner
+                                                                                                       'reason': 'The presence of the replica Eiffel Tower and the New            'country': 'United States'          'city': 'Las Vegas'
+                                                                                                       York-New York Hotel and Casino, which are iconic landmarks on             'reason': ['Large neon lit buildings and billboards line the Las
+                                                                                                       the Las Vegas Strip.'                                                     Vegas Strip.']
+
+
+
+
+                                                                                                  Ground Truth               'country': 'China'          'city': 'Lhasa'
+ Input Image
+
+
+
+
+                                                                                                        LLaVA                                                                                                                        Qwen-VL
+                                                                                                           'country': 'China'        'city': 'Beijing'                            'country': 'China'        'city': 'Lhasa'
+                                                                                                       'reason': 'The presence of Chinese characters on the buildings            'reason': 'The main square of Lhasa is the most famous square in
+                                                                                                       and signs, as well as the traditional Chinese clothing worn by the        Lhasa, and it is also the symbol of Lhasa.'
+                                                                                                       people in the image, suggest that the location is in China, specifi-
+                                                                                                       cally in Beijing.'
+                                                                                                        GPT-4V                                                                                                                    GeoReasoner
+                                                                                                           'country': 'China'        'city': 'Lhasa'                              'country': 'China'        'city': 'Lhasa'
+                                                                                                       'reason': 'The architectural style and the traditional attire of the      'reason': ['The picture shows a Tibetan woman in traditional
+                                                                                                       person in the foreground are indicative of Tibetan culture. The           clothing, which is a distinctive feature of Tibet.', 'The ﬂag of China
+                                                                                                       signs on the buildings are in both Tibetan script and Chinese,            can be seen in the picture, indicating that the picture was taken in
+                                                                                                       which is common in Tibet, China. The urban setting with the               China.', 'The picture shows a busy street in Lhasa, which is the
+                                                                                                       specific style of buildings and signage suggests that is taken in         capital city of Tibet.']
+                                                                                                       Lhasa, the capital city of the Tibet Autonomous Region in China.'
+
+
+Figure 7. Examples of LVLM-based approaches in geo-localization with reasoning. Prediction results matching the ground truth are
+highlighted in green, while reasons offering valid information are marked in blue.
+
+tuning the reasoning component in GeoReasoner.                                                                                    images. Notably, the experiments only utilize 10K GSV
+                                                                                                                                  images instead of all the curated 70K high-locatability GSV
+4.1.2. Q UANTITATIVE C OMPARISON                                                                                                  images due to training complexity. Nevertheless, the results
+                                                                                                                                  demonstrate that high-locatability GSV images offer more
+We conducted quantitative experiments to investigate the
+                                                                                                                                  meaningful insights and less extraneous noise, making them
+importance of using high-locatability GSV images in train-
+                                                                                                                                  highly valuable in the geo-localization task.
+ing the location component in GeoReasoner. Various
+datasets were prepared, featuring different proportions of
+                                                                                                                                  4.2. Experiments on Geo-localization with Reasoning
+high-locatability GSV images, ranging from 0% (only low-
+locatability GSV images) to 100% (only high-locatability                                                                          4.2.1. Q UALITATIVE C OMPARISON WITH SOTA
+GSV images). To ensure fairness, each experimental group
+retained consistent 10K GSV images, with only the pro-                                                                            To assess the efficacy of GeoReasoner in terms of geo-
+portion of high-locatability images varying. Subsequently,                                                                        localization with reasoning, we conduct a qualitative com-
+models were trained for each dataset, and their accuracy in                                                                       parison with state-of-the-art LVLM-based approaches, in-
+country- and city-level geo-localization was evaluated on a                                                                       cluding LLaVA (Liu et al., 2024), Qwen-VL (Qwen-
+randomly sampled set of 1K GSV images.                                                                                            7B) (Bai et al., 2023a), and GPT-4V (Achiam et al., 2023).
+                                                                                                                                  In the experimental phase, we presented the same input
+The experimental results are presented in Figure 6. Overall,                                                                      street-view images, reasoning process, and result formats to
+the results reveal that as the proportion of high-locatability                                                                    these models. Specifically, a consistent prompt is used, as
+GSV images in the training dataset increases, the perfor-                                                                         below:
+mance of the fine-tuned location component improves in
+both country- and city-level geo-localization. Specifically,                                                                      According to the content of the image, please think step by
+the country- and city-level geo-localization accuracy in-                                                                         step and deduce in which country and city the image is most
+creases from 0.63 & 0.47 for 0% high-locatability GSV                                                                             likely located and offer possible explanations. Output in
+images, to 0.72 & 0.51 for 100% high-locatability GSV                                                                             JSON format, e.g., {‘country’: ‘’, ‘city’: ‘’, ‘reasons’:‘’}.
+
+
+                                                                                                                            6
+             GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+Table 1. Comparison of Precision, Recall and F1 scores in country-level and city-level geo-localization. * represents the model trained on
+high-locatability GSV images.
+
+                                                                      Country                             City
+            Model
+                                                         Precision↑    Recall↑       F1↑     Precision↑   Recall↑      F1↑
+            StreetCLIP (Haas et al., 2023)                 0.7943          1.00     0.8854     0.7457       1.00      0.8543
+            LLaVA (Liu et al., 2024)                       0.4029          1.00     0.5744     0.2400       1.00      0.3871
+            Qwen-VL (Qwen-7B) (Bai et al., 2023a)          0.5829          0.95     0.7225     0.3743       0.89      0.5270
+            GPT-4V (Achiam et al., 2023)                   0.8917          0.34     0.4923     0.5083       0.31      0.3851
+            ViT* (Dosovitskiy et al., 2021)                0.7100          1.00     0.8304     0.6762       1.00      0.8068
+            GeoReasoner*                                   0.8237          1.00     0.9033     0.7521       1.00      0.8585
+
+
+Figure 7 illustrates the inference results of counterpart mod-            obtaining corresponding and relevant answers is not guar-
+els and GeoReasoner on three diverse street views from dif-               anteed at all times. Therefore, we included Recall rate to
+ferent countries and cities—namely, Singapore-Singapore                   measure the proportion of effective answers within the large
+(top), United States-Las Vegas (middle) and China-Lhasa                   language models. When calculating the Accuracy rate, only
+(bottom). Overall, GeoReasoner not only outperforms exist-                the accuracy of these effective answers is taken into account.
+ing models in the accuracy of country or city-level predic-               We additionally compute F1 values, taking into considera-
+tions but also provides coherent explanations with insightful             tion both Accuracy and Recall metrics.
+reasoning for the inference results.
+                                                                          Table 1 presents the prediction results by the counterparts
+In Figure 7 (top), GeoReasoner identifies the word ‘COM-                  and GeoReasoner. Overall, GeoReasoner outperforms
+FORT’ on the taxi in the image. Drawing from prior knowl-                 all the counterparts, particularly those LVLM-based ap-
+edge, ‘the ComfortDelGro taxi is a distinctive symbol of                  proaches. Taking the best performed Qwen-VL for example,
+Singapore’s public transportation system’ in the text-image               GeoReasoner outperforms it 25.02% on country-level geo-
+pairs, the model deduces that the area is likely to be in                 localization and 38.61% on city-level geo-localization, in
+Singapore. GPT-4V predicts the same geo-location with                     terms of F1 value. Surprisingly, the recall performance
+accurate reasoning, yet the other two models fail, either due             of GPT-4V for the geo-localization task was notably low.
+to not recognizing the taxi by LLaVA or making an incorrect               Most of the responses were mainly: ‘I’m sorry, I can’t pro-
+inference about the city by Qwen-VL.                                      vide assistance with that request.’ or ‘I’m sorry, but I am
+                                                                          unable to provide the exact location, such as the country
+Figure 7 (middle) presents a scene of the Las Vegas Strip.
+                                                                          and city, for the image you have provided. My capabilities
+A conspicuous ‘NEW YORK’ sign is prominently visible
+                                                                          do not include analyzing specific details to determine the
+in the upper-left corner of the image. This sign causes
+                                                                          geographical location of the image content.’
+the reasoning error in the task performed by LLaVA. Al-
+though Qwen-VL generates accurate predictions of Las                      We speculate that GPT-4V has undergone extensive mea-
+Vegas-United States, the most essential factor, i.e., ‘Las                sures to ensure the model’s security and privacy, which may
+Vegas Strip’, is not considered in the reasoning process. In              contribute to its reluctance or denial of recognition in the
+contrast, both GeoReasoner and GPT-4V provide the correct                 task of geo-localization.
+geo-location along with accurate inference.
+                                                                          In comparison to StreetCLIP that is specialized in geo-
+Based on the depiction of Chinese characters and traditional              localization, GeoReasoner demonstrates only a slight supe-
+clothing in Figure 7 (right), all models make accurate pre-               riority. Nevertheless, it’s important to note that StreetCLIP
+dictions regarding the country, identifying it as China. How-             was trained on a significantly larger dataset of over 1.1 mil-
+ever, LLaVA makes an incorrect prediction of the city, spec-              lion street-view images, while our GeoReasoner was trained
+ifying Beijing. In contrast, the other models successfully                with only 70K street views. For ViT trained on the same
+predict the city as Lhasa, providing sensible and justifiable             data, GeoReasoner still exhibits superior geolocation capa-
+reasons for their inferences.                                             bilities. Moreover, GeoReasoner offers reasoning capability,
+                                                                          providing added value for various downstream tasks.
+4.2.2. Q UANTITATIVE C OMPARISON WITH SOTA
+                                                                          4.2.3. A BLATION E XPERIMENTS
+We further conduct quantitative experiments to compare
+with counterparts LVLMs. In addition, we choose Street-                   To assess the contributions of the location tuning and reason-
+CLIP (Haas et al., 2023) as the state-of-the-art classification-          ing tuning components in GeoReasoner, we design several
+based approach and omit retrieval-based approaches relying                ablation experiments using the Qwen-VL (Bai et al., 2023a)
+on a geo-tagged image gallery that is not available. It is                pre-trained model as the baseline. Next, we integrated the
+important to clarify that, for the LVLM-based approaches,                 Qwen-VL pre-trained model with LoRA1 (GeoReasoner
+
+                                                                      7
+             GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+Table 2. Results of the ablation experiments using baseline Qwen-VL (Qwen-7B), GeoReasoner w/o location tuning, GeoReasoner w/o
+reasoning tuning, and the full GeoReasoner models.
+
+                                                   Training                                         Performance
+ Model                                                                            Country                                   City
+                                        Reasoning          Location
+                                                                        Precision↑ Recall↑          F1↑    Precision↑       Recall↑    F1↑
+ Qwen-VL (Qwen-7B)                             -              -          0.5829         0.95     0.7225       0.3743         0.89     0.5270
+ GeoReasoner w/o location tuning               ✓              ×          0.6971         1.00     0.8215       0.4114         0.99     0.5813
+ GeoReasoner w/o reasoning tuning              ×              ✓          0.7803         1.00     0.8766       0.7029         1.00     0.8255
+ GeoReasoner                                   ✓              ✓          0.8237         1.00     0.9033       0.7521         1.00     0.8585
+
+
+Table 3. Comparison results on Im2GPS dataset. The top five rows            Table 4. Comparison results on Im2GPS3k dataset. The top six
+are derived from the results reported in the paper, while the last          rows are derived from the results reported in the paper, while the
+four rows are from retesting on the filtered Im2GPS dataset, which          last four rows are from retesting on the filtered Im2GPS3k dataset,
+includes only highly locatable data.                                        which includes only highly locatable data.
+                  Dataset w/ Filter   Street        City      Country
+ Model                                                                                         Dataset w/ Filter   Street      City   Country
+                  Train     Test       1km         25km       750km          Model
+                                                                                               Train     Test       1km       25km    750km
+ PlaNet             ×         ×        0.08        0.25        0.54
+ CPlaNet            ×         ×        0.17        0.37        0.62          PlaNet             ×         ×         0.09      0.25      0.48
+ ISNs               ×         ×        0.17        0.43        0.67          CPlaNet            ×         ×         0.10      0.27      0.49
+ Translocator       ×         ×        0.20        0.48        0.76          ISNs               ×         ×         0.11      0.28      0.50
+ GeoDecoder         ×         ×        0.22        0.50        0.80          Translocator       ×         ×         0.12      0.31      0.59
+                                                                             GeoDecoder         ×         ×         0.13      0.34      0.61
+ ISNs               ×         ✓        0.25        0.43        0.78          GeoCLIP            ×         ×         0.14      0.34      0.70
+ GeoCLIP            ×         ✓        0.25        0.49        0.87
+ GeoReasoner        ×         ✓        0.10        0.41        0.82          ISNs               ×         ✓         0.10      0.29      0.59
+ GeoReasoner        ✓         ✓        0.13        0.44        0.86          GeoCLIP            ×         ✓         0.12      0.38      0.83
+                                                                             GeoReasoner        ×         ✓         0.09      0.35      0.74
+                                                                             GeoReasoner        ✓         ✓         0.10      0.38      0.83
+
+without location tuning) and LoRA2 (GeoReasoner with-
+                                                                            into the GPS coordinates of their respective city centers, then
+out reasoning tuning). The last experiment involved the
+                                                                            measure the distance between these predicted coordinates
+full GeoReasoner model, including both the location tuning
+                                                                            and ground-truth locations.
+and reasoning tuning components. The same prompts were
+utilized for all these models, as in the previous experiments.              Table 3 and Table 4 present the performance compari-
+                                                                            son of Georeasoner with PlaNet (Weyand et al., 2016),
+Table 2 presents the quantitative results in terms of accuracy,
+                                                                            CPlaNet (Seo et al., 2018), ISNs (Müller-Budack et al.,
+recall, and F1. Overall, the results indicate that both the
+                                                                            2018), Translocator (Pramanick et al., 2022), GeoDe-
+location tuning and reasoning tuning components improve
+                                                                            coder (Clark et al., 2023), and GeoCLIP (Vivanco Cepeda
+the model performance. Specifically, the location tuning
+                                                                            et al., 2024) on Im2GPS and Im2GPS3k datasets, respec-
+component is essential for geo-localization, as GeoReasoner
+                                                                            tively. The results demonstrate that fine-tuning GeoRea-
+w/o reasoning tuning (row 3) achieves much higher accuracy
+                                                                            soner using highly locatable images significantly improves
+than GeoReasoner w/o location tuning (row 2), especially
+                                                                            prediction accuracy for street, city, and country levels (row
+for fine-grained city-level prediction. This result further
+                                                                            8 vs. row 9 in Table 3, and row 9 vs. row 10 in Table 4).
+strengthens the evidence that high-locatability GSV images
+                                                                            Remarkably, despite being fine-tuned solely on a smaller
+are essential for geo-localization. The reasoning tuning
+                                                                            number of Flickr images, GeoReasoner achieves results
+component also plays a significant role in the performance
+                                                                            comparable to ISNs and GeoCLIP trained on millions of
+improvement, as evidenced by the superior performance of
+                                                                            Flickr images, particularly in terms of city- and country-
+the full GeoReasoner (row 4).
+                                                                            level accuracy. Besides, GeoReasoner trained on the filtered,
+                                                                            highly locatable Flickr images also show improvements in
+4.2.4. G ENERALIZABILITY E VALUATION
+                                                                            the city- and country-level geo-localization, demonstrating
+To further assess the generalizability of Georeasoner in                    the generalizability of our proposed locatability module.
+geo-localization, we conduct additional testing on open
+Flickr image datasets of Im2GPS (Hays & Efros, 2008) and                    5. Discussion
+Im2GPS3k (Vo et al., 2017). Here we use only 10k Flickr
+images for fine-tuning Georeasoner. Since Georeasoner                       The significance of high-locatability street-view images.
+predicts city names rather than GPS coordinates, we first                   We observe a significant performance improvement when
+convert the predicted city names generated by Georeasoner                   GeoReasoner is trained upon high-locatability street-view
+
+                                                                        8
+             GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+images. Such images often contain explicit visual clues such
+as stylized architecture, traffic signs, and landmarks, provid-
+ing the model with richer contextual information. Therefore,
+increasing the quality of the training dataset enhances the
+model’s geo-localization performance. Additionally, the
+quantity of high-locatability images is vital, as the model
+trained with 70K images (as in Sect. 4.2.2) achieves sig-
+nificantly higher accuracy than the one trained with 10K
+                                                                      GT:        Paris, France   GT:      New York, USA     GT:   Hangzhou, China
+images (Sect. 4.1.2). In balancing the quality and quantity
+                                                                      Predicted: Paris, France   Predicted: Paris, France   Predicted: Paris, France
+of the training dataset, we empirically applied a threshold
+of 0.4 to differentiate between highly and less localizable           Figure 8. GeoReasoner fails to distinguish the Eiffel Tower and its
+street views. Setting the threshold too high (e.g., 0.7) can          replicas in New York, USA, and Hangzhou, China.
+lead to a notable decrease in the amount of high-locatability
+images, whilst a lower threshold (e.g., 0.1) may bring in
+introduce low-quality images.                                         based network to quantify the degree of locatability in street-
+                                                                      view images, facilitating the selection of high-quality data.
+The necessity of reasoning process. The introduction of the           We design an LVLM-based model named GeoReasoner,
+reasoning component successfully elevated GeoReasoner’s               which harnesses external knowledge of human inference
+performance in the geo-localization task. This signifies that         from real geo-localization games and curated high-quality
+LVLM can adeptly capture intricate relationships among                data to enhance the performance of geo-localization tasks
+image features, location clues, and geo-locations in the              with reasoning capabilities. The model undergoes two-stage
+training process. Implemented an innovative solution to               fine-tuning, namely reasoning tuning and location tuning.
+empower the reasoning capability within GeoReasoner by                The reasoning tuning stage aims to acquire potential linkage
+leveraging human inference knowledge extracted from geo-              between coarse-grained geographical locations (i.e., coun-
+localization games. Despite the relatively small dataset, a           try) and the associated positioning reasons. In location
+noticeable improvement in performance has been achieved.              tuning stage, we employ the curated high-quality data to
+In the future, we plan to expand the reasoning dataset by             further refine the model in fine-grained geo-localization
+diversifying the influencing clues. For instance, the current         (i.e., city) learning. Extensive experiments prove that Geo-
+textual clues are absent of landscape information, which              Reasoner outperforms previous models qualitatively and
+could provide invaluable insights for geo-localization. We            quantitatively.
+will collaborate with domain experts such as urban planners
+and geographers to address these limitations.
+                                                                      Acknowledgements
+Failure cases. GeoReasoner comprehends architectural
+style as a pivotal factor in geo-localization. However, the           We would like to thank Yao Zhou and Wenqi Shao for their
+model can be misled by the learned significance of archi-             insightful discussions and Ziyao Gao for her assistance in
+tectural style. Figure 8 presents a street view of the Eiffel         drawing the figures in this paper. We also extend our grat-
+Tower in Paris, France (left), and replicas of the Eiffel Tower       itude to the anonymous reviewers for their valuable com-
+in New York, USA (middle) and in Hangzhou, China (right).             ments. This work is partially supported by the National
+GeoReasoner fails to distinguish between them, predicting             Natural Science Foundation of China (62172398, 42171456,
+all instances as located in Paris, France. This misclassifi-          52078343).
+cation is not unique to GeoReasoner but also extends to
+other LVLMs like GPT-4V. Consequently, it underscores                 Impact Statement
+the necessity for LVLM-based methods to delve deeper into
+knowledge for more sophisticated geo-localization capa-               GeoReasoner advances image-based geo-localization tech-
+bilities. Once again, it is imperative to collaborate with            nologies that are pivotal for many applications such as
+domain experts and enhance the visual clues and reasoning             autonomous navigation. The pipeline of constructing the
+procedure comprehensively to tackle this issue.                       dataset featuring high-locatability street views proves highly
+                                                                      beneficial across multiple scenarios, such as urban studies,
+                                                                      culture studies, and digital humanities, all of which are in-
+6. Conclusion                                                         creasingly reliant on the analysis of high-quality street-view
+In this paper, we present a new paradigm that integrates a            data.
+large vision-language (LVLM) model with human inference               The proposed paradigm represents the fusion of LVLM with
+knowledge for street view geo-localization with reasoning.            human inference knowledge, which has implications for
+We introduce the concept of locatability and devise a CLIP-           the advancement of artificial intelligence (AI) that is more
+
+                                                                  9
+            GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+aligned with human cognition. The synergy can lead to the             Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn,
+creation of AI that is not only more effective in complex               D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer,
+inference tasks but also more understandable and relatable              M., Heigold, G., Gelly, S., et al. An Image is Worth
+to human users. As AI becomes more pervasive in daily life,            16x16 Words: Transformers for Image Recognition at
+the importance of designing systems that are both transpar-             Scale. In Proceedings of International Conference on
+ent and capable of complex reasoning cannot be overstated.             Learning Representations, 2021.
+                                                                      Haas, L., Alberti, S., and Skreta, M. Learning Generalized
+References                                                              Zero-Shot Learners for Open-Domain Image Geolocal-
+Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I.,              ization. arXiv preprint arXiv:2302.00275, 2023.
+  Aleman, F. L., Almeida, D., Altenschmidt, J., Altman,               Hays, J. and Efros, A. A. IM2GPS: estimating geographic
+  S., Anadkat, S., et al. GPT-4 Technical Report. arXiv                 information from a single image. In Proceedings of the
+  preprint arXiv:2303.08774, 2023.                                      IEEE/CVF Conference on Computer Vision and Pattern
+Bai, J., Bai, S., Yang, S., Wang, S., Tan, S., Wang, P., Lin,           Recognition, pp. 1–8. IEEE, 2008.
+  J., Zhou, C., and Zhou, J. Qwen-VL: A Versatile Vision-             Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang,
+  Language Model for Understanding, Localization, Text                  S., Wang, L., and Chen, W. LoRA: Low-Rank Adap-
+  Reading, and Beyond. arXiv preprint arXiv:2308.12966,                 tation of Large Language Models. In Proceedings of
+  2023a.                                                               International Conference on Learning Representations,
+Bai, Y., Shang, C., Li, Y., Shen, L., Jin, S., and Shen, Q.             2022.
+  Transport Object Detection in Street View Imagery Using             Kenton, J. D. M.-W. C. and Toutanova, L. K. BERT: Pre-
+  Decomposed Convolutional Neural Networks. Mathemat-                   training of Deep Bidirectional Transformers for Language
+  ics, 11(18):3839, 2023b.                                              Understanding. In Proceedings of the 2019 Conference of
+Campbell, A., Both, A., and Sun, Q. C. Detecting and                    the North American Chapter of the Association for Com-
+  mapping traffic signs from Google Street View images                  putational Linguistics: Human Language Technologies,
+  using deep learning and GIS. Computers, Environment                   Volume 1 (Long and Short Papers), pp. 4171–4186, 2019.
+  and Urban Systems, 77:101350, 2019.                                 Li, Y., Wu, C., Li, L., Liu, Y., and Zhu, J. Caption Gen-
+                                                                        eration From Road Images for Traffic Scene Modeling.
+Chalvatzaras, A., Pratikakis, I., and Amanatiadis, A. A.
+                                                                        IEEE Transactions on Intelligent Transportation Systems,
+  A Survey on Map-Based Localization Techniques for
+                                                                        23(7):7805–7816, 2021.
+  Autonomous Vehicles. IEEE Transactions on Intelligent
+  Vehicles, 8(2):1574–1596, 2022.                                     Lin, J., Zheng, Z., Zhong, Z., Luo, Z., Li, S., Yang, Y.,
+                                                                        and Sebe, N. Joint Representation Learning and Key-
+Cheng, B., Schwing, A., and Kirillov, A. Per-Pixel Classifi-
+                                                                        point Detection for Cross-View Geo-Localization. IEEE
+  cation is Not All You Need for Semantic Segmentation.
+                                                                        Transactions on Image Processing, 31:3780–3792, 2022.
+  Advances in Neural Information Processing Systems, 34:
+  17864–17875, 2021.                                                  Liu, H., Li, C., Wu, Q., and Lee, Y. J. Visual Instruction Tun-
+                                                                        ing. Advances in Neural Information Processing Systems,
+Cheng, W., Wen, R., Huang, H., Miao, W., and Wang, C.
+                                                                        36, 2024.
+  OPTDP: Towards optimal personalized trajectory differ-
+  ential privacy for trajectory data publishing. Neurocom-            Luo, G., Biamby, G., Darrell, T., Fried, D., and Rohrbach, A.
+  puting, 472:201–211, 2022.                                            G3: Geolocation via guidebook grounding. In Findings of
+                                                                        the Association for Computational Linguistics: EMNLP
+Clark, B., Kerrigan, A., Kulkarni, P. P., Cepeda, V. V., and            2022, pp. 5841–5853, 2022.
+  Shah, M. Where We Are and What We’re Looking At:
+  Query Based Worldwide Image Geo-Localization Using                  Müller-Budack, E., Pustu-Iren, K., and Ewerth, R. Geolo-
+  Hierarchies and Scenes. In Proceedings of the IEEE/CVF               cation Estimation of Photos using a Hierarchical Model
+  Conference on Computer Vision and Pattern Recognition,               and Scene Classification. In Proceedings of the European
+  pp. 23182–23190, 2023.                                               Conference on Computer Vision, pp. 563–579, 2018.
+Dai, D., Sun, Y., Dong, L., Hao, Y., Ma, S., Sui, Z., and Wei,        Pramanick, S., Nowara, E. M., Gleason, J., Castillo, C. D.,
+  F. Why Can GPT Learn In-Context? Language Models                      and Chellappa, R. Where in the World is this Image?
+  Implicitly Perform Gradient Descent as Meta-Optimizers.               Transformer-based Geo-localization in the Wild. In Pro-
+  In Findings of the Association for Computational Linguis-             ceedings of the European Conference on Computer Vision,
+  tics: ACL 2023, pp. 4005–4019, 2023.                                  pp. 196–215, 2022.
+
+                                                                 10
+            GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+Qiao, S., Ou, Y., Zhang, N., Chen, X., Yao, Y., Deng, S., Tan,        Wei, J., Wang, X., Schuurmans, D., Bosma, M., Xia, F.,
+  C., Huang, F., and Chen, H. Reasoning with Language                  Chi, E., Le, Q. V., Zhou, D., et al. Chain-of-Thought
+  Model Prompting: A Survey. In Proceedings of the                     Prompting Elicits Reasoning in Large Language Models.
+  Annual Meeting of the Association for Computational                  Advances in Neural Information Processing Systems, 35:
+  Linguistics, pp. 5368–5393, 2023.                                    24824–24837, 2022.
+
+Radford, A., Kim, J. W., Hallacy, C., Ramesh, A., Goh, G.,            Weyand, T., Kostrikov, I., and Philbin, J. PlaNet - Photo
+  Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark,             Geolocation with Convolutional Neural Networks. In
+  J., et al. Learning Transferable Visual Models From Nat-             Proceedings of the European Conference on Computer
+  ural Language Supervision. In Proceedings of Interna-                Vision, pp. 37–55, 2016.
+  tional Conference on Machine Learning, pp. 8748–8763.               Xu, P., Shao, W., Zhang, K., Gao, P., Liu, S., Lei, M., Meng,
+  PMLR, 2021.                                                           F., Huang, S., Qiao, Y., and Luo, P. LVLM-eHub: A
+                                                                        Comprehensive Evaluation Benchmark for Large Vision-
+Rao, J., Shan, Z., Liu, L., Zhou, Y., and Yang, Y. Retrieval-           Language Models. arXiv preprint arXiv:2306.09265,
+  based Knowledge Augmented Vision Language Pre-                        2023.
+  training. In Proceedings of the 31st ACM International
+  Conference on Multimedia, pp. 5399–5409, 2023.                      Yao, S., Yu, D., Zhao, J., Shafran, I., Griffiths, T., Cao,
+                                                                        Y., and Narasimhan, K. Tree of Thoughts: Deliberate
+Reimers, N. and Gurevych, I. Sentence-BERT: Sentence                    Problem Solving with Large Language Models. Advances
+  Embeddings using Siamese BERT-Networks. In Proceed-                   in Neural Information Processing Systems, 36, 2024.
+  ings of the 2019 Conference on Empirical Methods in
+  Natural Language Processing and the 9th International               Ye, Y., Richards, D., Lu, Y., Song, X., Zhuang, Y., Zeng,
+  Joint Conference on Natural Language Processing, pp.                  W., and Zhong, T. Measuring daily accessed street green-
+  3980–3990, 2019.                                                      ery: A human-scale approach for informing better urban
+                                                                        planning practices. Landscape and Urban Planning, 191:
+Seo, P. H., Weyand, T., Sim, J., and Han, B. CPlaNet:                   103434, 2019a.
+  Enhancing Image Geolocalization by Combinatorial Par-               Ye, Y., Zeng, W., Shen, Q., Zhang, X., and Lu, Y. The
+  titioning of Maps. In Proceedings of the European Con-                visual quality of streets: A human-centred continuous
+  ference on Computer Vision, pp. 536–551, 2018.                        measurement based on machine learning algorithms and
+                                                                        street view images. Environment and Planning B: Urban
+Shao, Z., Yu, Z., Wang, M., and Yu, J. Prompting Large Lan-
+                                                                        Analytics and City Science, 46(8):1439–1457, 2019b.
+  guage Models with Answer Heuristics for Knowledge-
+  based Visual Question Answering. In Proceedings of the              Ying, K., Meng, F., Wang, J., Li, Z., Lin, H., Yang, Y.,
+  IEEE/CVF Conference on Computer Vision and Pattern                    Zhang, H., Zhang, W., Lin, Y., Liu, S., et al. MMT-Bench:
+  Recognition, pp. 14974–14983, 2023.                                   A Comprehensive Multimodal Benchmark for Evaluating
+                                                                        Large Vision-Language Models Towards Multitask AGI.
+Shen, Q., Zeng, W., Ye, Y., Mueller Arisona, S., Schubiger,             arXiv preprint arXiv:2404.16006, 2024.
+  S., Burkhard, R., and Qu, H. StreetVizor: Visual Ex-
+  ploration of Human-Scale Urban Forms Based on Street                Zhang, F., Zhang, D., Liu, Y., and Lin, H. Representing
+  Views. IEEE Transactions on Visualization and Computer                place locales using scene elements. Computers, Environ-
+  Graphics, 24(1):1004–1013, 2018.                                      ment and Urban Systems, 71:153–164, 2018.
+                                                                      Zhang, H., Song, H., Li, S., Zhou, M., and Song, D. A Sur-
+Theiner, J., Müller-Budack, E., and Ewerth, R. Interpretable
+                                                                        vey of Controllable Text Generation Using Transformer-
+  Semantic Photo Geolocation. In Proceedings of the
+                                                                        based Pre-trained Language Models. ACM Computing
+  IEEE/CVF Winter Conference on Applications of Com-
+                                                                        Surveys, 56(3):1–37, 2023a.
+  puter Vision, pp. 750–760, 2022.
+                                                                      Zhang, X., Li, X., Sultani, W., Zhou, Y., and Wshah, S.
+Vivanco Cepeda, V., Nayak, G. K., and Shah, M. GeoCLIP:                 Cross-View Geo-Localization via Learning Disentangled
+  Clip-Inspired Alignment between Locations and Images                  Geometric Layout Correspondence. In Proceedings of the
+  for Effective Worldwide Geo-localization. Advances in                 AAAI Conference on Artificial Intelligence, volume 37,
+  Neural Information Processing Systems, 36, 2024.                      pp. 3480–3488, 2023b.
+
+Vo, N., Jacobs, N., and Hays, J. Revisiting IM2GPS in                 Zhu, S., Shah, M., and Chen, C. TransGeo: Transformer Is
+  the Deep Learning Era. In Proceedings of the IEEE                     All You Need for Cross-view Image Geo-localization. In
+  International Conference on Computer Vision, pp. 2621–                Proceedings of the IEEE/CVF Conference on Computer
+  2630, 2017.                                                           Vision and Pattern Recognition, pp. 1162–1171, 2022.
+
+                                                                 11
+                GeoReasoner: Geo-localization with Reasoning in Street Views using a Large Vision-Language Model
+
+A. Implementation Details
+Table 5 and Table 6 present the hyper-parameter settings and training details for the models. We conducted training and
+testing on Nvidia A800 (80G), with CUDA 12.1, PyTorch 2.0.0, and Transformers 4.33.0.
+
+
+                                       Table 5. The hyper-parameter settings of the proposed GeoReasoner.
+                                                                           Hyper Params          Value
+                                                                      Learning Rate               1e-5
+                                                                     Total Batch Size              64
+                                                                      Weight Decay                 0.1
+                                                                      Warmup Ratio                0.01
+                                                                        Optimizer               AdamW
+                                                                       Adam Beta1                  0.9
+                                                                       Adam Beta2                 0.95
+                                                                      LR Scheduler               cosine
+                                                                    Model Max Length              2048
+
+
+                                               Table 6. The training details of the proposed GeoReasoner.
+                                                                                                              Num of Params
+                                                    Training Speed             Inference Latency                                             Flops
+                                                                                                          Base Model     LoRA
+                      LoRA1 (reason)                 0.41 sample/s                  1.560s                   9.6B           112.19M          71.9B
+                      LoRA2 (location)               0.63 sample/s                  0.894s                   9.6B           112.19M          71.9B
+
+
+
+B. Additional Qualitative Results
+Additionally, we present the results of the GeoReasoner on alternative street-view images, depicted in Figure 9. Each street
+view image is annotated with the ground truth geographic location, along with the inference results from GeoReasoner. It
+can provide geographical predictions accompanied by reasonable explanations.
+
+ Ground Truth    Vienna, Austria                      GeoReasoner                          Ground Truth      Boston, USA                        GeoReasoner
+
+
+
+                                   'country': 'Austria', 'city': 'Vienna'                                                    'country': 'United States', 'city': 'Boston'
+
+                                   'reasons': ['The picture shows the Messe                                                  'reasons': ['Massachusetts Institute of
+                                   Wien in Vienna, Austria', 'The flagpoles in                                               Technology is located in Boston,
+                                   front of the building carry the flags of Austria                                          Massachusetts']
+                                   and Vienna', 'The building has a glass facade
+                                   and is surrounded by trees and shrubs']
+
+
+
+
+ Ground Truth     Tokyo, Japan                        GeoReasoner                          Ground Truth      Doha, Qatar                        GeoReasoner
+
+
+
+                                   'country': 'Japan', 'city': 'Tokyo'                                                       'country': 'Qatar', 'city': 'Doha'  
+                                   'reasons': ['Mount Fuji is visible in the                                                 'reasons': ['The picture shows the Souq
+                                   background', 'There are many street signs                                                 Waqif, the old market in Doha, Qatar.']
+                                   and traffic lights', 'The street is lined with
+                                   shops and restaurants']
+
+
+
+
+ Ground Truth Vancouver, Canada                       GeoReasoner                          Ground Truth     Fuzhou, China                       GeoReasoner
+
+
+                                   'country': 'Canada', 'city': 'Vancouver',
+                                   'reasons': ['Gastown is the oldest                                                        'country': 'China', 'city': 'Fuzhou'
+
+                                   neighborhood in Vancouver, known for its                                                  'reasons': ['The picture shows the Tulou of
+                                   steam clock and historic architecture.', 'The                                             the Hakka in Yongding, Fujian province', 'The
+                                   steam clock is a popular tourist attraction                                               sky is pink, which indicates that the time is
+                                   and a symbol of Gastown.', 'The                                                           sunset', 'The lanterns are red, which is a
+                                   neighborhood is known for its trendy bars                                                 traditional custom in Chinese festivals']
+                                   and restaurants.']
+
+
+                                    Figure 9. Additional qualitative results from the proposed GeoReasoner.
+
+
+
+
+                                                                                      12
+

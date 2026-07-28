@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: (1) Through 278 distinct interventions the paper diagnoses rollout oscillations and names the mechanism gradient variance amplification (GVA) — SGD noise propagating through closed-loop dynamics; (2) it shows GVA is algorithmic not statistical, and that exponential moving average (EMA) of iterates fixes it where most mitigations fail; (3) it demonstrates GVA and its EMA cure in both continuous control and autoregressive language generation, plus a convex theoretical vignette.
+
+Supporting detail: The paper argues EMA and related filters should be treated as first-class "stabilizers" in deep learning pipelines, on par with optimizers and schedulers.
+
+Narration: The paper makes three main contributions. First, through an extensive study of two hundred and seventy-eight distinct interventions, it diagnoses these reward oscillations and names the mechanism gradient variance amplification, or G V A, the propagation of minibatch stochastic gradient noise through the closed-loop dynamics. Second, it shows the problem is algorithmic rather than statistical, and that an exponential moving average of the weights fixes it, even though most standard mitigations fail. Third, it demonstrates the exact same phenomenon and the same cure in autoregressive language models, and complements everything with a convex theory vignette. The upshot is a call to treat iterate averaging as an essential design choice, a stabilizer that belongs alongside your optimizer and your scheduler.

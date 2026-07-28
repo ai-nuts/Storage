@@ -1,0 +1,3 @@
+# Title
+
+Classifier-free guidance, or CFG, is the workhorse that lets conditional diffusion models trade sample diversity against fidelity. But when the condition is continuous, like a text embedding, CFG ignores that structure. This ICLR 2024 paper from Tsinghua University and Huawei introduces Inner Classifier-Free Guidance, or ICFG, a perspective that treats standard CFG as the first-order case of a broader Taylor expansion. By adding a second-order term, with no change to training, the authors get a better balance between fidelity and diversity for Stable Diffusion, using only a few lines of code.

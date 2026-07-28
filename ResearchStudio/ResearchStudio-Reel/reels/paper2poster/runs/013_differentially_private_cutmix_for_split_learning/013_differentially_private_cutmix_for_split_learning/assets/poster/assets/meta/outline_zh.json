@@ -1,0 +1,45 @@
+{
+  "title": "NeurIPS 2022 | 给 Vision Transformer 的切分学习补上隐私：DP-CutMixSL",
+  "subtitle": "延世大学、MIT 等提出 patch 级随机 CutMix，让 split learning 在更强隐私下反而更准",
+  "lang": "zh",
+  "blocks": [
+    {"type": "paragraph", "text": "分布式训练里一个反复出现的诉求是：在不把用户数据集中到一处的前提下训练模型。两条主流路线各有分工。联邦学习（federated learning）让原始数据留在本地、只交换模型参数；切分学习（split learning）则把模型切成两段，客户端只把切割层（cut-layer）的中间激活，也就是所谓的「smashed data」，上传给服务器。谁传得少、谁泄露得少，是这两条路线长期博弈的核心。"},
+    {"type": "paragraph", "text": "但 Vision Transformer（ViT）的普及打破了切分学习原本的隐私假设。ViT 没有 CNN 那样的 pooling 和 convolution 层，切割层输出的 smashed data 几乎不对输入做压缩失真，因此和原图在视觉上高度相似。相似意味着两件坏事：一是反演攻击更容易还原出原始图像，隐私更脆弱；二是保留的信息太多，通信开销也更大。"},
+    {"type": "paragraph", "text": "这篇发表于 NeurIPS 2022、来自延世大学、Deakin、MIT 与奥卢大学的工作提出了 DP-CutMixSL：先按高斯差分隐私机制给 smashed data 加噪，再在 patch 粒度上把不同客户端的激活随机 CutMix 拼接起来。作者证明这一步能收紧 Rényi 差分隐私（RDP）的隐私界，而实验里它还反过来提升了精度，隐私和精度这次不必二选一。"},
+    {"type": "paragraph", "text": "论文 Paper：https://arxiv.org/abs/2210.15986"},
+
+    {"type": "heading", "level": 1, "text": "为什么 ViT 让切分学习更容易泄露"},
+    {"type": "paragraph", "text": "先厘清两条路线的取舍。联邦学习把原始数据锁在本地，代价是要来回搬运整个模型；而 ViT 参数量大，在边缘设备上反复传输整模型的能耗和通信成本都很高。切分学习换了个思路：只在切割层交换 smashed data，模型本体不动，通信量本该更省。"},
+    {"type": "paragraph", "text": "问题恰恰出在 ViT 的结构上。因为缺少 pooling 与 convolution，ViT 隐藏表征对输入的失真极小，smashed data 与原图之间的互信息很高。换句话说，服务器收到的中间激活「太像」原图了：既方便攻击者做反演还原，也让本想省下的通信量重新变大。切分学习针对 CNN 时代总结出的那套隐私假设，在 transformer 上不再成立，这正是本文要重新回答的问题。"},
+
+    {"type": "heading", "level": 1, "text": "一图看懂 DP-CutMixSL"},
+    {"type": "paragraph", "text": "本文的核心贡献 DP-CutMixSL，可以先用一张整体流程图建立直觉：它把「加噪」和「跨客户端混合」两步串联在服务器之前，让每个客户端只暴露一小部分、而且是带噪的 smashed data。"},
+    {"type": "figure", "path": "../figures/figure1.png", "caption": "图1 DP-CutMixSL 的整体流程。mixer 为各客户端生成互补的伪随机二值掩码；每个客户端先按高斯 DP 机制加噪、再按掩码做 Cutout，得到 DP-Cutout smashed data；服务器把不同客户端的互补 patch 相加，拼成 DP-CutMix smashed data，之后照常做前向与反向传播。关键在于：每个客户端始终只上传被掩码遮挡后、且加过噪声的一部分 smashed data。", "width_inches": 6.4},
+    {"type": "paragraph", "text": "整个流程分四步。第 0 步，一个 mixer（可以是第三方）生成一组互补的伪随机二值掩码，分发给各客户端；第 1 步，每个客户端按高斯 DP 机制给自己的 smashed data 加白噪声；第 2 步，用各自的掩码把激活「打孔」成 Cutout smashed data；第 3 步，服务器把不同客户端留下的互补 patch 直接相加，得到没有空洞的 DP-CutMix smashed data。由于各客户端的掩码在 patch 层互斥且完备，相加后不会出现空白 patch，而任何一个客户端也从未把完整的 smashed data 交出去。"},
+
+    {"type": "heading", "level": 1, "text": "方法细节与隐私证明"},
+    {"type": "paragraph", "text": "把流程展开来看：mixer 从 Dirichlet 分布抽取混合比例 λ（各客户端的 λ 之和为 1），并据此生成二值掩码，某个客户端掩码里「保留」的 patch 数量正比于它的 λ。客户端把输入过一遍下段模型得到 smashed data，用二值序列做掩码得到 Cutout smashed data，再叠加白高斯噪声，就是要上传的 DP-Cutout smashed data。"},
+    {"type": "paragraph", "text": "服务器端更简单：因为掩码互斥且完备，它只需把不同客户端的带噪 Cutout smashed data 相加，就得到 DP-CutMix smashed data，同时按同样的 λ 权重混合标签。此后的前向、反向传播与普通切分学习完全一致。这样一来，暴露给服务器的既只是每个客户端的一部分 patch，而且这部分还是加过噪的。"},
+    {"type": "paragraph", "text": "隐私一侧，作者证明了三种机制的 RDP 预算存在固定次序：ε_Mix ≤ ε_CutMix ≤ ε_o，其中 ε 越小代表隐私越强。这一不等式说明，patch 级随机 CutMix 相比原始的 DP-SL 能收紧隐私界，同时它的隐私增益又被像素级 Mixup 版本从下方 bound 住，也就是说收紧是有限度的，而不是无限变强。"},
+
+    {"type": "heading", "level": 1, "text": "为什么是 patch 级 CutMix，而不是像素级 Mixup"},
+    {"type": "paragraph", "text": "把 CutMix 放到 patch 层，并不是随手的选择，而是顺着 ViT 的三点特性推导出来的。其一，没有 pooling，隐藏表征几乎不失真，因此在表征上做正则化和直接在输入上做几乎等效；其二，自注意力捕捉的是全局空间信息，对图像局部施加的大噪声相当鲁棒，这天然适合 Cutout / CutMix 这类「遮一块、换一块」的操作；其三，ViT 的一切运算本来就发生在 patch 层。三点叠加，指向的正是「在隐藏表征上做 patch 级随机 CutMix」。"},
+    {"type": "figure", "path": "../figures/figure2.png", "caption": "图2 三种插值方案在图像上的直观对比。从原图（Raw Image）及其 Cutout 版本出发：Patch CutMix 只在 patch 粒度替换内容、保留每个 patch 内部的局部结构；CutMix 替换的是一块连续区域；Mixup 则把两张图整体按比例叠加。论文在 smashed data 上做的是对应的同类操作。", "width_inches": 6.2},
+    {"type": "paragraph", "text": "对比之下就能看出差别：Mixup 把两张图整体融在一起，局部结构被抹平；patch CutMix 只在 patch 之间做替换，每个 patch 内部依旧清晰。对依赖全局注意力的 ViT 来说，打乱 patch 排列几乎不损失可用信息；但对偏重局部特征的 CNN，整块替换 patch 反而会丢掉更多信息，这也预告了后面 VGG-16 上会出现的那个例外。"},
+
+    {"type": "heading", "level": 1, "text": "结果：隐私更强，精度反而更高"},
+    {"type": "paragraph", "text": "先看无噪声设置下的精度对比（论文 Table 1）。实验覆盖 CIFAR-10 与 Fashion-MNIST 两个数据集，以及横跨 CNN 到 transformer 谱系的三种模型：ViT-Tiny（纯 transformer）、PiT-Tiny（带 pooling、介于两者之间）、VGG-16（卷积网络），客户端数 |C| = 10，切割层都放在 embedding 之后。CutMixSL 在几乎所有配置上都取得最高 Top-1 精度。"},
+    {"type": "table", "caption": "表1 CIFAR-10、无噪声设置下的 Top-1 精度（%）。CutMixSL 在 ViT-Tiny、PiT-Tiny 上明显超过最佳基线，但在卷积网络 VGG-16 上略逊于 SL + Mixup。", "headers": ["模型（CIFAR-10，无噪声）", "最佳基线", "CutMixSL"], "rows": [["ViT-Tiny", "67.88（SplitFed）", "73.77"], ["PiT-Tiny", "55.63（SplitFed）", "71.26"], ["VGG-16", "68.20（SL + Mixup）", "67.53"]]},
+    {"type": "paragraph", "text": "在 CIFAR-10 加 ViT-Tiny 上，CutMixSL 达到 73.77%，比普通切分学习的 57.21% 高出 16.56 个百分点，也比 SplitFed 的 67.88% 高 5.89 个百分点；换成 PiT-Tiny，它的 71.26% 同样大幅领先 SplitFed 的 55.63%。在 Fashion-MNIST 加 ViT-Tiny 上，它取得 89.75%，是所有方法里最高的。唯一的例外是 CIFAR-10 加 VGG-16：此时 SL + Mixup 的 68.20% 略高于 CutMixSL 的 67.53%。这与前面的直觉一致：卷积网络更看重局部信息，整块替换 patch 造成的损失比 transformer 更大，所以 Mixup 更适合 CNN，而 patch CutMix 更适合 ViT。"},
+
+    {"type": "heading", "level": 1, "text": "隐私与精度的权衡"},
+    {"type": "paragraph", "text": "加上噪声后，精度和隐私如何联动？作者扫描了不同的噪声方差，同时报告精度和 RDP 隐私预算 ε。"},
+    {"type": "figure", "path": "../figures/figure3.png", "caption": "图3 CIFAR-10 上，随噪声方差 σ² 变化的精度（Acc@1，蓝色，左轴）与 RDP 隐私预算 ε（橙色，右轴）。DP-CutMixSL 在几乎每个噪声水平上精度最高；它的 ε 比 DP-SL 更小（隐私更强），但比 DP-MixSL 略大，这正是精度与隐私之间的权衡。", "width_inches": 5.6},
+    {"type": "paragraph", "text": "图里可以读出一个清晰的权衡：DP-CutMixSL 在几乎每一个噪声水平上都拿到最好的精度，且始终优于 DP-MixSL；在隐私一侧，它的 ε 比 DP-SL 更紧（隐私更强），却比 DP-MixSL 更松，这与前面证明的 ε 次序完全吻合，因为 Mixup 会把信息摊薄到整张表征上。作者还观察到，扩大混合的客户端组会同时拉低精度和 ε，他们将其归因于一种「藏在人群里」的效应。"},
+    {"type": "paragraph", "text": "另有两组补充实验。反演攻击（论文 Table 2）按重建 MSE 衡量鲁棒性，排序为 Cutout > patch CutMix > Mixup > 原始 smashed data：patch CutMix 的重建误差约为 0.0434，而原始 smashed data 仅 0.0056，把反演难度抬高了约 8 倍。可扩展性方面，客户端数从 2 增加到 10 时精度持续提升；再叠加 SplitFed 式的下段模型参数平均（记作 CutMixSFL），还能进一步提高。"},
+
+    {"type": "heading", "level": 1, "text": "小结与边界"},
+    {"type": "paragraph", "text": "这篇工作给出的结论是：对 Vision Transformer 而言，切分学习里的精度与隐私不必互相牺牲。先加高斯噪声、再跨客户端混合随机遮挡的 patch，DP-CutMixSL 既相对普通切分学习收紧了差分隐私界，又提升了精度，而且这份隐私增益被一个 Mixup 版本可证明地 bound 住。它之所以成立，是因为 transformer 依赖全局自注意力、又天然在 patch 层运算，换掉整块 patch 对它几乎无损。"},
+    {"type": "paragraph", "text": "边界也很明确。这套方法是为 transformer 量身定制的：在偏重局部特征的卷积网络（如 VGG-16）上，patch CutMix 反而略逊于 Mixup。隐私上的收紧同样有上限：它被 Mixup 版本从下方 bound，并不是可以无限增强的免费午餐。放在更大的图景里，patch 级 CutMix 更像是一种为「transformer 时代的分布式学习」专门设计的隐私正则化手段。"}
+  ]
+}

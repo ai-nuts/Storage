@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: Merlin and its variants outperform state-of-the-art offline goal-conditioned and diffusion-based baselines on most tasks, with Merlin-NP achieving the best overall average rank, while training and running roughly an order of magnitude faster than other diffusion methods.
+
+Supporting detail: Against GCRL baselines (GCSL, WGCSL, AM, GoFAR) and diffusion baselines (Decision Diffuser, g-DQL, BESO), Merlin-NP reaches an average rank near 1.7 on state inputs and around 1.25 on pixel inputs among ten methods; the speed advantage grows even larger with high-dimensional pixel observations.
+
+Narration: The results are strong across the board. The basic version of Merlin already outperforms the baselines on most tasks, and the two improved variants, Merlin-P and Merlin-NP, push performance further to achieve the highest discounted returns on most tasks. Measured by average rank across all ten methods and ten tasks, Merlin-NP comes out on top, with an average rank around one point seven on state observations and about one point two five on pixel observations. Crucially, because Merlin performs only a single denoising step per environment step, its training and inference are roughly an order of magnitude faster than the other diffusion-based methods like Decision Diffuser and BESO. With high-dimensional pixel observations, that efficiency gap becomes even more pronounced.

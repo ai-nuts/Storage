@@ -1,0 +1,172 @@
+{
+  "title": "One Flow, Two Traditions: Unifying Bayesian and Frequentist Sparse Graphical Models",
+  "subtitle": "NeurIPS 2023, University of Basel: the Conditional Matrix Flow gives posteriors, model selection, and the frequentist solution path from a single model over positive-definite matrices",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "In many scientific problems the question that matters is not \"which variables correlate\" but \"which variables stay directly related once you account for everything else.\" Gaussian Graphical Models (GGMs) are the classical tool for exactly this. They encode conditional-independence structure in the precision matrix Ω, the inverse of the covariance: a zero entry means the two corresponding variables are conditionally independent given the rest, so recovering a sparse precision matrix is the same as recovering the underlying network of direct interactions."
+    },
+    {
+      "type": "paragraph",
+      "text": "The hard part is inducing that sparsity well. The ideal penalty is the l0 norm, which simply counts non-zero edges, but optimizing it is combinatorial and intractable. Sub-l1 pseudo-norms (exponent q below one) approximate l0 closely, yet they are non-convex and notoriously hard to optimize, so in practice almost every method retreats to the convex l1 norm of the Graphical Lasso. That convenience comes with a well-known cost: over-shrinkage, where genuine edges are pulled too far toward zero or dropped outright. The pain is sharpest when variables outnumber samples (d greater than n), because the sample covariance is then singular and cannot simply be inverted; a sparsity penalty is the only way in."
+    },
+    {
+      "type": "paragraph",
+      "text": "This NeurIPS 2023 paper proposes a way to stop choosing. The Conditional Matrix Flow (CMF) is a matrix-variate normalizing flow defined directly on the space of symmetric positive-definite matrices, conditioned on both the shrinkage strength λ and the pseudo-norm exponent q. Training a single flow fits an entire continuum of sparse regression models at once, spanning every λ and every lq norm, including the non-convex sub-l1 regime that earlier methods went out of their way to avoid."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. The CMF architecture. A base vector z is pushed through Sum-of-Sigmoids layers, then Fill-Triangular, Positive-Diagonal (a softplus that forces a positive diagonal), and a Cholesky product Ω=LLᵀ, so the output is a valid positive-definite precision matrix by construction. A hyper-network feeds λ and q into the flow. Light grey marks unconstrained values, dark grey positive values, and white zeros.",
+      "width_inches": 5.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper and code: arXiv preprint at https://arxiv.org/abs/2306.07255 ; official implementation at https://github.com/marcello-negri/CMF ."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why this hadn't been unified"
+    },
+    {
+      "type": "paragraph",
+      "text": "Sparse GGM inference has long split into two camps. The frequentist Graphical Lasso traces the whole solution path elegantly as λ varies, but returns only point estimates with no notion of uncertainty. The Bayesian Graphical Lasso (BGL) places a Laplace prior on the off-diagonal entries and delivers a full posterior plus a marginal likelihood for model selection, but it leans on Gibbs samplers that mix poorly in high dimensions, must be rerun for every value of λ, and generalize only to a handful of tractable priors."
+    },
+    {
+      "type": "paragraph",
+      "text": "Variational inference ought to bridge the two by turning sampling into optimization. The catch is that the usual mean-field approximation assumes the variables are independent, which is precisely the dependence structure a graphical model is trying to uncover. The most convenient variational shortcut, in other words, assumes away the very thing under study. What the authors need is a variational family that respects the dependence structure and can flex across both λ and q, and that is the role CMF is built to play."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: a flow on the Cholesky factor"
+    },
+    {
+      "type": "paragraph",
+      "text": "CMF's central idea is that validity, keeping the output a genuine positive-definite matrix, is guaranteed by construction rather than enforced by constraints or projections. Any symmetric positive-definite matrix factors as Ω=LLᵀ with L lower-triangular, so a d-dimensional precision matrix is fully described by d(d+1)/2 numbers. The flow starts from a base vector of that length, passes it through flexible Sum-of-Sigmoids layers, reshapes it into a lower-triangular matrix, forces the diagonal positive with a softplus, and finishes with the Cholesky product. Every step has a cheap Jacobian determinant, and the output is always positive-definite."
+    },
+    {
+      "type": "paragraph",
+      "text": "Conditioning is handled by a hyper-network: feed in λ and q, and the same flow produces the posterior for that setting. The training objective is simply the KL divergence between the flow and the unnormalized posterior, whose prior is a generalized-Normal, exp(−λ|ω_ij|^q). At q=1 this recovers the Laplace prior behind the Lasso and BGL; at q=2 it becomes the Normal prior behind Ridge; below q=1 it enters the sub-l1 regime. One benefit comes almost for free: the marginal log-likelihood log p(S|λ,q) is exactly the normalizing constant in the loss, so it can be read off directly for model selection at no extra cost."
+    },
+    {
+      "type": "paragraph",
+      "text": "The last piece is temperature. Raising the posterior to the power 1/T and cooling T toward zero with simulated annealing sharpens the distribution until it concentrates on the maximum-a-posteriori (MAP) estimate, which is the frequentist solution. So a single trained model slides smoothly between the Bayesian posterior and the frequentist solution path just by adjusting T."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. 75% posterior credible intervals for the precision-matrix entries as a function of λ, at q=1. Here T=1.0, where CMF reduces to the Bayesian Graphical Lasso; every entry is shrunk toward zero as λ grows. Cooling the same model to T=0.01 recovers the frequentist solution path (dashed).",
+      "width_inches": 4.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "How sub-l1 curbs over-shrinkage"
+    },
+    {
+      "type": "paragraph",
+      "text": "The most telling experiment holds everything fixed and varies only the pseudo-norm exponent q. The intuition: a smaller q sits closer to the edge-counting l0, so it penalizes coefficients that are already clearly non-zero more gently, and over-shrinkage weakens. Figure 3 makes this concrete with the credible interval of a single precision-matrix entry."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. 95% posterior credible intervals for one entry of the precision matrix as q ranges over {0.25, 0.5, 0.75, 1}, compared with BGL and the frequentist GLasso (red dashed line). The smaller q is, the less the posterior median is pulled toward zero: at λ=0.3 the intervals for q∈{0.25, 0.5, 0.75} exclude zero, while q=1 (the BGL) still includes it and would therefore drop the edge.",
+      "width_inches": 4.0
+    },
+    {
+      "type": "paragraph",
+      "text": "That is the payoff of sub-l1: it is more willing to keep an edge that deserves keeping. Translated into an edge-recovery task, the benefit shows up most where samples are scarce."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "Figure 4. F1 score for edge recovery versus the number of samples (d=30, averaged over 10 ground-truth precision matrices). CMF at q∈{0.25, 0.5, 0.75, 1} is compared with the Bayesian Graphical Lasso (BGL). The fewer the samples (n near or below d), the larger the advantage of sub-l1 (especially q=0.25) over BGL; it is most pronounced in the hardest low-sample regime at n=15.",
+      "width_inches": 4.2
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors also pit CMF (q=0.25) against a set of frequentist methods whose penalties approximate the l0 norm (atan, selo, log, sica). CMF wins across every sample size, most decisively at n=15. The reading is that being able to explore the whole lq family continuously and consistently is not just elegant on paper; it buys measurable accuracy."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Model selection and sampling efficiency"
+    },
+    {
+      "type": "paragraph",
+      "text": "Because the marginal likelihood is free, model selection follows naturally. CMF picks λ*=3.52 at the peak of its own marginal likelihood, while the Graphical Lasso, tuned by cross-validation, picks λ*=3.36. The two essentially agree: a choice internal to the Bayesian framework independently corroborates the frequentist cross-validation result. The efficiency gap is starker still. The Gibbs sampler produces about 5.6 samples per second on a CPU (89 seconds for 500 samples), whereas CMF draws roughly 2000 independent samples per second on a single consumer GPU, close to two orders of magnitude faster."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. A few headline numbers for CMF",
+      "headers": [
+        "Metric",
+        "Result"
+      ],
+      "rows": [
+        [
+          "Solution-path reconstruction error (vs. frequentist path)",
+          "MSE = 0.052"
+        ],
+        [
+          "Model-selection λ*",
+          "CMF 3.52 vs. GLasso cross-validation 3.36"
+        ],
+        [
+          "Sampling throughput (approx.)",
+          "CMF ≈ 2000 samples/s (GPU) vs. Gibbs ≈ 5.6 samples/s (CPU)"
+        ],
+        [
+          "Real-data scale",
+          "6 clinical variables + 312 genes, 190 patients"
+        ]
+      ],
+      "note": "Note: in the synthetic study, a d=15 toy example is used for visualization; edge recovery uses d=30 with n∈{15, 25, 35, 45}, averaged over 10 ground-truth precision matrices."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Real data: a colorectal-cancer network"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors also apply CMF to a real colorectal-cancer cohort. The raw data has 7 clinical variables and 312 gene-expression measurements across 260 patients; after dropping the p53 mutation-status variable and keeping only fully measured records, 190 patients remain, with 6 clinical variables and 312 genes. This high-dimensional setting, far more variables than samples, is exactly where sparse GGMs earn their keep. To avoid estimating the full, expensive precision matrix, the flow is defined only over the relevant query sub-blocks Ω₁₁ and Ω₁₂."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "caption": "Figure 5. Network structure inferred by CMF on the real colorectal-cancer data at q=1.0. Positive edges are black, negative edges grey, and clinical variables are highlighted in red. The cancer group stage (GS) shows clear edges to each part of the TNM classification (T, N, M), consistent with clinical priors.",
+      "width_inches": 4.0
+    },
+    {
+      "type": "paragraph",
+      "text": "In the q=1.0 graph, each clinical variable (the red nodes) acts as a local hub: the group stage GS links directly to T, N, and M, while age (AGE), sex (SEX), and the tumor descriptors fan out to their own clusters of gene neighbors. These star-shaped neighborhoods around the clinical nodes are exactly the direct dependencies a conditional-independence network is meant to expose, rather than diffuse pairwise correlation; and because the flow is defined only over the Ω₁₁ and Ω₁₂ sub-blocks, the model reads them off without ever estimating the full precision matrix."
+    },
+    {
+      "type": "paragraph",
+      "text": "Lowering q from 1 to 0.6 yields a visibly sparser, cleaner network from the same method: weak connections are pruned further, leaving a more structural skeleton. This matches the synthetic finding that smaller q curbs over-shrinkage and is more decisive about what to keep, only here it appears as a more legible graph."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure6.png",
+      "caption": "Figure 6. The same real data inferred at q=0.6. Compared with the q=1.0 graph in Figure 5, the smaller pseudo-norm exponent produces a sparser network: the core connections between the clinical variables (red) and their neighbors are kept while many weak edges are trimmed away.",
+      "width_inches": 4.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and honest boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "CMF's core contribution is replacing a whole toolbox with one well-designed normalizing flow. By building the flow directly on positive-definite matrices and conditioning it on both the shrinkage strength and the norm exponent, the authors obtain Bayesian posteriors, marginal-likelihood model selection, and the frequentist solution path together, for every λ and every lq pseudo-norm, including the non-convex sub-l1 region that older methods avoid, without surrogate penalties and without re-sampling for each λ. Because sub-l1 fights the over-shrinkage of the Lasso relaxation, edge recovery improves exactly where it is hardest, in the low-sample regime, while sampling runs hundreds of times faster than Gibbs."
+    },
+    {
+      "type": "paragraph",
+      "text": "It is worth being clear about the boundaries. The synthetic experiments are modest in scale (d between 15 and 30), and the real-data study covers a single cancer cohort and models only sub-blocks of the precision matrix. How the method behaves at hundreds or thousands of dimensions, or on data from other domains, remains to be tested at larger scale. As a unification, though, it folds two traditions that usually demand separate machinery cleanly into one model."
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Title
+
+What if reaching a goal were just the reverse of a diffusion process? In this ICML 2024 paper, Vineet Jain and Siamak Ravanbakhsh from McGill University and Mila reframe goal-conditioned reinforcement learning through the lens of denoising diffusion. Their method, called Merlin, builds trajectories that drift away from goal states and then trains a policy to reverse that drift, exactly as a diffusion model denoises noise back into data. The result is a value-function-free approach that reaches goals from arbitrary starting states, needs only a single denoising step per environment step, and runs an order of magnitude faster than other diffusion-based reinforcement learning methods.

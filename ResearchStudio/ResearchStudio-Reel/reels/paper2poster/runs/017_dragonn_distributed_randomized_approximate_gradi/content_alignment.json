@@ -1,0 +1,1865 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T04:58:40Z",
+  "title": "DRAGONN: Distributed Randomized Approximate Gradients of Neural Networks",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "In data-parallel distributed training, the thing that actually slows you down is rarely raw compute. It is the gradient synchronization that happens every single step, as workers exchange gradients across the network. Gradient sparsification (GS) was invented to relieve exactly this pressure: since most gradients are tiny, only send the largest handful of them and the traffic drops sharply. On paper, the idea is clean and the savings are real."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper points at an uncomfortable twist. When you actually run a sparsifier, the communication time you save often gets eaten right back by the cost of compression itself. Picking out the small set of gradients worth sending takes a sequence of GPU operations, and on large tensors those operations are not cheap. Sparsification fixes the communication problem and quietly introduces a new one: a compression bottleneck."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's argument is refreshingly blunt: if sparsification only ever needs an approximate set of top-k gradients, it should not pay for an exact selection algorithm. The authors propose DRAGONN (Distributed Randomized Approximate Gradients of Neural Networks), which replaces the exact parallel prefix sum prior methods rely on with direct randomized hashing — driving compression near its theoretical lower bound and finally making gradient sparsification pay off at scale."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 1 puts numbers on the problem. The left panel shows compression time consuming an ever-larger share of each step as tensors grow, approaching 90% at the high end. The right panel is even starker: once a tensor crosses roughly 16 MB, mainstream sparsifiers (DGC, TopK) incur more total overhead than simply sending everything with full synchronization (Full). For small tensors, sparsification can be a net loss too. Compression, in other words, has gone from a supporting cost to the single largest one in the pipeline."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper and code:\nPaper https://proceedings.mlr.press/v162/wang22aj.html\nCode https://github.com/zhuangwang93/dragonn"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: using an exact algorithm to do an approximate job"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see what DRAGONN changes, it helps to see where the existing approach spends its time. The state-of-the-art sparsifier is Deep Gradient Compression (DGC). It estimates a threshold and treats every gradient whose magnitude clears it as one worth sending. That step is already approximate — the threshold is an estimate. The expensive part comes next: to pack those gradients into a compact buffer without collisions, DGC runs a parallel prefix sum that computes the exact destination slot for every nonzero element it keeps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Parallel prefix sum is an exact algorithm. It builds a balanced binary tree, runs in O(log d) sequential steps, and scans the tensor repeatedly, reading and writing memory along the way. The paper measures this at roughly 7× the memory accesses of the theoretical lower bound of d comparisons. The authors call it an exact-approximate mismatch: you only need an approximate set of top gradients, yet you are running an expensive exact algorithm just to place them, and that surplus work is pure overhead."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page4_figure2.png",
+              "caption": "Figure 2. DGC versus DRAGONN. Left (DGC): threshold-mask into a 0/1 vector, then 'select nonzero indices' (this is where prefix sum is needed), then gather values — a chain with sequential ordering dependencies. Right (DRAGONN/Ours): for each gradient above the threshold, hash its index straight into a memory slot and write it, skipping the nonzero-index selection step entirely.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page4_figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 2 lays the two paths side by side. DGC's three steps on the left — mask, select nonzero indices, gather values — are tightly coupled, and that middle step is where prefix sum lives and where the sequential dependency comes from. DRAGONN, on the right, sidesteps the question of which positions are nonzero entirely: for each gradient above threshold, a hash computes where it lands in the compact buffer and writes it there directly, without ever counting the nonzeros before it."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "DRAGONN: turning a sequential selection into a parallel hash"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method is a single move. Pre-allocate a small buffer sized to the compression ratio, and for each gradient G[i] whose magnitude clears a threshold t, compute j = h(i) and write I[j] = i directly. If two indices hash to the same slot, the later write simply overwrites the earlier one; any slot left empty (marked -1) decodes to zero. The whole compression needs just d comparisons plus l hash operations — right up against the d-comparison lower bound."
+            },
+            {
+              "type": "paragraph",
+              "text": "Why is this fast? Memory writes are atomic on GPUs, so thousands of threads can hash and write at once with no ordering dependency between them. The prefix-sum chain — compute the running total before you know the current position — is gone, and compression turns from a sequential, dependency-heavy step into an essentially embarrassingly parallel one. Hash collisions drop a tiny fraction of gradients, but since only an approximate top-k is needed and error feedback carries the residual forward, convergence is unaffected."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper adds two systems-level optimizations that make it work well in practice. The first is efficiency-aware tensor selection: compress a tensor only when its compression time is smaller than the communication it would save, and otherwise fall back to full synchronization — precisely the regime where Figure 1 showed small-tensor compression to be a losing trade. The second is sparse decoding: batch the K compressed tensors received from other workers into a single decode, so decoding cost stays nearly constant no matter how many GPUs participate in the training run."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "End to end: the more GPUs, the bigger the edge"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation spans four models across vision and recommendation-style workloads: ResNet50 on ImageNet-1K, ViT and MLP-Mixer fine-tuned on Cifar10 (pretrained on ImageNet-21k), and an extreme multi-label classification (XML) model on Wiki10-31K. The testbed is 16 Nvidia Tesla V100-32GB GPUs across two machines, connected by a 25 Gbps network, running PyTorch 1.8.0 with Horovod and NCCL, with memory-momentum error feedback applied uniformly to every sparsifier to preserve accuracy."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "Figure 3. Training throughput for the four models at 4/8/16 GPUs (Images/sec or Samples/sec). The black outline marks ideal linear scaling (Linear-Scaling); DRAGONN (green) sits closest to it in every setting, and its lead over the other methods widens as GPUs are added.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 is the headline result. Green DRAGONN sits closest to the black linear-scaling ceiling across all four models and three GPU counts, clearly above DGC, TopK, and full synchronization. The trend matters as much as the level: from 4 to 16 GPUs, DRAGONN's margin over DGC widens rather than shrinks — the signature of good scalability, and on faster networks, where compression dominates total cost even more, the authors expect it to widen further."
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 1 summarizes the end-to-end speedups at equal convergence (94% accuracy on Cifar10, 80% on Wiki10-31K). DRAGONN reaches up to 3.52× over DGC and up to 35.9× over full synchronization, while matching full synchronization's test accuracy."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. End-to-end training speedup of DRAGONN over DGC and FULL (full synchronization) at equal convergence accuracy (16 GPUs).",
+              "headers": [
+                "Speedup baseline",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Speed only counts if accuracy holds. Figure 4 overlays the convergence curves for all four models: DRAGONN (green) tracks full synchronization (FULL, blue), DGC, and TopK almost exactly, needing no more iterations to reach the same accuracy. The speedup comes from making the compression step cheaper, not from trading away convergence."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "Figure 4. Convergence comparison across the four models (accuracy vs iteration). DRAGONN (green) overlaps almost perfectly with FULL (blue); per-iteration convergence is unaffected, so the speedup does not cost accuracy.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Taking it apart: what each component contributes"
+            },
+            {
+              "type": "paragraph",
+              "text": "A set of micro-benchmarks and an ablation explain where the speedup comes from. The left panel of Figure 5 compares encoding time across compression algorithms: at every tensor size, DRAGONN (green) has the lowest encoding time, well below DGC and far below exact TopK. The right panel contrasts dense decoding with sparse decoding — the latter is nearly a flat line, while dense decoding rises linearly with the GPU count."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure5.png",
+              "caption": "Figure 5. Micro-benchmarks. Left: encoding time of each compression algorithm across tensor sizes (log y-axis); DRAGONN is lowest throughout. Right: dense decoding grows linearly with the number of GPUs, while sparse decoding stays nearly constant.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page7_figure5.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 6 layers the three components one at a time to see their effect on per-step computation and synchronization time. The hashing compressor alone provides the base improvement; adding efficiency-aware tensor selection lifts the speedup to about 1.92× on one model; adding sparse decoding pushes it as high as 4.33×. Notably, sparse decoding's speedup can exceed the number of workers K, because it also removes the decode compute cost that otherwise grows linearly with the number of GPUs."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure6.png",
+              "caption": "Figure 6. The step-by-step impact of the three components (hashing compressor, efficiency-aware tensor selection +Selection, sparse decoding +Decoding) on per-step computation (Compute.) and synchronization (Sync.) time. Each added component drives synchronization time further down, well below DGC and FULL.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page8_figure6.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN's contribution reduces to one judgment: since gradient sparsification only ever needs an approximate top-k, using an exact parallel prefix sum to place those gradients is wasted effort. Replace it with direct randomized hashing and a sequential, dependency-heavy step becomes a massively parallel one, cutting compression time by up to 70%. Paired with efficiency-aware tensor selection and sparse decoding, that yields end-to-end speedups which scale with the cluster and cost nothing in accuracy."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being clear about where the result holds. These numbers come from one testbed — 16 V100 GPUs on a 25 Gbps network — and the four models above; hashing adds a small collision error that the paper absorbs with memory-momentum error feedback. But the core idea stays simple — stop paying for exact selection when an approximate answer was all gradient sparsification ever needed."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "在多卡分布式训练里，真正拖慢速度的往往不是算力，而是每一步都要在 GPU 之间同步梯度。梯度稀疏化（gradient sparsification，简称 GS）本来是为解决这个通信瓶颈而生的：既然大部分梯度都很小，那就只传其中最大的一小部分，通信量自然大幅下降。这个思路在很多论文里都成立。"
+            },
+            {
+              "type": "paragraph",
+              "text": "但这篇 ICML 2022 论文观察到一个让人有点意外的现象：当稀疏化真正跑起来，节省下来的通信时间常常被另一项开销吃回去，那就是「压缩」本身的耗时。为了挑出要传的那一小撮梯度，算法需要在 GPU 上做一系列并行操作，而这些操作在大张量上并不便宜。换句话说，稀疏化解决了通信问题，却又制造了一个新的压缩瓶颈。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文的核心主张很直接：既然稀疏化只需要「近似」的 top-k 梯度，就不应该为一个「精确」的选择算法买单。作者提出 DRAGONN（Distributed Randomized Approximate Gradients of Neural Networks），用直接的随机哈希替换掉现有方法里那套精确的并行前缀和（parallel prefix sum），把压缩开销压到接近理论下界，从而让梯度稀疏化真正在分布式训练里划算起来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "图1 压缩开销随张量变大而失控。左图：随着张量尺寸增大，压缩时间占单步总开销的比例从约 35% 一路升到 90% 附近；右图：当张量超过约 2^24 字节（约 16 MB）后，DGC 与 TopK 的总开销反而超过了完整同步（Full），压缩不再是净收益。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 1 把问题量化了出来。左图显示，张量越大，压缩时间在单步总耗时里占的比重越高，最终逼近 90%；右图更直接：一旦张量超过约 16 MB，主流稀疏化方法（DGC、TopK）的总开销甚至高于什么都不压、直接完整同步（Full）的方案。对小张量而言，稀疏化同样可能得不偿失。也就是说，压缩开销已经从「配角」变成了整个流程里最大的那块成本。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文与代码地址：\n论文 https://proceedings.mlr.press/v162/wang22aj.html\n代码 https://github.com/zhuangwang93/dragonn"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题出在「用精确算法做近似的事」"
+            },
+            {
+              "type": "paragraph",
+              "text": "要理解 DRAGONN 的改动，先要看清现有方法慢在哪。当前最有代表性的稀疏化方法是 Deep Gradient Compression（DGC）：它先估一个阈值，把绝对值超过阈值的梯度当作要传的「大梯度」。这一步本身就是近似的（阈值是估出来的）。真正昂贵的是下一步：为了把这些大梯度无冲突地写进一块紧凑内存，DGC 依赖并行前缀和来计算每个非零元素该放到哪个位置。"
+            },
+            {
+              "type": "paragraph",
+              "text": "并行前缀和是一个「精确」算法：它要构建一棵平衡二叉树，分 O(log d) 个串行步骤扫描整个张量，反复读写内存。论文测算，这套流程带来的内存访问量大约是理论下界（d 次比较）的 7×。作者称之为「精确 - 近似的错配」：明明只需要一份近似的 top-k 梯度，却动用了一个昂贵的精确定位算法去安放它们，这多出来的开销纯属浪费。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page4_figure2.png",
+              "caption": "图2 DGC 与 DRAGONN 的对比。左（DGC）：先用阈值做掩码得到 0/1 序列，再「选出非零索引」（这一步需要前缀和），最后取值，是一条有顺序依赖的串行链路；右（DRAGONN/Ours）：对每个超过阈值的梯度，直接把它的索引哈希到内存槽位并写入，跳过了非零索引选择这一整步。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page4_figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 把两条路径并排放在一起。左边 DGC 的三步——掩码、选出非零索引、取值——环环相扣，中间那步「选出非零索引」正是前缀和的用武之地，也是顺序依赖的来源。右边 DRAGONN 直接把「哪些位置非零」这个问题绕开了：对每个过阈值的梯度，用一个哈希函数算出它在紧凑缓冲区里的落点，然后写进去，不需要事先知道前面有多少个非零元素。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "DRAGONN：把顺序依赖的选择变成可并行的哈希"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN 的做法可以用一句话概括：预先按压缩率分配一小块内存缓冲区，对每个绝对值超过阈值 t 的梯度 G[i]，计算 j = h(i) 并直接写入 I[j] = i。如果两个索引哈希到同一个槽位，后写的直接覆盖先写的；留空的槽位（标记为 -1）在解码时映射为零。整个过程只需要 d 次比较加上 l 次哈希操作，非常接近「d 次比较」这个理论下界。"
+            },
+            {
+              "type": "paragraph",
+              "text": "为什么这样就快了？关键在于 GPU 上的内存写入是原子操作，因此成千上万个线程可以同时哈希、同时写入，彼此之间没有任何顺序依赖。前缀和那种「必须先算出前面的累加值，才能确定当前位置」的串行链条被彻底拆掉了，压缩从一个串行、依赖繁重的步骤，变成了一个几乎「令人尴尬地并行」（embarrassingly parallel）的步骤。代价是哈希冲突会丢掉极少数梯度，但由于本来就只需要近似 top-k，加上误差反馈机制，这点损失并不影响收敛。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文还补了两个让它在真实系统里跑得好的工程优化。其一是「效率感知的张量选择」（efficiency-aware tensor selection）：只有当一个张量的压缩时间小于它能省下的通信时间时，才对它做压缩，否则直接完整同步——这正好对应图 1 里小张量压缩不划算的情形。其二是「稀疏解码」（sparse decoding）：把从其他 worker 收到的 K 份压缩张量批量成一次解码，使解码开销几乎不随 GPU 数量增长。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "端到端的效果：越多卡，优势越明显"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文在四个模型上做了评测，覆盖视觉与推荐两类负载：ResNet50 在 ImageNet-1K 上训练，ViT 与 MLP-Mixer 在 ImageNet-21k 预训练后于 Cifar10 上微调，以及一个在 Wiki10-31K 上的极端多标签分类（XML）模型。测试平台是 2 台机器共 16 张 Nvidia Tesla V100-32GB，通过 25Gbps 网络互联，软件栈为 PyTorch 1.8.0 + Horovod + NCCL，并对所有稀疏化方法统一使用 memory-momentum 误差反馈以保持精度。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "图3 四个模型在 4/8/16 张 GPU 下的训练吞吐（Images/sec 或 Samples/sec）。黑色空心框表示理想的线性扩展（Linear-Scaling），绿色 DRAGONN 在所有设置下都最接近这个上界，且随 GPU 数量增加，与其它方法的差距进一步拉大。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 是核心结果：绿色的 DRAGONN 在四个模型、三种 GPU 规模下都最靠近黑框代表的线性扩展上界，明显高于 DGC、TopK 和完整同步。更值得注意的是趋势——GPU 从 4 张增加到 16 张时，DRAGONN 相对 DGC 的领先幅度不是缩小而是扩大，说明它的可扩展性更好；作者也指出，在更快的网络上（此时压缩开销在总成本里的占比更高），这一优势预计还会继续放大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "表 1 汇总了达到相同收敛目标（Cifar10 上 94% 精度、Wiki10-31K 上 80% 精度）时的端到端加速比。DRAGONN 相对 DGC 最高可达 3.52×，相对完整同步最高可达 35.9×，同时保持与完整同步一致的测试精度。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 达到相同收敛精度时，DRAGONN 相对 DGC 与 FULL（完整同步）的端到端训练加速比（16 GPU）。",
+              "headers": [
+                "加速比基线",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "更快的前提是「不掉点」。图 4 把四个模型的收敛曲线画在一起：DRAGONN（绿色）的每步收敛轨迹与完整同步（FULL，蓝色）以及 DGC、TopK 基本重合，达到同样精度所需的迭代数没有变差。这说明 DRAGONN 的提速来自压缩这一步更便宜，而不是靠牺牲收敛质量换来的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "图4 四个模型在不同稀疏化方法下的收敛对比（精度 vs 迭代数）。DRAGONN（绿色）与 FULL（蓝色）几乎重合，逐迭代收敛质量不受影响，提速并非以掉点为代价。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "拆开看：三个组件各自贡献了多少"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一组微基准和消融实验来解释加速从何而来。图 5 左图对比了几种压缩算法的编码时间：在所有张量尺寸下，DRAGONN（绿色）的编码时间都最低，明显低于 DGC，更远低于精确 TopK；右图对比了稠密解码（Dense）与稀疏解码（Sparse），后者几乎是一条贴地的平线，而稠密解码随 GPU 增多线性上涨。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure5.png",
+              "caption": "图5 微基准。左：不同压缩算法在各张量尺寸下的编码时间（对数纵轴），DRAGONN 全程最低；右：稠密解码随 GPU 数量线性增长，而稀疏解码几乎恒定。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page7_figure5.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 6 则逐个叠加三个组件，看它们对单步「计算」与「同步」时间的影响。仅哈希压缩器就带来基础提速；叠加效率感知张量选择后，在某个模型上提速可升到约 1.92×；再加上稀疏解码，最高可达 4.33×。有意思的是，稀疏解码带来的加速甚至超过 GPU 数量 K 倍——因为它同时消除了那份随 GPU 线性增长的解码计算成本。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure6.png",
+              "caption": "图6 三个组件（哈希压缩器、效率感知张量选择 +Selection、稀疏解码 +Decoding）对单步计算（Compute.）与同步（Sync.）时间的逐步影响。每叠加一个组件，同步时间进一步下降，直到明显低于 DGC 与 FULL。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page8_figure6.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN 的贡献可以浓缩成一个判断：既然梯度稀疏化本来就只需要近似的 top-k 梯度，那么用一个精确的并行前缀和去安放它们就是多余的开销。把它换成直接的随机哈希，一个原本串行、依赖繁重的压缩步骤就变成了可大规模并行的操作，压缩时间最多降低 70%；再配合效率感知张量选择与稀疏解码，就能在不损失精度的前提下拿到端到端可扩展的提速。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要留意的是结论成立的边界。这些结果是在 16 张 V100、25Gbps 网络的特定测试平台上、针对上述四个模型得到的；哈希会引入少量冲突误差，论文依赖 memory-momentum 误差反馈来吸收它。作者也明确指出，DRAGONN 的相对优势与「通信 - 压缩」的比例有关——网络越快、张量越大，压缩越是瓶颈，它的收益也越大；反过来在通信极其昂贵而压缩本就不重的场景里，提升空间会相应变小。总体而言，这项工作把梯度稀疏化里一个长期被忽视的开销点摆到了台面上，并给出了一个足够简单、足够并行的解法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 422.5,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 422.5,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 39.18,
+          "relative_start": 0.5,
+          "relative_end": 39.18,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 39.18,
+          "global_end": 78.46,
+          "relative_start": 39.18,
+          "relative_end": 78.46,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 78.46,
+          "global_end": 118.41,
+          "relative_start": 78.46,
+          "relative_end": 118.41,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 118.41,
+          "global_end": 161.81,
+          "relative_start": 118.41,
+          "relative_end": 161.81,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 161.81,
+          "global_end": 225.61,
+          "relative_start": 161.81,
+          "relative_end": 225.61,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 225.61,
+          "global_end": 266.16,
+          "relative_start": 225.61,
+          "relative_end": 266.16,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 266.16,
+          "global_end": 305.03,
+          "relative_start": 266.16,
+          "relative_end": 305.03,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 305.03,
+          "global_end": 349.66,
+          "relative_start": 305.03,
+          "relative_end": 349.66,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 349.66,
+          "global_end": 385.05,
+          "relative_start": 349.66,
+          "relative_end": 385.05,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 385.05,
+          "global_end": 422.43,
+          "relative_start": 385.05,
+          "relative_end": 422.43,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "In data-parallel distributed training, the thing that actually slows you down is rarely raw compute. It is the gradient synchronization that happens every single step, as workers exchange gradients across the network. Gradient sparsification (GS) was invented to relieve exactly this pressure: since most gradients are tiny, only send the largest handful of them and the traffic drops sharply. On paper, the idea is clean and the savings are real."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper points at an uncomfortable twist. When you actually run a sparsifier, the communication time you save often gets eaten right back by the cost of compression itself. Picking out the small set of gradients worth sending takes a sequence of GPU operations, and on large tensors those operations are not cheap. Sparsification fixes the communication problem and quietly introduces a new one: a compression bottleneck."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's argument is refreshingly blunt: if sparsification only ever needs an approximate set of top-k gradients, it should not pay for an exact selection algorithm. The authors propose DRAGONN (Distributed Randomized Approximate Gradients of Neural Networks), which replaces the exact parallel prefix sum prior methods rely on with direct randomized hashing — driving compression near its theoretical lower bound and finally making gradient sparsification pay off at scale."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 1 puts numbers on the problem. The left panel shows compression time consuming an ever-larger share of each step as tensors grow, approaching 90% at the high end. The right panel is even starker: once a tensor crosses roughly 16 MB, mainstream sparsifiers (DGC, TopK) incur more total overhead than simply sending everything with full synchronization (Full). For small tensors, sparsification can be a net loss too. Compression, in other words, has gone from a supporting cost to the single largest one in the pipeline."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper and code:\nPaper https://proceedings.mlr.press/v162/wang22aj.html\nCode https://github.com/zhuangwang93/dragonn"
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "在多卡分布式训练里，真正拖慢速度的往往不是算力，而是每一步都要在 GPU 之间同步梯度。梯度稀疏化（gradient sparsification，简称 GS）本来是为解决这个通信瓶颈而生的：既然大部分梯度都很小，那就只传其中最大的一小部分，通信量自然大幅下降。这个思路在很多论文里都成立。"
+            },
+            {
+              "type": "paragraph",
+              "text": "但这篇 ICML 2022 论文观察到一个让人有点意外的现象：当稀疏化真正跑起来，节省下来的通信时间常常被另一项开销吃回去，那就是「压缩」本身的耗时。为了挑出要传的那一小撮梯度，算法需要在 GPU 上做一系列并行操作，而这些操作在大张量上并不便宜。换句话说，稀疏化解决了通信问题，却又制造了一个新的压缩瓶颈。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文的核心主张很直接：既然稀疏化只需要「近似」的 top-k 梯度，就不应该为一个「精确」的选择算法买单。作者提出 DRAGONN（Distributed Randomized Approximate Gradients of Neural Networks），用直接的随机哈希替换掉现有方法里那套精确的并行前缀和（parallel prefix sum），把压缩开销压到接近理论下界，从而让梯度稀疏化真正在分布式训练里划算起来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "图1 压缩开销随张量变大而失控。左图：随着张量尺寸增大，压缩时间占单步总开销的比例从约 35% 一路升到 90% 附近；右图：当张量超过约 2^24 字节（约 16 MB）后，DGC 与 TopK 的总开销反而超过了完整同步（Full），压缩不再是净收益。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 1 把问题量化了出来。左图显示，张量越大，压缩时间在单步总耗时里占的比重越高，最终逼近 90%；右图更直接：一旦张量超过约 16 MB，主流稀疏化方法（DGC、TopK）的总开销甚至高于什么都不压、直接完整同步（Full）的方案。对小张量而言，稀疏化同样可能得不偿失。也就是说，压缩开销已经从「配角」变成了整个流程里最大的那块成本。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文与代码地址：\n论文 https://proceedings.mlr.press/v162/wang22aj.html\n代码 https://github.com/zhuangwang93/dragonn"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 39.18,
+        "end": 78.46,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 39.28,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 40.18,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 39.18,
+          "global_end": 78.46,
+          "relative_start": 0.0,
+          "relative_end": 39.28,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "In data-parallel distributed training, the thing that actually slows you down is rarely raw compute. It is the gradient synchronization that happens every single step, as workers exchange gradients across the network. Gradient sparsification (GS) was invented to relieve exactly this pressure: since most gradients are tiny, only send the largest handful of them and the traffic drops sharply. On paper, the idea is clean and the savings are real."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper points at an uncomfortable twist. When you actually run a sparsifier, the communication time you save often gets eaten right back by the cost of compression itself. Picking out the small set of gradients worth sending takes a sequence of GPU operations, and on large tensors those operations are not cheap. Sparsification fixes the communication problem and quietly introduces a new one: a compression bottleneck."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's argument is refreshingly blunt: if sparsification only ever needs an approximate set of top-k gradients, it should not pay for an exact selection algorithm. The authors propose DRAGONN (Distributed Randomized Approximate Gradients of Neural Networks), which replaces the exact parallel prefix sum prior methods rely on with direct randomized hashing — driving compression near its theoretical lower bound and finally making gradient sparsification pay off at scale."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 1 puts numbers on the problem. The left panel shows compression time consuming an ever-larger share of each step as tensors grow, approaching 90% at the high end. The right panel is even starker: once a tensor crosses roughly 16 MB, mainstream sparsifiers (DGC, TopK) incur more total overhead than simply sending everything with full synchronization (Full). For small tensors, sparsification can be a net loss too. Compression, in other words, has gone from a supporting cost to the single largest one in the pipeline."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper and code:\nPaper https://proceedings.mlr.press/v162/wang22aj.html\nCode https://github.com/zhuangwang93/dragonn"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page4_figure2.png",
+              "caption": "图2 DGC 与 DRAGONN 的对比。左（DGC）：先用阈值做掩码得到 0/1 序列，再「选出非零索引」（这一步需要前缀和），最后取值，是一条有顺序依赖的串行链路；右（DRAGONN/Ours）：对每个超过阈值的梯度，直接把它的索引哈希到内存槽位并写入，跳过了非零索引选择这一整步。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page4_figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "DRAGONN：把顺序依赖的选择变成可并行的哈希"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN 的做法可以用一句话概括：预先按压缩率分配一小块内存缓冲区，对每个绝对值超过阈值 t 的梯度 G[i]，计算 j = h(i) 并直接写入 I[j] = i。如果两个索引哈希到同一个槽位，后写的直接覆盖先写的；留空的槽位（标记为 -1）在解码时映射为零。整个过程只需要 d 次比较加上 l 次哈希操作，非常接近「d 次比较」这个理论下界。"
+            },
+            {
+              "type": "paragraph",
+              "text": "为什么这样就快了？关键在于 GPU 上的内存写入是原子操作，因此成千上万个线程可以同时哈希、同时写入，彼此之间没有任何顺序依赖。前缀和那种「必须先算出前面的累加值，才能确定当前位置」的串行链条被彻底拆掉了，压缩从一个串行、依赖繁重的步骤，变成了一个几乎「令人尴尬地并行」（embarrassingly parallel）的步骤。代价是哈希冲突会丢掉极少数梯度，但由于本来就只需要近似 top-k，加上误差反馈机制，这点损失并不影响收敛。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文还补了两个让它在真实系统里跑得好的工程优化。其一是「效率感知的张量选择」（efficiency-aware tensor selection）：只有当一个张量的压缩时间小于它能省下的通信时间时，才对它做压缩，否则直接完整同步——这正好对应图 1 里小张量压缩不划算的情形。其二是「稀疏解码」（sparse decoding）：把从其他 worker 收到的 K 份压缩张量批量成一次解码，使解码开销几乎不随 GPU 数量增长。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 78.46,
+        "end": 118.41,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 39.95,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 40.85,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 78.46,
+          "global_end": 118.41,
+          "relative_start": 0.0,
+          "relative_end": 39.95,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN's contribution reduces to one judgment: since gradient sparsification only ever needs an approximate top-k, using an exact parallel prefix sum to place those gradients is wasted effort. Replace it with direct randomized hashing and a sequential, dependency-heavy step becomes a massively parallel one, cutting compression time by up to 70%. Paired with efficiency-aware tensor selection and sparse decoding, that yields end-to-end speedups which scale with the cluster and cost nothing in accuracy."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being clear about where the result holds. These numbers come from one testbed — 16 V100 GPUs on a 25 Gbps network — and the four models above; hashing adds a small collision error that the paper absorbs with memory-momentum error feedback. But the core idea stays simple — stop paying for exact selection when an approximate answer was all gradient sparsification ever needed."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "拆开看：三个组件各自贡献了多少"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一组微基准和消融实验来解释加速从何而来。图 5 左图对比了几种压缩算法的编码时间：在所有张量尺寸下，DRAGONN（绿色）的编码时间都最低，明显低于 DGC，更远低于精确 TopK；右图对比了稠密解码（Dense）与稀疏解码（Sparse），后者几乎是一条贴地的平线，而稠密解码随 GPU 增多线性上涨。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure5.png",
+              "caption": "图5 微基准。左：不同压缩算法在各张量尺寸下的编码时间（对数纵轴），DRAGONN 全程最低；右：稠密解码随 GPU 数量线性增长，而稀疏解码几乎恒定。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page7_figure5.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 6 则逐个叠加三个组件，看它们对单步「计算」与「同步」时间的影响。仅哈希压缩器就带来基础提速；叠加效率感知张量选择后，在某个模型上提速可升到约 1.92×；再加上稀疏解码，最高可达 4.33×。有意思的是，稀疏解码带来的加速甚至超过 GPU 数量 K 倍——因为它同时消除了那份随 GPU 线性增长的解码计算成本。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure6.png",
+              "caption": "图6 三个组件（哈希压缩器、效率感知张量选择 +Selection、稀疏解码 +Decoding）对单步计算（Compute.）与同步（Sync.）时间的逐步影响。每叠加一个组件，同步时间进一步下降，直到明显低于 DGC 与 FULL。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page8_figure6.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 118.41,
+        "end": 161.81,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 43.4,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.3,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 118.41,
+          "global_end": 161.81,
+          "relative_start": 0.0,
+          "relative_end": 43.4,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "In data-parallel distributed training, the thing that actually slows you down is rarely raw compute. It is the gradient synchronization that happens every single step, as workers exchange gradients across the network. Gradient sparsification (GS) was invented to relieve exactly this pressure: since most gradients are tiny, only send the largest handful of them and the traffic drops sharply. On paper, the idea is clean and the savings are real."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper points at an uncomfortable twist. When you actually run a sparsifier, the communication time you save often gets eaten right back by the cost of compression itself. Picking out the small set of gradients worth sending takes a sequence of GPU operations, and on large tensors those operations are not cheap. Sparsification fixes the communication problem and quietly introduces a new one: a compression bottleneck."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's argument is refreshingly blunt: if sparsification only ever needs an approximate set of top-k gradients, it should not pay for an exact selection algorithm. The authors propose DRAGONN (Distributed Randomized Approximate Gradients of Neural Networks), which replaces the exact parallel prefix sum prior methods rely on with direct randomized hashing — driving compression near its theoretical lower bound and finally making gradient sparsification pay off at scale."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 1 puts numbers on the problem. The left panel shows compression time consuming an ever-larger share of each step as tensors grow, approaching 90% at the high end. The right panel is even starker: once a tensor crosses roughly 16 MB, mainstream sparsifiers (DGC, TopK) incur more total overhead than simply sending everything with full synchronization (Full). For small tensors, sparsification can be a net loss too. Compression, in other words, has gone from a supporting cost to the single largest one in the pipeline."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper and code:\nPaper https://proceedings.mlr.press/v162/wang22aj.html\nCode https://github.com/zhuangwang93/dragonn"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "DRAGONN: turning a sequential selection into a parallel hash"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method is a single move. Pre-allocate a small buffer sized to the compression ratio, and for each gradient G[i] whose magnitude clears a threshold t, compute j = h(i) and write I[j] = i directly. If two indices hash to the same slot, the later write simply overwrites the earlier one; any slot left empty (marked -1) decodes to zero. The whole compression needs just d comparisons plus l hash operations — right up against the d-comparison lower bound."
+            },
+            {
+              "type": "paragraph",
+              "text": "Why is this fast? Memory writes are atomic on GPUs, so thousands of threads can hash and write at once with no ordering dependency between them. The prefix-sum chain — compute the running total before you know the current position — is gone, and compression turns from a sequential, dependency-heavy step into an essentially embarrassingly parallel one. Hash collisions drop a tiny fraction of gradients, but since only an approximate top-k is needed and error feedback carries the residual forward, convergence is unaffected."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper adds two systems-level optimizations that make it work well in practice. The first is efficiency-aware tensor selection: compress a tensor only when its compression time is smaller than the communication it would save, and otherwise fall back to full synchronization — precisely the regime where Figure 1 showed small-tensor compression to be a losing trade. The second is sparse decoding: batch the K compressed tensors received from other workers into a single decode, so decoding cost stays nearly constant no matter how many GPUs participate in the training run."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "在多卡分布式训练里，真正拖慢速度的往往不是算力，而是每一步都要在 GPU 之间同步梯度。梯度稀疏化（gradient sparsification，简称 GS）本来是为解决这个通信瓶颈而生的：既然大部分梯度都很小，那就只传其中最大的一小部分，通信量自然大幅下降。这个思路在很多论文里都成立。"
+            },
+            {
+              "type": "paragraph",
+              "text": "但这篇 ICML 2022 论文观察到一个让人有点意外的现象：当稀疏化真正跑起来，节省下来的通信时间常常被另一项开销吃回去，那就是「压缩」本身的耗时。为了挑出要传的那一小撮梯度，算法需要在 GPU 上做一系列并行操作，而这些操作在大张量上并不便宜。换句话说，稀疏化解决了通信问题，却又制造了一个新的压缩瓶颈。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文的核心主张很直接：既然稀疏化只需要「近似」的 top-k 梯度，就不应该为一个「精确」的选择算法买单。作者提出 DRAGONN（Distributed Randomized Approximate Gradients of Neural Networks），用直接的随机哈希替换掉现有方法里那套精确的并行前缀和（parallel prefix sum），把压缩开销压到接近理论下界，从而让梯度稀疏化真正在分布式训练里划算起来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "图1 压缩开销随张量变大而失控。左图：随着张量尺寸增大，压缩时间占单步总开销的比例从约 35% 一路升到 90% 附近；右图：当张量超过约 2^24 字节（约 16 MB）后，DGC 与 TopK 的总开销反而超过了完整同步（Full），压缩不再是净收益。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 1 把问题量化了出来。左图显示，张量越大，压缩时间在单步总耗时里占的比重越高，最终逼近 90%；右图更直接：一旦张量超过约 16 MB，主流稀疏化方法（DGC、TopK）的总开销甚至高于什么都不压、直接完整同步（Full）的方案。对小张量而言，稀疏化同样可能得不偿失。也就是说，压缩开销已经从「配角」变成了整个流程里最大的那块成本。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文与代码地址：\n论文 https://proceedings.mlr.press/v162/wang22aj.html\n代码 https://github.com/zhuangwang93/dragonn"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题出在「用精确算法做近似的事」"
+            },
+            {
+              "type": "paragraph",
+              "text": "要理解 DRAGONN 的改动，先要看清现有方法慢在哪。当前最有代表性的稀疏化方法是 Deep Gradient Compression（DGC）：它先估一个阈值，把绝对值超过阈值的梯度当作要传的「大梯度」。这一步本身就是近似的（阈值是估出来的）。真正昂贵的是下一步：为了把这些大梯度无冲突地写进一块紧凑内存，DGC 依赖并行前缀和来计算每个非零元素该放到哪个位置。"
+            },
+            {
+              "type": "paragraph",
+              "text": "并行前缀和是一个「精确」算法：它要构建一棵平衡二叉树，分 O(log d) 个串行步骤扫描整个张量，反复读写内存。论文测算，这套流程带来的内存访问量大约是理论下界（d 次比较）的 7×。作者称之为「精确 - 近似的错配」：明明只需要一份近似的 top-k 梯度，却动用了一个昂贵的精确定位算法去安放它们，这多出来的开销纯属浪费。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page4_figure2.png",
+              "caption": "图2 DGC 与 DRAGONN 的对比。左（DGC）：先用阈值做掩码得到 0/1 序列，再「选出非零索引」（这一步需要前缀和），最后取值，是一条有顺序依赖的串行链路；右（DRAGONN/Ours）：对每个超过阈值的梯度，直接把它的索引哈希到内存槽位并写入，跳过了非零索引选择这一整步。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page4_figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 把两条路径并排放在一起。左边 DGC 的三步——掩码、选出非零索引、取值——环环相扣，中间那步「选出非零索引」正是前缀和的用武之地，也是顺序依赖的来源。右边 DRAGONN 直接把「哪些位置非零」这个问题绕开了：对每个过阈值的梯度，用一个哈希函数算出它在紧凑缓冲区里的落点，然后写进去，不需要事先知道前面有多少个非零元素。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 161.81,
+        "end": 225.61,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 63.8,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 64.7,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 161.81,
+          "global_end": 225.61,
+          "relative_start": 0.0,
+          "relative_end": 63.8,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Taking it apart: what each component contributes"
+            },
+            {
+              "type": "paragraph",
+              "text": "A set of micro-benchmarks and an ablation explain where the speedup comes from. The left panel of Figure 5 compares encoding time across compression algorithms: at every tensor size, DRAGONN (green) has the lowest encoding time, well below DGC and far below exact TopK. The right panel contrasts dense decoding with sparse decoding — the latter is nearly a flat line, while dense decoding rises linearly with the GPU count."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure5.png",
+              "caption": "Figure 5. Micro-benchmarks. Left: encoding time of each compression algorithm across tensor sizes (log y-axis); DRAGONN is lowest throughout. Right: dense decoding grows linearly with the number of GPUs, while sparse decoding stays nearly constant.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page7_figure5.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 6 layers the three components one at a time to see their effect on per-step computation and synchronization time. The hashing compressor alone provides the base improvement; adding efficiency-aware tensor selection lifts the speedup to about 1.92× on one model; adding sparse decoding pushes it as high as 4.33×. Notably, sparse decoding's speedup can exceed the number of workers K, because it also removes the decode compute cost that otherwise grows linearly with the number of GPUs."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page8_figure6.png",
+              "caption": "Figure 6. The step-by-step impact of the three components (hashing compressor, efficiency-aware tensor selection +Selection, sparse decoding +Decoding) on per-step computation (Compute.) and synchronization (Sync.) time. Each added component drives synchronization time further down, well below DGC and FULL.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page8_figure6.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "端到端的效果：越多卡，优势越明显"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文在四个模型上做了评测，覆盖视觉与推荐两类负载：ResNet50 在 ImageNet-1K 上训练，ViT 与 MLP-Mixer 在 ImageNet-21k 预训练后于 Cifar10 上微调，以及一个在 Wiki10-31K 上的极端多标签分类（XML）模型。测试平台是 2 台机器共 16 张 Nvidia Tesla V100-32GB，通过 25Gbps 网络互联，软件栈为 PyTorch 1.8.0 + Horovod + NCCL，并对所有稀疏化方法统一使用 memory-momentum 误差反馈以保持精度。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "图3 四个模型在 4/8/16 张 GPU 下的训练吞吐（Images/sec 或 Samples/sec）。黑色空心框表示理想的线性扩展（Linear-Scaling），绿色 DRAGONN 在所有设置下都最接近这个上界，且随 GPU 数量增加，与其它方法的差距进一步拉大。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 是核心结果：绿色的 DRAGONN 在四个模型、三种 GPU 规模下都最靠近黑框代表的线性扩展上界，明显高于 DGC、TopK 和完整同步。更值得注意的是趋势——GPU 从 4 张增加到 16 张时，DRAGONN 相对 DGC 的领先幅度不是缩小而是扩大，说明它的可扩展性更好；作者也指出，在更快的网络上（此时压缩开销在总成本里的占比更高），这一优势预计还会继续放大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "表 1 汇总了达到相同收敛目标（Cifar10 上 94% 精度、Wiki10-31K 上 80% 精度）时的端到端加速比。DRAGONN 相对 DGC 最高可达 3.52×，相对完整同步最高可达 35.9×，同时保持与完整同步一致的测试精度。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 达到相同收敛精度时，DRAGONN 相对 DGC 与 FULL（完整同步）的端到端训练加速比（16 GPU）。",
+              "headers": [
+                "加速比基线",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "更快的前提是「不掉点」。图 4 把四个模型的收敛曲线画在一起：DRAGONN（绿色）的每步收敛轨迹与完整同步（FULL，蓝色）以及 DGC、TopK 基本重合，达到同样精度所需的迭代数没有变差。这说明 DRAGONN 的提速来自压缩这一步更便宜，而不是靠牺牲收敛质量换来的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "图4 四个模型在不同稀疏化方法下的收敛对比（精度 vs 迭代数）。DRAGONN（绿色）与 FULL（蓝色）几乎重合，逐迭代收敛质量不受影响，提速并非以掉点为代价。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 225.61,
+        "end": 266.16,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 40.55,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 41.45,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 225.61,
+          "global_end": 266.16,
+          "relative_start": 0.0,
+          "relative_end": 40.55,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "End to end: the more GPUs, the bigger the edge"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation spans four models across vision and recommendation-style workloads: ResNet50 on ImageNet-1K, ViT and MLP-Mixer fine-tuned on Cifar10 (pretrained on ImageNet-21k), and an extreme multi-label classification (XML) model on Wiki10-31K. The testbed is 16 Nvidia Tesla V100-32GB GPUs across two machines, connected by a 25 Gbps network, running PyTorch 1.8.0 with Horovod and NCCL, with memory-momentum error feedback applied uniformly to every sparsifier to preserve accuracy."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "Figure 3. Training throughput for the four models at 4/8/16 GPUs (Images/sec or Samples/sec). The black outline marks ideal linear scaling (Linear-Scaling); DRAGONN (green) sits closest to it in every setting, and its lead over the other methods widens as GPUs are added.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 is the headline result. Green DRAGONN sits closest to the black linear-scaling ceiling across all four models and three GPU counts, clearly above DGC, TopK, and full synchronization. The trend matters as much as the level: from 4 to 16 GPUs, DRAGONN's margin over DGC widens rather than shrinks — the signature of good scalability, and on faster networks, where compression dominates total cost even more, the authors expect it to widen further."
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 1 summarizes the end-to-end speedups at equal convergence (94% accuracy on Cifar10, 80% on Wiki10-31K). DRAGONN reaches up to 3.52× over DGC and up to 35.9× over full synchronization, while matching full synchronization's test accuracy."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. End-to-end training speedup of DRAGONN over DGC and FULL (full synchronization) at equal convergence accuracy (16 GPUs).",
+              "headers": [
+                "Speedup baseline",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Speed only counts if accuracy holds. Figure 4 overlays the convergence curves for all four models: DRAGONN (green) tracks full synchronization (FULL, blue), DGC, and TopK almost exactly, needing no more iterations to reach the same accuracy. The speedup comes from making the compression step cheaper, not from trading away convergence."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "Figure 4. Convergence comparison across the four models (accuracy vs iteration). DRAGONN (green) overlaps almost perfectly with FULL (blue); per-iteration convergence is unaffected, so the speedup does not cost accuracy.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN's contribution reduces to one judgment: since gradient sparsification only ever needs an approximate top-k, using an exact parallel prefix sum to place those gradients is wasted effort. Replace it with direct randomized hashing and a sequential, dependency-heavy step becomes a massively parallel one, cutting compression time by up to 70%. Paired with efficiency-aware tensor selection and sparse decoding, that yields end-to-end speedups which scale with the cluster and cost nothing in accuracy."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being clear about where the result holds. These numbers come from one testbed — 16 V100 GPUs on a 25 Gbps network — and the four models above; hashing adds a small collision error that the paper absorbs with memory-momentum error feedback. But the core idea stays simple — stop paying for exact selection when an approximate answer was all gradient sparsification ever needed."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "端到端的效果：越多卡，优势越明显"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文在四个模型上做了评测，覆盖视觉与推荐两类负载：ResNet50 在 ImageNet-1K 上训练，ViT 与 MLP-Mixer 在 ImageNet-21k 预训练后于 Cifar10 上微调，以及一个在 Wiki10-31K 上的极端多标签分类（XML）模型。测试平台是 2 台机器共 16 张 Nvidia Tesla V100-32GB，通过 25Gbps 网络互联，软件栈为 PyTorch 1.8.0 + Horovod + NCCL，并对所有稀疏化方法统一使用 memory-momentum 误差反馈以保持精度。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "图3 四个模型在 4/8/16 张 GPU 下的训练吞吐（Images/sec 或 Samples/sec）。黑色空心框表示理想的线性扩展（Linear-Scaling），绿色 DRAGONN 在所有设置下都最接近这个上界，且随 GPU 数量增加，与其它方法的差距进一步拉大。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 是核心结果：绿色的 DRAGONN 在四个模型、三种 GPU 规模下都最靠近黑框代表的线性扩展上界，明显高于 DGC、TopK 和完整同步。更值得注意的是趋势——GPU 从 4 张增加到 16 张时，DRAGONN 相对 DGC 的领先幅度不是缩小而是扩大，说明它的可扩展性更好；作者也指出，在更快的网络上（此时压缩开销在总成本里的占比更高），这一优势预计还会继续放大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "表 1 汇总了达到相同收敛目标（Cifar10 上 94% 精度、Wiki10-31K 上 80% 精度）时的端到端加速比。DRAGONN 相对 DGC 最高可达 3.52×，相对完整同步最高可达 35.9×，同时保持与完整同步一致的测试精度。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 达到相同收敛精度时，DRAGONN 相对 DGC 与 FULL（完整同步）的端到端训练加速比（16 GPU）。",
+              "headers": [
+                "加速比基线",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "更快的前提是「不掉点」。图 4 把四个模型的收敛曲线画在一起：DRAGONN（绿色）的每步收敛轨迹与完整同步（FULL，蓝色）以及 DGC、TopK 基本重合，达到同样精度所需的迭代数没有变差。这说明 DRAGONN 的提速来自压缩这一步更便宜，而不是靠牺牲收敛质量换来的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "图4 四个模型在不同稀疏化方法下的收敛对比（精度 vs 迭代数）。DRAGONN（绿色）与 FULL（蓝色）几乎重合，逐迭代收敛质量不受影响，提速并非以掉点为代价。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN 的贡献可以浓缩成一个判断：既然梯度稀疏化本来就只需要近似的 top-k 梯度，那么用一个精确的并行前缀和去安放它们就是多余的开销。把它换成直接的随机哈希，一个原本串行、依赖繁重的压缩步骤就变成了可大规模并行的操作，压缩时间最多降低 70%；再配合效率感知张量选择与稀疏解码，就能在不损失精度的前提下拿到端到端可扩展的提速。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要留意的是结论成立的边界。这些结果是在 16 张 V100、25Gbps 网络的特定测试平台上、针对上述四个模型得到的；哈希会引入少量冲突误差，论文依赖 memory-momentum 误差反馈来吸收它。作者也明确指出，DRAGONN 的相对优势与「通信 - 压缩」的比例有关——网络越快、张量越大，压缩越是瓶颈，它的收益也越大；反过来在通信极其昂贵而压缩本就不重的场景里，提升空间会相应变小。总体而言，这项工作把梯度稀疏化里一个长期被忽视的开销点摆到了台面上，并给出了一个足够简单、足够并行的解法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 266.16,
+        "end": 305.03,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 38.87,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 39.77,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 266.16,
+          "global_end": 305.03,
+          "relative_start": 0.0,
+          "relative_end": 38.87,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The problem: using an exact algorithm to do an approximate job"
+            },
+            {
+              "type": "paragraph",
+              "text": "To see what DRAGONN changes, it helps to see where the existing approach spends its time. The state-of-the-art sparsifier is Deep Gradient Compression (DGC). It estimates a threshold and treats every gradient whose magnitude clears it as one worth sending. That step is already approximate — the threshold is an estimate. The expensive part comes next: to pack those gradients into a compact buffer without collisions, DGC runs a parallel prefix sum that computes the exact destination slot for every nonzero element it keeps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Parallel prefix sum is an exact algorithm. It builds a balanced binary tree, runs in O(log d) sequential steps, and scans the tensor repeatedly, reading and writing memory along the way. The paper measures this at roughly 7× the memory accesses of the theoretical lower bound of d comparisons. The authors call it an exact-approximate mismatch: you only need an approximate set of top gradients, yet you are running an expensive exact algorithm just to place them, and that surplus work is pure overhead."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page4_figure2.png",
+              "caption": "Figure 2. DGC versus DRAGONN. Left (DGC): threshold-mask into a 0/1 vector, then 'select nonzero indices' (this is where prefix sum is needed), then gather values — a chain with sequential ordering dependencies. Right (DRAGONN/Ours): for each gradient above the threshold, hash its index straight into a memory slot and write it, skipping the nonzero-index selection step entirely.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page4_figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 2 lays the two paths side by side. DGC's three steps on the left — mask, select nonzero indices, gather values — are tightly coupled, and that middle step is where prefix sum lives and where the sequential dependency comes from. DRAGONN, on the right, sidesteps the question of which positions are nonzero entirely: for each gradient above threshold, a hash computes where it lands in the compact buffer and writes it there directly, without ever counting the nonzeros before it."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "在多卡分布式训练里，真正拖慢速度的往往不是算力，而是每一步都要在 GPU 之间同步梯度。梯度稀疏化（gradient sparsification，简称 GS）本来是为解决这个通信瓶颈而生的：既然大部分梯度都很小，那就只传其中最大的一小部分，通信量自然大幅下降。这个思路在很多论文里都成立。"
+            },
+            {
+              "type": "paragraph",
+              "text": "但这篇 ICML 2022 论文观察到一个让人有点意外的现象：当稀疏化真正跑起来，节省下来的通信时间常常被另一项开销吃回去，那就是「压缩」本身的耗时。为了挑出要传的那一小撮梯度，算法需要在 GPU 上做一系列并行操作，而这些操作在大张量上并不便宜。换句话说，稀疏化解决了通信问题，却又制造了一个新的压缩瓶颈。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文的核心主张很直接：既然稀疏化只需要「近似」的 top-k 梯度，就不应该为一个「精确」的选择算法买单。作者提出 DRAGONN（Distributed Randomized Approximate Gradients of Neural Networks），用直接的随机哈希替换掉现有方法里那套精确的并行前缀和（parallel prefix sum），把压缩开销压到接近理论下界，从而让梯度稀疏化真正在分布式训练里划算起来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "图1 压缩开销随张量变大而失控。左图：随着张量尺寸增大，压缩时间占单步总开销的比例从约 35% 一路升到 90% 附近；右图：当张量超过约 2^24 字节（约 16 MB）后，DGC 与 TopK 的总开销反而超过了完整同步（Full），压缩不再是净收益。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 1 把问题量化了出来。左图显示，张量越大，压缩时间在单步总耗时里占的比重越高，最终逼近 90%；右图更直接：一旦张量超过约 16 MB，主流稀疏化方法（DGC、TopK）的总开销甚至高于什么都不压、直接完整同步（Full）的方案。对小张量而言，稀疏化同样可能得不偿失。也就是说，压缩开销已经从「配角」变成了整个流程里最大的那块成本。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文与代码地址：\n论文 https://proceedings.mlr.press/v162/wang22aj.html\n代码 https://github.com/zhuangwang93/dragonn"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 305.03,
+        "end": 349.66,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 44.63,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.53,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 305.03,
+          "global_end": 349.66,
+          "relative_start": 0.0,
+          "relative_end": 44.63,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "End to end: the more GPUs, the bigger the edge"
+            },
+            {
+              "type": "paragraph",
+              "text": "The evaluation spans four models across vision and recommendation-style workloads: ResNet50 on ImageNet-1K, ViT and MLP-Mixer fine-tuned on Cifar10 (pretrained on ImageNet-21k), and an extreme multi-label classification (XML) model on Wiki10-31K. The testbed is 16 Nvidia Tesla V100-32GB GPUs across two machines, connected by a 25 Gbps network, running PyTorch 1.8.0 with Horovod and NCCL, with memory-momentum error feedback applied uniformly to every sparsifier to preserve accuracy."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "Figure 3. Training throughput for the four models at 4/8/16 GPUs (Images/sec or Samples/sec). The black outline marks ideal linear scaling (Linear-Scaling); DRAGONN (green) sits closest to it in every setting, and its lead over the other methods widens as GPUs are added.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 is the headline result. Green DRAGONN sits closest to the black linear-scaling ceiling across all four models and three GPU counts, clearly above DGC, TopK, and full synchronization. The trend matters as much as the level: from 4 to 16 GPUs, DRAGONN's margin over DGC widens rather than shrinks — the signature of good scalability, and on faster networks, where compression dominates total cost even more, the authors expect it to widen further."
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 1 summarizes the end-to-end speedups at equal convergence (94% accuracy on Cifar10, 80% on Wiki10-31K). DRAGONN reaches up to 3.52× over DGC and up to 35.9× over full synchronization, while matching full synchronization's test accuracy."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. End-to-end training speedup of DRAGONN over DGC and FULL (full synchronization) at equal convergence accuracy (16 GPUs).",
+              "headers": [
+                "Speedup baseline",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "Speed only counts if accuracy holds. Figure 4 overlays the convergence curves for all four models: DRAGONN (green) tracks full synchronization (FULL, blue), DGC, and TopK almost exactly, needing no more iterations to reach the same accuracy. The speedup comes from making the compression step cheaper, not from trading away convergence."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "Figure 4. Convergence comparison across the four models (accuracy vs iteration). DRAGONN (green) overlaps almost perfectly with FULL (blue); per-iteration convergence is unaffected, so the speedup does not cost accuracy.",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "端到端的效果：越多卡，优势越明显"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文在四个模型上做了评测，覆盖视觉与推荐两类负载：ResNet50 在 ImageNet-1K 上训练，ViT 与 MLP-Mixer 在 ImageNet-21k 预训练后于 Cifar10 上微调，以及一个在 Wiki10-31K 上的极端多标签分类（XML）模型。测试平台是 2 台机器共 16 张 Nvidia Tesla V100-32GB，通过 25Gbps 网络互联，软件栈为 PyTorch 1.8.0 + Horovod + NCCL，并对所有稀疏化方法统一使用 memory-momentum 误差反馈以保持精度。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page6_figure3.png",
+              "caption": "图3 四个模型在 4/8/16 张 GPU 下的训练吞吐（Images/sec 或 Samples/sec）。黑色空心框表示理想的线性扩展（Linear-Scaling），绿色 DRAGONN 在所有设置下都最接近这个上界，且随 GPU 数量增加，与其它方法的差距进一步拉大。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page6_figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 是核心结果：绿色的 DRAGONN 在四个模型、三种 GPU 规模下都最靠近黑框代表的线性扩展上界，明显高于 DGC、TopK 和完整同步。更值得注意的是趋势——GPU 从 4 张增加到 16 张时，DRAGONN 相对 DGC 的领先幅度不是缩小而是扩大，说明它的可扩展性更好；作者也指出，在更快的网络上（此时压缩开销在总成本里的占比更高），这一优势预计还会继续放大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "表 1 汇总了达到相同收敛目标（Cifar10 上 94% 精度、Wiki10-31K 上 80% 精度）时的端到端加速比。DRAGONN 相对 DGC 最高可达 3.52×，相对完整同步最高可达 35.9×，同时保持与完整同步一致的测试精度。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 达到相同收敛精度时，DRAGONN 相对 DGC 与 FULL（完整同步）的端到端训练加速比（16 GPU）。",
+              "headers": [
+                "加速比基线",
+                "ResNet50",
+                "ViT",
+                "MLP-Mixer",
+                "XML"
+              ],
+              "rows": [
+                [
+                  "vs DGC",
+                  "1.42×",
+                  "2.15×",
+                  "1.72×",
+                  "3.52×"
+                ],
+                [
+                  "vs FULL",
+                  "2.40×",
+                  "2.45×",
+                  "6.04×",
+                  "35.9×"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "更快的前提是「不掉点」。图 4 把四个模型的收敛曲线画在一起：DRAGONN（绿色）的每步收敛轨迹与完整同步（FULL，蓝色）以及 DGC、TopK 基本重合，达到同样精度所需的迭代数没有变差。这说明 DRAGONN 的提速来自压缩这一步更便宜，而不是靠牺牲收敛质量换来的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page7_figure4.png",
+              "caption": "图4 四个模型在不同稀疏化方法下的收敛对比（精度 vs 迭代数）。DRAGONN（绿色）与 FULL（蓝色）几乎重合，逐迭代收敛质量不受影响，提速并非以掉点为代价。",
+              "width_inches": 6.5,
+              "src": "assets/blog/figures/page7_figure4.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 349.66,
+        "end": 385.05,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 35.39,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.29,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 349.66,
+          "global_end": 385.05,
+          "relative_start": 0.0,
+          "relative_end": 35.39,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "Figure 1. Compression overhead spirals out of control as tensors grow. Left: as tensor size increases, compression time climbs from roughly 35% of the per-step total to nearly 90%. Right: past about 2^24 bytes (~16 MB), the total overhead of DGC and TopK actually exceeds full synchronization (Full) — at that point compression is no longer a net win.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "DRAGONN: turning a sequential selection into a parallel hash"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method is a single move. Pre-allocate a small buffer sized to the compression ratio, and for each gradient G[i] whose magnitude clears a threshold t, compute j = h(i) and write I[j] = i directly. If two indices hash to the same slot, the later write simply overwrites the earlier one; any slot left empty (marked -1) decodes to zero. The whole compression needs just d comparisons plus l hash operations — right up against the d-comparison lower bound."
+            },
+            {
+              "type": "paragraph",
+              "text": "Why is this fast? Memory writes are atomic on GPUs, so thousands of threads can hash and write at once with no ordering dependency between them. The prefix-sum chain — compute the running total before you know the current position — is gone, and compression turns from a sequential, dependency-heavy step into an essentially embarrassingly parallel one. Hash collisions drop a tiny fraction of gradients, but since only an approximate top-k is needed and error feedback carries the residual forward, convergence is unaffected."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper adds two systems-level optimizations that make it work well in practice. The first is efficiency-aware tensor selection: compress a tensor only when its compression time is smaller than the communication it would save, and otherwise fall back to full synchronization — precisely the regime where Figure 1 showed small-tensor compression to be a losing trade. The second is sparse decoding: batch the K compressed tensors received from other workers into a single decode, so decoding cost stays nearly constant no matter how many GPUs participate in the training run."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN's contribution reduces to one judgment: since gradient sparsification only ever needs an approximate top-k, using an exact parallel prefix sum to place those gradients is wasted effort. Replace it with direct randomized hashing and a sequential, dependency-heavy step becomes a massively parallel one, cutting compression time by up to 70%. Paired with efficiency-aware tensor selection and sparse decoding, that yields end-to-end speedups which scale with the cluster and cost nothing in accuracy."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being clear about where the result holds. These numbers come from one testbed — 16 V100 GPUs on a 25 Gbps network — and the four models above; hashing adds a small collision error that the paper absorbs with memory-momentum error feedback. But the core idea stays simple — stop paying for exact selection when an approximate answer was all gradient sparsification ever needed."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/page3_figure1.png",
+              "caption": "图1 压缩开销随张量变大而失控。左图：随着张量尺寸增大，压缩时间占单步总开销的比例从约 35% 一路升到 90% 附近；右图：当张量超过约 2^24 字节（约 16 MB）后，DGC 与 TopK 的总开销反而超过了完整同步（Full），压缩不再是净收益。",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/page3_figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "DRAGONN 的贡献可以浓缩成一个判断：既然梯度稀疏化本来就只需要近似的 top-k 梯度，那么用一个精确的并行前缀和去安放它们就是多余的开销。把它换成直接的随机哈希，一个原本串行、依赖繁重的压缩步骤就变成了可大规模并行的操作，压缩时间最多降低 70%；再配合效率感知张量选择与稀疏解码，就能在不损失精度的前提下拿到端到端可扩展的提速。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要留意的是结论成立的边界。这些结果是在 16 张 V100、25Gbps 网络的特定测试平台上、针对上述四个模型得到的；哈希会引入少量冲突误差，论文依赖 memory-momentum 误差反馈来吸收它。作者也明确指出，DRAGONN 的相对优势与「通信 - 压缩」的比例有关——网络越快、张量越大，压缩越是瓶颈，它的收益也越大；反过来在通信极其昂贵而压缩本就不重的场景里，提升空间会相应变小。总体而言，这项工作把梯度稀疏化里一个长期被忽视的开销点摆到了台面上，并给出了一个足够简单、足够并行的解法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | Gradient Sparsification Was Supposed to Save Time — Then Compression Became the Bottleneck",
+            "subtitle": "Rice University and ThirdAI introduce DRAGONN, which swaps exact parallel prefix sum for direct randomized hashing, cutting compression time by up to 70% and speeding end-to-end training by as much as 3.52×"
+          },
+          "zh": {
+            "title": "ICML 2022 | 梯度稀疏化本想省时间，结果压缩自己成了新瓶颈",
+            "subtitle": "Rice University 与 ThirdAI 提出 DRAGONN：用随机哈希替换精确前缀和，把压缩开销砍掉最多 70%，端到端训练最快提速 3.52×"
+          }
+        }
+      },
+      "segment": {
+        "start": 385.05,
+        "end": 422.43,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 37.38,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 38.28,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 385.05,
+          "global_end": 422.43,
+          "relative_start": 0.0,
+          "relative_end": 37.38,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

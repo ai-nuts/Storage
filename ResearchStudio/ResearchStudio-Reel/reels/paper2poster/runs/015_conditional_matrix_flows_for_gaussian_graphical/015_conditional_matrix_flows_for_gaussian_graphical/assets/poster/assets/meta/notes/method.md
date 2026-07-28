@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A normalizing flow maps a base vector z ∈ R^{d(d+1)/2} through Sum-of-Sigmoids layers, then Fill-Triangular → Positive-Diagonal (softplus) → Cholesky-product (Ω = LLᵀ), guaranteeing Ω is symmetric positive-definite by construction. A hypernetwork conditions the flow on (λ, q), and training minimizes the KL divergence to the unnormalized posterior with a generalized-Normal prior. Cooling the temperature T→0 by simulated annealing recovers the MAP / frequentist path.
+
+Supporting detail: The generalized-Normal prior exp{−λ|ω_ij|^q} recovers the Laplace prior (Lasso, BGL) at q=1 and the Normal prior (Ridge) at q=2. The marginal log-likelihood log p(S|λ,q) is available directly as the loss's normalization constant, at no extra cost. For real data the flow is defined only over the query sub-blocks Ω₁₁, Ω₁₂, avoiding the full precision matrix.
+
+Narration: The flow works on the Cholesky factorization. Any positive-definite matrix is L times L-transpose, so a d-dimensional precision matrix needs only d times d plus one, over two, numbers. The flow pushes a base vector through Sum-of-Sigmoids layers, reshapes it into a triangular matrix, forces the diagonal positive with a softplus, and takes the Cholesky product, so every output is a valid precision matrix with cheap Jacobians. A hypernetwork feeds in lambda and q, and training minimizes the KL divergence to the unnormalized posterior under a generalized-Normal prior. Lasso appears at q equals one, Ridge at q equals two, and smaller q reaches the sub-l-one regime.

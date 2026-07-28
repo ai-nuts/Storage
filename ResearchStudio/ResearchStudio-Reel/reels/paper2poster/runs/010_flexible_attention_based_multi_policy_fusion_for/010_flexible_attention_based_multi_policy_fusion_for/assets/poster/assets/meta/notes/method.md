@@ -1,0 +1,7 @@
+# Method
+
+Core claim: KIAN has three parts: an inner actor that learns the agent's own policy, a learnable key (embedding) for every knowledge policy, and a state-dependent query. A dot-product attention between the query and each key produces fusion weights, and the fused policy predicts the action.
+
+Supporting detail: Because each policy is encoded as an independent key in a shared embedding space, keys are unordered and any policy can be swapped by swapping its key, with no changes elsewhere. For continuous control, one policy is selected via Gumbel-softmax and sampled with the reparameterization trick to keep KIAN differentiable.
+
+Narration: KIAN, the Knowledge-Inclusive Attention Network, is built from three components. The inner actor is a normal learnable policy that lets the agent develop its own strategy, so even if every external policy is useless for a task the agent can still find a solution. Each knowledge policy, including the inner one, is given a learnable embedding vector called its key, which represents the whole policy independent of any state or action. A state-dependent query then produces a vector that is compared to every key by a dot product, and a softmax turns those scores into attention weights. The agent fuses all policies as a weighted sum and samples the final action. Because each key is independent, the policies are unordered, can be rearranged, and any one can be replaced just by replacing its key, without retraining the rest of KIAN.

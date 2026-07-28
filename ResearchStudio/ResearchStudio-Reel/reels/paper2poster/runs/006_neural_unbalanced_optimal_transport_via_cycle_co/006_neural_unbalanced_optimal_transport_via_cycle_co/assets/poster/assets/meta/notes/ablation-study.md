@@ -1,0 +1,7 @@
+# Ablation Study
+
+Core claim: Predicted weights are validated biologically: the summed predicted weights per subpopulation correlate strongly with observed cell-count fractions at 8h (R = 0.95, P = 2.2e-25), with correlation weakening at 24h (R = 0.44, P = 0.004) as severe drug-induced death shrinks observable populations.
+
+Supporting detail: Predicted weights spatially track the proliferation marker Ki67 (weights ≥ 1) and the apoptosis marker ClCasp3 (weights ≤ 1); e.g. under Ulixertinib, MelA⁺ cells proliferate and Sox9⁺ cells die by 24h, matching NubOT's predictions.
+
+Narration: To test whether the predicted mass changes are biologically meaningful, the authors compare them against independent measurements. Summing NubOT's predicted weights within each subpopulation, they find a strong correlation with the observed change in cell counts after eight hours, with a correlation coefficient of point nine five. After twenty-four hours the correlation drops to point four four, because for some drugs the induced cell death is so severe that too few cells remain to evaluate reliably, yet the overall trend still holds. Going further, the predicted weights line up spatially with a proliferation marker, Ki67, where NubOT predicts weights above one, and with an apoptosis marker where it predicts weights below one, confirming that the model is recovering real proliferation and death signals rather than fitting the distribution superficially.

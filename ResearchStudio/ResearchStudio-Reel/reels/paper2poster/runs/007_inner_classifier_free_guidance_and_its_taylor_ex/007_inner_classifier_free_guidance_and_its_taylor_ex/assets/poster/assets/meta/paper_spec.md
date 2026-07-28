@@ -1,0 +1,59 @@
+---
+title: Inner Classifier-Free Guidance and Its Taylor Expansion for Diffusion Models
+authors: Shikun Sun¹², Longhui Wei³, Zhicai Wang⁴, Zixuan Wang¹², Junliang Xing¹², Jia Jia¹², Qi Tian³
+institutes: ¹Tsinghua University; ²BNRist; ³Huawei Inc.; ⁴University of Science and Technology of China
+venue: ICLR 2024
+paper_url: https://openreview.net/forum?id=0QAzIMq32X
+code_url:
+title_audio_script: Classifier-free guidance, or CFG, is the workhorse technique that lets conditional diffusion models trade off between sample diversity and fidelity. But when the condition is continuous, like a text embedding, CFG ignores that structure. This ICLR 2024 paper from Tsinghua University and Huawei introduces Inner Classifier-Free Guidance, or ICFG, a new perspective that treats standard CFG as just the first-order case of a broader Taylor expansion. By adding a second-order term, and without changing how the model is trained, the authors squeeze out a better balance between fidelity and diversity for Stable Diffusion, using only a few extra lines of code.
+---
+
+## Problem
+**Necessary:** Classifier-free guidance (CFG) balances diversity and fidelity in conditional diffusion models, but it imposes no structure on the condition space, so it underutilizes continuity when the condition is continuous.
+**Additional:** For text-based models like Stable Diffusion, a structured continuous condition space could further improve the fidelity–diversity trade-off, yet CFG cannot exploit it.
+**Audio script:** Conditional diffusion models rely on classifier-free guidance to control the balance between how diverse and how faithful their samples are. The problem is that CFG treats the condition as an opaque label; it places no constraints on the condition space. So when that space is actually continuous, like the embedding of a text prompt, all of that continuity goes to waste. The authors ask a pointed question: if the condition lives in a structured continuous space, can we do better than plain CFG?
+
+## Motivation
+**Necessary:** The two dominant guidance approaches, external classifiers and classifier-free guidance, both ignore the geometry of a continuous condition space, leaving the benefits of continuity unexploited.
+**Additional:** In Stable Diffusion the text encoder induces a rich continuous space; if that space has a "cone" structure, guidance could be extended along it to gain new, valuable information.
+**Audio script:** There are two main ways to inject guidance into diffusion models: use an external trained classifier, or use classifier-free guidance that a single model learns jointly. Both work well, but neither says anything about the shape of the condition space. The authors' insight is that a text encoder maps prompts into a continuous space with genuine structure, and if you can identify that structure, you can move along it. That is the opening that motivates inner classifier-free guidance.
+
+## Contribution
+**Necessary:** The paper proposes Inner Classifier-Free Guidance (ICFG), showing that CFG is exactly the first-order case of a Taylor expansion of ICFG around guidance strength β = 1, and derives a second-order implementation that adds new information without changing the training policy.
+**Additional:** It contributes a training policy based on a correlation metric between condition and data, two second-order sampling algorithms (a strict and a practical non-strict version), and a convergence analysis of the Taylor expansion.
+**Audio script:** The central contribution is a reframing: standard CFG is not the whole story, it is just the first-order term of a more general expansion the authors call inner classifier-free guidance. By writing the guided score as a Taylor series in the guidance strength around one, they recover CFG as the first-order case and then add a second-order term. Crucially, this second-order term can be computed from the existing pretrained model, so no retraining is required. They also provide a training policy, two sampling algorithms, and a convergence analysis to back it up.
+
+## Method
+**Necessary:** ICFG expresses the enhanced intermediate distribution as `$q^\theta(x_t\mid c,\beta) \propto q^\theta(x_t)\left[q^\theta(x_t\mid c)/q^\theta(x_t)\right]^{\beta}$` with β = w+1, then Taylor-expands the score predictor εθ(xt|βc) around β = 1. The first-order term reproduces CFG; the second-order term, estimated using a middle point m, injects extra information at sampling time without altering training.
+**Additional:** A training policy (Algorithm 1) rescales the condition by a correlation metric r(x,c) so the model can assess guidance strength; a strict (Algorithm 2) and a practical non-strict (Algorithm 3) sampler realize second-order ICFG on pretrained Stable Diffusion using only a few extra score evaluations.
+**Key equation:** `$\epsilon^\theta(x_t\mid\beta c)=\epsilon^\theta(x_t\mid c)+\sum_{k=1}^{n}\frac{1}{k!}\frac{\partial^k \epsilon^\theta(x_t\mid\beta c)}{\partial\beta^k}\Big|_{\beta=1}(\beta-1)^k+R_n(\beta)$` ; second-order non-strict sampler: `$\epsilon_t=\epsilon^\theta(z_i,c)+w\big(\epsilon^\theta(z_i,c)-\epsilon^\theta(z_i)\big)+\frac{v}{m(1-m)}\big[(1-m)\epsilon^\theta(z_i)+m\,\epsilon^\theta(z_i,c)-\epsilon^\theta(z_i,mc)\big]$`
+**Audio script:** Here is the mechanism. The authors write the guided intermediate distribution as the unconditional distribution times the ratio of conditional to unconditional, raised to a power beta, where beta equals w plus one. They then take a Taylor expansion of the score predictor with respect to beta, evaluated at beta equals one. The first-order term of that expansion is exactly classifier-free guidance. The second-order term is new: it is estimated using a middle point m between zero and one, and it requires only one additional score evaluation of the model at a scaled condition, m times c. Because everything is computed from the already-trained network, second-order ICFG drops into a pretrained Stable Diffusion with just a few lines of code, controlled by a first-order weight w and a second-order weight v.
+
+## Dataset / Benchmark
+**Necessary:** Experiments evaluate text-to-image generation on the MS-COCO validation set, reporting FID for fidelity and CLIP Score for text–image alignment.
+**Additional:** Guidance is tested on pretrained Stable Diffusion, with an additional class-conditional study on U-ViT and few-shot fine-tuning on Stable Diffusion v1.5.
+**Audio script:** The main evaluation is text-to-image generation on the MS-COCO validation set. Two metrics carry the story: FID, which measures image fidelity, where lower is better, and CLIP Score, which measures how well the image matches the prompt, where higher is better. The authors run these on pretrained Stable Diffusion, and they add a class-conditional experiment on the U-ViT architecture plus a few-shot fine-tuning study on Stable Diffusion version one point five.
+
+## Key Result
+**Necessary:** Second-order ICFG improves the FID–CLIP-Score balance over CFG on MS-COCO: at w = 2.0 with v = 0.25 in the full condition space Call, it reaches FID 15.28 and CLIP Score 26.11, beating CFG's FID 15.42 / CLIP 25.80 at the same guidance strength.
+**Additional:** The optimal balance is found at w = 2.0, v = 0.25; the best absolute FID appears in the noun subspace Cnouns, while Call offers a more favorable "cone" structure for balancing the two metrics. On U-ViT, ICFG lowers FID versus CFG across sampling budgets.
+**Audio script:** The headline finding is that the second-order term genuinely helps. On MS-COCO, at a guidance strength of two with the second-order weight set to a quarter, ICFG reaches an FID of fifteen point two eight and a CLIP score of twenty six point one one. That beats classifier-free guidance at the same setting, which gets a worse FID of fifteen point four two and a lower CLIP score of twenty five point eight. So the method improves both fidelity and alignment at once, without touching the training procedure. The authors identify the sweet spot at w equals two and v equals one quarter, and they observe that the full condition space has a more favorable geometry for trading off the two metrics.
+
+## Ablation Study
+**Necessary:** Varying the middle point m (Table 2) yields a "U"-shaped FID, with the best FID of 15.42 at m = 1.1; points too close together miss long-term curvature, while points near 0 or 1 are hard for the model to score.
+**Additional:** Varying sampling steps (Table 3) shows ICFG is already strong at few steps (FID 15.80 at T = 10, improving to 15.28 at T = 50 for Call), and varying w and v maps the fidelity–diversity trade-off across condition spaces Call and Cnouns.
+**Audio script:** Two ablations illuminate the design choices. First, the middle point m, which is used to estimate the second-order term, produces a U-shaped FID curve: if the two points are too close, the estimate can't capture long-term change, and if they drift too near zero or one, the model struggles to score them, with the best value around m equals one point one. Second, varying the number of sampling steps shows the method already produces well-matched images at just ten steps, and continues to improve modestly up to fifty.
+
+## Headline Numbers
+**Necessary:**
+- Best balance: **FID 15.28 / CLIP 26.11** at w = 2.0, v = 0.25, C = Call (vs CFG's 15.42 / 25.80).
+- Best FID from the middle-point sweep: **15.42** at m = 1.1.
+**Additional:**
+- On U-ViT, ICFG cuts FID from **34.23 → 24.69** at the 5k-step budget and reaches **7.92 vs CFG 8.10** at 80k steps.
+- Second-order ICFG adds only **a few lines of code** with **no change to the training policy**.
+**Audio script:** A few numbers to take away. The best fidelity–alignment balance on MS-COCO is an FID of fifteen point two eight and a CLIP score of twenty six point one one, beating classifier-free guidance on both. In the middle-point sweep, the best FID is fifteen point four two at m equal to one point one. On the U-ViT architecture, inner classifier-free guidance cuts FID substantially at low sampling budgets and edges out CFG at high budgets. And all of this comes from adding just a few lines of code, with no change to how the model was trained.
+
+## Takeaway
+**Necessary:** CFG is just the first-order Taylor term of inner classifier-free guidance; adding the second-order term gives Stable Diffusion a better fidelity–diversity balance for free, with no retraining.
+**Additional:** By choosing a condition space with a well-defined "cone" structure, ICFG naturally extends to higher orders, offering a principled path beyond standard guidance.
+**Audio script:** The one-line takeaway is this: classifier-free guidance is not fundamental, it is merely the first-order approximation of a richer expansion. Once you see it that way, adding the next term is straightforward, requires no retraining, and buys you a measurably better trade-off between how faithful and how diverse your generated images are. And because the framework is a Taylor series, it points toward even higher-order guidance when the condition space has the right structure.

@@ -1,0 +1,140 @@
+{
+  "title": "From Fixed Auctions to Contextual Ones: CITransNet Learns Better Mechanisms",
+  "subtitle": "ICML 2022 · Peking University and Google propose a permutation-equivariant transformer that folds public context into automated auction design",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Auction design is one of the oldest and most stubborn problems in computational economics. The goal sounds simple: write down a set of rules that maximizes the seller's expected revenue while staying incentive-compatible, so that no bidder can gain by misreporting what an item is worth to them. Myerson settled the single-item case in 1981. But the moment you move to multiple items, the optimal auction is still not understood four decades later, even for just two bidders and two items."
+    },
+    {
+      "type": "paragraph",
+      "text": "Deep learning has recently offered a fresh angle: treat the auction mechanism itself as a neural network and train it, from data, to maximize revenue subject to a zero-regret constraint. The catch is that existing neural auction designers such as RegretNet and EquivariantNet come with a hard limitation. They either handle only a fixed number of bidders and items, or they assume the auction is symmetric. Real markets break both assumptions: in e-commerce advertising the number of bidders and ad slots changes from round to round, bidders and items each carry rich public features, and the revenue-optimal mechanism is often asymmetric."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICML 2022 paper introduces CITransNet (Context-Integrated Transformer Network), which treats the public context of bidders and items as a first-class input. Built on a transformer, it is naturally permutation-equivariant over both bidders and items, it can represent asymmetric mechanisms, and, crucially, its parameter count does not depend on the auction's size. A model trained at one scale can be applied directly to auctions larger or smaller than any it saw during training."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. The CITransNet architecture. The network takes a bidding matrix b, bidder-contexts x, and item-contexts y; it embeds the contexts and assembles them with the bids into an initial per-bidder-item representation E, passes this through one or more transformer-based interaction layers that model the mutual influence among bidders and items, and reads out the allocation g and payments p in a final output layer. Each interaction layer sums three views of the data (a global average, a transformer applied along each column, and a transformer applied along each row), which captures rich interactions while keeping the mechanism permutation-equivariant.",
+      "width_inches": 4.8
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2201.12489"
+    },
+    {
+      "type": "paragraph",
+      "text": "Code: https://github.com/zjduan/CITransNet"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why context and variable size matter"
+    },
+    {
+      "type": "paragraph",
+      "text": "Classical automated auction design treats each auction as an isolated numerical problem: given a set of bidders' valuations over a set of items, output an allocation and payments. But in real ad auctions, bidders and items are not anonymous. User profiles, advertiser verticals, and product categories are public features that strongly shape what a good mechanism looks like, and ignoring them throws away usable information. At the same time, the number of bidders and slots shifts every round, so a designer whose network is hard-wired to one fixed scale is awkward to deploy. CITransNet targets both problems at once: ingest the context, and accept variable-length input."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "How CITransNet is built"
+    },
+    {
+      "type": "paragraph",
+      "text": "CITransNet builds on the RegretNet learning framework and casts \"design the optimal auction\" as a constrained optimization: among all mechanisms that satisfy individual rationality (IR), minimize the negative expected payment (that is, maximize revenue) while driving each bidder's expected regret (the largest extra utility they could gain by misreporting) to zero. IR is guaranteed by the architecture; the zero-regret condition is approached as a soft constraint during training, using RegretNet's augmented-Lagrangian method. For this contextual setting the paper also proves a sample-complexity bound, showing that a mechanism trained on finitely many samples generalizes with controlled error."
+    },
+    {
+      "type": "paragraph",
+      "text": "The heart of the network is its interaction layer. As Figure 1 shows, the bidder-contexts x and item-contexts y are first embedded into vectors and concatenated with the bids b into a three-dimensional bidder-by-item-by-feature tensor. That tensor then flows through one or more transformer-based interaction layers, and each layer adds three views of the data: a global average over everything, a transformer run down each column (all bidders for a given item), and a transformer run across each row (all items for a given bidder). This lets the model capture the complex give-and-take among bidders and items while staying equivariant to their ordering: swap two bidders at the input and the output simply swaps to match, rather than changing the mechanism. Because none of the parameters are tied to a specific bidder or item count, the same network handles auctions of different sizes."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Experiments: recover the known optimum, then beat strong baselines"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors evaluate on nine synthetic contextual-auction settings. Settings A–C are single-item auctions whose optimal mechanism follows analytically from Myerson's 1981 theory and serve as a sanity check; Settings D–I are multi-item auctions up to 5 bidders × 10 items (to the authors' knowledge the largest auction size studied in the deep auction-design literature) with either discrete contexts or continuous ten-dimensional context vectors. Every number is averaged over five runs."
+    },
+    {
+      "type": "paragraph",
+      "text": "On the single-item settings, CITransNet essentially reproduces the Myerson optimum: in Setting A it earns revenue 0.593 against the analytical optimum of 0.594, with regret below 0.001. Tellingly, the context-free RegretNet and EquivariantNet fall short of the optimum even here, which shows that integrating context is not a nicety but a necessity."
+    },
+    {
+      "type": "paragraph",
+      "text": "The real test is the multi-item settings, where no analytical solution exists and the only yardstick is a strong baseline. Table 1 compares revenue on three representative settings: E (3×10, discrete), F (5×10, discrete, the largest), and G (2×5, continuous context). Item-wise Myerson applies the single-item Myerson auction independently to each item; CIRegretNet and CIEquivariantNet replace CITransNet's transformer interaction layers with RegretNet's fully-connected layers and EquivariantNet's equivariant layers respectively, while still receiving context."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Revenue on three representative multi-item settings (higher is better; regret ≤0.003 in all settings). CITransNet achieves the highest revenue in all six multi-item settings; three are shown here. Its margin over Item-wise Myerson reaches about 5.6% on Setting E and about 9.9% on the continuous-context Setting G.",
+      "headers": [
+        "Method",
+        "E (3×10)",
+        "F (5×10)",
+        "G (2×5, cont.)"
+      ],
+      "rows": [
+        [
+          "Item-wise Myerson",
+          "6.509",
+          "7.376",
+          "1.071"
+        ],
+        [
+          "CIRegretNet",
+          "5.846",
+          "6.339",
+          "1.104"
+        ],
+        [
+          "CIEquivariantNet",
+          "6.703",
+          "7.602",
+          "1.147"
+        ],
+        [
+          "CITransNet",
+          "6.872",
+          "7.778",
+          "1.177"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "CITransNet wins on all six multi-item settings; the three above are representative. It consistently beats the strong Item-wise Myerson baseline, and it also beats CIRegretNet and CIEquivariantNet, which receive the same context. Since the only thing separating those three models is the interaction-layer architecture, the comparison pins the gain squarely on the transformer interaction layers."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Train at one scale, transfer to another"
+    },
+    {
+      "type": "paragraph",
+      "text": "Because CITransNet's parameter count is independent of auction size, it gains an unusual ability: train at one scale and evaluate at another, which the authors call out-of-setting generalization. Figure 2 shows three such experiments. A model trained on one setting is run on auctions with a different number of bidders or items, and compared against the Item-wise Myerson baseline."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/page10_figure2.png",
+      "caption": "Figure 2. Out-of-setting generalization. A model trained at a fixed scale is evaluated on the same kind of auction with a different number of bidders or items; regret stays below 0.001 throughout. (a) Trained on Setting E (3×10, discrete), evaluated across bidder counts; (b) trained on Setting D (2×5, discrete), evaluated across item counts; (c) trained on Setting G (2×5, continuous), evaluated across item counts. The CITransNet curve (blue) stays above the baseline (red) across most unseen sizes.",
+      "width_inches": 6.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Even when faced with bidder or item counts it never saw in training, CITransNet keeps regret low and outperforms the baseline on most unseen sizes. For an online system that constantly juggles a changing number of participants, this train-once, run-across-scales property is genuinely practical."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and limits"
+    },
+    {
+      "type": "paragraph",
+      "text": "The core message is compact: treat public context as a first-class input and process it with a permutation-equivariant transformer, and you can learn auction mechanisms that are near-optimal, asymmetric when they need to be, and incentive-compatible. Because the network's size is independent of the number of bidders and items, one trained model transfers to auction sizes it never saw. The honest caveats: these results are on synthetic data up to a 5×10 scale, zero regret is approached as a soft constraint rather than strictly guaranteed, and there is still distance to a production-scale industrial ad system. Still, as the first architecture to unite contextual features, asymmetric mechanisms, and out-of-setting generalization, CITransNet points a practical direction for learning auctions with neural networks."
+    }
+  ]
+}

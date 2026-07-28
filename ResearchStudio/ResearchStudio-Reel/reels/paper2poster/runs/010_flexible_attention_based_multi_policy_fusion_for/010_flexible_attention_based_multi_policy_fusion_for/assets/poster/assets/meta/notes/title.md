@@ -1,0 +1,3 @@
+# Title
+
+Reinforcement learning agents still learn far less efficiently than humans, who freely borrow strategies from many sources and rearrange them at will. This work, presented at NeurIPS 2023, introduces Knowledge-Grounded Reinforcement Learning, a paradigm that fuses multiple external knowledge policies, and a new actor architecture called the Knowledge-Inclusive Attention Network, or KIAN. KIAN lets an agent add, remove, and recombine knowledge policies without retraining, and fixes an exploration pathology called entropy imbalance, delivering more sample-efficient and flexible learning across grid-world and robotics tasks.

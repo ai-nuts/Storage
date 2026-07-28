@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A mixer generates pseudorandom binary masks M_i with Dirichlet mixing ratios λ_i (Σλ_i = 1). Each client masks its smashed data (Cutout), adds Gaussian noise (DP-Cutout smashed data), and uploads it; the server sums the complementary masked patches from different clients into DP-CutMix smashed data, then continues forward and backward propagation as in vanilla SL.
+
+Supporting detail: Because the per-client masks are mutually exclusive and collectively exhaustive at the patch level, the aggregated DP-CutMix smashed data has no blank patches; only a fraction of each client's noisy smashed data is ever shared with the server.
+
+Narration: Here is DP-CutMixSL step by step. A mixer draws mixing ratios lambda from a Dirichlet distribution and builds a pseudorandom binary mask per client, with on-patches proportional to that client's lambda. Each client runs its input through the lower model to get smashed data, masks it into Cutout smashed data, then adds white Gaussian noise for DP-Cutout smashed data, and uploads it. Because the masks are mutually exclusive and collectively exhaustive at the patch level, the server simply adds the clients' noisy patches into DP-CutMix smashed data with no blank patches, mixing labels by the same lambda weights. Forward and backward propagation then proceed as in vanilla split learning. Crucially, only a noisy fraction of each client's data is ever exposed.

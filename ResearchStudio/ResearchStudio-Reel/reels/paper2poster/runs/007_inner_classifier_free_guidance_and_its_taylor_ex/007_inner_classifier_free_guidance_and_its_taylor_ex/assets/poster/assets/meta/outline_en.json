@@ -1,0 +1,188 @@
+{
+  "title": "ICLR 2024: Classifier-Free Guidance Is Just the First-Order Term",
+  "subtitle": "Tsinghua University and Huawei propose Inner Classifier-Free Guidance (ICFG), a Taylor-expansion view that buys Stable Diffusion a better fidelity-diversity balance with no retraining",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "If you generate images with a diffusion model, you almost certainly use classifier-free guidance (CFG). It exposes a single knob, the guidance strength w, that trades off how faithfully an image follows the text against how diverse the samples are: turn it up for fidelity, down for variety. By now it is a default setting in Stable Diffusion and its descendants."
+    },
+    {
+      "type": "paragraph",
+      "text": "But CFG treats the condition as an opaque label. It makes no assumption about the geometry of the space the condition lives in. When that condition is actually continuous (the embedding a text encoder produces from a prompt), all of that continuity goes unused. Which raises a pointed question: if the condition lives in a structured, continuous space, can we do better than plain CFG?"
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICLR 2024 paper answers with a change of perspective it calls Inner Classifier-Free Guidance (ICFG). Write guidance as a Taylor expansion in the guidance strength β, and the familiar CFG turns out to be exactly its first-order term. Add the second-order term and, without touching how the model is trained, you get a measurably better fidelity-diversity balance for Stable Diffusion, from just a few extra lines of code."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://openreview.net/forum?id=0QAzIMq32X (Shikun Sun et al.; Tsinghua University, BNRist, Huawei, and USTC)."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "What CFG leaves on the table"
+    },
+    {
+      "type": "paragraph",
+      "text": "To see where ICFG comes from, it helps to look inside the sampling loop. The authors track a few quantities as Stable Diffusion samples: the norm of the conditional score εθ(xt|c), the norm of the unconditional score εθ(xt), and the norm of the difference between them; that difference is the direction CFG actually uses to steer the image."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/page6_figure1.png",
+      "caption": "Figure 1. Quantitative relationships inside Stable Diffusion sampling. Over the 50-step sampling process, with diffusion timestep t running from 0 to 1000, the curves show the norm of the conditional score εθ(xt|c), the norm of the unconditional score εθ(xt), and the norm of their difference. Guidance strength is w=3 for the first two panels and w=80 for the last two, all for the prompt \"A photograph of an astronaut riding a horse.\" The conditional and unconditional norms nearly coincide, while the difference norm, the part that actually carries guidance, is small in magnitude and rises and falls non-monotonically over time. That structure is what motivates using a higher-order term.",
+      "width_inches": 6.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Put differently: the conditional and unconditional score curves sit almost on top of each other, and what really decides which way to steer is the small gap between them. CFG amplifies that gap with a single linear weight, but never exploits the continuous geometry of the condition space itself. The authors hypothesize that in Stable Diffusion's text-embedding space the conditions approximately form a \"cone\", and that moving along that cone yields information CFG cannot reach."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: guidance as a Taylor series"
+    },
+    {
+      "type": "paragraph",
+      "text": "ICFG starts by writing the enhanced intermediate distribution as a power form: qθ(xt | c, β) ∝ qθ(xt) · [ qθ(xt|c) / qθ(xt) ]^β, with β = w + 1. Intuitively, β controls how strongly the conditional is amplified relative to the unconditional. The authors then Taylor-expand the score predictor εθ(xt | βc) with respect to β, around β = 1."
+    },
+    {
+      "type": "paragraph",
+      "text": "The key observation is that the first-order term of this expansion is exactly standard CFG. CFG, in other words, is not the whole of guidance: it is only the first term of a Taylor series. The second-order term is genuinely new information, estimated using a \"middle point\" m between 0 and 1, and it costs only one extra forward pass of the model at the scaled condition mc."
+    },
+    {
+      "type": "paragraph",
+      "text": "Concretely, the second-order (non-strict) sampler reads: εt = εθ(zi, c) + w·[ εθ(zi, c) − εθ(zi) ] + ( v / [ m(1−m) ] )·[ (1−m)·εθ(zi) + m·εθ(zi, c) − εθ(zi, mc) ]. The term following w is the original CFG; the term following v is the new second-order correction, which needs the extra evaluation εθ(zi, mc). Because every quantity comes from the already-trained network, second-order ICFG drops into a pretrained Stable Diffusion in a few lines of code, controlled by a first-order weight w and a second-order weight v, with no retraining at all."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Results: improving fidelity and alignment at once"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors evaluate text-to-image generation on the MS-COCO validation set, using FID for image fidelity (lower is better) and CLIP Score for image-text alignment (higher is better). The headline result is that the second-order term genuinely helps: it pushes CFG's trade-off curve toward lower FID and higher CLIP together."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/page8_figure2.png",
+      "caption": "Figure 2. Fidelity-alignment trade-off curves for varying w, v, and condition space C. The left panel plots CFG alongside several second-order ICFG settings on a single FID-CLIP Score plane: the ICFG curves sit down and to the left of CFG, meaning lower FID at comparable alignment. The right panel zooms in at w=3 to compare the full condition space C_all against the noun subspace C_nouns.",
+      "width_inches": 6.4
+    },
+    {
+      "type": "paragraph",
+      "text": "The cleanest comparison holds guidance strength fixed and lines the two methods up. At w=2.0, v=0.25, with the condition space set to C_all, second-order ICFG reaches FID 15.28 / CLIP 26.11, while CFG at the same setting gets FID 15.42 / CLIP 25.80, better on both metrics at once. The authors put the sweet spot at w=2.0, v=0.25, and note that the full space C_all offers a more favorable \"cone\" geometry for balancing the two metrics."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. CFG versus second-order ICFG (v=0.25, C=C_all) at matched guidance strengths on the MS-COCO validation set.",
+      "headers": [
+        "Method",
+        "w",
+        "FID ↓",
+        "CLIP Score ↑"
+      ],
+      "rows": [
+        [
+          "CFG",
+          "1.0",
+          "17.24",
+          "25.03"
+        ],
+        [
+          "CFG",
+          "2.0",
+          "15.42",
+          "25.80"
+        ],
+        [
+          "CFG",
+          "3.0",
+          "16.68",
+          "26.12"
+        ],
+        [
+          "ICFG (v=0.25)",
+          "1.0",
+          "16.40",
+          "25.46"
+        ],
+        [
+          "ICFG (v=0.25)",
+          "2.0",
+          "15.28",
+          "26.11"
+        ],
+        [
+          "ICFG (v=0.25)",
+          "3.0",
+          "16.59",
+          "26.37"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Ablations: the middle point m, sampling steps, and U-ViT"
+    },
+    {
+      "type": "paragraph",
+      "text": "The second-order term is estimated using a middle point m, and its value matters. Sweeping m gives a U-shaped FID curve: place the two points too close together and the estimate misses the long-range curvature; push m too near 0 or 1 and the model struggles to score those points. The best value lands around m=1.1, with FID 15.42."
+    },
+    {
+      "type": "paragraph",
+      "text": "ICFG is also frugal with sampling steps. On C_all, just 10 sampling steps already yield FID 15.80, and pushing to 50 steps only improves it modestly to 15.28, so most of the second-order gain shows up at very few steps."
+    },
+    {
+      "type": "paragraph",
+      "text": "To check that the framework generalizes, the authors also run a class-conditional comparison on the U-ViT architecture. As the table below shows, ICFG's edge is largest at low training budgets (FID drops from 34.23 to 24.69 at 50k steps) and still holds at high budgets (7.92 versus 8.10 at 800k steps)."
+    },
+    {
+      "type": "table",
+      "caption": "Table 2. FID (lower is better) on class-conditional U-ViT for CFG and ICFG, by training steps.",
+      "headers": [
+        "Method",
+        "50k",
+        "100k",
+        "400k",
+        "800k"
+      ],
+      "rows": [
+        [
+          "CFG",
+          "34.23",
+          "13.64",
+          "8.76",
+          "8.10"
+        ],
+        [
+          "ICFG",
+          "24.69",
+          "13.51",
+          "8.68",
+          "7.92"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Costs and boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "ICFG is not free. Second-order sampling needs three forward passes per step rather than two (the extra one estimates the score at mc), which raises sampling time; the authors note this can be amortized by reusing the sampling points from the preceding term. And the training policy relies on more precise data pairs, a requirement that can be eased with a correlation metric r(x, c)."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway"
+    },
+    {
+      "type": "paragraph",
+      "text": "The most useful line in the paper is this: CFG is not fundamental: it is merely the first-order approximation of inner classifier-free guidance. Once you see guidance that way, adding the next term is a natural move that needs no retraining and buys Stable Diffusion a measurably better trade-off between fidelity and diversity. And because the whole framework is a Taylor series, it points toward even higher-order guidance when the condition space has the right \"cone\" structure."
+    }
+  ]
+}

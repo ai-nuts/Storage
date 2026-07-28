@@ -1,0 +1,3 @@
+# Title
+
+This paper, G2N2, presented at ICLR 2024, asks a deceptively simple question: can we design a graph neural network whose expressive power is guaranteed by construction, rather than proved after the fact? The authors give a recipe. They take a fragment of an algebraic matrix language known to match the third-order Weisfeiler-Lehman test, write it as a context-free grammar, prune the grammar down to its essential rules, and then translate those rules directly into the layers of a neural network. The result is a provably three-W-L graph neural network that is both principled and, in practice, faster and more accurate than its competitors.

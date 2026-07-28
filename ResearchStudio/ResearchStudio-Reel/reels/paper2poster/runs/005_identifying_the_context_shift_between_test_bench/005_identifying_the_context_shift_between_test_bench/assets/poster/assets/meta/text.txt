@@ -1,0 +1,587 @@
+                                                     Identifying the Context Shift between Test
+                                                         Benchmarks and Production Data
+                                                                                                     Matthew Groh
+                                                                                                     MIT Media Lab
+                                                                                                     Cambridge, MA
+                                                                                                      groh@mit.edu
+
+
+                                            Abstract—Machine learning models are often brittle on pro-          medical diagnosis (e.g. for skin disease [7], pneumonia [8],
+                                         duction data despite achieving high accuracy on benchmark              critical care [9], etc.), and many other tasks.
+arXiv:2207.01059v2 [cs.LG] 22 Sep 2022
+
+
+
+
+                                         datasets. Benchmark datasets have traditionally served dual               As a standard for comparison, dataset benchmarks have
+                                         purposes: first, benchmarks offer a standard on which machine
+                                         learning researchers can compare different methods, and second,        enabled rapid progress in computer vision and natural lan-
+                                         benchmarks provide a model, albeit imperfect, of the real world.       guage processing. However, despite intentions to create and
+                                         The incompleteness of test benchmarks (and the data upon               curate data that match the real-world as closely as possible, the
+                                         which models are trained) hinder robustness in machine learning,       dynamic, high-dimensional, combinatoric complexity of many
+                                         enable shortcut learning, and leave models systematically prone        real-world tasks can be difficult to fully capture in a single
+                                         to err on out-of-distribution and adversarially perturbed data.
+                                         The mismatch between a single static benchmark dataset and a           static benchmark. Indeed, the development and evaluation of
+                                         production dataset has traditionally been described as a dataset       machine learning models on benchmarks often suffer from a
+                                         shift (or distribution shift with subcategories including covariate    variety of historical, representational, measurement, aggrega-
+                                         shift, prior probability shift, and concept shift). These shifts       tion, and evaluation biases which can be further exacerbated
+                                         are simultaneously over-specified with formal definitions for          by deployment biases where the task that a benchmark is
+                                         comparing two data samples and under-specified for evaluating
+                                         the data-generating process that drives the mismatch between           intended to measure differs from the real-world task [10],
+                                         data samples. In an effort to clarify how to address the mismatch      [11]. Moreover, data for benchmarks are often collected at
+                                         between test benchmarks and production data, we introduce              scale [12], which leaves data open to poisoning attacks [13],
+                                         context shift to describe semantically meaningful changes in the       leakage [14], subjectivity and multiple interpretations [15] and
+                                         underlying data generation process. Moreover, we identify three        error [16]. As a consequence, machine learning models that
+                                         methods for addressing context shift that would otherwise lead to
+                                         model prediction errors: first, we describe how human intuition        appear to be approaching (and sometimes surpassing) human-
+                                         and expert knowledge can identify semantically meaningful              level ability on a test benchmark will often error when shown
+                                         features upon which models systematically fail, second, we detail      out-of-distribution [17] data. In other words, the reliance on
+                                         how dynamic benchmarking – with its focus on capturing the             static test benchmarks as metrics for projecting production
+                                         data generation process – can promote generalizability through         performance [18] inflates the accuracy of machine learning
+                                         corroboration, and third, we highlight that clarifying a model’s
+                                         limitations can reduce unexpected errors. Robust machine learn-        model performance and leaves open the questions, “Can you
+                                         ing is focused on model performance beyond benchmarks, and             trust your model? Will it work in deployment?” [19]
+                                         as such, we consider three model organism domains – facial                The meaning of out-of-distribution data depends on a task’s
+                                         expression recognition, deepfake detection, and medical diagnosis      context. One classic example of out-of-distribution data in
+                                         – to highlight how implicit assumptions in benchmark tasks             object detection tasks from the invariant risk minimization
+                                         lead to errors in practice. By paying close attention to the role
+                                         of context in a prediction task, researchers can design more           literature is an image of a cow on a sandy beach (and
+                                         comprehensive benchmarks, reduce context shift errors, and             similarly a camel on a green pasture) because training data
+                                         increase generalization performance.                                   rarely contains such animal-environment pairs [20]. Such a
+                                            Index Terms—robust machine learning, data-centered machine          lack of uncommon animal-environment pairs leads to machine
+                                         learning, context shift, human-AI collaboration                        learning shortcuts where a model learns spurious correlations
+                                                                                                                (e.g. cloven hoofed mammals next to sand are camels and the
+                                              I. M ACHINE L EARNING M ODELS ARE B RITTLE IN                     ones next to grass are cows). With a priori knowledge of likely
+                                                               P RODUCTION                                      model shortcuts, one approach for addressing this kind of
+                                            Dataset benchmarks offer a standard for comparing and               model brittleness is to include auxiliary labels that can serve as
+                                         evaluating the performance of machine learning models on               a causally-motivated regularization framework [21]. However,
+                                         real-world tasks like object detection [1], handwritten digit          for identifying previously unknown shortcuts, post hoc model
+                                         recognition [2], image captioning [3], general language un-            explanations are often ineffective [22] (though explanations
+                                         derstanding [4], affect recognition [5], deepfake detection [6],       via concept traversals [23] and identifying model failures as
+                                                                                                                directions in latent space via contrastive learning where images
+                                          The author would like to acknowledge funding from the MIT Media Lab   and natural language are embedded in a shared latent space
+                                         member companies                                                       show promise [24]). In contrast, human intuition can identify
+many out-of-distribution contexts on which shortcut learning        distribution context can be very task specific; for example,
+may occur.                                                          spontaneous facial expressions can be out-of-distribution for
+   In one of the clearest examples of the benchmark-production      facial expression benchmarks that primarily contain posed
+gap, researchers closely followed the original dataset gener-       expressions [30] and emotion categories like anger or surprise
+ation processes to build new test sets for two of the most          can be out-of-distribution for the same benchmarks where
+commonly used dataset benchmarks for object recognition,            happy and neutral labels are most common [31].
+ImageNet [1] and CIFAR-10 [25], and found significant drops            Adversarial perturbations – a special case of out-of-
+(ranging from 3% to 15% in 67 models applied to ImageNet            distribution data - offer a systematic method for identifying
+and 34 models applied to CIFAR-10) in the state-of-the-             models’ failures to generalize. Examples of adversarial per-
+art models’ performance from the original benchmarks to             turbations include a small sticker on a stop sign [32], [33], a
+the newly recreated benchmarks. This drop in performance            mainly translucent sticker on the lens of a camera [34], noise
+does not appeared to be explained by random sampling error,         or rotations in medical images, and text substitution in medical
+hyperparameter tuning for optimizing performance on the orig-       notes and reimbursement codes [35] that can fool machine
+inal test set, or obvious changes in semantically meaningful        learning models into picking up patterns from adversarial
+features, but instead the performance gap appears to arise from     perturbations without changing the semantically meaningful
+subtle changes in the data [26]. Although object recognition        features apparent to humans. These adversarial perturbations
+may seem like a straightforward task, it involves many tacit        demonstrate a lack of model robustness [36], lead to model
+contexts.                                                           errors that reasonable humans would rarely make, and open
+   In complex human-centered machine learning applications,         the question: How can we build models that are invariant to
+a task’s context involves answers to the following kinds of         the same semantically meaningful features to which humans
+questions: What is the task? For whom is the task designed?         are invariant? Training robust models with adversarial pertur-
+When and where does it take place? Why is it done? Are              bations is a starting point that tends to align more closely with
+there any interventions happening that might alter features and     human perceptions than standard training [37], but it does not
+labels associated with the task? And how is the task measured?      directly address semantically meaningful features that are only
+The lack of clear answers to these questions indicates that the     indirectly considered when examining distribution shifts.
+model and its evaluation lack generalizability simply because
+it is not clear what the model should generalize. Likewise,           II. S YSTEMATIC E RRORS A RISE FROM C ONTEXT S HIFT
+clear answers to these questions without a corresponding                       W HICH D RIVES D ISTRIBUTION S HIFT
+diverse representation in the benchmark dataset to evaluate            The mismatch between two datasets (that is, a test bench-
+performance along these contexts leave the model prone to           mark and a sample drawn from production data) has been
+generalization errors in out-of-distribution contexts.              traditionally described as a dataset shift [38] and recently
+   As an example of a human-centered machine learning               has been described more frequently as a distribution shift. In
+generalization failure, consider facial recognition. In Joy Buo-    Figure 1, we present the number of papers on Google Scholar
+lamwini’s and Timnit Gebru’s algorithmic audit of facial            containing both “machine learning” and “distribution shift”
+recognition benchmarks and classifiers, they reveal the most        (and other shift keywords).
+commonly used benchmarks were composed of images of peo-
+ple with predominantly light skin – in other words, images of
+people with dark skin were relatively out-of-distribution [27].
+Furthermore, the audit presented a new benchmark to evalu-
+ate accuracy across intersectional identities, and commercial
+gender classification models performed extremely accurately
+in identifying men with light skin (with a maximum error rate
+of less than 1%) but incorrectly in women with dark skin
+(with a maximum error rate of 35%) [27]. This large accuracy
+disparity reveals how failures to generalize can be hidden by
+benchmarks that do not represent the diversity of the real
+world. Research on machine learning applied to the diagnosis
+of skin disease reveals a similar story to facial recognition:
+models trained to classify skin disease based on images of only
+light or dark skin are more accurate in skin tones closest to the
+skin tones in the images in which the model was trained [28].
+These examples corroborate the notion that simply optimizing        Fig. 1. Number of papers on Google Scholar from 2012 to 2021 for search
+for predictive accuracy with very large datasets can often          queries combining “machine learning” + the four most common terms for
+                                                                    distribution shifts. For context, “machine learning” returns 185,000 articles in
+misrepresent the true data generating process and lead to           2012 and 245,000 articles in 2021. The terms “prior probability shift” and
+systematic errors [29].                                             “concept shift” return 398 and 1,040 papers over all time, respectively, when
+   In other domains like affect recognition, an out-of-             paired with “machine learning”.
+Fig. 2. Illustrations of the four kinds of distribution shifts (defined in Moreno et al. 2012 [39]) with spatial positions representing the feature space, geometric
+shapes and colors representing the ground truth label, the solid boundary line representing the learned representation of labels from the original sample, and
+the dotted boundary line representing the learned representation of labels from the shifted sample. Most real-world distribution shifts involve changes across
+features, labels, and the relationship between features and labels, and as such would be characterized as “Other Distribution Shift.” The core problem with
+the conceptual framework of distribution shift is that it is merely a symptom of changes in data-generating processes - how data are created, collected, and
+curated – but not part of the data-generating process itself, which needs to be directly addressed to improve model reliability and robustness.
+
+
+
+   Dataset shift and distribution shift both refer to the non-                     conditional on features changes but everything else remains
+equivalence of the joint distributions between two datasets;                       the same. We illustrate examples of each shift in Figure 2
+formally, distribution shift describes the following equation                      to motivate intuition as to how the changes appear. These
+P1 (y, x) 6= P2 (y, x) where Pn (y, x) is the joint distribution                   distribution shifts have been formally specified as follows [39]:
+of labels, y, and covariates, x for a particular dataset, n [39].                     • Covariate shift: P1 (x) 6= P2 (x) but P1 (y|x) = P2 (y|x)
+Based on Moreno et al 2012, the subcategories of distribution                         • Prior probability shift: P1 (y) 6= P2 (y) but P1 (y|x) =
+shift include covariate shift when the distribution of features                          P2 (y|x)
+changes but everything else remains the same, prior probability                       • Concept drift: P1 (y|x) 6= P2 (y|x) but P1 (x) = P2 (x)
+shift when the distribution of labels changes but everything                          • Other distribution shift: P1 (y, x) 6= P2 (y, x) where none
+else remains the same, and concept shift (more commonly                                  of the above three shifts applies.
+referred to as concept drift) when the distribution of labels                         Although covariate shift, prior probability shift, and concept
+drift can be formally specified, empirically evaluated, and in       time is rare. Nevertheless, people generally have intuition and
+some specific cases mitigated, there has not been and will           the ability to reason about data distributions of combinatoric
+not be a perfect end-to-end solution for generalizing from a         contexts that they might never experience. In fact, cognitive
+benchmark dataset that is not an independent and identically         science research shows that intuitive reasoning about statistical
+distributed (i.i.d.) sample of a data generating process. In the     power analysis begins early in childhood [42].
+language of causal representation learning [40], data are often
+assumed to be observational (sampled from an unchanging              III. A DDRESSING ROBUSTNESS WITH H UMAN I NTUITION
+                                                                                       AND E XPERTISE
+distribution), but in the real world it is often interventional
+(sampled from a changing distribution), and interventions can           Over the last few years, researchers have been developing
+be particularly difficult to directly learn from the data when       data-centered frameworks to offer guidance for breaking down
+data are raw (perceptual inputs like images and audio) as            the data generating process into relevant component parts that
+opposed to hand-crafted (semantically meaningful features)           reveal where context shift may lead to benchmark-production
+because of the combinatorial explosion of potential contexts.        performance gaps. These frameworks include Data Statements
+The core problem with the conceptual framing of distribution         for Natural Language Processing [43], The Dataset Nutrition
+shift is that it is merely a symptom of changes in data-             Label [44], Model Cards for Model Reporting [45], Datasheets
+generating processes - how data are created, collected, and          for Datasets [46], Closing the AI accountability gap [47], The
+curated – but not part of the data-generating process itself,        Ethical Pipeline for Healthcare Model Development [48], and
+which needs to be directly addressed for improving model             The Clinician and Dataset Shift in Artificial Intelligence [49].
+reliability and robustness.                                          Likewise, meta-frameworks offer guidance for ensuring data
+   Context refers to the semantically meaningful upstream            documentation frameworks are useful and actionable [50].
+factors that drive the distribution shift. Machine learning             As a heuristic for human-centered machine learning appli-
+research has long considered the hidden contexts behind the          cations, teams of conscientious, creative, and skilled model
+distribution shift [41]. In this paper, we seek to clarify the       developers, data engineers, and subject matter experts may
+overlapping and often confusing jargon of distribution shift by      find it useful to identify a first-order, non-exhaustive list of
+introducing context shift as a term to describe the semantically     dimensions on which context shift is likely to occur. This
+meaningful features that influence data-generating processes         list of dimensions depends largely on the context and the
+and focusing on how to identify the changes in the creation,         degree to which the data are subjective, representative, and
+collection, and curation of data that lead to distribution shifts.   missing [51]. In ethnographic interviews with machine learn-
+By centering the problem of robustness and generalizability          ing engineers, researchers find that engineers often address
+of applied machine learning on context shift, we expand and          changes in context with “elaborate rule-based guardrails to
+orient the problem space to data-centered human intuition and        avoid incorrect outputs” [52]. Recent examples of semantically
+expertise.                                                           meaningful dimensions that have been demonstrated as useful
+   Rather than focusing on differences in two distributions with     for evaluating robustness in applied machine learning include
+disregard for the reasons behind the difference, we suggest          skin color in face recognition [27] and dermatology diagno-
+researchers consider three concepts that drives semantically         sis [7], [28], background scenery for affect recognition [5],
+meaningful changes in datasets: sample selection bias (e.g. the      number of people in a video for deepfake detection [53],
+new dataset contains images of people from a demographic not         number of chronic illnesses for algorithmic healthcare risk
+represented in the old dataset), adversarial perturbations (e.g.     prediction [54], data artifacts like surgical markings [55] or
+the new dataset contains noise injections that are imperceptible     clinically irrelevant labels [56] for medical diagnosis classifi-
+to the human eye but change model performance), or non-              cation, patients’ self reports of pain for quantifying severity
+stationarity (e.g. the new dataset contains images of smart          of knee osteoarthritis [57], and image similarity characteristics
+phones post 2018 but the old dataset only contains flip              for pathologists to disambiguate between machine learning and
+phones before 2010). While we list non-stationarity separately       user errors [58].
+from sample selection bias, non-stationarity can be considered          Knowledge elicitation is not a solved problem, but helpful
+a special case of sample selection bias where the sample             questions that may guide the identification of potential context
+selection bias is over features and labels which may appear          shifts in complex, human-centered machine learning applica-
+different in the future. We present Figure 3 to illustrate two       tions include (and are not limited to): who are represented
+examples of context shift.                                           in the data and as annotators of the data, when and where
+   Unlike distribution shift, which can be measured between          is the data collected, how do social, geographical, temporal,
+two datasets, context shift can only be fully addressed by           technological, aesthetic, financial incentives and other idiosyn-
+learning the entire population’s data distribution, the kinds of     crasies influence the creation of the data, and why the data
+changes that are and are not perceptible to humans, and how          is curated as it is. Knowledge elicitation has been historically
+the population’s data distribution changes over time and space.      ill-defined in artificial intelligence applications [59], but recent
+Outside of artificially constrained spaces like synthetic datasets   work developing taxonomies for knowledge elicitation helps
+or games, access to the entire populations data distribution         to formalize the process and increase transparency along the
+(or the rules governing the distribution) across space and           way [60], [61].
+Fig. 3. Illustrations of sample selection bias and adversarial perturbations with colors representing the ground truth label, geometric shapes and spatial
+positions representing the features, the top of the funnel representing the full populations, the bottom of the funnel representing the samples drawn from
+the population, and the solid boundary line representing the learned representation of labels from the original sample. On the left, the population contains
+upright stars, rotated stars, hexagons, rectangles, and circles, but the biased original sample only contains circles and stars. The random sample contains much
+higher diversity of features and relationships between features and labels. As such, the learned representation fails in more than 50% of observations. On
+the right, the population contains upright stars and blue circles. The original sample contains the same set of features, but the perturbed sample includes
+both rotated hexagons and stars, which may not be immediately noticeable to humans at first glance. Depending on the rotation, the learned representation
+misclassifies the perturbed shapes. Both pairs of samples present changes in features and changes in labels conditional on the features, which would make
+these examples of “Other Distribution Shift.” This figure is intended to provide intuition for where the perspective of distribution shift is inadequate and where
+the perspective of identifying semantically meaningful features that influence how samples are curated and created can inform approaches for addressing
+robustness in applications of machine learning.
+
+
+
+   Another expert intuition guided approach to closing the                              in the United States. It is important to be careful that
+benchmark-production gap involves developing test bench-                                the task matches the expected goal because unexpected
+marks with adequate diversity in the data along the contex-                             mismatches between tasks and goals are relatively com-
+tual dimensions upon which human intuition and expertise                                mon [65], [66].
+suggests model performance is most likely to vary. Recent                             • Ground truth annotation arbitration: Who has the
+examples of benchmark datasets working towards this goal                                authority to annotate the data? How do experts differ from
+are BREEDS: Benchmarks for Subpopulation Shift [62] and                                 crowdworkers or an algorithm [67]? How should the data
+WILDS: A Benchmark of in-the-Wild Distribution Shifts [63],                             be annotated? How should inter-annotator disagreement
+which includes labels for relative contexts and sub-populations                         be represented? What categories should be included?
+for the explicit examination of context shifts.                                       • Data inclusion and exclusion criteria: What are the
+                                                                                        possible data sources? How are data curated from these
+       IV. A DDRESSING ROBUSTNESS WITH DYNAMIC                                          sources? What is the data distribution of categories and
+                     B ENCHMARKING                                                      subcategories? What are the quality constraints?
+                                                                                      • Benchmark size and shape: What is the minimum size
+   A second approach to addressing the benchmark-production
+gap is to transform the practice of evaluation from static bench-                       of a batch of data to serve as a benchmark? How should
+marks to dynamic benchmarks where models’ performance                                   benchmarks by different groups for the same task be
+is not evaluated on a single dataset, but rather continually                            combined together?
+evaluated on datasets produced via well-specified, quality                           These desiderata enable the development of dynamic bench-
+controlled data generation processes. One example of dynamic                      marks that further enable quantitative evaluation of model
+benchmarking is dynabench [64], which is designed for natural                     robustness via corroborated accuracy, which is the distribution
+language processing tasks. For general development of dy-                         of accuracy scores across dynamic benchmarks. Rather than
+namic benchmarks, data generation process desiderata should                       simply evaluating a model on a single or a few static test
+include specifying the following dimensions of a dynamic                          benchmarks, we might consider a well-corroborated model to
+benchmark:                                                                        be one that meets two criteria: first, it is reasonably available
+   • Prediction task: What are the input features and output                      for evaluation, and second, all attempts to uncover systematic
+     labels? For example, inputs may be images and outputs                        errors in well-specified contexts reveal no significant accuracy
+     may be lists of objects or inputs may be described                           disparities. The practice of dynamic benchmarking could be
+     more specifically as images of skin lesions photographed                     particularly relevant for addressing the AI Knowledge Gap [68]
+     by dermatoscopes and outputs may be classifications of                       characterized by the disparity between the large number of
+     benign and malignant by board-certified dermatologists                       machine learning models and the small number of studies
+evaluating these models’ performance. Furthermore, dynamic         How should we interpret the model’s ability to achieve higher
+benchmarking can be combined with benchmark task mis-              accuracy scores than non-neural network methods on three
+alignment methodologies [69], [70] to assess how aligned (or       of the seven benchmark datasets? What does the distribution
+misaligned) model predictions are with human annotations           of performance tell us about how this model would perform
+and considering diverse examples that bring transparency to        on real-world production data? There is no clear answer to
+the ethical implications and societal impact to model develop-     any of these questions, yet an implicit assumption in the
+ment [71].                                                         well-cited, peer-reviewed publication of this FER paper is the
+   The transition from static benchmarks on a particular in-       slightly improved performance on several benchmark datasets
+stance (or set of instances) to dynamic benchmarks on data         appears to mark a contribution to the field of facial expression
+generation processes defined by explicit desiderate may be         recognition. This assumption has the potential to lead to
+useful for addressing the fundamental issue of construct va-       another more pernicious and mistaken assumption: the role of
+lidity that arises in singular, static benchmarks [47].            contextual features for real-world performance can be ignored
+                                                                   when assessing the state-of-the-art methodology in applied
+     V. A DDRESSING ROBUSTNESS BY C LARIFYING A                    problems like FER.
+                M ODEL’ S L IMITATIONS
+                                                                       Clearly, models can learn facial expression features that map
+   A third approach to reducing the benchmark-production gap       to human annotations of a handful of emotion categories to
+is to appropriately specify the contexts in which a model is       classify images at significantly better than chance rates. But,
+expected to work via a limitations section [72].                   it is not reported nor clear how changes in lighting, head pose,
+   To clarify domain-specific limitations driving the              occlusion, skin tone, ethnicity, age, gender, and background
+benchmark-production gap, we consider implicit assumptions         scenery influence both the model’s performance or human
+that lead to a context shift in three real-world computer vision   annotations. It is also underexplored how well FER models
+tasks: facial expression recognition, deepfake detection, and      would perform if humans of diverse cultures annotated these
+medical diagnosis.                                                 images. Likewise, it is unclear how the model would perform
+                                                                   on more fine-grained emotion categories [89] or labels based
+   VI. M ODEL O RGANISM D OMAINS FOR A DDRESSING
+                                                                   on affective dimensions like valence, arousal, and dominance.
+    C ONTEXT S HIFT IN A PPLIED M ACHINE L EARNING
+                                                                   Furthermore, in many real-world settings where people may
+A. Facial Expression Recognition                                   feign smiles to appease their managers, cry to express joy, or
+   In the field of affective computing, facial expression recog-   appear neutral to hide a winning poker hand, the perspective
+nition (FER) is a task to classify human facial expressions with   of outside observers may be very different than the perspective
+affective labels [31], [73], which can be a useful component       of close friends or individuals themselves. We highlight these
+in designing human-AI interactions with computational em-          relevant contextual features to highlight the many dimensions
+pathy [74]–[76]. Model-based FER is similar to how humans          in which context shift can occur between test benchmarks and
+recognize the emotions of others (called empathic accuracy in      real-world production data. While these are not an exhaustive
+affective science [77] and emotion reasoning in developmental      list of contextual features, these represent intuitive, first-order
+psychology [78]) except that FER is based solely on facial         contexts for conducting algorithmic audits, developing future
+expressions, whereas affect recognition can include informa-       benchmark datasets with these labeled contexts, and adapting
+tion about someone’s gestures, language, tone, physiological       models to handle these dimensions. While researchers build
+measurements, and the long-tail of context, which can include      the next version of contextualized dynamic benchmarks, other
+factors such as the temperature outside, the social relationship   researchers who are focused on developing models should at
+between two individuals, what happened the day before, and         the very least include caveats in their papers about the likely
+more.                                                              contextual dimensions that may affect performance.
+   Consider an example from relatively recent research [79]
+where a standard neural network architecture, AlexNet [80],        B. Deepfake Detection
+is trained on a large number of images of spontaneous and             As a second case study of context shift in real-world
+posed facial expressions to classify images into seven cate-       applications of computer vision, we consider deepfake de-
+gories (anger, disgust, fear, happiness, sadness, surprise, and    tection. Deepfakes are videos that have been manipulated to
+neutral) and achieves accuracy scores ranging from 48.6% in        make someone appear to do or say something they have not
+SFEW [81] to 56.0% in MMI [82] to 56.1% in DISFA [83]              said [90]. These types of manipulation can be qualitatively
+to 61.1% in FER2013 [84] to 77.4% in FERA [85], [86] to            characterized as face swapping where two people’s faces are
+92.2% in CK + [87] to 94.8% in MultiPie [88]. While this           swapped, head puppetry where facial landmarks are adjusted
+model’s accuracy is significantly better than random guessing,     to make someone appear to be speaking, and lip-syncing where
+which would be 14.2%, it varies dramatically depending on          an individual’s lips are moved in sync with the phonemes from
+the chosen benchmark dataset. How should we interpret a            an external audio track [91].
+performance gain of 21.9 percentage points on one dataset             The largest deepfake detection benchmark dataset to date
+and an average performance gain of 3.5 percentage points on        is the Deepfake Detection Competition Dataset (DFDC) [6],
+the other 6 datasets in an alternative network architecture?       [92], which consists of 128,154 videos based on performances
+by 960 consenting actors representing diversity across sex         that state-of-the-art skin disease classification models make
+and ethnicity. However, Groh et al 2022 point out,“Unlike          systematically more errors on dark skin than on light skin.
+viral deepfake videos of politicians and other famous peo-         The DDI represents a more comprehensive benchmark than
+ple, the videos from [this benchmark dataset] have minimal         previous datasets, and as a result, the DDI exposed errors
+context: These are all 10 [second] videos depicting unknown        that should guide and motivate the future development of
+actors making uncontroversial statements in nondescript lo-        machine learning models towards more robustness. However,
+cations” [53]. This deepfake test benchmark is designed to         the DDI is not perfectly comprehensive; the dataset is de-
+evaluate algorithmic performance in identifying videos that        identified for privacy reasons and lacks free text clinical notes
+have (and have not) been manipulated by seven synthetic            and other information that physicians would acquire via an
+techniques.                                                        in-person examination [7]. Given that many skin diseases
+   But, the real-world deepfake detection problem is not simply    appear similarly and expert diagnoses are based on clinical
+identifying whether one of seven synthetic techniques has          history and non-visual features, expert intuition would expect,
+been applied to a video. Instead, the real-world problem is        once again, that systematic errors lurk in the state-of-the-art
+identifying videos that have been algorithmically altered to       machine learning models for store-and-forward skin disease
+impersonate innocent people and deceive the viewer. This           classification.
+problem is more than just a computer vision problem; it is
+a deception detection problem that involves both searching            VII. T OWARDS ROBUSTNESS IN A PPLIED M ACHINE
+for artifacts that reveal that a manipulation has occurred and                         L EARNING
+applying prior knowledge and critical reasoning to assess the         Supervised machine learning models are very good at
+likelihood that the video has been fabricated.                     identifying statistical regularities in a given dataset but tend
+   The DFDC does not include politicians or any scenes of          to err on out-of-distribution data that may arise from sample
+news conferences or people speaking to a large audience. If        selection bias, adversarial perturbation, or nonstationarity. On
+we assume that harmful deepfakes will involve these kinds          the other hand, humans can be quite good at identifying con-
+of contexts (like a deepfake of President Volodomyr Zelensky       textual examples of out-of-distribution data. By combining the
+that appeared in March 2022 [93]), then it is important to eval-   strengths of machine learning models with human intuition and
+uate models on videos with these kinds of dimensions, such as      expertise, early career ancient historians can quickly restore
+those from the Presidential Deepfakes Dataset [94], [95] and       and date ancient texts [99], content moderation teams can more
+the Protecting World Leaders against Deepfakes Dataset [96].       accurately distinguish between real and fake videos [53], and
+When Groh et al 2022 examined the leading state-of-the-art         general practitioners can more accurately diagnose skin condi-
+for detecting DFDC videos on deepfakes of Kim Jung-un and          tions from images [100] (although AI advice can also mislead
+Vladimir Putin, they found the the leading model predicted         experts; see [101]–[105]). In fact, initial evidence suggests
+a 2% and 8% likelihood these videos are deepfakes. While           that human intuition is fairly accurate in predicting model
+failure on two examples is only an anecdote, this failure speaks   misclassifications on common object detection tasks [106].
+to an important need: diverse test benchmarks that cover the       The integration of machine predictions with human decisions
+first-order dimensions where human intuition and expertise         in collaborative decision making systems may be the most
+suggests context shift is most likely to occur.                    immediately effective way to avoid errors from context shift.
+                                                                      Promising future research directions for developing robust
+C. Medical Diagnosis                                               machine learning models under distribution shift involve the
+   As a third case study of context shift, we consider medical     following iterative process: first, identify missing contexts
+diagnosis in store-and-forward teledermatology settings where      in test benchmarks, second, collect data that contain those
+clinical data are collected at one site and sent electronically    missing contexts, and third, adjust the model accordingly.
+for evaluation at another site. Recent research on machine         Researchers can begin to identify missing contexts by collab-
+learning applied to skin disease classification has demonstrated   orating with human experts who may be able to identify first-
+the human expert-level performance of models in a number           order drivers of context shift on a task-by-task basis. Similarly,
+of specific tasks [97], [98]. However, it is unclear how these     researchers can further identify missing contexts by evaluating
+models will perform on people with dark skin because the           models against data generation process desiderata rather than
+first paper does not describe the distribution of ethnicity or     a single or a few datasets.
+skin tone in the evaluation benchmark [97] and the evaluation         Finally, one of the most effective solutions for addressing
+benchmark in the second paper contains only 2.7% of people         the benchmark-production gap is for researchers to clearly
+with the second darkest of the six Fitzpatrick Skin Types          communicate the contexts in which a model has been eval-
+(FSTs) and 1 person with the darkest of the FSTs [98]. Given       uated and the contexts in which the model’s performance is
+the accuracy disparities that appeared across skin types in        unknown.
+facial recognition, expert intuition suggests that systematic
+errors are likely to also appear in skin disease classifiers.                          ACKNOWLEDGMENTS
+   In fact, empirical research corroborates this intuition [28],     I thank Katie Matton, Noah Jones, Robert Lewis, Rosalind
+and the Diverse Dermatology Images (DDI) dataset [7] reveals       Picard, Christelle Godin, Marion Mainsant, Adrien Viault,
+and Jessica Hullman for feedback on early drafts of this                         [20] M. Arjovsky, L. Bottou, I. Gulrajani, and D. Lopez-
+paper, and I thank Zach Lipton and other participants at the                          Paz, “Invariant Risk Minimization,” Mar. 2020, number:
+                                                                                      arXiv:1907.02893 arXiv:1907.02893 [cs, stat]. [Online]. Available:
+ICML Principles of Distribution Shift workshop for additional                         http://arxiv.org/abs/1907.02893
+insightful feedback.                                                             [21] M. Makar, B. Packer, D. Moldovan, D. Blalock, Y. Halpern, and
+                                                                                      A. D’Amour, “Causally motivated shortcut removal using auxiliary
+                                                                                      labels,” in International Conference on Artificial Intelligence and
+                             R EFERENCES                                              Statistics. PMLR, 2022, pp. 739–766.
+                                                                                 [22] J. Adebayo, M. Muelly, H. Abelson, and B. Kim, “Post hoc explana-
+ [1] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei-Fei, “Imagenet:         tions may be ineffective for detecting unknown spurious correlation,”
+     A large-scale hierarchical image database,” in 2009 IEEE conference              in International Conference on Learning Representations, 2021.
+     on computer vision and pattern recognition. Ieee, 2009, pp. 248–255.        [23] A. Ghandeharioun, B. Kim, C.-L. Li, B. Jou, B. Eoff, and R. W.
+ [2] L. Deng, “The mnist database of handwritten digit images for machine             Picard, “Dissect: Disentangled simultaneous explanations via concept
+     learning research [best of the web],” IEEE signal processing magazine,           traversals,” arXiv preprint arXiv:2105.15164, 2021.
+     vol. 29, no. 6, pp. 141–142, 2012.                                          [24] S. Jain, H. Lawrence, A. Moitra, and A. Madry, “Distilling model
+ [3] X. Chen, H. Fang, T.-Y. Lin, R. Vedantam, S. Gupta, P. Dollár, and              failures as directions in latent space,” arXiv preprint arXiv:2206.14754,
+     C. L. Zitnick, “Microsoft coco captions: Data collection and evaluation          2022.
+     server,” arXiv preprint arXiv:1504.00325, 2015.                             [25] A. Krizhevsky, V. Nair, and G. Hinton, “The cifar-10 dataset,” online:
+ [4] A. Wang, A. Singh, J. Michael, F. Hill, O. Levy, and S. R. Bowman,               http://www. cs. toronto. edu/kriz/cifar. html, vol. 55, no. 5, 2014.
+     “Glue: A multi-task benchmark and analysis platform for natural             [26] B. Recht, R. Roelofs, L. Schmidt, and V. Shankar, “Do imagenet
+     language understanding,” arXiv preprint arXiv:1804.07461, 2018.                  classifiers generalize to imagenet?” in International Conference on
+ [5] R. Kosti, J. M. Alvarez, A. Recasens, and A. Lapedriza, “Context Based           Machine Learning. PMLR, 2019, pp. 5389–5400.
+     Emotion Recognition using EMOTIC Dataset,” IEEE Transactions on             [27] J. Buolamwini and T. Gebru, “Gender shades: Intersectional accuracy
+     Pattern Analysis and Machine Intelligence, pp. 1–1, 2019, arXiv:                 disparities in commercial gender classification,” in Conference on
+     2003.13401. [Online]. Available: http://arxiv.org/abs/2003.13401                 fairness, accountability and transparency. PMLR, 2018, pp. 77–91.
+ [6] B. Dolhansky, J. Bitton, B. Pflaum, J. Lu, R. Howes, M. Wang, and           [28] M. Groh, C. Harris, L. Soenksen, F. Lau, R. Han, A. Kim,
+     C. C. Ferrer, “The DeepFake Detection Challenge (DFDC) Dataset,”                 A. Koochek, and O. Badri, “Evaluating Deep Neural Networks
+     arXiv:2006.07397 [cs], Oct. 2020, arXiv: 2006.07397. [Online].                   Trained on Clinical Images in Dermatology with the Fitzpatrick
+     Available: http://arxiv.org/abs/2006.07397                                       17k Dataset,” in 2021 IEEE/CVF Conference on Computer Vision
+ [7] R. Daneshjou, K. Vodrahalli, R. A. Novoa, M. Jenkins, W. Liang,                  and Pattern Recognition Workshops (CVPRW). Nashville, TN,
+     V. Rotemberg, J. Ko, S. M. Swetter, E. E. Bailey, O. Gevaert et al.,             USA: IEEE, Jun. 2021, pp. 1820–1828. [Online]. Available:
+     “Disparities in dermatology ai performance on a diverse, curated                 https://ieeexplore.ieee.org/document/9522867/
+     clinical image set,” Science advances, vol. 8, no. 31, p. eabq6147,         [29] J. Hullman, S. Kapoor, P. Nanayakkara, A. Gelman, and A. Narayanan,
+     2022.                                                                            “The worst of both worlds: A comparative analysis of errors in
+ [8] J. Irvin, P. Rajpurkar, M. Ko, Y. Yu, S. Ciurea-Ilcus, C. Chute,                 learning from data in psychology and machine learning,” arXiv preprint
+     H. Marklund, B. Haghgoo, R. Ball, K. Shpanskaya et al., “Chexpert:               arXiv:2203.06498, 2022.
+     A large chest radiograph dataset with uncertainty labels and expert         [30] D. Dupré, E. G. Krumhuber, D. Küster, and G. J. McKeown, “A
+     comparison,” in Proceedings of the AAAI conference on artificial                 performance comparison of eight commercially available automatic
+     intelligence, vol. 33, no. 01, 2019, pp. 590–597.                                classifiers for facial affect recognition,” PLOS ONE, vol. 15, no. 4, p.
+ [9] A. E. Johnson, T. J. Pollard, L. Shen, L.-w. H. Lehman, M. Feng,                 e0231968, Apr. 2020. [Online]. Available: https://dx.plos.org/10.1371/
+     M. Ghassemi, B. Moody, P. Szolovits, L. Anthony Celi, and R. G.                  journal.pone.0231968
+     Mark, “Mimic-iii, a freely accessible critical care database,” Scientific   [31] S. Li and W. Deng, “Deep Facial Expression Recognition: A Survey,”
+     data, vol. 3, no. 1, pp. 1–9, 2016.                                              IEEE Transactions on Affective Computing, pp. 1–1, 2020. [Online].
+[10] H. Suresh and J. Guttag, “A framework for understanding sources of               Available: https://ieeexplore.ieee.org/document/9039580/
+     harm throughout the machine learning life cycle,” in Equity and access      [32] T. B. Brown, D. Mané, A. Roy, M. Abadi, and J. Gilmer, “Adversarial
+     in algorithms, mechanisms, and optimization, 2021, pp. 1–9.                      patch,” arXiv preprint arXiv:1712.09665, 2017.
+[11] R. Srinivasan and A. Chander, “Biases in ai systems,” Communications        [33] K. Eykholt, I. Evtimov, E. Fernandes, B. Li, A. Rahmati, C. Xiao,
+     of the ACM, vol. 64, no. 8, pp. 44–49, 2021.                                     A. Prakash, T. Kohno, and D. Song, “Robust physical-world attacks
+[12] O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma,                   on deep learning visual classification,” in Proceedings of the IEEE
+     Z. Huang, A. Karpathy, A. Khosla, M. Bernstein et al., “Imagenet large           conference on computer vision and pattern recognition, 2018, pp.
+     scale visual recognition challenge,” International journal of computer           1625–1634.
+     vision, vol. 115, no. 3, pp. 211–252, 2015.                                 [34] J. Li, F. Schmidt, and Z. Kolter, “Adversarial camera stickers: A phys-
+[13] X. Chen, C. Liu, B. Li, K. Lu, and D. Song, “Targeted                            ical camera-based attack on deep learning systems,” in International
+     Backdoor Attacks on Deep Learning Systems Using Data Poisoning,”                 Conference on Machine Learning. PMLR, 2019, pp. 3896–3904.
+     arXiv:1712.05526 [cs], Dec. 2017, arXiv: 1712.05526. [Online].              [35] S. G. Finlayson, J. D. Bowers, J. Ito, J. L. Zittrain, A. L. Beam, and I. S.
+     Available: http://arxiv.org/abs/1712.05526                                       Kohane, “Adversarial attacks on medical machine learning,” Science,
+[14] S. Kapoor and A. Narayanan, “Leakage and the reproducibility crisis              vol. 363, no. 6433, pp. 1287–1289, 2019.
+     in ml-based science,” arXiv preprint arXiv:2207.07048, 2022.                [36] A. Ilyas, S. Santurkar, D. Tsipras, L. Engstrom, B. Tran, and A. Madry,
+[15] M. L. Gordon, M. S. Lam, J. S. Park, K. Patel, J. T.                             “Adversarial examples are not bugs, they are features,” Advances in
+     Hancock, T. Hashimoto, and M. S. Bernstein, “Jury Learning:                      neural information processing systems, vol. 32, 2019.
+     Integrating Dissenting Voices into Machine Learning Models,”                [37] D. Tsipras, S. Santurkar, L. Engstrom, A. Turner, and A. Madry,
+     arXiv:2202.02950 [cs], Feb. 2022, arXiv: 2202.02950. [Online].                   “Robustness may be at odds with accuracy,” arXiv preprint
+     Available: http://arxiv.org/abs/2202.02950                                       arXiv:1805.12152, 2018.
+[16] C. G. Northcutt, A. Athalye, and J. Mueller, “Pervasive Label               [38] J. Quiñonero-Candela, M. Sugiyama, A. Schwaighofer, and N. D.
+     Errors in Test Sets Destabilize Machine Learning Benchmarks,”                    Lawrence, Dataset shift in machine learning, 2008.
+     arXiv:2103.14749 [cs, stat], Apr. 2021, arXiv: 2103.14749. [Online].        [39] J. G. Moreno-Torres, T. Raeder, R. Alaiz-Rodrı́guez, N. V. Chawla, and
+     Available: http://arxiv.org/abs/2103.14749                                       F. Herrera, “A unifying view on dataset shift in classification,” Pattern
+[17] A. Torralba and A. A. Efros, “Unbiased look at dataset bias,” in CVPR            recognition, vol. 45, no. 1, pp. 521–530, 2012.
+     2011. IEEE, 2011, pp. 1521–1528.                                            [40] B. Schölkopf, F. Locatello, S. Bauer, N. R. Ke, N. Kalchbrenner,
+[18] R. L. Thomas and D. Uminsky, “Reliance on metrics is a fundamental               A. Goyal, and Y. Bengio, “Toward causal representation learning,”
+     challenge for ai,” Patterns, vol. 3, no. 5, p. 100476, 2022.                     Proceedings of the IEEE, vol. 109, no. 5, pp. 612–634, 2021.
+[19] Z. C. Lipton, “The mythos of model interpretability,” Communications        [41] G. Widmer and M. Kubat, “Learning in the presence of concept drift
+     of the ACM, vol. 61, no. 10, pp. 36–43, Sep. 2018. [Online]. Available:          and hidden contexts,” Machine learning, vol. 23, no. 1, pp. 69–101,
+     https://dl.acm.org/doi/10.1145/3233231                                           1996.
+[42] M. C. Pelz, K. R. Allen, J. B. Tenenbaum, and L. E. Schulz, “Founda-        [59] D. E. Forsythe, “Engineering knowledge: The construction of knowl-
+     tions of intuitive power analyses in children and adults,” Nature Human          edge in artificial intelligence,” Social studies of science, vol. 23, no. 3,
+     Behaviour, pp. 1–12, 2022.                                                       pp. 445–477, 1993.
+[43] E. M. Bender and B. Friedman, “Data statements for natural language         [60] D. Kerrigan, J. Hullman, and E. Bertini, “A survey of domain knowl-
+     processing: Toward mitigating system bias and enabling better science,”          edge elicitation in applied machine learning,” Multimodal Technologies
+     Transactions of the Association for Computational Linguistics, vol. 6,           and Interaction, vol. 5, no. 12, p. 73, 2021.
+     pp. 587–604, 2018.                                                          [61] V. Chen, U. Bhatt, H. Heidari, A. Weller, and A. Talwalkar, “Per-
+[44] S. Holland, A. Hosny, S. Newman, J. Joseph, and K. Chmielinski,                  spectives on incorporating expert feedback into model updates,” arXiv
+     “The dataset nutrition label: A framework to drive higher data quality           preprint arXiv:2205.06905, 2022.
+     standards,” arXiv preprint arXiv:1805.03677, 2018.                          [62] S. Santurkar, D. Tsipras, and A. Madry, “BREEDS: Benchmarks
+[45] M. Mitchell, S. Wu, A. Zaldivar, P. Barnes, L. Vasserman, B. Hutchin-            for Subpopulation Shift,” Aug. 2020, number: arXiv:2008.04859
+     son, E. Spitzer, I. D. Raji, and T. Gebru, “Model cards for model                arXiv:2008.04859 [cs, stat]. [Online]. Available: http://arxiv.org/abs/
+     reporting,” in Proceedings of the conference on fairness, accountability,        2008.04859
+     and transparency, 2019, pp. 220–229.                                        [63] P. W. Koh, S. Sagawa, H. Marklund, S. M. Xie, M. Zhang,
+[46] T. Gebru, J. Morgenstern, B. Vecchione, J. W. Vaughan, H. Wallach,               A. Balsubramani, W. Hu, M. Yasunaga, R. L. Phillips, I. Gao,
+     H. D. Iii, and K. Crawford, “Datasheets for datasets,” Communications            T. Lee, E. David, I. Stavness, W. Guo, B. A. Earnshaw, I. S. Haque,
+     of the ACM, vol. 64, no. 12, pp. 86–92, 2021.                                    S. Beery, J. Leskovec, A. Kundaje, E. Pierson, S. Levine, C. Finn, and
+[47] I. D. Raji, E. M. Bender, A. Paullada, E. Denton, and A. Hanna,                  P. Liang, “WILDS: A Benchmark of in-the-Wild Distribution Shifts,”
+     “AI and the Everything in the Whole Wide World Benchmark,”                       arXiv:2012.07421 [cs], Jul. 2021, arXiv: 2012.07421. [Online].
+     arXiv:2111.15366 [cs], Nov. 2021, arXiv: 2111.15366. [Online].                   Available: http://arxiv.org/abs/2012.07421
+     Available: http://arxiv.org/abs/2111.15366
+                                                                                 [64] D. Kiela, M. Bartolo, Y. Nie, D. Kaushik, A. Geiger, Z. Wu, B. Vidgen,
+[48] I. Y. Chen, E. Pierson, S. Rose, S. Joshi, K. Ferryman, and
+                                                                                      G. Prasad, A. Singh, P. Ringshia et al., “Dynabench: Rethinking
+     M. Ghassemi, “Ethical Machine Learning in Health Care,”
+                                                                                      benchmarking in nlp,” arXiv preprint arXiv:2104.14337, 2021.
+     arXiv:2009.10576 [cs], Oct. 2020, arXiv: 2009.10576. [Online].
+     Available: http://arxiv.org/abs/2009.10576                                  [65] S. Mullainathan and Z. Obermeyer, “On the Inequity of Predicting
+                                                                                      A While Hoping for B,” AEA Papers and Proceedings, vol. 111, pp.
+[49] S. G. Finlayson, A. Subbaswamy, K. Singh, J. Bowers, A. Kupke,
+                                                                                      37–42, May 2021. [Online]. Available: https://pubs.aeaweb.org/doi/10.
+     J. Zittrain, I. S. Kohane, and S. Saria, “The Clinician and Dataset
+                                                                                      1257/pandp.20211078
+     Shift in Artificial Intelligence,” New England Journal of Medicine,
+     vol. 385, no. 3, pp. 283–286, Jul. 2021. [Online]. Available:               [66] S. Kerr, “On the folly of rewarding a, while hoping for b,” Academy
+     http://www.nejm.org/doi/10.1056/NEJMc2104626                                     of Management journal, vol. 18, no. 4, pp. 769–783, 1975.
+[50] A. Heger, E. B. Marquis, M. Vorvoreanu, H. Wallach, and J. W.               [67] M. Groh, C. Harris, R. Daneshjou, O. Badri, and A. Koochek,
+     Vaughan, “Understanding machine learning practitioners’ data doc-                “Towards transparency in dermatology image datasets with skin tone
+     umentation perceptions, needs, challenges, and desiderata,” arXiv                annotations by experts, crowds, and an algorithm,” arXiv preprint
+     preprint arXiv:2206.02923, 2022.                                                 arXiv:2207.02942, 2022.
+[51] S. Mullainathan and Z. Obermeyer, “Does Machine Learning Automate           [68] Z. Epstein, B. H. Payne, J. H. Shen, A. Dubey, B. Felbo,
+     Moral Hazard and Error?” vol. 107, no. 5, p. 5, 2017.                            M. Groh, N. Obradovich, M. Cebrian, and I. Rahwan, “Closing
+[52] S. Shankar, R. Garcia, J. M. Hellerstein, and A. G. Parameswaran,                the AI Knowledge Gap,” arXiv:1803.07233 [cs], Mar. 2018, arXiv:
+     “Operationalizing machine learning: An interview study,” 2022.                   1803.07233. [Online]. Available: http://arxiv.org/abs/1803.07233
+     [Online]. Available: https://arxiv.org/abs/2209.09125                       [69] D. Tsipras, S. Santurkar, L. Engstrom, A. Ilyas, and A. Madry, “From
+[53] M. Groh, Z. Epstein, C. Firestone, and R. Picard, “Deepfake                      imagenet to image classification: Contextualizing progress on bench-
+     detection by human crowds, machines, and machine-informed                        marks,” in International Conference on Machine Learning. PMLR,
+     crowds,” Proceedings of the National Academy of Sciences, vol.                   2020, pp. 9625–9635.
+     119, no. 1, p. e2110013119, Jan. 2022. [Online]. Available:                 [70] A. Ilyas, S. M. Park, L. Engstrom, G. Leclerc, and A. Madry,
+     http://www.pnas.org/lookup/doi/10.1073/pnas.2110013119                           “Datamodels: Understanding predictions with data and data with pre-
+[54] Z. Obermeyer, B. Powers, C. Vogeli, and S. Mullainathan, “Dissecting             dictions,” in International Conference on Machine Learning. PMLR,
+     racial bias in an algorithm used to manage the health of                         2022, pp. 9525–9587.
+     populations,” Science, vol. 366, no. 6464, pp. 447–453, Oct. 2019.          [71] A. Paullada, I. D. Raji, E. M. Bender, E. Denton, and A. Hanna, “Data
+     [Online]. Available: https://www.sciencemag.org/lookup/doi/10.1126/              and its (dis) contents: A survey of dataset development and use in
+     science.aax2342                                                                  machine learning research,” Patterns, vol. 2, no. 11, p. 100336, 2021.
+[55] J. K. Winkler, C. Fink, F. Toberer, A. Enk, T. Deinlein, R. Hofmann-        [72] J. J. Smith, S. Amershi, S. Barocas, H. Wallach, and J. Wort-
+     Wellenhof, L. Thomas, A. Lallas, A. Blum, W. Stolz, and                          man Vaughan, “Real ml: Recognizing, exploring, and articulating
+     H. A. Haenssle, “Association Between Surgical Skin Markings in                   limitations of machine learning research,” in 2022 ACM Conference
+     Dermoscopic Images and Diagnostic Performance of a Deep Learning                 on Fairness, Accountability, and Transparency, 2022, pp. 587–597.
+     Convolutional Neural Network for Melanoma Recognition,” JAMA                [73] J. F. Cohn and F. De la Torre, “Automated face analysis for affective
+     Dermatology, vol. 155, no. 10, p. 1135, Oct. 2019. [Online]. Available:          computing.” 2015.
+     https://jamanetwork.com/journals/jamadermatology/fullarticle/2740808
+                                                                                 [74] R. W. Picard, Affective computing, 2000.
+[56] L. Oakden-Rayner, J. Dunnmon, G. Carneiro, and C. Re, “Hidden
+     stratification causes clinically meaningful failures in machine             [75] A. Paiva, I. Leite, H. Boukricha, and I. Wachsmuth, “Empathy in
+     learning for medical imaging,” in Proceedings of the ACM                         virtual agents and robots: A survey,” ACM Transactions on Interactive
+     Conference on Health, Inference, and Learning. Toronto Ontario                   Intelligent Systems (TiiS), vol. 7, no. 3, pp. 1–40, 2017.
+     Canada: ACM, Apr. 2020, pp. 151–159. [Online]. Available:                   [76] M. Groh, C. Ferguson, R. Lewis, and R. Picard, “Computational
+     https://dl.acm.org/doi/10.1145/3368555.3384468                                   empathy counteracts the negative effects of anger on creative problem
+[57] E. Pierson, D. M. Cutler, J. Leskovec, S. Mullainathan, and                      solving,” arXiv preprint arXiv:2208.07178, 2022.
+     Z. Obermeyer, “An algorithmic approach to reducing unexplained              [77] W. Ickes, “Empathic accuracy,” Journal of personality, vol. 61, no. 4,
+     pain disparities in underserved populations,” Nature Medicine,                   pp. 587–610, 1993.
+     vol. 27, no. 1, pp. 136–140, Jan. 2021. [Online]. Available:                [78] A. L. Ruba and S. D. Pollak, “The Development of Emotion
+     http://www.nature.com/articles/s41591-020-01192-7                                Reasoning in Infancy and Early Childhood,” Annual Review of
+[58] C. J. Cai, M. C. Stumpe, M. Terry, E. Reif, N. Hegde, J. Hipp,                   Developmental Psychology, vol. 2, no. 1, pp. 503–531, Dec.
+     B. Kim, D. Smilkov, M. Wattenberg, F. Viegas, and G. S. Corrado,                 2020. [Online]. Available: https://www.annualreviews.org/doi/10.1146/
+     “Human-Centered Tools for Coping with Imperfect Algorithms                       annurev-devpsych-060320-102556
+     During Medical Decision-Making,” in Proceedings of the 2019                 [79] A. Mollahosseini, D. Chan, and M. H. Mahoor, “Going deeper in facial
+     CHI Conference on Human Factors in Computing Systems - CHI                       expression recognition using deep neural networks,” in 2016 IEEE
+     ’19. Glasgow, Scotland Uk: ACM Press, 2019, pp. 1–14. [Online].                  Winter conference on applications of computer vision (WACV). IEEE,
+     Available: http://dl.acm.org/citation.cfm?doid=3290605.3300234                   2016, pp. 1–10.
+ [80] A. Krizhevsky, I. Sutskever, and G. E. Hinton, “Imagenet classification           DeSalvo, G. S. Corrado, L. Peng, D. R. Webster, R. C. Dunn,
+      with deep convolutional neural networks,” Advances in neural infor-               D. Coz, S. J. Huang, Y. Liu, P. Bui, and Y. Liu, “Development
+      mation processing systems, vol. 25, 2012.                                         and Assessment of an Artificial Intelligence–Based Tool for Skin
+ [81] A. Dhall, R. Goecke, S. Lucey, and T. Gedeon, “Static facial expression           Condition Diagnosis by Primary Care Physicians and Nurse
+      analysis in tough conditions: Data, evaluation protocol and benchmark,”           Practitioners in Teledermatology Practices,” JAMA Network Open,
+      in 2011 IEEE International Conference on Computer Vision Workshops                vol. 4, no. 4, p. e217249, Apr. 2021. [Online]. Available: https:
+      (ICCV Workshops). IEEE, 2011, pp. 2106–2112.                                      //jamanetwork.com/journals/jamanetworkopen/fullarticle/2779250
+ [82] M. Pantic, M. Valstar, R. Rademaker, and L. Maat, “Web-based                [101] P. Tschandl, C. Rinner, Z. Apalla, G. Argenziano, N. Codella,
+      database for facial expression analysis,” in 2005 IEEE international              A. Halpern, M. Janda, A. Lallas, C. Longo, J. Malvehy, J. Paoli,
+      conference on multimedia and Expo. IEEE, 2005, pp. 5–pp.                          S. Puig, C. Rosendahl, H. P. Soyer, I. Zalaudek, and H. Kittler,
+ [83] S. M. Mavadati, M. H. Mahoor, K. Bartlett, P. Trinh, and J. F.                    “Human–computer collaboration for skin cancer recognition,” Nature
+      Cohn, “Disfa: A spontaneous facial action intensity database,” IEEE               Medicine, vol. 26, no. 8, pp. 1229–1234, Aug. 2020. [Online].
+      Transactions on Affective Computing, vol. 4, no. 2, pp. 151–160, 2013.            Available: http://www.nature.com/articles/s41591-020-0942-0
+ [84] I. J. Goodfellow, D. Erhan, P. L. Carrier, A. Courville, M. Mirza,          [102] A. Abeliuk, D. M. Benjamin, F. Morstatter, and A. Galstyan,
+      B. Hamner, W. Cukierski, Y. Tang, D. Thaler, D.-H. Lee et al.,                    “Quantifying machine influence over human forecasters,” Scientific
+      “Challenges in representation learning: A report on three machine                 Reports, vol. 10, no. 1, p. 15940, Dec. 2020. [Online]. Available:
+      learning contests,” in International conference on neural information             http://www.nature.com/articles/s41598-020-72690-4
+      processing. Springer, 2013, pp. 117–124.                                    [103] S. Gaube, H. Suresh, M. Raue, A. Merritt, S. J. Berkowitz, E. Lermer,
+ [85] M. F. Valstar, B. Jiang, M. Mehu, M. Pantic, and K. Scherer, “The first           J. F. Coughlin, J. V. Guttag, E. Colak, and M. Ghassemi, “Do as
+      facial expression recognition and analysis challenge,” in 2011 IEEE               AI say: susceptibility in deployment of clinical decision-aids,” npj
+      International Conference on Automatic Face & Gesture Recognition                  Digital Medicine, vol. 4, no. 1, p. 31, Dec. 2021. [Online]. Available:
+      (FG). IEEE, 2011, pp. 921–926.                                                    http://www.nature.com/articles/s41746-021-00385-9
+ [86] T. Bänziger and K. R. Scherer, “Introducing the geneva multimodal          [104] M. Jacobs, M. F. Pradier, T. H. McCoy, R. H. Perlis, F. Doshi-Velez,
+      emotion portrayal (gemep) corpus,” Blueprint for affective computing:             and K. Z. Gajos, “How machine-learning recommendations influence
+      A sourcebook, vol. 2010, pp. 271–94, 2010.                                        clinician treatment selections: the example of antidepressant selection,”
+ [87] P. Lucey, J. F. Cohn, T. Kanade, J. Saragih, Z. Ambadar, and                      Translational Psychiatry, vol. 11, no. 1, p. 108, Jun. 2021. [Online].
+      I. Matthews, “The extended cohn-kanade dataset (ck+): A complete                  Available: http://www.nature.com/articles/s41398-021-01224-x
+      dataset for action unit and emotion-specified expression,” in 2010          [105] M. Vaccaro and J. Waldo, “The effects of mixing machine learning and
+      ieee computer society conference on computer vision and pattern                   human judgment,” Communications of the ACM, vol. 62, no. 11, pp.
+      recognition-workshops. IEEE, 2010, pp. 94–101.                                    104–110, 2019.
+ [88] R. Gross, I. Matthews, J. Cohn, T. Kanade, and S. Baker, “Multi-pie,”       [106] Z. Zhou, M. Nartker, and C. Firestone, “When will ai misclassify?
+      Image and vision computing, vol. 28, no. 5, pp. 807–813, 2010.                    human intuition for machine (mis) perception,” Journal of Vision,
+ [89] A. S. Cowen, D. Keltner, F. Schroff, B. Jou, H. Adam, and G. Prasad,              vol. 20, no. 11, pp. 1325–1325, 2020.
+      “Sixteen facial expressions occur in similar contexts worldwide,”
+      Nature, vol. 589, no. 7841, pp. 251–257, Jan. 2021. [Online].
+      Available: http://www.nature.com/articles/s41586-020-3037-7
+ [90] D. Boneh, A. J. Grotto, P. McDaniel, and N. Papernot, “Preparing for
+      the age of deepfakes and disinformation.”
+ [91] S. Lyu, “DeepFake Detection: Current Challenges and Next Steps,”
+      arXiv:2003.09234 [cs], Mar. 2020, arXiv: 2003.09234. [Online].
+      Available: http://arxiv.org/abs/2003.09234
+ [92] B. Dolhansky, R. Howes, B. Pflaum, N. Baram, and C. C. Ferrer,
+      “The Deepfake Detection Challenge (DFDC) Preview Dataset,”
+      arXiv:1910.08854 [cs], Oct. 2019, arXiv: 1910.08854. [Online].
+      Available: http://arxiv.org/abs/1910.08854
+ [93] J. Wakefield, “Deepfake presidents used in russia-ukraine
+      war,” Mar 2022. [Online]. Available: https://www.bbc.com/news/
+      technology-60780142
+ [94] A. Sankaranarayanan, M. Groh, R. Picard, and A. Lippman, “The
+      presidential deepfakes dataset,” 2021.
+ [95] M. Groh, A. Sankaranarayanan, and R. Picard, “Human detection of
+      political deepfakes across transcripts, audio, and video,” arXiv preprint
+      arXiv:2202.12883, 2022.
+ [96] S. Agarwal, H. Farid, Y. Gu, M. He, K. Nagano, and H. Li, “Protecting
+      world leaders against deep fakes.” 2019.
+ [97] A. Esteva, B. Kuprel, R. A. Novoa, J. Ko, S. M. Swetter, H. M. Blau,
+      and S. Thrun, “Dermatologist-level classification of skin cancer with
+      deep neural networks,” Nature, vol. 542, no. 7639, pp. 115–118, Feb.
+      2017. [Online]. Available: http://www.nature.com/articles/nature21056
+ [98] Y. Liu, A. Jain, C. Eng, D. H. Way, K. Lee, P. Bui, K. Kanada,
+      G. de Oliveira Marinho, J. Gallegos, S. Gabriele, V. Gupta, N. Singh,
+      V. Natarajan, R. Hofmann-Wellenhof, G. S. Corrado, L. H. Peng,
+      D. R. Webster, D. Ai, S. J. Huang, Y. Liu, R. C. Dunn, and D. Coz,
+      “A deep learning system for differential diagnosis of skin diseases,”
+      Nature Medicine, vol. 26, no. 6, pp. 900–908, Jun. 2020. [Online].
+      Available: http://www.nature.com/articles/s41591-020-0842-3
+ [99] Y. Assael, T. Sommerschield, B. Shillingford, M. Bordbar,
+      J. Pavlopoulos, M. Chatzipanagiotou, I. Androutsopoulos,
+      J. Prag, and N. de Freitas, “Restoring and attributing
+      ancient texts using deep neural networks,” Nature, vol. 603,
+      no. 7900, pp. 280–283, Mar. 2022. [Online]. Available:
+      https://www.nature.com/articles/s41586-022-04448-z
+[100] A. Jain, D. Way, V. Gupta, Y. Gao, G. de Oliveira Marinho,
+      J. Hartford, R. Sayres, K. Kanada, C. Eng, K. Nagpal, K. B.
+

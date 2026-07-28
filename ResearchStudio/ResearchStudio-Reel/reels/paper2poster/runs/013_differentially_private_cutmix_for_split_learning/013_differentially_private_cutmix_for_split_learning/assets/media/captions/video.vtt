@@ -1,0 +1,225 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:04.520
+Vision transformers are overtaking convolutional networks,
+
+00:00:04.600 --> 00:00:09.185
+but their size makes privacy-preserving distributed
+training hard.
+
+00:00:09.265 --> 00:00:12.153
+Federated learning must move whole models,
+
+00:00:12.233 --> 00:00:19.221
+and split learning leaks privacy because a
+transformer's smashed data still resembles the raw input.
+
+00:00:19.301 --> 00:00:23.109
+From Yonsei, Deakin, M.I.T., and Oulu, at NeurIPS 2022,
+
+00:00:23.189 --> 00:00:25.371
+this paper proposes DP-CutMixSL,
+
+00:00:25.451 --> 00:00:31.449
+pairing a Gaussian differential-privacy mechanism
+with a patch-level randomized CutMix
+
+00:00:31.529 --> 00:00:34.347
+that mixes masked patches across clients.
+
+00:00:34.427 --> 00:00:37.740
+It strengthens privacy while improving accuracy.
+
+00:00:38.120 --> 00:00:41.577
+We want to train on user data without exposing it.
+
+00:00:41.657 --> 00:00:46.034
+Federated learning keeps data local but exchanges
+whole models,
+
+00:00:46.114 --> 00:00:48.156
+costly for large transformers.
+
+00:00:48.236 --> 00:00:53.462
+Split learning instead shares only cut-layer
+activations, the smashed data.
+
+00:00:53.542 --> 00:00:56.858
+But transformers have no pooling or convolution,
+
+00:00:56.938 --> 00:01:03.366
+so their smashed data barely distorts the input and
+stays visually similar to the raw image.
+
+00:01:03.446 --> 00:01:08.035
+That similarity leaks privacy and, preserving so
+much information,
+
+00:01:08.115 --> 00:01:10.370
+also inflates communication cost.
+
+00:01:10.750 --> 00:01:15.507
+As transformers displace CNNs, do the old privacy
+recipes still hold?
+
+00:01:15.587 --> 00:01:18.311
+The authors note three things about ViT.
+
+00:01:18.391 --> 00:01:23.148
+First, without pooling its hidden representation is
+barely distorted,
+
+00:01:23.228 --> 00:01:27.283
+so regularizing it works as well as regularizing
+the input,
+
+00:01:27.363 --> 00:01:29.667
+yet high mutual information leaks.
+
+00:01:29.747 --> 00:01:35.485
+Second, global self-attention makes ViT robust to
+large noise on part of the image,
+
+00:01:35.565 --> 00:01:37.448
+ideal for Cutout and CutMix.
+
+00:01:37.528 --> 00:01:40.112
+Third, every operation is patch-level.
+
+00:01:40.192 --> 00:01:46.070
+Together these point to a patch-level randomized
+CutMix of the hidden representation.
+
+00:01:46.450 --> 00:01:48.589
+Here is DP-CutMixSL step by step.
+
+00:01:48.669 --> 00:01:56.256
+A mixer draws mixing ratios lambda from a Dirichlet
+distribution and builds a pseudorandom binary mask per client,
+
+00:01:56.336 --> 00:01:59.821
+with on-patches proportional to that client's lambda.
+
+00:01:59.901 --> 00:02:04.596
+Each client runs its input through the lower model
+to get smashed data,
+
+00:02:04.676 --> 00:02:06.883
+masks it into Cutout smashed data,
+
+00:02:06.963 --> 00:02:11.860
+then adds white Gaussian noise for DP-Cutout
+smashed data, and uploads it.
+
+00:02:11.940 --> 00:02:17.778
+Because the masks are mutually exclusive and
+collectively exhaustive at the patch level,
+
+00:02:17.858 --> 00:02:24.503
+the server simply adds the clients' noisy patches
+into DP-CutMix smashed data with no blank patches,
+
+00:02:24.583 --> 00:02:27.261
+mixing labels by the same lambda weights.
+
+00:02:27.341 --> 00:02:32.305
+Forward and backward propagation then proceed as in
+vanilla split learning.
+
+00:02:32.385 --> 00:02:37.080
+Crucially, only a noisy fraction of each client's
+data is ever exposed.
+
+00:02:37.460 --> 00:02:43.524
+Without noise, CutMixSL gives the best top-1
+accuracy in every configuration but one.
+
+00:02:43.604 --> 00:02:49.089
+On CIFAR-10 with ViT-Tiny it reaches seventy-three
+point seven seven percent,
+
+00:02:49.169 --> 00:02:54.365
+versus fifty-seven for plain split learning and
+sixty-eight for SplitFed.
+
+00:02:54.445 --> 00:02:57.835
+With PiT-Tiny it hits seventy-one point two six.
+
+00:02:57.915 --> 00:03:03.328
+On Fashion-MNIST it tops eighty-nine percent across
+all three architectures.
+
+00:03:03.408 --> 00:03:08.893
+The exception is VGG-16, where Mixup edges ahead,
+because CNNs focus locally,
+
+00:03:08.973 --> 00:03:14.820
+so replacing whole patches costs them more
+information than it costs transformers.
+
+00:03:15.200 --> 00:03:19.113
+Ablations probe the privacy-accuracy trade-off.
+
+00:03:19.193 --> 00:03:23.105
+Sweeping noise variance,
+
+00:03:23.185 --> 00:03:27.098
+DP-CutMixSL has the best accuracy at nearly every
+level and always beats DP-MixSL.
+
+00:03:27.178 --> 00:03:31.091
+Its RDP epsilon is tighter than DP-SL but looser
+than DP-MixSL,
+
+00:03:31.171 --> 00:03:35.084
+exactly the trade-off theory predicts,
+
+00:03:35.164 --> 00:03:39.076
+since Mixup melts information across the whole
+representation.
+
+00:03:39.156 --> 00:03:43.069
+Larger mixing groups lower both accuracy and
+epsilon, a hiding-in-the-crowd effect.
+
+00:03:43.149 --> 00:03:47.062
+A reconstruction attack shows robustness rising
+from raw data to Mixup, patch CutMix,
+
+00:03:47.142 --> 00:03:51.055
+then Cutout.
+
+00:03:51.135 --> 00:03:55.047
+Finally, accuracy grows as clients scale from two to ten,
+
+00:03:55.127 --> 00:03:59.040
+and SplitFed-style averaging helps further.
+
+00:03:59.420 --> 00:04:01.839
+The takeaway: for vision transformers,
+
+00:04:01.919 --> 00:04:05.653
+you need not trade accuracy for privacy in split learning.
+
+00:04:05.733 --> 00:04:11.243
+Adding Gaussian noise and mixing randomly masked
+patches across clients amplifies the
+
+00:04:11.323 --> 00:04:16.306
+differential-privacy guarantee over plain split
+learning and raises accuracy,
+
+00:04:16.386 --> 00:04:19.660
+with the gain provably bounded by a Mixup baseline.
+
+00:04:19.740 --> 00:04:24.592
+It works because transformers use global
+self-attention at the patch level,
+
+00:04:24.672 --> 00:04:28.604
+so swapping patches costs little, though it would
+hurt a CNN.
+
+00:04:28.684 --> 00:04:33.470
+Patch-level CutMix is a privacy regularizer built
+for the transformer era.

@@ -1,0 +1,7 @@
+# Ablation Study
+
+Core claim: Five scenarios isolate the design choices: Scenario 0 raw baseline; Scenario 1 single shared autoencoder; Scenario 2 individual per-peer autoencoders; and non-naive Scenarios 3 and 4 that add multitask target prediction to Scenarios 1 and 2.
+
+Supporting detail: The non-naive multitask autoencoders (3, 4) consistently outperform their naive counterparts (1, 2): on Buzz, test R² rises from 91.55% (Scenario 1) to 94.03% (Scenario 3), and on MNIST accuracy rises from 88% to 91%.
+
+Narration: The experiments are organized as an ablation across five scenarios that isolate each design decision. Scenario zero is the raw-data baseline with no privacy protection. Scenario one uses a single shared autoencoder to encode one combined dataset. Scenario two simulates two peers, each with its own autoencoder, whose embeddings are then joined. Scenarios three and four repeat one and two but make the autoencoder non-naive: it becomes a multitask network that also predicts the objective variable during encoding. The clear pattern is that the non-naive variants beat their naive counterparts. On Buzz in Social Media, the test R-squared rises from about ninety-one and a half percent with the naive shared autoencoder to about ninety-four percent with the non-naive version, and on MNIST accuracy climbs from eighty-eight to ninety-one percent. Guiding the latent space with the target variable clearly helps.

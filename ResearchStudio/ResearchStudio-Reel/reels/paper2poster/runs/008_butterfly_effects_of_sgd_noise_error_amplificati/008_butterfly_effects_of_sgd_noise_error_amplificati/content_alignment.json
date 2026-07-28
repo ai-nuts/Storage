@@ -1,0 +1,1678 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T17:54:19Z",
+  "title": "Butterfly Effects of SGD Noise: Error Amplification in Behavior Cloning and Autoregression",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "You train an imitation policy, watch the behavior-cloning loss slide down and flatten, and conclude that training is healthy. Every signal on your screen agrees. Then you roll the policy out in its environment and measure the thing you actually care about — the long-horizon reward — and it lurches from near-expert to near-failure between one checkpoint and the next. The loss is calm; the reward is chaotic. This paper is about that gap, and about why it is so easy to miss."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap matters because modern models live inside feedback loops. A language model's next token depends on the tokens it has already generated; a controller's next observation depends on the action it just took. Yet we almost always train these systems on a surrogate objective — next-token prediction, single-step imitation — that quietly pretends the loop is not there. The surrogate tends to improve smoothly, which lulls us into trusting it. Because rolling out and scoring the true task at every checkpoint is expensive, the swings usually stay invisible, and whichever checkpoint you happen to grab may be a bad one."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors argue the culprit is neither the data nor the model, but the noise in the optimizer itself. Minibatch SGD noise, entirely harmless for the one-step training loss, gets amplified through the closed loop into violent swings in long-horizon reward. They name the mechanism gradient variance amplification (GVA), show it is algorithmic rather than statistical, and demonstrate that a nearly free fix — an exponential moving average (EMA) of the weights — tames it across continuous control and autoregressive language models alike."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11428 (Block, Foster, Krishnamurthy, Simchowitz, and Zhang; MIT and Microsoft Research NYC)."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The loss you watch is not the reward you want"
+            },
+            {
+              "type": "paragraph",
+              "text": "Behavior cloning is the simplest way to imitate an expert: collect demonstrations and minimize a single-step prediction error, the BC loss. In theory, drive that error to zero and you recover the expert policy. In practice, with deep networks and finite compute, the story is stranger. The authors deliberately match the dataset size to the horizon (N = H = 1000) so that overfitting cannot be the explanation, and still the rollout reward oscillates hard from iterate to iterate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Zooming into a handful of consecutive gradient steps makes the point vivid: the reward, viewed as a function of the policy parameters, is a jagged, almost fractal landscape, with good and bad policies sitting right next to each other along stochastic-gradient directions. None of that jaggedness is visible in the one-step BC objective, which is exactly why watching the training loss gives false comfort. The reward and the surrogate have come apart."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Ruling out the usual suspects: GVA is algorithmic, not statistical"
+            },
+            {
+              "type": "paragraph",
+              "text": "There are two candidate explanations for the oscillations. One is statistical — not enough data, or too little model capacity. The other is computational, or algorithmic — something about the optimization process itself. To tell them apart, the authors run an unusually thorough sweep, 278 distinct interventions on the continuous-control task, varying the dataset size (out to effectively infinite data), the architecture (from 2-layer to 6-layer MLPs, plus Transformers), the model scale, and a battery of regularizers such as dropout, weight decay, and augmentation."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "Figure 2. Rollout reward (blue = mean over 20 initial conditions; teal = per-episode) stays jagged as the authors vary architecture, dataset size, model scale, and regularizer, and is calmed only by variance-reduction strategies (bottom row). Standard regularizers do not remove the oscillations and often worsen them — evidence that the instability is algorithmic, driven by SGD noise, rather than statistical.",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The pattern in Figure 2 is the whole argument in one image. The oscillations refuse to go away as the data grows, the architecture changes, or regularizers are added — often the regularizers make things worse. They yield only to genuine variance reduction: much larger batches, aggressive learning-rate decay, large momentum, and, most cleanly, iterate averaging. That is precisely the fingerprint you would expect if minibatch gradient noise were the driver, because only reducing that noise should help. The authors call the mechanism gradient variance amplification: SGD noise, negligible for a single step, compounding through the closed loop of the rollout."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The fix: average your iterates"
+            },
+            {
+              "type": "paragraph",
+              "text": "If gradient noise is the disease, averaging is the obvious remedy, and it turns out to be remarkably effective. Keep a running exponential moving average of the weights, updated every step as θ̃ ← (1 − γ)·θ̃ + γ·θ, and evaluate that averaged model. It costs one extra copy of the parameters, changes nothing about the learning-rate schedule or the batch size, and does not slow down the underlying optimizer."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "Figure 3. EMA (green) collapses the raw-iterate reward oscillations (faint blue) across architectures, smaller datasets, and additional MuJoCo tasks — Hopper, Ant, HalfCheetah, Humanoid — without touching the learning-rate schedule or the batch size. The recipe matters: update every step with a burn-in and an annealed rate; skipping the burn-in or updating infrequently (center) weakens the effect.",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 shows the cure holding across architectures, dataset sizes, and other locomotion tasks. The recipe is specific: update the average at every iterate, use an initial burn-in to discard the ragged early weights, and anneal the averaging rate as γ(t) = t^(−α). Skip the burn-in, or update the average only occasionally, and its stabilizing power fades. There are bonuses too: when data is scarce (down to 0.1x the trajectories), the oscillations are worse and EMA turns that into a real gain in sample efficiency, and EMA can stand in for learning-rate decay altogether."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. How the tested interventions affect GVA-induced reward oscillations. Only genuine variance reduction helps; iterate averaging delivers the effect at almost no cost.",
+              "headers": [
+                "Strategy",
+                "Reduces oscillations?",
+                "Cost"
+              ],
+              "rows": [
+                [
+                  "Standard regularizers (dropout, weight decay, augmentation)",
+                  "No — sometimes worse",
+                  "Low"
+                ],
+                [
+                  "Aggressive learning-rate decay",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Large batch (16x via gradient accumulation)",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Iterate averaging (EMA)",
+                  "Yes — most robust",
+                  "Nearly free"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The same butterfly effect in language models"
+            },
+            {
+              "type": "paragraph",
+              "text": "GVA is not a quirk of robot control. The authors reproduce the whole story with 270M-parameter (12-layer) Transformers trained on TinyStories, a small synthetic corpus of simple children's tales. Beneath a smooth, monotone validation-loss curve, consecutive checkpoints fluctuate by tiny amounts in next-token loss — and yet their argmax-decoded generations bifurcate into entirely different stories. Adjacent iterates disagree on more than 50% of prompted completions, versus under 5% for EMA iterates."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "width_inches": 4.3,
+              "caption": "Figure 4. GVA in autoregressive language modeling: a 270M-parameter (12-layer) Transformer on TinyStories. The EMA model's validation loss (green) sits below the raw model's (blue) throughout training and reaches the lowest perplexity. Beneath these smooth curves, nearby training checkpoints generate divergent stories — the same iterate-to-iterate butterfly effect seen in control.",
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The averaged model does more than stabilize generations. Because EMA decouples optimization from stabilization, it lets you train at a constant learning rate without the usual final decay, which reduces overfitting and yields the lowest-perplexity model in the comparison. The same cheap trick that steadies a walking robot also produces a better language model."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "A short theory vignette"
+            },
+            {
+              "type": "paragraph",
+              "text": "To show the amplification is not an artifact of deep networks, the authors add a convex vignette in a simple deterministic control setting with a discontinuous cliff loss. There, a parameter perturbation Δ that changes the BC loss by only order H·δ² can change the long-horizon reward gap by a factor that grows like exp(H·δ) — exponential in the horizon. An amount of error that is negligible for the one-step objective becomes catastrophic once it compounds over a long rollout. Seen this way, the empirical butterfly effect is not mysterious at all; it is exactly the behavior a closed feedback loop is bound to produce over a long horizon."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What to take away"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is simple and actionable. Stochastic gradient noise is invisible to the one-step loss you monitor, but once your model sits inside a feedback loop, that same noise is amplified into chaotic, long-horizon failure — gradient variance amplification. So a flat surrogate loss is not evidence of stable deployed behavior in any closed-loop setting, and iterate averaging deserves to be a first-class stabilizer alongside your optimizer and your scheduler: cheap, broadly effective, and useful from robot control to language generation."
+            },
+            {
+              "type": "paragraph",
+              "text": "If you take one habit from this paper, make it this: in any setting where your model acts inside a loop, keep an exponential moving average of the weights, update it every step after a short burn-in, and evaluate that averaged model instead of the latest iterate. It costs almost nothing and rarely hurts, and — as both the walking robots and the TinyStories language models show — it can turn a wildly oscillating training run into a stable, deployable one."
+            },
+            {
+              "type": "paragraph",
+              "text": "The honest boundary is worth stating. The mechanism is diagnosed empirically, supported by the convex vignette rather than a full theory of deep imitation, and the severity of GVA varies by task — the higher-dimensional Humanoid, for instance, oscillates more benignly. But the practical message survives all of that: when a model acts inside a loop, watch the reward, reduce the variance, and average your weights."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "你训练一个模仿学习的策略，盯着行为克隆（behavior cloning）的损失一路下滑、最后趋于平稳，于是判断训练很健康——屏幕上所有信号都在支持这个结论。可当你真正把策略放回环境里跑一遍，去看你真正在乎的那个指标，也就是长程回报（long-horizon reward），它却在相邻两个 checkpoint 之间从「接近专家」猛地掉到「接近失败」。损失很平静，回报却很混乱。这篇论文讲的就是这道裂缝，以及它为什么如此容易被忽略。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这道裂缝之所以重要，是因为现代模型几乎都活在反馈回路里：语言模型的下一个 token 取决于它自己已经生成的 token，控制器的下一次观测取决于它刚刚采取的动作。但我们训练它们时，几乎总是用一个替代目标（surrogate objective）——下一 token 预测、单步模仿——悄悄假装这个回路不存在。替代目标往往平滑下降，于是我们放心地信任它。又因为在每个 checkpoint 都跑一遍真实任务、评估真实回报的代价很高，这些抖动通常根本看不见，你随手拿到的那个 checkpoint 很可能就是个糟糕的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "图 1. 用 4 层 MLP 对 Walker2d-v4 专家做行为克隆，rollout 长度 H = 1000。回滚回报（蓝色）在训练迭代之间剧烈摆动，而单步 BC 误差（灰色）始终平稳且很低。对权重取指数滑动平均后的模型（绿色）几乎完美地贴合专家策略（红色虚线）。你在乎的回报在震荡，你盯着的损失却从不显示这一点。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的判断是：罪魁祸首既不是数据也不是模型，而是优化器自身的噪声。小批量 SGD 的梯度噪声，对单步训练损失完全无害，却会通过闭环被放大成长程回报的剧烈震荡。他们把这个机制命名为梯度方差放大（gradient variance amplification, GVA），论证它是算法性的而非统计性的，并证明一个几乎免费的解法——对权重取指数滑动平均（EMA）——能在连续控制和自回归语言模型上同样有效地驯服它。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2310.11428（Block、Foster、Krishnamurthy、Simchowitz、Zhang；MIT 与 Microsoft Research NYC）。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "你盯着的损失，不是你想要的回报"
+            },
+            {
+              "type": "paragraph",
+              "text": "行为克隆是模仿专家最朴素的做法：收集示范数据，最小化一个单步预测误差，也就是 BC 损失。理论上，把这个误差压到零，你就复现了专家策略。可现实中，配上深度网络和有限算力，故事要古怪得多。作者刻意让数据量与 rollout 长度相等（N = H = 1000），以排除过拟合这个解释，结果回滚回报依然在相邻迭代之间大幅震荡。"
+            },
+            {
+              "type": "paragraph",
+              "text": "放大到连续几步梯度更新来看，这一点更加触目：把回报看成策略参数的函数，它是一张锯齿状、近乎分形的曲面，好策略与坏策略沿着随机梯度方向紧挨在一起。而这些锯齿在单步 BC 目标里完全看不出来——这正是为什么盯着训练损失会给人虚假的安心。回报和替代目标，已经彻底脱钩了。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "排除常见嫌疑：GVA 是算法性的，不是统计性的"
+            },
+            {
+              "type": "paragraph",
+              "text": "对这种震荡有两种可能的解释。一种是统计性的——数据不够多，或模型容量不足。另一种是计算性的、即算法性的——问题出在优化过程本身。为了把两者分开，作者做了一轮罕见地彻底的扫描，在连续控制任务上进行了 278 次不同的干预，逐一改变数据量（一直到近乎无限的数据）、结构（从 2 层到 6 层的 MLP，再加上 Transformer）、模型规模，以及一整套正则化手段，比如 dropout、权重衰减和数据增广。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "图 2. 回滚回报（蓝色为 20 个初始条件上的均值，青色为逐条 episode 的回报）在改变结构、数据量、模型规模和正则化手段时始终保持锯齿状，只有方差缩减策略（底行）才能把它压平。标准正则化手段并不能消除震荡，反而常常让它更糟——这说明不稳定是算法性的、由 SGD 噪声驱动，而非统计性的。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 这一张图，几乎就是整个论证。震荡不会因为数据变多、结构改变或加了正则化而消失——正则化往往还让它更糟。它只对真正的方差缩减低头：大得多的批量、激进的学习率衰减、大动量，以及最干净利落的一招——迭代平均。这恰好就是「梯度噪声是元凶」时你会预期看到的指纹，因为只有削减这份噪声才应当奏效。作者把这个机制称作梯度方差放大：单步几乎可忽略的 SGD 噪声，在 rollout 的闭环中被层层放大。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "解法：对你的迭代取平均"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果病根是梯度噪声，那么取平均就是最显然的药方，而且效果好得惊人。对权重维护一个指数滑动平均，每一步都更新：θ̃ ← (1 − γ)·θ̃ + γ·θ，然后拿这个被平均过的模型去评估。它的代价只是多存一份参数，既不改动学习率调度，也不改动批量大小，更不会拖慢底层优化器。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "图 3. EMA（绿色）在不同结构、更小的数据集，以及更多 MuJoCo 任务（Hopper、Ant、HalfCheetah、Humanoid）上，把原始迭代的回报震荡（浅蓝）统统压平，且完全不改动学习率调度或批量大小。配方很关键：每一步都更新，配上 burn-in 预热和退火的平均率；跳过 burn-in 或更新得太稀疏（中列）都会削弱效果。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 显示这剂药方在不同结构、不同数据量以及其他运动任务上都成立。配方是具体的：在每一次迭代都更新平均，用一段初始 burn-in 把早期粗糙的权重排除掉，并让平均率按 γ(t) = t^(−α) 退火。跳过 burn-in，或只是偶尔更新平均，它的稳定作用就会减弱。此外还有附赠好处：当数据稀缺时（少到 0.1x 的轨迹），震荡会更严重，而 EMA 能把这一点转化为实打实的样本效率提升；EMA 甚至可以直接替代学习率衰减。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各种干预手段对 GVA 引起的回报震荡有何影响。只有真正的方差缩减才管用，而迭代平均以几乎为零的代价拿到了这个效果。",
+              "headers": [
+                "策略",
+                "能否压住震荡？",
+                "代价"
+              ],
+              "rows": [
+                [
+                  "标准正则化（dropout、权重衰减、数据增广）",
+                  "不能——有时更糟",
+                  "低"
+                ],
+                [
+                  "激进的学习率衰减",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "大批量（借助梯度累积做到 16x）",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "迭代平均（EMA）",
+                  "能——最稳健",
+                  "几乎免费"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "语言模型里同样的蝴蝶效应"
+            },
+            {
+              "type": "paragraph",
+              "text": "GVA 并不是机器人控制的专属怪癖。作者用在 TinyStories 上训练的 270M 参数（12 层）Transformer 重现了整个故事——TinyStories 是一个由简单儿童故事构成的小型合成语料。在一条平滑单调下降的验证损失曲线之下，相邻 checkpoint 的下一 token 损失只有极其微小的波动，然而它们用 argmax 解码生成的文本却分岔成了完全不同的故事：相邻迭代在 >50% 的带提示补全上彼此不一致，而 EMA 迭代之间这个比例低于 <5%。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "width_inches": 4.3,
+              "caption": "图 4. 自回归语言建模中的 GVA：在 TinyStories 上训练的 270M 参数（12 层）Transformer。EMA 模型的验证损失（绿色）在整个训练过程中都低于原始模型（蓝色），并达到最低困惑度。在这些平滑曲线之下，相邻训练 checkpoint 生成的故事却各不相同——正是控制任务里那种迭代到迭代的蝴蝶效应。",
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "被平均过的模型带来的不止是生成上的稳定。因为 EMA 把优化和稳定化解耦，它让你可以在恒定学习率下训练、省去通常的末段衰减，从而减轻过拟合，并在对比中得到困惑度最低的模型。同一个几乎免费的小技巧，既能稳住一个行走的机器人，也能训出一个更好的语言模型。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "一个简短的理论小品"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了说明这种放大并非深度网络的产物，作者在一个带不连续「悬崖损失」的简单确定性控制设定里补了一段凸优化小品。在那里，一个只把 BC 损失改变了 H·δ² 量级的参数扰动 Δ，却能把长程回报的差距按 exp(H·δ) 的因子放大——在 rollout 长度 H 上呈指数增长。一份对单步目标可忽略不计的误差，一旦在长回滚上层层复合，就会变得灾难性。这样一看，实验里的蝴蝶效应，恰恰就是闭环动力学理应产生的东西。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "该带走什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "结论既简单又可操作。随机梯度噪声对你监控的那条单步损失是隐形的，可一旦你的模型置身于反馈回路，同一份噪声就会被放大成混乱的长程失败——这就是梯度方差放大。所以在任何闭环场景里，一条平坦的替代损失都不能当作部署行为稳定的证据；而迭代平均值得被当作一等公民的「稳定器」，与优化器和调度器并列：便宜、普适，从机器人控制到语言生成都用得上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果只从这篇论文里带走一个习惯，那就让它是这个：在任何模型置身于回路的场景里，都对权重维护一个指数滑动平均，经过一小段 burn-in 之后每一步都更新，并用这个被平均过的模型、而不是最新的那个迭代去评估。它几乎不花成本、也很少帮倒忙，而且——正如会走路的机器人和 TinyStories 语言模型都展示的那样——它能把一段剧烈震荡的训练，变成一段稳定、可部署的训练。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要诚实地说清边界。这个机制是实验诊断出来的，靠凸优化小品而非一套完整的深度模仿理论来支撑，而且 GVA 的严重程度因任务而异——比如维度更高的 Humanoid，震荡就要温和得多。但抛开这些，实用的讯息依然成立：当一个模型在回路里行动时，去看回报、去缩减方差、去平均你的权重。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 479.94,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 479.94,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 44.17,
+          "relative_start": 0.5,
+          "relative_end": 44.17,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 44.17,
+          "global_end": 87.0,
+          "relative_start": 44.17,
+          "relative_end": 87.0,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 87.0,
+          "global_end": 127.76,
+          "relative_start": 87.0,
+          "relative_end": 127.76,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 127.76,
+          "global_end": 181.0,
+          "relative_start": 127.76,
+          "relative_end": 181.0,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 181.0,
+          "global_end": 245.79,
+          "relative_start": 181.0,
+          "relative_end": 245.79,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 245.79,
+          "global_end": 292.63,
+          "relative_start": 245.79,
+          "relative_end": 292.63,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 292.63,
+          "global_end": 345.37,
+          "relative_start": 292.63,
+          "relative_end": 345.37,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 345.37,
+          "global_end": 393.55,
+          "relative_start": 345.37,
+          "relative_end": 393.55,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 393.55,
+          "global_end": 436.33,
+          "relative_start": 393.55,
+          "relative_end": 436.33,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 436.33,
+          "global_end": 479.9,
+          "relative_start": 436.33,
+          "relative_end": 479.9,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "You train an imitation policy, watch the behavior-cloning loss slide down and flatten, and conclude that training is healthy. Every signal on your screen agrees. Then you roll the policy out in its environment and measure the thing you actually care about — the long-horizon reward — and it lurches from near-expert to near-failure between one checkpoint and the next. The loss is calm; the reward is chaotic. This paper is about that gap, and about why it is so easy to miss."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap matters because modern models live inside feedback loops. A language model's next token depends on the tokens it has already generated; a controller's next observation depends on the action it just took. Yet we almost always train these systems on a surrogate objective — next-token prediction, single-step imitation — that quietly pretends the loop is not there. The surrogate tends to improve smoothly, which lulls us into trusting it. Because rolling out and scoring the true task at every checkpoint is expensive, the swings usually stay invisible, and whichever checkpoint you happen to grab may be a bad one."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors argue the culprit is neither the data nor the model, but the noise in the optimizer itself. Minibatch SGD noise, entirely harmless for the one-step training loss, gets amplified through the closed loop into violent swings in long-horizon reward. They name the mechanism gradient variance amplification (GVA), show it is algorithmic rather than statistical, and demonstrate that a nearly free fix — an exponential moving average (EMA) of the weights — tames it across continuous control and autoregressive language models alike."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11428 (Block, Foster, Krishnamurthy, Simchowitz, and Zhang; MIT and Microsoft Research NYC)."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "排除常见嫌疑：GVA 是算法性的，不是统计性的"
+            },
+            {
+              "type": "paragraph",
+              "text": "对这种震荡有两种可能的解释。一种是统计性的——数据不够多，或模型容量不足。另一种是计算性的、即算法性的——问题出在优化过程本身。为了把两者分开，作者做了一轮罕见地彻底的扫描，在连续控制任务上进行了 278 次不同的干预，逐一改变数据量（一直到近乎无限的数据）、结构（从 2 层到 6 层的 MLP，再加上 Transformer）、模型规模，以及一整套正则化手段，比如 dropout、权重衰减和数据增广。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "图 2. 回滚回报（蓝色为 20 个初始条件上的均值，青色为逐条 episode 的回报）在改变结构、数据量、模型规模和正则化手段时始终保持锯齿状，只有方差缩减策略（底行）才能把它压平。标准正则化手段并不能消除震荡，反而常常让它更糟——这说明不稳定是算法性的、由 SGD 噪声驱动，而非统计性的。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 这一张图，几乎就是整个论证。震荡不会因为数据变多、结构改变或加了正则化而消失——正则化往往还让它更糟。它只对真正的方差缩减低头：大得多的批量、激进的学习率衰减、大动量，以及最干净利落的一招——迭代平均。这恰好就是「梯度噪声是元凶」时你会预期看到的指纹，因为只有削减这份噪声才应当奏效。作者把这个机制称作梯度方差放大：单步几乎可忽略的 SGD 噪声，在 rollout 的闭环中被层层放大。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 44.17,
+        "end": 87.0,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 42.83,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.73,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 44.17,
+          "global_end": 87.0,
+          "relative_start": 0.0,
+          "relative_end": 42.83,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The loss you watch is not the reward you want"
+            },
+            {
+              "type": "paragraph",
+              "text": "Behavior cloning is the simplest way to imitate an expert: collect demonstrations and minimize a single-step prediction error, the BC loss. In theory, drive that error to zero and you recover the expert policy. In practice, with deep networks and finite compute, the story is stranger. The authors deliberately match the dataset size to the horizon (N = H = 1000) so that overfitting cannot be the explanation, and still the rollout reward oscillates hard from iterate to iterate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Zooming into a handful of consecutive gradient steps makes the point vivid: the reward, viewed as a function of the policy parameters, is a jagged, almost fractal landscape, with good and bad policies sitting right next to each other along stochastic-gradient directions. None of that jaggedness is visible in the one-step BC objective, which is exactly why watching the training loss gives false comfort. The reward and the surrogate have come apart."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "图 1. 用 4 层 MLP 对 Walker2d-v4 专家做行为克隆，rollout 长度 H = 1000。回滚回报（蓝色）在训练迭代之间剧烈摆动，而单步 BC 误差（灰色）始终平稳且很低。对权重取指数滑动平均后的模型（绿色）几乎完美地贴合专家策略（红色虚线）。你在乎的回报在震荡，你盯着的损失却从不显示这一点。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "你盯着的损失，不是你想要的回报"
+            },
+            {
+              "type": "paragraph",
+              "text": "行为克隆是模仿专家最朴素的做法：收集示范数据，最小化一个单步预测误差，也就是 BC 损失。理论上，把这个误差压到零，你就复现了专家策略。可现实中，配上深度网络和有限算力，故事要古怪得多。作者刻意让数据量与 rollout 长度相等（N = H = 1000），以排除过拟合这个解释，结果回滚回报依然在相邻迭代之间大幅震荡。"
+            },
+            {
+              "type": "paragraph",
+              "text": "放大到连续几步梯度更新来看，这一点更加触目：把回报看成策略参数的函数，它是一张锯齿状、近乎分形的曲面，好策略与坏策略沿着随机梯度方向紧挨在一起。而这些锯齿在单步 BC 目标里完全看不出来——这正是为什么盯着训练损失会给人虚假的安心。回报和替代目标，已经彻底脱钩了。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 87.0,
+        "end": 127.76,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 40.76,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 41.66,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 87.0,
+          "global_end": 127.76,
+          "relative_start": 0.0,
+          "relative_end": 40.76,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The fix: average your iterates"
+            },
+            {
+              "type": "paragraph",
+              "text": "If gradient noise is the disease, averaging is the obvious remedy, and it turns out to be remarkably effective. Keep a running exponential moving average of the weights, updated every step as θ̃ ← (1 − γ)·θ̃ + γ·θ, and evaluate that averaged model. It costs one extra copy of the parameters, changes nothing about the learning-rate schedule or the batch size, and does not slow down the underlying optimizer."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "Figure 3. EMA (green) collapses the raw-iterate reward oscillations (faint blue) across architectures, smaller datasets, and additional MuJoCo tasks — Hopper, Ant, HalfCheetah, Humanoid — without touching the learning-rate schedule or the batch size. The recipe matters: update every step with a burn-in and an annealed rate; skipping the burn-in or updating infrequently (center) weakens the effect.",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 shows the cure holding across architectures, dataset sizes, and other locomotion tasks. The recipe is specific: update the average at every iterate, use an initial burn-in to discard the ragged early weights, and anneal the averaging rate as γ(t) = t^(−α). Skip the burn-in, or update the average only occasionally, and its stabilizing power fades. There are bonuses too: when data is scarce (down to 0.1x the trajectories), the oscillations are worse and EMA turns that into a real gain in sample efficiency, and EMA can stand in for learning-rate decay altogether."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. How the tested interventions affect GVA-induced reward oscillations. Only genuine variance reduction helps; iterate averaging delivers the effect at almost no cost.",
+              "headers": [
+                "Strategy",
+                "Reduces oscillations?",
+                "Cost"
+              ],
+              "rows": [
+                [
+                  "Standard regularizers (dropout, weight decay, augmentation)",
+                  "No — sometimes worse",
+                  "Low"
+                ],
+                [
+                  "Aggressive learning-rate decay",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Large batch (16x via gradient accumulation)",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Iterate averaging (EMA)",
+                  "Yes — most robust",
+                  "Nearly free"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "排除常见嫌疑：GVA 是算法性的，不是统计性的"
+            },
+            {
+              "type": "paragraph",
+              "text": "对这种震荡有两种可能的解释。一种是统计性的——数据不够多，或模型容量不足。另一种是计算性的、即算法性的——问题出在优化过程本身。为了把两者分开，作者做了一轮罕见地彻底的扫描，在连续控制任务上进行了 278 次不同的干预，逐一改变数据量（一直到近乎无限的数据）、结构（从 2 层到 6 层的 MLP，再加上 Transformer）、模型规模，以及一整套正则化手段，比如 dropout、权重衰减和数据增广。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "图 2. 回滚回报（蓝色为 20 个初始条件上的均值，青色为逐条 episode 的回报）在改变结构、数据量、模型规模和正则化手段时始终保持锯齿状，只有方差缩减策略（底行）才能把它压平。标准正则化手段并不能消除震荡，反而常常让它更糟——这说明不稳定是算法性的、由 SGD 噪声驱动，而非统计性的。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 这一张图，几乎就是整个论证。震荡不会因为数据变多、结构改变或加了正则化而消失——正则化往往还让它更糟。它只对真正的方差缩减低头：大得多的批量、激进的学习率衰减、大动量，以及最干净利落的一招——迭代平均。这恰好就是「梯度噪声是元凶」时你会预期看到的指纹，因为只有削减这份噪声才应当奏效。作者把这个机制称作梯度方差放大：单步几乎可忽略的 SGD 噪声，在 rollout 的闭环中被层层放大。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 127.76,
+        "end": 181.0,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 53.24,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 54.14,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 127.76,
+          "global_end": 181.0,
+          "relative_start": 0.0,
+          "relative_end": 53.24,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What to take away"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is simple and actionable. Stochastic gradient noise is invisible to the one-step loss you monitor, but once your model sits inside a feedback loop, that same noise is amplified into chaotic, long-horizon failure — gradient variance amplification. So a flat surrogate loss is not evidence of stable deployed behavior in any closed-loop setting, and iterate averaging deserves to be a first-class stabilizer alongside your optimizer and your scheduler: cheap, broadly effective, and useful from robot control to language generation."
+            },
+            {
+              "type": "paragraph",
+              "text": "If you take one habit from this paper, make it this: in any setting where your model acts inside a loop, keep an exponential moving average of the weights, update it every step after a short burn-in, and evaluate that averaged model instead of the latest iterate. It costs almost nothing and rarely hurts, and — as both the walking robots and the TinyStories language models show — it can turn a wildly oscillating training run into a stable, deployable one."
+            },
+            {
+              "type": "paragraph",
+              "text": "The honest boundary is worth stating. The mechanism is diagnosed empirically, supported by the convex vignette rather than a full theory of deep imitation, and the severity of GVA varies by task — the higher-dimensional Humanoid, for instance, oscillates more benignly. But the practical message survives all of that: when a model acts inside a loop, watch the reward, reduce the variance, and average your weights."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "解法：对你的迭代取平均"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果病根是梯度噪声，那么取平均就是最显然的药方，而且效果好得惊人。对权重维护一个指数滑动平均，每一步都更新：θ̃ ← (1 − γ)·θ̃ + γ·θ，然后拿这个被平均过的模型去评估。它的代价只是多存一份参数，既不改动学习率调度，也不改动批量大小，更不会拖慢底层优化器。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "图 3. EMA（绿色）在不同结构、更小的数据集，以及更多 MuJoCo 任务（Hopper、Ant、HalfCheetah、Humanoid）上，把原始迭代的回报震荡（浅蓝）统统压平，且完全不改动学习率调度或批量大小。配方很关键：每一步都更新，配上 burn-in 预热和退火的平均率；跳过 burn-in 或更新得太稀疏（中列）都会削弱效果。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 显示这剂药方在不同结构、不同数据量以及其他运动任务上都成立。配方是具体的：在每一次迭代都更新平均，用一段初始 burn-in 把早期粗糙的权重排除掉，并让平均率按 γ(t) = t^(−α) 退火。跳过 burn-in，或只是偶尔更新平均，它的稳定作用就会减弱。此外还有附赠好处：当数据稀缺时（少到 0.1x 的轨迹），震荡会更严重，而 EMA 能把这一点转化为实打实的样本效率提升；EMA 甚至可以直接替代学习率衰减。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各种干预手段对 GVA 引起的回报震荡有何影响。只有真正的方差缩减才管用，而迭代平均以几乎为零的代价拿到了这个效果。",
+              "headers": [
+                "策略",
+                "能否压住震荡？",
+                "代价"
+              ],
+              "rows": [
+                [
+                  "标准正则化（dropout、权重衰减、数据增广）",
+                  "不能——有时更糟",
+                  "低"
+                ],
+                [
+                  "激进的学习率衰减",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "大批量（借助梯度累积做到 16x）",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "迭代平均（EMA）",
+                  "能——最稳健",
+                  "几乎免费"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 181.0,
+        "end": 245.79,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 64.79,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 65.69,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 181.0,
+          "global_end": 245.79,
+          "relative_start": 0.0,
+          "relative_end": 64.79,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "Figure 2. Rollout reward (blue = mean over 20 initial conditions; teal = per-episode) stays jagged as the authors vary architecture, dataset size, model scale, and regularizer, and is calmed only by variance-reduction strategies (bottom row). Standard regularizers do not remove the oscillations and often worsen them — evidence that the instability is algorithmic, driven by SGD noise, rather than statistical.",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The loss you watch is not the reward you want"
+            },
+            {
+              "type": "paragraph",
+              "text": "Behavior cloning is the simplest way to imitate an expert: collect demonstrations and minimize a single-step prediction error, the BC loss. In theory, drive that error to zero and you recover the expert policy. In practice, with deep networks and finite compute, the story is stranger. The authors deliberately match the dataset size to the horizon (N = H = 1000) so that overfitting cannot be the explanation, and still the rollout reward oscillates hard from iterate to iterate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Zooming into a handful of consecutive gradient steps makes the point vivid: the reward, viewed as a function of the policy parameters, is a jagged, almost fractal landscape, with good and bad policies sitting right next to each other along stochastic-gradient directions. None of that jaggedness is visible in the one-step BC objective, which is exactly why watching the training loss gives false comfort. The reward and the surrogate have come apart."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "解法：对你的迭代取平均"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果病根是梯度噪声，那么取平均就是最显然的药方，而且效果好得惊人。对权重维护一个指数滑动平均，每一步都更新：θ̃ ← (1 − γ)·θ̃ + γ·θ，然后拿这个被平均过的模型去评估。它的代价只是多存一份参数，既不改动学习率调度，也不改动批量大小，更不会拖慢底层优化器。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "图 3. EMA（绿色）在不同结构、更小的数据集，以及更多 MuJoCo 任务（Hopper、Ant、HalfCheetah、Humanoid）上，把原始迭代的回报震荡（浅蓝）统统压平，且完全不改动学习率调度或批量大小。配方很关键：每一步都更新，配上 burn-in 预热和退火的平均率；跳过 burn-in 或更新得太稀疏（中列）都会削弱效果。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 显示这剂药方在不同结构、不同数据量以及其他运动任务上都成立。配方是具体的：在每一次迭代都更新平均，用一段初始 burn-in 把早期粗糙的权重排除掉，并让平均率按 γ(t) = t^(−α) 退火。跳过 burn-in，或只是偶尔更新平均，它的稳定作用就会减弱。此外还有附赠好处：当数据稀缺时（少到 0.1x 的轨迹），震荡会更严重，而 EMA 能把这一点转化为实打实的样本效率提升；EMA 甚至可以直接替代学习率衰减。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各种干预手段对 GVA 引起的回报震荡有何影响。只有真正的方差缩减才管用，而迭代平均以几乎为零的代价拿到了这个效果。",
+              "headers": [
+                "策略",
+                "能否压住震荡？",
+                "代价"
+              ],
+              "rows": [
+                [
+                  "标准正则化（dropout、权重衰减、数据增广）",
+                  "不能——有时更糟",
+                  "低"
+                ],
+                [
+                  "激进的学习率衰减",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "大批量（借助梯度累积做到 16x）",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "迭代平均（EMA）",
+                  "能——最稳健",
+                  "几乎免费"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 245.79,
+        "end": 292.63,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 46.84,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 47.74,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 245.79,
+          "global_end": 292.63,
+          "relative_start": 0.0,
+          "relative_end": 46.84,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The fix: average your iterates"
+            },
+            {
+              "type": "paragraph",
+              "text": "If gradient noise is the disease, averaging is the obvious remedy, and it turns out to be remarkably effective. Keep a running exponential moving average of the weights, updated every step as θ̃ ← (1 − γ)·θ̃ + γ·θ, and evaluate that averaged model. It costs one extra copy of the parameters, changes nothing about the learning-rate schedule or the batch size, and does not slow down the underlying optimizer."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "Figure 3. EMA (green) collapses the raw-iterate reward oscillations (faint blue) across architectures, smaller datasets, and additional MuJoCo tasks — Hopper, Ant, HalfCheetah, Humanoid — without touching the learning-rate schedule or the batch size. The recipe matters: update every step with a burn-in and an annealed rate; skipping the burn-in or updating infrequently (center) weakens the effect.",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3 shows the cure holding across architectures, dataset sizes, and other locomotion tasks. The recipe is specific: update the average at every iterate, use an initial burn-in to discard the ragged early weights, and anneal the averaging rate as γ(t) = t^(−α). Skip the burn-in, or update the average only occasionally, and its stabilizing power fades. There are bonuses too: when data is scarce (down to 0.1x the trajectories), the oscillations are worse and EMA turns that into a real gain in sample efficiency, and EMA can stand in for learning-rate decay altogether."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. How the tested interventions affect GVA-induced reward oscillations. Only genuine variance reduction helps; iterate averaging delivers the effect at almost no cost.",
+              "headers": [
+                "Strategy",
+                "Reduces oscillations?",
+                "Cost"
+              ],
+              "rows": [
+                [
+                  "Standard regularizers (dropout, weight decay, augmentation)",
+                  "No — sometimes worse",
+                  "Low"
+                ],
+                [
+                  "Aggressive learning-rate decay",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Large batch (16x via gradient accumulation)",
+                  "Yes",
+                  "High compute"
+                ],
+                [
+                  "Iterate averaging (EMA)",
+                  "Yes — most robust",
+                  "Nearly free"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "你盯着的损失，不是你想要的回报"
+            },
+            {
+              "type": "paragraph",
+              "text": "行为克隆是模仿专家最朴素的做法：收集示范数据，最小化一个单步预测误差，也就是 BC 损失。理论上，把这个误差压到零，你就复现了专家策略。可现实中，配上深度网络和有限算力，故事要古怪得多。作者刻意让数据量与 rollout 长度相等（N = H = 1000），以排除过拟合这个解释，结果回滚回报依然在相邻迭代之间大幅震荡。"
+            },
+            {
+              "type": "paragraph",
+              "text": "放大到连续几步梯度更新来看，这一点更加触目：把回报看成策略参数的函数，它是一张锯齿状、近乎分形的曲面，好策略与坏策略沿着随机梯度方向紧挨在一起。而这些锯齿在单步 BC 目标里完全看不出来——这正是为什么盯着训练损失会给人虚假的安心。回报和替代目标，已经彻底脱钩了。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "排除常见嫌疑：GVA 是算法性的，不是统计性的"
+            },
+            {
+              "type": "paragraph",
+              "text": "对这种震荡有两种可能的解释。一种是统计性的——数据不够多，或模型容量不足。另一种是计算性的、即算法性的——问题出在优化过程本身。为了把两者分开，作者做了一轮罕见地彻底的扫描，在连续控制任务上进行了 278 次不同的干预，逐一改变数据量（一直到近乎无限的数据）、结构（从 2 层到 6 层的 MLP，再加上 Transformer）、模型规模，以及一整套正则化手段，比如 dropout、权重衰减和数据增广。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.4,
+              "caption": "图 2. 回滚回报（蓝色为 20 个初始条件上的均值，青色为逐条 episode 的回报）在改变结构、数据量、模型规模和正则化手段时始终保持锯齿状，只有方差缩减策略（底行）才能把它压平。标准正则化手段并不能消除震荡，反而常常让它更糟——这说明不稳定是算法性的、由 SGD 噪声驱动，而非统计性的。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 2 这一张图，几乎就是整个论证。震荡不会因为数据变多、结构改变或加了正则化而消失——正则化往往还让它更糟。它只对真正的方差缩减低头：大得多的批量、激进的学习率衰减、大动量，以及最干净利落的一招——迭代平均。这恰好就是「梯度噪声是元凶」时你会预期看到的指纹，因为只有削减这份噪声才应当奏效。作者把这个机制称作梯度方差放大：单步几乎可忽略的 SGD 噪声，在 rollout 的闭环中被层层放大。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 292.63,
+        "end": 345.37,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 52.74,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 53.64,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 292.63,
+          "global_end": 345.37,
+          "relative_start": 0.0,
+          "relative_end": 52.74,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "You train an imitation policy, watch the behavior-cloning loss slide down and flatten, and conclude that training is healthy. Every signal on your screen agrees. Then you roll the policy out in its environment and measure the thing you actually care about — the long-horizon reward — and it lurches from near-expert to near-failure between one checkpoint and the next. The loss is calm; the reward is chaotic. This paper is about that gap, and about why it is so easy to miss."
+            },
+            {
+              "type": "paragraph",
+              "text": "The gap matters because modern models live inside feedback loops. A language model's next token depends on the tokens it has already generated; a controller's next observation depends on the action it just took. Yet we almost always train these systems on a surrogate objective — next-token prediction, single-step imitation — that quietly pretends the loop is not there. The surrogate tends to improve smoothly, which lulls us into trusting it. Because rolling out and scoring the true task at every checkpoint is expensive, the swings usually stay invisible, and whichever checkpoint you happen to grab may be a bad one."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors argue the culprit is neither the data nor the model, but the noise in the optimizer itself. Minibatch SGD noise, entirely harmless for the one-step training loss, gets amplified through the closed loop into violent swings in long-horizon reward. They name the mechanism gradient variance amplification (GVA), show it is algorithmic rather than statistical, and demonstrate that a nearly free fix — an exponential moving average (EMA) of the weights — tames it across continuous control and autoregressive language models alike."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11428 (Block, Foster, Krishnamurthy, Simchowitz, and Zhang; MIT and Microsoft Research NYC)."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "你训练一个模仿学习的策略，盯着行为克隆（behavior cloning）的损失一路下滑、最后趋于平稳，于是判断训练很健康——屏幕上所有信号都在支持这个结论。可当你真正把策略放回环境里跑一遍，去看你真正在乎的那个指标，也就是长程回报（long-horizon reward），它却在相邻两个 checkpoint 之间从「接近专家」猛地掉到「接近失败」。损失很平静，回报却很混乱。这篇论文讲的就是这道裂缝，以及它为什么如此容易被忽略。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这道裂缝之所以重要，是因为现代模型几乎都活在反馈回路里：语言模型的下一个 token 取决于它自己已经生成的 token，控制器的下一次观测取决于它刚刚采取的动作。但我们训练它们时，几乎总是用一个替代目标（surrogate objective）——下一 token 预测、单步模仿——悄悄假装这个回路不存在。替代目标往往平滑下降，于是我们放心地信任它。又因为在每个 checkpoint 都跑一遍真实任务、评估真实回报的代价很高，这些抖动通常根本看不见，你随手拿到的那个 checkpoint 很可能就是个糟糕的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "图 1. 用 4 层 MLP 对 Walker2d-v4 专家做行为克隆，rollout 长度 H = 1000。回滚回报（蓝色）在训练迭代之间剧烈摆动，而单步 BC 误差（灰色）始终平稳且很低。对权重取指数滑动平均后的模型（绿色）几乎完美地贴合专家策略（红色虚线）。你在乎的回报在震荡，你盯着的损失却从不显示这一点。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的判断是：罪魁祸首既不是数据也不是模型，而是优化器自身的噪声。小批量 SGD 的梯度噪声，对单步训练损失完全无害，却会通过闭环被放大成长程回报的剧烈震荡。他们把这个机制命名为梯度方差放大（gradient variance amplification, GVA），论证它是算法性的而非统计性的，并证明一个几乎免费的解法——对权重取指数滑动平均（EMA）——能在连续控制和自回归语言模型上同样有效地驯服它。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2310.11428（Block、Foster、Krishnamurthy、Simchowitz、Zhang；MIT 与 Microsoft Research NYC）。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 345.37,
+        "end": 393.55,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 48.18,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 49.08,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 345.37,
+          "global_end": 393.55,
+          "relative_start": 0.0,
+          "relative_end": 48.18,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "Figure 3. EMA (green) collapses the raw-iterate reward oscillations (faint blue) across architectures, smaller datasets, and additional MuJoCo tasks — Hopper, Ant, HalfCheetah, Humanoid — without touching the learning-rate schedule or the batch size. The recipe matters: update every step with a burn-in and an annealed rate; skipping the burn-in or updating infrequently (center) weakens the effect.",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What to take away"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is simple and actionable. Stochastic gradient noise is invisible to the one-step loss you monitor, but once your model sits inside a feedback loop, that same noise is amplified into chaotic, long-horizon failure — gradient variance amplification. So a flat surrogate loss is not evidence of stable deployed behavior in any closed-loop setting, and iterate averaging deserves to be a first-class stabilizer alongside your optimizer and your scheduler: cheap, broadly effective, and useful from robot control to language generation."
+            },
+            {
+              "type": "paragraph",
+              "text": "If you take one habit from this paper, make it this: in any setting where your model acts inside a loop, keep an exponential moving average of the weights, update it every step after a short burn-in, and evaluate that averaged model instead of the latest iterate. It costs almost nothing and rarely hurts, and — as both the walking robots and the TinyStories language models show — it can turn a wildly oscillating training run into a stable, deployable one."
+            },
+            {
+              "type": "paragraph",
+              "text": "The honest boundary is worth stating. The mechanism is diagnosed empirically, supported by the convex vignette rather than a full theory of deep imitation, and the severity of GVA varies by task — the higher-dimensional Humanoid, for instance, oscillates more benignly. But the practical message survives all of that: when a model acts inside a loop, watch the reward, reduce the variance, and average your weights."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "解法：对你的迭代取平均"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果病根是梯度噪声，那么取平均就是最显然的药方，而且效果好得惊人。对权重维护一个指数滑动平均，每一步都更新：θ̃ ← (1 − γ)·θ̃ + γ·θ，然后拿这个被平均过的模型去评估。它的代价只是多存一份参数，既不改动学习率调度，也不改动批量大小，更不会拖慢底层优化器。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "width_inches": 6.4,
+              "caption": "图 3. EMA（绿色）在不同结构、更小的数据集，以及更多 MuJoCo 任务（Hopper、Ant、HalfCheetah、Humanoid）上，把原始迭代的回报震荡（浅蓝）统统压平，且完全不改动学习率调度或批量大小。配方很关键：每一步都更新，配上 burn-in 预热和退火的平均率；跳过 burn-in 或更新得太稀疏（中列）都会削弱效果。",
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图 3 显示这剂药方在不同结构、不同数据量以及其他运动任务上都成立。配方是具体的：在每一次迭代都更新平均，用一段初始 burn-in 把早期粗糙的权重排除掉，并让平均率按 γ(t) = t^(−α) 退火。跳过 burn-in，或只是偶尔更新平均，它的稳定作用就会减弱。此外还有附赠好处：当数据稀缺时（少到 0.1x 的轨迹），震荡会更严重，而 EMA 能把这一点转化为实打实的样本效率提升；EMA 甚至可以直接替代学习率衰减。"
+            },
+            {
+              "type": "table",
+              "caption": "表 1. 各种干预手段对 GVA 引起的回报震荡有何影响。只有真正的方差缩减才管用，而迭代平均以几乎为零的代价拿到了这个效果。",
+              "headers": [
+                "策略",
+                "能否压住震荡？",
+                "代价"
+              ],
+              "rows": [
+                [
+                  "标准正则化（dropout、权重衰减、数据增广）",
+                  "不能——有时更糟",
+                  "低"
+                ],
+                [
+                  "激进的学习率衰减",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "大批量（借助梯度累积做到 16x）",
+                  "能",
+                  "算力高"
+                ],
+                [
+                  "迭代平均（EMA）",
+                  "能——最稳健",
+                  "几乎免费"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 393.55,
+        "end": 436.33,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 42.78,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.68,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 393.55,
+          "global_end": 436.33,
+          "relative_start": 0.0,
+          "relative_end": 42.78,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "Figure 1. Behavior cloning a Walker2d-v4 expert with a 4-layer MLP over a horizon of H = 1000. The rollout reward (blue) swings violently across training iterates, while the single-step BC error (gray) stays flat and low. An exponential moving average of the weights (green) tracks the expert (red dashed) almost perfectly. The reward you care about is oscillating; the loss you watch never shows it.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The loss you watch is not the reward you want"
+            },
+            {
+              "type": "paragraph",
+              "text": "Behavior cloning is the simplest way to imitate an expert: collect demonstrations and minimize a single-step prediction error, the BC loss. In theory, drive that error to zero and you recover the expert policy. In practice, with deep networks and finite compute, the story is stranger. The authors deliberately match the dataset size to the horizon (N = H = 1000) so that overfitting cannot be the explanation, and still the rollout reward oscillates hard from iterate to iterate."
+            },
+            {
+              "type": "paragraph",
+              "text": "Zooming into a handful of consecutive gradient steps makes the point vivid: the reward, viewed as a function of the policy parameters, is a jagged, almost fractal landscape, with good and bad policies sitting right next to each other along stochastic-gradient directions. None of that jaggedness is visible in the one-step BC objective, which is exactly why watching the training loss gives false comfort. The reward and the surrogate have come apart."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "你训练一个模仿学习的策略，盯着行为克隆（behavior cloning）的损失一路下滑、最后趋于平稳，于是判断训练很健康——屏幕上所有信号都在支持这个结论。可当你真正把策略放回环境里跑一遍，去看你真正在乎的那个指标，也就是长程回报（long-horizon reward），它却在相邻两个 checkpoint 之间从「接近专家」猛地掉到「接近失败」。损失很平静，回报却很混乱。这篇论文讲的就是这道裂缝，以及它为什么如此容易被忽略。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这道裂缝之所以重要，是因为现代模型几乎都活在反馈回路里：语言模型的下一个 token 取决于它自己已经生成的 token，控制器的下一次观测取决于它刚刚采取的动作。但我们训练它们时，几乎总是用一个替代目标（surrogate objective）——下一 token 预测、单步模仿——悄悄假装这个回路不存在。替代目标往往平滑下降，于是我们放心地信任它。又因为在每个 checkpoint 都跑一遍真实任务、评估真实回报的代价很高，这些抖动通常根本看不见，你随手拿到的那个 checkpoint 很可能就是个糟糕的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 4.3,
+              "caption": "图 1. 用 4 层 MLP 对 Walker2d-v4 专家做行为克隆，rollout 长度 H = 1000。回滚回报（蓝色）在训练迭代之间剧烈摆动，而单步 BC 误差（灰色）始终平稳且很低。对权重取指数滑动平均后的模型（绿色）几乎完美地贴合专家策略（红色虚线）。你在乎的回报在震荡，你盯着的损失却从不显示这一点。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的判断是：罪魁祸首既不是数据也不是模型，而是优化器自身的噪声。小批量 SGD 的梯度噪声，对单步训练损失完全无害，却会通过闭环被放大成长程回报的剧烈震荡。他们把这个机制命名为梯度方差放大（gradient variance amplification, GVA），论证它是算法性的而非统计性的，并证明一个几乎免费的解法——对权重取指数滑动平均（EMA）——能在连续控制和自回归语言模型上同样有效地驯服它。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2310.11428（Block、Foster、Krishnamurthy、Simchowitz、Zhang；MIT 与 Microsoft Research NYC）。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "该带走什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "结论既简单又可操作。随机梯度噪声对你监控的那条单步损失是隐形的，可一旦你的模型置身于反馈回路，同一份噪声就会被放大成混乱的长程失败——这就是梯度方差放大。所以在任何闭环场景里，一条平坦的替代损失都不能当作部署行为稳定的证据；而迭代平均值得被当作一等公民的「稳定器」，与优化器和调度器并列：便宜、普适，从机器人控制到语言生成都用得上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "如果只从这篇论文里带走一个习惯，那就让它是这个：在任何模型置身于回路的场景里，都对权重维护一个指数滑动平均，经过一小段 burn-in 之后每一步都更新，并用这个被平均过的模型、而不是最新的那个迭代去评估。它几乎不花成本、也很少帮倒忙，而且——正如会走路的机器人和 TinyStories 语言模型都展示的那样——它能把一段剧烈震荡的训练，变成一段稳定、可部署的训练。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要诚实地说清边界。这个机制是实验诊断出来的，靠凸优化小品而非一套完整的深度模仿理论来支撑，而且 GVA 的严重程度因任务而异——比如维度更高的 Humanoid，震荡就要温和得多。但抛开这些，实用的讯息依然成立：当一个模型在回路里行动时，去看回报、去缩减方差、去平均你的权重。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "The Butterfly Effect of SGD Noise: Why Your Reward Swings While Your Loss Stays Flat",
+            "subtitle": "ICLR 2024 · MIT and Microsoft Research trace long-horizon instability in behavior cloning and language models to optimizer noise — and show that averaging your iterates (EMA) is a cheap, reliable cure."
+          },
+          "zh": {
+            "title": "损失曲线很平稳，回报却在剧烈抖动：SGD 噪声的「蝴蝶效应」",
+            "subtitle": "ICLR 2024 · MIT 与 Microsoft Research NYC：把长程训练不稳定追溯到优化器噪声，解法是对权重做指数滑动平均（EMA）。"
+          }
+        }
+      },
+      "segment": {
+        "start": 436.33,
+        "end": 479.9,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 43.57,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.47,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 436.33,
+          "global_end": 479.9,
+          "relative_start": 0.0,
+          "relative_end": 43.57,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

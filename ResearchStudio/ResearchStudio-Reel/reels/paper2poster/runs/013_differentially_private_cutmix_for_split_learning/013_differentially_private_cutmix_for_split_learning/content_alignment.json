@@ -1,0 +1,1685 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-14T23:27:35Z",
+  "title": "Differentially Private CutMix for Split Learning with Vision Transformer",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "A recurring goal in distributed machine learning is to train on user data without ever collecting it in one place. Two families dominate. Federated learning keeps the raw data local and exchanges only model parameters. Split learning cuts the model in two and exchanges only the cut-layer activations (the so-called smashed data), so the full model never has to move. How little you transmit, and how little you leak while doing it, is the tension these two approaches keep negotiating."
+            },
+            {
+              "type": "paragraph",
+              "text": "Vision Transformers break the assumptions that made split learning feel safe. A ViT has none of the pooling or convolution that a CNN uses to compress and distort its input, so the smashed data at the cut layer stays visually close to the original image. That closeness is bad in two ways at once: it makes reconstruction attacks easier, and because so much information survives, it also drives communication cost back up."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper, from Yonsei University, Deakin, MIT, and the University of Oulu, proposes DP-CutMixSL. It first perturbs the smashed data with a Gaussian differential-privacy mechanism, then randomly CutMixes activations from different clients at the patch level. The authors prove this step tightens the R\u00e9nyi differential-privacy (RDP) guarantee, and in their experiments it also raises accuracy. For once, privacy and accuracy do not have to be traded against each other."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2210.15986"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why ViT makes split learning leak"
+            },
+            {
+              "type": "paragraph",
+              "text": "Start with the trade-off between the two families. Federated learning locks the raw data down locally, but the price is shipping the whole model back and forth, and a ViT is large, so repeatedly moving it burdens edge devices with heavy energy and communication cost. Split learning sidesteps that by exchanging only the cut-layer smashed data and leaving the model in place, which should make it the cheaper option."
+            },
+            {
+              "type": "paragraph",
+              "text": "The trouble is structural. Without pooling or convolution, a ViT barely distorts its hidden representation, so the mutual information between smashed data and the raw input stays high. Put plainly, what the server receives looks too much like the original image: convenient for an attacker trying to invert it, and enough to erase the communication savings split learning was supposed to deliver. The privacy intuitions the field built up around CNNs no longer hold for transformers, and that is the gap this paper sets out to close."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The framework at a glance"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's core contribution, DP-CutMixSL, is easiest to grasp from the pipeline as a whole: it chains a noise step and a cross-client mixing step in front of the server so that each client only ever exposes a small, noise-perturbed slice of its smashed data."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The pipeline has four steps. Step 0: a mixer (which can be a third party) generates a set of complementary pseudorandom binary masks and distributes them. Step 1: each client adds white Gaussian noise to its own smashed data under the Gaussian DP mechanism. Step 2: each client applies its mask to punch the activation into Cutout smashed data. Step 3: the server simply adds up the complementary surviving patches from different clients to get DP-CutMix smashed data with no holes. Because the per-client masks are mutually exclusive and collectively exhaustive at the patch level, the sum has no blank patches, and no single client ever hands over its complete smashed data."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method in detail, and the privacy proof"
+            },
+            {
+              "type": "paragraph",
+              "text": "Unfolded, the mechanism works like this. The mixer draws mixing ratios \u03bb from a Dirichlet distribution (the clients' \u03bb sum to 1) and builds a binary mask for each client, where the number of surviving patches is proportional to that client's \u03bb. A client runs its input through the lower model segment to get smashed data, applies its binary sequence to obtain Cutout smashed data, then adds white Gaussian noise, giving the DP-Cutout smashed data it uploads."
+            },
+            {
+              "type": "paragraph",
+              "text": "The server's job is almost trivial: because the masks are mutually exclusive and collectively exhaustive, it just adds the noisy Cutout smashed data from different clients to form DP-CutMix smashed data, and mixes the labels with the same \u03bb weights. From there, forward and backward propagation proceed exactly as in vanilla split learning. What reaches the server is therefore only a fraction of each client's patches, and even that fraction is perturbed with noise."
+            },
+            {
+              "type": "paragraph",
+              "text": "On the privacy side, the authors prove a fixed ordering of the three mechanisms' RDP budgets: \u03b5_Mix \u2264 \u03b5_CutMix \u2264 \u03b5_o, where a smaller \u03b5 means stronger privacy. This inequality says that patch-level randomized CutMix tightens the privacy bound relative to plain DP-SL, while its privacy gain is bounded from below by the pixel-level Mixup variant. The tightening is real, but bounded rather than unlimited."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why patch-level CutMix rather than pixel-level Mixup"
+            },
+            {
+              "type": "paragraph",
+              "text": "Moving CutMix to the patch level is not an arbitrary choice; it follows from three properties of ViT. First, without pooling the hidden representation is barely distorted, so regularizing the representation is about as effective as regularizing the input directly. Second, because self-attention captures global spatial information, ViT is robust to large noise applied to only part of the image, a natural fit for Cutout- and CutMix-style operations that mask and swap regions. Third, every ViT operation already runs at the patch level. Together, the three point straight at a patch-level randomized CutMix of the hidden representation."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Interpolation schemes compared on images. Starting from a raw image and its Cutout version: Patch CutMix swaps content only at patch granularity, preserving each patch's internal local structure; CutMix replaces one contiguous region; Mixup blends two whole images by weight. The paper applies the corresponding operations to smashed data.",
+              "width_inches": 6.2,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The contrast is what matters. Mixup fuses two images into one and smears local structure across the whole frame; patch CutMix only swaps between patches, and each patch stays internally intact. For a ViT that leans on global attention, shuffling which patch sits where costs almost no usable information. For a CNN that leans on local features, replacing whole patches throws away more, which foreshadows the one exception on VGG-16 below."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: stronger privacy, higher accuracy"
+            },
+            {
+              "type": "paragraph",
+              "text": "First, accuracy in the noiseless setting (the paper's Table 1). The experiments span two datasets, CIFAR-10 and Fashion-MNIST, and three models chosen to cover the CNN-to-transformer spectrum: ViT-Tiny (a pure transformer), PiT-Tiny (a transformer with a pooling layer, sitting between the two), and VGG-16 (a convolutional network), with |C| = 10 clients and the cut layer placed right after the embedding. CutMixSL takes the top Top-1 accuracy in every configuration but one."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Top-1 accuracy (%) on CIFAR-10 in the noiseless setting. CutMixSL clearly beats the best baseline on ViT-Tiny and PiT-Tiny, but slightly trails SL + Mixup on the convolutional VGG-16.",
+              "headers": [
+                "Model (CIFAR-10, noiseless)",
+                "Best baseline",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88 (SplitFed)",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63 (SplitFed)",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20 (SL + Mixup)",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On CIFAR-10 with ViT-Tiny, CutMixSL reaches 73.77%, which is 16.56 points above plain split learning's 57.21% and 5.89 points above SplitFed's 67.88%. With PiT-Tiny, its 71.26% again clears SplitFed's 55.63% by a wide margin. On Fashion-MNIST with ViT-Tiny it hits 89.75%, the best of any method tested. The lone exception is CIFAR-10 with VGG-16, where SL + Mixup's 68.20% edges out CutMixSL's 67.53%. That fits the intuition: a CNN cares more about local information, so replacing whole patches costs it more than it costs a transformer. Mixup suits CNNs, patch CutMix suits ViT."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The privacy and accuracy trade-off"
+            },
+            {
+              "type": "paragraph",
+              "text": "Once noise is added, how do accuracy and privacy move together? The authors sweep the noise variance and report both accuracy and the RDP budget \u03b5 at each level."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. On CIFAR-10, top-1 accuracy (Acc@1, blue, left axis) and the RDP privacy budget \u03b5 (orange, right axis) as the noise variance \u03c3\u00b2 grows. DP-CutMixSL has the highest accuracy at almost every noise level; its \u03b5 is smaller than DP-SL's (stronger privacy) but slightly larger than DP-MixSL's, exactly the accuracy-versus-privacy trade-off.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The figure reads as a clean trade-off. DP-CutMixSL posts the best accuracy at nearly every noise level and always beats DP-MixSL on accuracy; on privacy, its \u03b5 is tighter than DP-SL's (stronger) but looser than DP-MixSL's, exactly the \u03b5 ordering the theory predicts, since Mixup melts information across the whole representation. Enlarging the group of clients being mixed lowers both accuracy and \u03b5, an effect the authors attribute to a hiding-in-the-crowd phenomenon."
+            },
+            {
+              "type": "paragraph",
+              "text": "Two further studies round this out. A reconstruction attack (the paper's Table 2) ranks robustness by reconstruction MSE as Cutout > patch CutMix > Mixup > raw smashed data: patch CutMix pushes the reconstruction error to about 0.0434 against just 0.0056 for raw smashed data, roughly an 8\u00d7 harder inversion. On scalability, accuracy climbs steadily as clients grow from 2 to 10, and adding SplitFed-style averaging of the lower model segment (CutMixSFL) improves it further."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "The message is that for Vision Transformers, split learning does not force a choice between accuracy and privacy. By adding Gaussian noise and then mixing randomly masked patches across clients, DP-CutMixSL both tightens the differential-privacy bound relative to plain split learning and raises accuracy, with that privacy gain provably bounded by a Mixup-based counterpart. It works because transformers rely on global self-attention and operate at the patch level, so swapping whole patches costs them almost nothing."
+            },
+            {
+              "type": "paragraph",
+              "text": "The boundaries are just as clear. The method is tailored to transformers: on a convolutional network that leans on local features, such as VGG-16, patch CutMix actually trails Mixup. And the privacy tightening has a floor: it is bounded below by the Mixup variant, not an unlimited free lunch. Seen in the wider picture, patch-level CutMix reads less like a generic trick and more like a privacy regularizer purpose-built for the transformer era of distributed learning."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "\u5206\u5e03\u5f0f\u8bad\u7ec3\u91cc\u4e00\u4e2a\u53cd\u590d\u51fa\u73b0\u7684\u8bc9\u6c42\u662f\uff1a\u5728\u4e0d\u628a\u7528\u6237\u6570\u636e\u96c6\u4e2d\u5230\u4e00\u5904\u7684\u524d\u63d0\u4e0b\u8bad\u7ec3\u6a21\u578b\u3002\u4e24\u6761\u4e3b\u6d41\u8def\u7ebf\u5404\u6709\u5206\u5de5\u3002\u8054\u90a6\u5b66\u4e60\uff08federated learning\uff09\u8ba9\u539f\u59cb\u6570\u636e\u7559\u5728\u672c\u5730\u3001\u53ea\u4ea4\u6362\u6a21\u578b\u53c2\u6570\uff1b\u5207\u5206\u5b66\u4e60\uff08split learning\uff09\u5219\u628a\u6a21\u578b\u5207\u6210\u4e24\u6bb5\uff0c\u5ba2\u6237\u7aef\u53ea\u628a\u5207\u5272\u5c42\uff08cut-layer\uff09\u7684\u4e2d\u95f4\u6fc0\u6d3b\uff0c\u4e5f\u5c31\u662f\u6240\u8c13\u7684\u300csmashed data\u300d\uff0c\u4e0a\u4f20\u7ed9\u670d\u52a1\u5668\u3002\u8c01\u4f20\u5f97\u5c11\u3001\u8c01\u6cc4\u9732\u5f97\u5c11\uff0c\u662f\u8fd9\u4e24\u6761\u8def\u7ebf\u957f\u671f\u535a\u5f08\u7684\u6838\u5fc3\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u4f46 Vision Transformer\uff08ViT\uff09\u7684\u666e\u53ca\u6253\u7834\u4e86\u5207\u5206\u5b66\u4e60\u539f\u672c\u7684\u9690\u79c1\u5047\u8bbe\u3002ViT \u6ca1\u6709 CNN \u90a3\u6837\u7684 pooling \u548c convolution \u5c42\uff0c\u5207\u5272\u5c42\u8f93\u51fa\u7684 smashed data \u51e0\u4e4e\u4e0d\u5bf9\u8f93\u5165\u505a\u538b\u7f29\u5931\u771f\uff0c\u56e0\u6b64\u548c\u539f\u56fe\u5728\u89c6\u89c9\u4e0a\u9ad8\u5ea6\u76f8\u4f3c\u3002\u76f8\u4f3c\u610f\u5473\u7740\u4e24\u4ef6\u574f\u4e8b\uff1a\u4e00\u662f\u53cd\u6f14\u653b\u51fb\u66f4\u5bb9\u6613\u8fd8\u539f\u51fa\u539f\u59cb\u56fe\u50cf\uff0c\u9690\u79c1\u66f4\u8106\u5f31\uff1b\u4e8c\u662f\u4fdd\u7559\u7684\u4fe1\u606f\u592a\u591a\uff0c\u901a\u4fe1\u5f00\u9500\u4e5f\u66f4\u5927\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fd9\u7bc7\u53d1\u8868\u4e8e NeurIPS 2022\u3001\u6765\u81ea\u5ef6\u4e16\u5927\u5b66\u3001Deakin\u3001MIT \u4e0e\u5965\u5362\u5927\u5b66\u7684\u5de5\u4f5c\u63d0\u51fa\u4e86 DP-CutMixSL\uff1a\u5148\u6309\u9ad8\u65af\u5dee\u5206\u9690\u79c1\u673a\u5236\u7ed9 smashed data \u52a0\u566a\uff0c\u518d\u5728 patch \u7c92\u5ea6\u4e0a\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u6fc0\u6d3b\u968f\u673a CutMix \u62fc\u63a5\u8d77\u6765\u3002\u4f5c\u8005\u8bc1\u660e\u8fd9\u4e00\u6b65\u80fd\u6536\u7d27 R\u00e9nyi \u5dee\u5206\u9690\u79c1\uff08RDP\uff09\u7684\u9690\u79c1\u754c\uff0c\u800c\u5b9e\u9a8c\u91cc\u5b83\u8fd8\u53cd\u8fc7\u6765\u63d0\u5347\u4e86\u7cbe\u5ea6\uff0c\u9690\u79c1\u548c\u7cbe\u5ea6\u8fd9\u6b21\u4e0d\u5fc5\u4e8c\u9009\u4e00\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8bba\u6587 Paper\uff1ahttps://arxiv.org/abs/2210.15986"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e3a\u4ec0\u4e48 ViT \u8ba9\u5207\u5206\u5b66\u4e60\u66f4\u5bb9\u6613\u6cc4\u9732"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u5398\u6e05\u4e24\u6761\u8def\u7ebf\u7684\u53d6\u820d\u3002\u8054\u90a6\u5b66\u4e60\u628a\u539f\u59cb\u6570\u636e\u9501\u5728\u672c\u5730\uff0c\u4ee3\u4ef7\u662f\u8981\u6765\u56de\u642c\u8fd0\u6574\u4e2a\u6a21\u578b\uff1b\u800c ViT \u53c2\u6570\u91cf\u5927\uff0c\u5728\u8fb9\u7f18\u8bbe\u5907\u4e0a\u53cd\u590d\u4f20\u8f93\u6574\u6a21\u578b\u7684\u80fd\u8017\u548c\u901a\u4fe1\u6210\u672c\u90fd\u5f88\u9ad8\u3002\u5207\u5206\u5b66\u4e60\u6362\u4e86\u4e2a\u601d\u8def\uff1a\u53ea\u5728\u5207\u5272\u5c42\u4ea4\u6362 smashed data\uff0c\u6a21\u578b\u672c\u4f53\u4e0d\u52a8\uff0c\u901a\u4fe1\u91cf\u672c\u8be5\u66f4\u7701\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u95ee\u9898\u6070\u6070\u51fa\u5728 ViT \u7684\u7ed3\u6784\u4e0a\u3002\u56e0\u4e3a\u7f3a\u5c11 pooling \u4e0e convolution\uff0cViT \u9690\u85cf\u8868\u5f81\u5bf9\u8f93\u5165\u7684\u5931\u771f\u6781\u5c0f\uff0csmashed data \u4e0e\u539f\u56fe\u4e4b\u95f4\u7684\u4e92\u4fe1\u606f\u5f88\u9ad8\u3002\u6362\u53e5\u8bdd\u8bf4\uff0c\u670d\u52a1\u5668\u6536\u5230\u7684\u4e2d\u95f4\u6fc0\u6d3b\u300c\u592a\u50cf\u300d\u539f\u56fe\u4e86\uff1a\u65e2\u65b9\u4fbf\u653b\u51fb\u8005\u505a\u53cd\u6f14\u8fd8\u539f\uff0c\u4e5f\u8ba9\u672c\u60f3\u7701\u4e0b\u7684\u901a\u4fe1\u91cf\u91cd\u65b0\u53d8\u5927\u3002\u5207\u5206\u5b66\u4e60\u9488\u5bf9 CNN \u65f6\u4ee3\u603b\u7ed3\u51fa\u7684\u90a3\u5957\u9690\u79c1\u5047\u8bbe\uff0c\u5728 transformer \u4e0a\u4e0d\u518d\u6210\u7acb\uff0c\u8fd9\u6b63\u662f\u672c\u6587\u8981\u91cd\u65b0\u56de\u7b54\u7684\u95ee\u9898\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e00\u56fe\u770b\u61c2 DP-CutMixSL"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u672c\u6587\u7684\u6838\u5fc3\u8d21\u732e DP-CutMixSL\uff0c\u53ef\u4ee5\u5148\u7528\u4e00\u5f20\u6574\u4f53\u6d41\u7a0b\u56fe\u5efa\u7acb\u76f4\u89c9\uff1a\u5b83\u628a\u300c\u52a0\u566a\u300d\u548c\u300c\u8de8\u5ba2\u6237\u7aef\u6df7\u5408\u300d\u4e24\u6b65\u4e32\u8054\u5728\u670d\u52a1\u5668\u4e4b\u524d\uff0c\u8ba9\u6bcf\u4e2a\u5ba2\u6237\u7aef\u53ea\u66b4\u9732\u4e00\u5c0f\u90e8\u5206\u3001\u800c\u4e14\u662f\u5e26\u566a\u7684 smashed data\u3002"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u6574\u4e2a\u6d41\u7a0b\u5206\u56db\u6b65\u3002\u7b2c 0 \u6b65\uff0c\u4e00\u4e2a mixer\uff08\u53ef\u4ee5\u662f\u7b2c\u4e09\u65b9\uff09\u751f\u6210\u4e00\u7ec4\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff0c\u5206\u53d1\u7ed9\u5404\u5ba2\u6237\u7aef\uff1b\u7b2c 1 \u6b65\uff0c\u6bcf\u4e2a\u5ba2\u6237\u7aef\u6309\u9ad8\u65af DP \u673a\u5236\u7ed9\u81ea\u5df1\u7684 smashed data \u52a0\u767d\u566a\u58f0\uff1b\u7b2c 2 \u6b65\uff0c\u7528\u5404\u81ea\u7684\u63a9\u7801\u628a\u6fc0\u6d3b\u300c\u6253\u5b54\u300d\u6210 Cutout smashed data\uff1b\u7b2c 3 \u6b65\uff0c\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7559\u4e0b\u7684\u4e92\u8865 patch \u76f4\u63a5\u76f8\u52a0\uff0c\u5f97\u5230\u6ca1\u6709\u7a7a\u6d1e\u7684 DP-CutMix smashed data\u3002\u7531\u4e8e\u5404\u5ba2\u6237\u7aef\u7684\u63a9\u7801\u5728 patch \u5c42\u4e92\u65a5\u4e14\u5b8c\u5907\uff0c\u76f8\u52a0\u540e\u4e0d\u4f1a\u51fa\u73b0\u7a7a\u767d patch\uff0c\u800c\u4efb\u4f55\u4e00\u4e2a\u5ba2\u6237\u7aef\u4e5f\u4ece\u672a\u628a\u5b8c\u6574\u7684 smashed data \u4ea4\u51fa\u53bb\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u65b9\u6cd5\u7ec6\u8282\u4e0e\u9690\u79c1\u8bc1\u660e"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u628a\u6d41\u7a0b\u5c55\u5f00\u6765\u770b\uff1amixer \u4ece Dirichlet \u5206\u5e03\u62bd\u53d6\u6df7\u5408\u6bd4\u4f8b \u03bb\uff08\u5404\u5ba2\u6237\u7aef\u7684 \u03bb \u4e4b\u548c\u4e3a 1\uff09\uff0c\u5e76\u636e\u6b64\u751f\u6210\u4e8c\u503c\u63a9\u7801\uff0c\u67d0\u4e2a\u5ba2\u6237\u7aef\u63a9\u7801\u91cc\u300c\u4fdd\u7559\u300d\u7684 patch \u6570\u91cf\u6b63\u6bd4\u4e8e\u5b83\u7684 \u03bb\u3002\u5ba2\u6237\u7aef\u628a\u8f93\u5165\u8fc7\u4e00\u904d\u4e0b\u6bb5\u6a21\u578b\u5f97\u5230 smashed data\uff0c\u7528\u4e8c\u503c\u5e8f\u5217\u505a\u63a9\u7801\u5f97\u5230 Cutout smashed data\uff0c\u518d\u53e0\u52a0\u767d\u9ad8\u65af\u566a\u58f0\uff0c\u5c31\u662f\u8981\u4e0a\u4f20\u7684 DP-Cutout smashed data\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u670d\u52a1\u5668\u7aef\u66f4\u7b80\u5355\uff1a\u56e0\u4e3a\u63a9\u7801\u4e92\u65a5\u4e14\u5b8c\u5907\uff0c\u5b83\u53ea\u9700\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u5e26\u566a Cutout smashed data \u76f8\u52a0\uff0c\u5c31\u5f97\u5230 DP-CutMix smashed data\uff0c\u540c\u65f6\u6309\u540c\u6837\u7684 \u03bb \u6743\u91cd\u6df7\u5408\u6807\u7b7e\u3002\u6b64\u540e\u7684\u524d\u5411\u3001\u53cd\u5411\u4f20\u64ad\u4e0e\u666e\u901a\u5207\u5206\u5b66\u4e60\u5b8c\u5168\u4e00\u81f4\u3002\u8fd9\u6837\u4e00\u6765\uff0c\u66b4\u9732\u7ed9\u670d\u52a1\u5668\u7684\u65e2\u53ea\u662f\u6bcf\u4e2a\u5ba2\u6237\u7aef\u7684\u4e00\u90e8\u5206 patch\uff0c\u800c\u4e14\u8fd9\u90e8\u5206\u8fd8\u662f\u52a0\u8fc7\u566a\u7684\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u9690\u79c1\u4e00\u4fa7\uff0c\u4f5c\u8005\u8bc1\u660e\u4e86\u4e09\u79cd\u673a\u5236\u7684 RDP \u9884\u7b97\u5b58\u5728\u56fa\u5b9a\u6b21\u5e8f\uff1a\u03b5_Mix \u2264 \u03b5_CutMix \u2264 \u03b5_o\uff0c\u5176\u4e2d \u03b5 \u8d8a\u5c0f\u4ee3\u8868\u9690\u79c1\u8d8a\u5f3a\u3002\u8fd9\u4e00\u4e0d\u7b49\u5f0f\u8bf4\u660e\uff0cpatch \u7ea7\u968f\u673a CutMix \u76f8\u6bd4\u539f\u59cb\u7684 DP-SL \u80fd\u6536\u7d27\u9690\u79c1\u754c\uff0c\u540c\u65f6\u5b83\u7684\u9690\u79c1\u589e\u76ca\u53c8\u88ab\u50cf\u7d20\u7ea7 Mixup \u7248\u672c\u4ece\u4e0b\u65b9 bound \u4f4f\uff0c\u4e5f\u5c31\u662f\u8bf4\u6536\u7d27\u662f\u6709\u9650\u5ea6\u7684\uff0c\u800c\u4e0d\u662f\u65e0\u9650\u53d8\u5f3a\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e3a\u4ec0\u4e48\u662f patch \u7ea7 CutMix\uff0c\u800c\u4e0d\u662f\u50cf\u7d20\u7ea7 Mixup"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u628a CutMix \u653e\u5230 patch \u5c42\uff0c\u5e76\u4e0d\u662f\u968f\u624b\u7684\u9009\u62e9\uff0c\u800c\u662f\u987a\u7740 ViT \u7684\u4e09\u70b9\u7279\u6027\u63a8\u5bfc\u51fa\u6765\u7684\u3002\u5176\u4e00\uff0c\u6ca1\u6709 pooling\uff0c\u9690\u85cf\u8868\u5f81\u51e0\u4e4e\u4e0d\u5931\u771f\uff0c\u56e0\u6b64\u5728\u8868\u5f81\u4e0a\u505a\u6b63\u5219\u5316\u548c\u76f4\u63a5\u5728\u8f93\u5165\u4e0a\u505a\u51e0\u4e4e\u7b49\u6548\uff1b\u5176\u4e8c\uff0c\u81ea\u6ce8\u610f\u529b\u6355\u6349\u7684\u662f\u5168\u5c40\u7a7a\u95f4\u4fe1\u606f\uff0c\u5bf9\u56fe\u50cf\u5c40\u90e8\u65bd\u52a0\u7684\u5927\u566a\u58f0\u76f8\u5f53\u9c81\u68d2\uff0c\u8fd9\u5929\u7136\u9002\u5408 Cutout / CutMix \u8fd9\u7c7b\u300c\u906e\u4e00\u5757\u3001\u6362\u4e00\u5757\u300d\u7684\u64cd\u4f5c\uff1b\u5176\u4e09\uff0cViT \u7684\u4e00\u5207\u8fd0\u7b97\u672c\u6765\u5c31\u53d1\u751f\u5728 patch \u5c42\u3002\u4e09\u70b9\u53e0\u52a0\uff0c\u6307\u5411\u7684\u6b63\u662f\u300c\u5728\u9690\u85cf\u8868\u5f81\u4e0a\u505a patch \u7ea7\u968f\u673a CutMix\u300d\u3002"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "\u56fe2 \u4e09\u79cd\u63d2\u503c\u65b9\u6848\u5728\u56fe\u50cf\u4e0a\u7684\u76f4\u89c2\u5bf9\u6bd4\u3002\u4ece\u539f\u56fe\uff08Raw Image\uff09\u53ca\u5176 Cutout \u7248\u672c\u51fa\u53d1\uff1aPatch CutMix \u53ea\u5728 patch \u7c92\u5ea6\u66ff\u6362\u5185\u5bb9\u3001\u4fdd\u7559\u6bcf\u4e2a patch \u5185\u90e8\u7684\u5c40\u90e8\u7ed3\u6784\uff1bCutMix \u66ff\u6362\u7684\u662f\u4e00\u5757\u8fde\u7eed\u533a\u57df\uff1bMixup \u5219\u628a\u4e24\u5f20\u56fe\u6574\u4f53\u6309\u6bd4\u4f8b\u53e0\u52a0\u3002\u8bba\u6587\u5728 smashed data \u4e0a\u505a\u7684\u662f\u5bf9\u5e94\u7684\u540c\u7c7b\u64cd\u4f5c\u3002",
+              "width_inches": 6.2,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5bf9\u6bd4\u4e4b\u4e0b\u5c31\u80fd\u770b\u51fa\u5dee\u522b\uff1aMixup \u628a\u4e24\u5f20\u56fe\u6574\u4f53\u878d\u5728\u4e00\u8d77\uff0c\u5c40\u90e8\u7ed3\u6784\u88ab\u62b9\u5e73\uff1bpatch CutMix \u53ea\u5728 patch \u4e4b\u95f4\u505a\u66ff\u6362\uff0c\u6bcf\u4e2a patch \u5185\u90e8\u4f9d\u65e7\u6e05\u6670\u3002\u5bf9\u4f9d\u8d56\u5168\u5c40\u6ce8\u610f\u529b\u7684 ViT \u6765\u8bf4\uff0c\u6253\u4e71 patch \u6392\u5217\u51e0\u4e4e\u4e0d\u635f\u5931\u53ef\u7528\u4fe1\u606f\uff1b\u4f46\u5bf9\u504f\u91cd\u5c40\u90e8\u7279\u5f81\u7684 CNN\uff0c\u6574\u5757\u66ff\u6362 patch \u53cd\u800c\u4f1a\u4e22\u6389\u66f4\u591a\u4fe1\u606f\uff0c\u8fd9\u4e5f\u9884\u544a\u4e86\u540e\u9762 VGG-16 \u4e0a\u4f1a\u51fa\u73b0\u7684\u90a3\u4e2a\u4f8b\u5916\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u7ed3\u679c\uff1a\u9690\u79c1\u66f4\u5f3a\uff0c\u7cbe\u5ea6\u53cd\u800c\u66f4\u9ad8"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u770b\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684\u7cbe\u5ea6\u5bf9\u6bd4\uff08\u8bba\u6587 Table 1\uff09\u3002\u5b9e\u9a8c\u8986\u76d6 CIFAR-10 \u4e0e Fashion-MNIST \u4e24\u4e2a\u6570\u636e\u96c6\uff0c\u4ee5\u53ca\u6a2a\u8de8 CNN \u5230 transformer \u8c31\u7cfb\u7684\u4e09\u79cd\u6a21\u578b\uff1aViT-Tiny\uff08\u7eaf transformer\uff09\u3001PiT-Tiny\uff08\u5e26 pooling\u3001\u4ecb\u4e8e\u4e24\u8005\u4e4b\u95f4\uff09\u3001VGG-16\uff08\u5377\u79ef\u7f51\u7edc\uff09\uff0c\u5ba2\u6237\u7aef\u6570 |C| = 10\uff0c\u5207\u5272\u5c42\u90fd\u653e\u5728 embedding \u4e4b\u540e\u3002CutMixSL \u5728\u51e0\u4e4e\u6240\u6709\u914d\u7f6e\u4e0a\u90fd\u53d6\u5f97\u6700\u9ad8 Top-1 \u7cbe\u5ea6\u3002"
+            },
+            {
+              "type": "table",
+              "caption": "\u88681 CIFAR-10\u3001\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684 Top-1 \u7cbe\u5ea6\uff08%\uff09\u3002CutMixSL \u5728 ViT-Tiny\u3001PiT-Tiny \u4e0a\u660e\u663e\u8d85\u8fc7\u6700\u4f73\u57fa\u7ebf\uff0c\u4f46\u5728\u5377\u79ef\u7f51\u7edc VGG-16 \u4e0a\u7565\u900a\u4e8e SL + Mixup\u3002",
+              "headers": [
+                "\u6a21\u578b\uff08CIFAR-10\uff0c\u65e0\u566a\u58f0\uff09",
+                "\u6700\u4f73\u57fa\u7ebf",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88\uff08SplitFed\uff09",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63\uff08SplitFed\uff09",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20\uff08SL + Mixup\uff09",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5728 CIFAR-10 \u52a0 ViT-Tiny \u4e0a\uff0cCutMixSL \u8fbe\u5230 73.77%\uff0c\u6bd4\u666e\u901a\u5207\u5206\u5b66\u4e60\u7684 57.21% \u9ad8\u51fa 16.56 \u4e2a\u767e\u5206\u70b9\uff0c\u4e5f\u6bd4 SplitFed \u7684 67.88% \u9ad8 5.89 \u4e2a\u767e\u5206\u70b9\uff1b\u6362\u6210 PiT-Tiny\uff0c\u5b83\u7684 71.26% \u540c\u6837\u5927\u5e45\u9886\u5148 SplitFed \u7684 55.63%\u3002\u5728 Fashion-MNIST \u52a0 ViT-Tiny \u4e0a\uff0c\u5b83\u53d6\u5f97 89.75%\uff0c\u662f\u6240\u6709\u65b9\u6cd5\u91cc\u6700\u9ad8\u7684\u3002\u552f\u4e00\u7684\u4f8b\u5916\u662f CIFAR-10 \u52a0 VGG-16\uff1a\u6b64\u65f6 SL + Mixup \u7684 68.20% \u7565\u9ad8\u4e8e CutMixSL \u7684 67.53%\u3002\u8fd9\u4e0e\u524d\u9762\u7684\u76f4\u89c9\u4e00\u81f4\uff1a\u5377\u79ef\u7f51\u7edc\u66f4\u770b\u91cd\u5c40\u90e8\u4fe1\u606f\uff0c\u6574\u5757\u66ff\u6362 patch \u9020\u6210\u7684\u635f\u5931\u6bd4 transformer \u66f4\u5927\uff0c\u6240\u4ee5 Mixup \u66f4\u9002\u5408 CNN\uff0c\u800c patch CutMix \u66f4\u9002\u5408 ViT\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u9690\u79c1\u4e0e\u7cbe\u5ea6\u7684\u6743\u8861"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u52a0\u4e0a\u566a\u58f0\u540e\uff0c\u7cbe\u5ea6\u548c\u9690\u79c1\u5982\u4f55\u8054\u52a8\uff1f\u4f5c\u8005\u626b\u63cf\u4e86\u4e0d\u540c\u7684\u566a\u58f0\u65b9\u5dee\uff0c\u540c\u65f6\u62a5\u544a\u7cbe\u5ea6\u548c RDP \u9690\u79c1\u9884\u7b97 \u03b5\u3002"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "\u56fe3 CIFAR-10 \u4e0a\uff0c\u968f\u566a\u58f0\u65b9\u5dee \u03c3\u00b2 \u53d8\u5316\u7684\u7cbe\u5ea6\uff08Acc@1\uff0c\u84dd\u8272\uff0c\u5de6\u8f74\uff09\u4e0e RDP \u9690\u79c1\u9884\u7b97 \u03b5\uff08\u6a59\u8272\uff0c\u53f3\u8f74\uff09\u3002DP-CutMixSL \u5728\u51e0\u4e4e\u6bcf\u4e2a\u566a\u58f0\u6c34\u5e73\u4e0a\u7cbe\u5ea6\u6700\u9ad8\uff1b\u5b83\u7684 \u03b5 \u6bd4 DP-SL \u66f4\u5c0f\uff08\u9690\u79c1\u66f4\u5f3a\uff09\uff0c\u4f46\u6bd4 DP-MixSL \u7565\u5927\uff0c\u8fd9\u6b63\u662f\u7cbe\u5ea6\u4e0e\u9690\u79c1\u4e4b\u95f4\u7684\u6743\u8861\u3002",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u56fe\u91cc\u53ef\u4ee5\u8bfb\u51fa\u4e00\u4e2a\u6e05\u6670\u7684\u6743\u8861\uff1aDP-CutMixSL \u5728\u51e0\u4e4e\u6bcf\u4e00\u4e2a\u566a\u58f0\u6c34\u5e73\u4e0a\u90fd\u62ff\u5230\u6700\u597d\u7684\u7cbe\u5ea6\uff0c\u4e14\u59cb\u7ec8\u4f18\u4e8e DP-MixSL\uff1b\u5728\u9690\u79c1\u4e00\u4fa7\uff0c\u5b83\u7684 \u03b5 \u6bd4 DP-SL \u66f4\u7d27\uff08\u9690\u79c1\u66f4\u5f3a\uff09\uff0c\u5374\u6bd4 DP-MixSL \u66f4\u677e\uff0c\u8fd9\u4e0e\u524d\u9762\u8bc1\u660e\u7684 \u03b5 \u6b21\u5e8f\u5b8c\u5168\u543b\u5408\uff0c\u56e0\u4e3a Mixup \u4f1a\u628a\u4fe1\u606f\u644a\u8584\u5230\u6574\u5f20\u8868\u5f81\u4e0a\u3002\u4f5c\u8005\u8fd8\u89c2\u5bdf\u5230\uff0c\u6269\u5927\u6df7\u5408\u7684\u5ba2\u6237\u7aef\u7ec4\u4f1a\u540c\u65f6\u62c9\u4f4e\u7cbe\u5ea6\u548c \u03b5\uff0c\u4ed6\u4eec\u5c06\u5176\u5f52\u56e0\u4e8e\u4e00\u79cd\u300c\u85cf\u5728\u4eba\u7fa4\u91cc\u300d\u7684\u6548\u5e94\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u53e6\u6709\u4e24\u7ec4\u8865\u5145\u5b9e\u9a8c\u3002\u53cd\u6f14\u653b\u51fb\uff08\u8bba\u6587 Table 2\uff09\u6309\u91cd\u5efa MSE \u8861\u91cf\u9c81\u68d2\u6027\uff0c\u6392\u5e8f\u4e3a Cutout > patch CutMix > Mixup > \u539f\u59cb smashed data\uff1apatch CutMix \u7684\u91cd\u5efa\u8bef\u5dee\u7ea6\u4e3a 0.0434\uff0c\u800c\u539f\u59cb smashed data \u4ec5 0.0056\uff0c\u628a\u53cd\u6f14\u96be\u5ea6\u62ac\u9ad8\u4e86\u7ea6 8 \u500d\u3002\u53ef\u6269\u5c55\u6027\u65b9\u9762\uff0c\u5ba2\u6237\u7aef\u6570\u4ece 2 \u589e\u52a0\u5230 10 \u65f6\u7cbe\u5ea6\u6301\u7eed\u63d0\u5347\uff1b\u518d\u53e0\u52a0 SplitFed \u5f0f\u7684\u4e0b\u6bb5\u6a21\u578b\u53c2\u6570\u5e73\u5747\uff08\u8bb0\u4f5c CutMixSFL\uff09\uff0c\u8fd8\u80fd\u8fdb\u4e00\u6b65\u63d0\u9ad8\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u5c0f\u7ed3\u4e0e\u8fb9\u754c"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fd9\u7bc7\u5de5\u4f5c\u7ed9\u51fa\u7684\u7ed3\u8bba\u662f\uff1a\u5bf9 Vision Transformer \u800c\u8a00\uff0c\u5207\u5206\u5b66\u4e60\u91cc\u7684\u7cbe\u5ea6\u4e0e\u9690\u79c1\u4e0d\u5fc5\u4e92\u76f8\u727a\u7272\u3002\u5148\u52a0\u9ad8\u65af\u566a\u58f0\u3001\u518d\u8de8\u5ba2\u6237\u7aef\u6df7\u5408\u968f\u673a\u906e\u6321\u7684 patch\uff0cDP-CutMixSL \u65e2\u76f8\u5bf9\u666e\u901a\u5207\u5206\u5b66\u4e60\u6536\u7d27\u4e86\u5dee\u5206\u9690\u79c1\u754c\uff0c\u53c8\u63d0\u5347\u4e86\u7cbe\u5ea6\uff0c\u800c\u4e14\u8fd9\u4efd\u9690\u79c1\u589e\u76ca\u88ab\u4e00\u4e2a Mixup \u7248\u672c\u53ef\u8bc1\u660e\u5730 bound \u4f4f\u3002\u5b83\u4e4b\u6240\u4ee5\u6210\u7acb\uff0c\u662f\u56e0\u4e3a transformer \u4f9d\u8d56\u5168\u5c40\u81ea\u6ce8\u610f\u529b\u3001\u53c8\u5929\u7136\u5728 patch \u5c42\u8fd0\u7b97\uff0c\u6362\u6389\u6574\u5757 patch \u5bf9\u5b83\u51e0\u4e4e\u65e0\u635f\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fb9\u754c\u4e5f\u5f88\u660e\u786e\u3002\u8fd9\u5957\u65b9\u6cd5\u662f\u4e3a transformer \u91cf\u8eab\u5b9a\u5236\u7684\uff1a\u5728\u504f\u91cd\u5c40\u90e8\u7279\u5f81\u7684\u5377\u79ef\u7f51\u7edc\uff08\u5982 VGG-16\uff09\u4e0a\uff0cpatch CutMix \u53cd\u800c\u7565\u900a\u4e8e Mixup\u3002\u9690\u79c1\u4e0a\u7684\u6536\u7d27\u540c\u6837\u6709\u4e0a\u9650\uff1a\u5b83\u88ab Mixup \u7248\u672c\u4ece\u4e0b\u65b9 bound\uff0c\u5e76\u4e0d\u662f\u53ef\u4ee5\u65e0\u9650\u589e\u5f3a\u7684\u514d\u8d39\u5348\u9910\u3002\u653e\u5728\u66f4\u5927\u7684\u56fe\u666f\u91cc\uff0cpatch \u7ea7 CutMix \u66f4\u50cf\u662f\u4e00\u79cd\u4e3a\u300ctransformer \u65f6\u4ee3\u7684\u5206\u5e03\u5f0f\u5b66\u4e60\u300d\u4e13\u95e8\u8bbe\u8ba1\u7684\u9690\u79c1\u6b63\u5219\u5316\u624b\u6bb5\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 273.91,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 273.91,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 38.12,
+          "relative_start": 0.5,
+          "relative_end": 38.12,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 38.12,
+          "global_end": 70.75,
+          "relative_start": 38.12,
+          "relative_end": 70.75,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 70.75,
+          "global_end": 106.45,
+          "relative_start": 70.75,
+          "relative_end": 106.45,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 106.45,
+          "global_end": 157.46,
+          "relative_start": 106.45,
+          "relative_end": 157.46,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 157.46,
+          "global_end": 195.2,
+          "relative_start": 157.46,
+          "relative_end": 195.2,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 195.2,
+          "global_end": 239.42,
+          "relative_start": 195.2,
+          "relative_end": 239.42,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 239.42,
+          "global_end": 273.85,
+          "relative_start": 239.42,
+          "relative_end": 273.85,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "A recurring goal in distributed machine learning is to train on user data without ever collecting it in one place. Two families dominate. Federated learning keeps the raw data local and exchanges only model parameters. Split learning cuts the model in two and exchanges only the cut-layer activations (the so-called smashed data), so the full model never has to move. How little you transmit, and how little you leak while doing it, is the tension these two approaches keep negotiating."
+            },
+            {
+              "type": "paragraph",
+              "text": "Vision Transformers break the assumptions that made split learning feel safe. A ViT has none of the pooling or convolution that a CNN uses to compress and distort its input, so the smashed data at the cut layer stays visually close to the original image. That closeness is bad in two ways at once: it makes reconstruction attacks easier, and because so much information survives, it also drives communication cost back up."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper, from Yonsei University, Deakin, MIT, and the University of Oulu, proposes DP-CutMixSL. It first perturbs the smashed data with a Gaussian differential-privacy mechanism, then randomly CutMixes activations from different clients at the patch level. The authors prove this step tightens the R\u00e9nyi differential-privacy (RDP) guarantee, and in their experiments it also raises accuracy. For once, privacy and accuracy do not have to be traded against each other."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2210.15986"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e3a\u4ec0\u4e48 ViT \u8ba9\u5207\u5206\u5b66\u4e60\u66f4\u5bb9\u6613\u6cc4\u9732"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u5398\u6e05\u4e24\u6761\u8def\u7ebf\u7684\u53d6\u820d\u3002\u8054\u90a6\u5b66\u4e60\u628a\u539f\u59cb\u6570\u636e\u9501\u5728\u672c\u5730\uff0c\u4ee3\u4ef7\u662f\u8981\u6765\u56de\u642c\u8fd0\u6574\u4e2a\u6a21\u578b\uff1b\u800c ViT \u53c2\u6570\u91cf\u5927\uff0c\u5728\u8fb9\u7f18\u8bbe\u5907\u4e0a\u53cd\u590d\u4f20\u8f93\u6574\u6a21\u578b\u7684\u80fd\u8017\u548c\u901a\u4fe1\u6210\u672c\u90fd\u5f88\u9ad8\u3002\u5207\u5206\u5b66\u4e60\u6362\u4e86\u4e2a\u601d\u8def\uff1a\u53ea\u5728\u5207\u5272\u5c42\u4ea4\u6362 smashed data\uff0c\u6a21\u578b\u672c\u4f53\u4e0d\u52a8\uff0c\u901a\u4fe1\u91cf\u672c\u8be5\u66f4\u7701\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u95ee\u9898\u6070\u6070\u51fa\u5728 ViT \u7684\u7ed3\u6784\u4e0a\u3002\u56e0\u4e3a\u7f3a\u5c11 pooling \u4e0e convolution\uff0cViT \u9690\u85cf\u8868\u5f81\u5bf9\u8f93\u5165\u7684\u5931\u771f\u6781\u5c0f\uff0csmashed data \u4e0e\u539f\u56fe\u4e4b\u95f4\u7684\u4e92\u4fe1\u606f\u5f88\u9ad8\u3002\u6362\u53e5\u8bdd\u8bf4\uff0c\u670d\u52a1\u5668\u6536\u5230\u7684\u4e2d\u95f4\u6fc0\u6d3b\u300c\u592a\u50cf\u300d\u539f\u56fe\u4e86\uff1a\u65e2\u65b9\u4fbf\u653b\u51fb\u8005\u505a\u53cd\u6f14\u8fd8\u539f\uff0c\u4e5f\u8ba9\u672c\u60f3\u7701\u4e0b\u7684\u901a\u4fe1\u91cf\u91cd\u65b0\u53d8\u5927\u3002\u5207\u5206\u5b66\u4e60\u9488\u5bf9 CNN \u65f6\u4ee3\u603b\u7ed3\u51fa\u7684\u90a3\u5957\u9690\u79c1\u5047\u8bbe\uff0c\u5728 transformer \u4e0a\u4e0d\u518d\u6210\u7acb\uff0c\u8fd9\u6b63\u662f\u672c\u6587\u8981\u91cd\u65b0\u56de\u7b54\u7684\u95ee\u9898\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 38.12,
+        "end": 70.75,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 32.63,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 33.53,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 38.12,
+          "global_end": 70.75,
+          "relative_start": 0.0,
+          "relative_end": 32.63,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why ViT makes split learning leak"
+            },
+            {
+              "type": "paragraph",
+              "text": "Start with the trade-off between the two families. Federated learning locks the raw data down locally, but the price is shipping the whole model back and forth, and a ViT is large, so repeatedly moving it burdens edge devices with heavy energy and communication cost. Split learning sidesteps that by exchanging only the cut-layer smashed data and leaving the model in place, which should make it the cheaper option."
+            },
+            {
+              "type": "paragraph",
+              "text": "The trouble is structural. Without pooling or convolution, a ViT barely distorts its hidden representation, so the mutual information between smashed data and the raw input stays high. Put plainly, what the server receives looks too much like the original image: convenient for an attacker trying to invert it, and enough to erase the communication savings split learning was supposed to deliver. The privacy intuitions the field built up around CNNs no longer hold for transformers, and that is the gap this paper sets out to close."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e3a\u4ec0\u4e48 ViT \u8ba9\u5207\u5206\u5b66\u4e60\u66f4\u5bb9\u6613\u6cc4\u9732"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u5398\u6e05\u4e24\u6761\u8def\u7ebf\u7684\u53d6\u820d\u3002\u8054\u90a6\u5b66\u4e60\u628a\u539f\u59cb\u6570\u636e\u9501\u5728\u672c\u5730\uff0c\u4ee3\u4ef7\u662f\u8981\u6765\u56de\u642c\u8fd0\u6574\u4e2a\u6a21\u578b\uff1b\u800c ViT \u53c2\u6570\u91cf\u5927\uff0c\u5728\u8fb9\u7f18\u8bbe\u5907\u4e0a\u53cd\u590d\u4f20\u8f93\u6574\u6a21\u578b\u7684\u80fd\u8017\u548c\u901a\u4fe1\u6210\u672c\u90fd\u5f88\u9ad8\u3002\u5207\u5206\u5b66\u4e60\u6362\u4e86\u4e2a\u601d\u8def\uff1a\u53ea\u5728\u5207\u5272\u5c42\u4ea4\u6362 smashed data\uff0c\u6a21\u578b\u672c\u4f53\u4e0d\u52a8\uff0c\u901a\u4fe1\u91cf\u672c\u8be5\u66f4\u7701\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u95ee\u9898\u6070\u6070\u51fa\u5728 ViT \u7684\u7ed3\u6784\u4e0a\u3002\u56e0\u4e3a\u7f3a\u5c11 pooling \u4e0e convolution\uff0cViT \u9690\u85cf\u8868\u5f81\u5bf9\u8f93\u5165\u7684\u5931\u771f\u6781\u5c0f\uff0csmashed data \u4e0e\u539f\u56fe\u4e4b\u95f4\u7684\u4e92\u4fe1\u606f\u5f88\u9ad8\u3002\u6362\u53e5\u8bdd\u8bf4\uff0c\u670d\u52a1\u5668\u6536\u5230\u7684\u4e2d\u95f4\u6fc0\u6d3b\u300c\u592a\u50cf\u300d\u539f\u56fe\u4e86\uff1a\u65e2\u65b9\u4fbf\u653b\u51fb\u8005\u505a\u53cd\u6f14\u8fd8\u539f\uff0c\u4e5f\u8ba9\u672c\u60f3\u7701\u4e0b\u7684\u901a\u4fe1\u91cf\u91cd\u65b0\u53d8\u5927\u3002\u5207\u5206\u5b66\u4e60\u9488\u5bf9 CNN \u65f6\u4ee3\u603b\u7ed3\u51fa\u7684\u90a3\u5957\u9690\u79c1\u5047\u8bbe\uff0c\u5728 transformer \u4e0a\u4e0d\u518d\u6210\u7acb\uff0c\u8fd9\u6b63\u662f\u672c\u6587\u8981\u91cd\u65b0\u56de\u7b54\u7684\u95ee\u9898\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 70.75,
+        "end": 106.45,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 35.7,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.6,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 70.75,
+          "global_end": 106.45,
+          "relative_start": 0.0,
+          "relative_end": 35.7,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The framework at a glance"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper's core contribution, DP-CutMixSL, is easiest to grasp from the pipeline as a whole: it chains a noise step and a cross-client mixing step in front of the server so that each client only ever exposes a small, noise-perturbed slice of its smashed data."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The pipeline has four steps. Step 0: a mixer (which can be a third party) generates a set of complementary pseudorandom binary masks and distributes them. Step 1: each client adds white Gaussian noise to its own smashed data under the Gaussian DP mechanism. Step 2: each client applies its mask to punch the activation into Cutout smashed data. Step 3: the server simply adds up the complementary surviving patches from different clients to get DP-CutMix smashed data with no holes. Because the per-client masks are mutually exclusive and collectively exhaustive at the patch level, the sum has no blank patches, and no single client ever hands over its complete smashed data."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e00\u56fe\u770b\u61c2 DP-CutMixSL"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u672c\u6587\u7684\u6838\u5fc3\u8d21\u732e DP-CutMixSL\uff0c\u53ef\u4ee5\u5148\u7528\u4e00\u5f20\u6574\u4f53\u6d41\u7a0b\u56fe\u5efa\u7acb\u76f4\u89c9\uff1a\u5b83\u628a\u300c\u52a0\u566a\u300d\u548c\u300c\u8de8\u5ba2\u6237\u7aef\u6df7\u5408\u300d\u4e24\u6b65\u4e32\u8054\u5728\u670d\u52a1\u5668\u4e4b\u524d\uff0c\u8ba9\u6bcf\u4e2a\u5ba2\u6237\u7aef\u53ea\u66b4\u9732\u4e00\u5c0f\u90e8\u5206\u3001\u800c\u4e14\u662f\u5e26\u566a\u7684 smashed data\u3002"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u6574\u4e2a\u6d41\u7a0b\u5206\u56db\u6b65\u3002\u7b2c 0 \u6b65\uff0c\u4e00\u4e2a mixer\uff08\u53ef\u4ee5\u662f\u7b2c\u4e09\u65b9\uff09\u751f\u6210\u4e00\u7ec4\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff0c\u5206\u53d1\u7ed9\u5404\u5ba2\u6237\u7aef\uff1b\u7b2c 1 \u6b65\uff0c\u6bcf\u4e2a\u5ba2\u6237\u7aef\u6309\u9ad8\u65af DP \u673a\u5236\u7ed9\u81ea\u5df1\u7684 smashed data \u52a0\u767d\u566a\u58f0\uff1b\u7b2c 2 \u6b65\uff0c\u7528\u5404\u81ea\u7684\u63a9\u7801\u628a\u6fc0\u6d3b\u300c\u6253\u5b54\u300d\u6210 Cutout smashed data\uff1b\u7b2c 3 \u6b65\uff0c\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7559\u4e0b\u7684\u4e92\u8865 patch \u76f4\u63a5\u76f8\u52a0\uff0c\u5f97\u5230\u6ca1\u6709\u7a7a\u6d1e\u7684 DP-CutMix smashed data\u3002\u7531\u4e8e\u5404\u5ba2\u6237\u7aef\u7684\u63a9\u7801\u5728 patch \u5c42\u4e92\u65a5\u4e14\u5b8c\u5907\uff0c\u76f8\u52a0\u540e\u4e0d\u4f1a\u51fa\u73b0\u7a7a\u767d patch\uff0c\u800c\u4efb\u4f55\u4e00\u4e2a\u5ba2\u6237\u7aef\u4e5f\u4ece\u672a\u628a\u5b8c\u6574\u7684 smashed data \u4ea4\u51fa\u53bb\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 70.75,
+        "end": 106.45,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 35.7,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.6,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 70.75,
+          "global_end": 106.45,
+          "relative_start": 0.0,
+          "relative_end": 35.7,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "method",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "key-result",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method in detail, and the privacy proof"
+            },
+            {
+              "type": "paragraph",
+              "text": "Unfolded, the mechanism works like this. The mixer draws mixing ratios \u03bb from a Dirichlet distribution (the clients' \u03bb sum to 1) and builds a binary mask for each client, where the number of surviving patches is proportional to that client's \u03bb. A client runs its input through the lower model segment to get smashed data, applies its binary sequence to obtain Cutout smashed data, then adds white Gaussian noise, giving the DP-Cutout smashed data it uploads."
+            },
+            {
+              "type": "paragraph",
+              "text": "The server's job is almost trivial: because the masks are mutually exclusive and collectively exhaustive, it just adds the noisy Cutout smashed data from different clients to form DP-CutMix smashed data, and mixes the labels with the same \u03bb weights. From there, forward and backward propagation proceed exactly as in vanilla split learning. What reaches the server is therefore only a fraction of each client's patches, and even that fraction is perturbed with noise."
+            },
+            {
+              "type": "paragraph",
+              "text": "On the privacy side, the authors prove a fixed ordering of the three mechanisms' RDP budgets: \u03b5_Mix \u2264 \u03b5_CutMix \u2264 \u03b5_o, where a smaller \u03b5 means stronger privacy. This inequality says that patch-level randomized CutMix tightens the privacy bound relative to plain DP-SL, while its privacy gain is bounded from below by the pixel-level Mixup variant. The tightening is real, but bounded rather than unlimited."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: stronger privacy, higher accuracy"
+            },
+            {
+              "type": "paragraph",
+              "text": "First, accuracy in the noiseless setting (the paper's Table 1). The experiments span two datasets, CIFAR-10 and Fashion-MNIST, and three models chosen to cover the CNN-to-transformer spectrum: ViT-Tiny (a pure transformer), PiT-Tiny (a transformer with a pooling layer, sitting between the two), and VGG-16 (a convolutional network), with |C| = 10 clients and the cut layer placed right after the embedding. CutMixSL takes the top Top-1 accuracy in every configuration but one."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Top-1 accuracy (%) on CIFAR-10 in the noiseless setting. CutMixSL clearly beats the best baseline on ViT-Tiny and PiT-Tiny, but slightly trails SL + Mixup on the convolutional VGG-16.",
+              "headers": [
+                "Model (CIFAR-10, noiseless)",
+                "Best baseline",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88 (SplitFed)",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63 (SplitFed)",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20 (SL + Mixup)",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On CIFAR-10 with ViT-Tiny, CutMixSL reaches 73.77%, which is 16.56 points above plain split learning's 57.21% and 5.89 points above SplitFed's 67.88%. With PiT-Tiny, its 71.26% again clears SplitFed's 55.63% by a wide margin. On Fashion-MNIST with ViT-Tiny it hits 89.75%, the best of any method tested. The lone exception is CIFAR-10 with VGG-16, where SL + Mixup's 68.20% edges out CutMixSL's 67.53%. That fits the intuition: a CNN cares more about local information, so replacing whole patches costs it more than it costs a transformer. Mixup suits CNNs, patch CutMix suits ViT."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u65b9\u6cd5\u7ec6\u8282\u4e0e\u9690\u79c1\u8bc1\u660e"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u628a\u6d41\u7a0b\u5c55\u5f00\u6765\u770b\uff1amixer \u4ece Dirichlet \u5206\u5e03\u62bd\u53d6\u6df7\u5408\u6bd4\u4f8b \u03bb\uff08\u5404\u5ba2\u6237\u7aef\u7684 \u03bb \u4e4b\u548c\u4e3a 1\uff09\uff0c\u5e76\u636e\u6b64\u751f\u6210\u4e8c\u503c\u63a9\u7801\uff0c\u67d0\u4e2a\u5ba2\u6237\u7aef\u63a9\u7801\u91cc\u300c\u4fdd\u7559\u300d\u7684 patch \u6570\u91cf\u6b63\u6bd4\u4e8e\u5b83\u7684 \u03bb\u3002\u5ba2\u6237\u7aef\u628a\u8f93\u5165\u8fc7\u4e00\u904d\u4e0b\u6bb5\u6a21\u578b\u5f97\u5230 smashed data\uff0c\u7528\u4e8c\u503c\u5e8f\u5217\u505a\u63a9\u7801\u5f97\u5230 Cutout smashed data\uff0c\u518d\u53e0\u52a0\u767d\u9ad8\u65af\u566a\u58f0\uff0c\u5c31\u662f\u8981\u4e0a\u4f20\u7684 DP-Cutout smashed data\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u670d\u52a1\u5668\u7aef\u66f4\u7b80\u5355\uff1a\u56e0\u4e3a\u63a9\u7801\u4e92\u65a5\u4e14\u5b8c\u5907\uff0c\u5b83\u53ea\u9700\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u5e26\u566a Cutout smashed data \u76f8\u52a0\uff0c\u5c31\u5f97\u5230 DP-CutMix smashed data\uff0c\u540c\u65f6\u6309\u540c\u6837\u7684 \u03bb \u6743\u91cd\u6df7\u5408\u6807\u7b7e\u3002\u6b64\u540e\u7684\u524d\u5411\u3001\u53cd\u5411\u4f20\u64ad\u4e0e\u666e\u901a\u5207\u5206\u5b66\u4e60\u5b8c\u5168\u4e00\u81f4\u3002\u8fd9\u6837\u4e00\u6765\uff0c\u66b4\u9732\u7ed9\u670d\u52a1\u5668\u7684\u65e2\u53ea\u662f\u6bcf\u4e2a\u5ba2\u6237\u7aef\u7684\u4e00\u90e8\u5206 patch\uff0c\u800c\u4e14\u8fd9\u90e8\u5206\u8fd8\u662f\u52a0\u8fc7\u566a\u7684\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u9690\u79c1\u4e00\u4fa7\uff0c\u4f5c\u8005\u8bc1\u660e\u4e86\u4e09\u79cd\u673a\u5236\u7684 RDP \u9884\u7b97\u5b58\u5728\u56fa\u5b9a\u6b21\u5e8f\uff1a\u03b5_Mix \u2264 \u03b5_CutMix \u2264 \u03b5_o\uff0c\u5176\u4e2d \u03b5 \u8d8a\u5c0f\u4ee3\u8868\u9690\u79c1\u8d8a\u5f3a\u3002\u8fd9\u4e00\u4e0d\u7b49\u5f0f\u8bf4\u660e\uff0cpatch \u7ea7\u968f\u673a CutMix \u76f8\u6bd4\u539f\u59cb\u7684 DP-SL \u80fd\u6536\u7d27\u9690\u79c1\u754c\uff0c\u540c\u65f6\u5b83\u7684\u9690\u79c1\u589e\u76ca\u53c8\u88ab\u50cf\u7d20\u7ea7 Mixup \u7248\u672c\u4ece\u4e0b\u65b9 bound \u4f4f\uff0c\u4e5f\u5c31\u662f\u8bf4\u6536\u7d27\u662f\u6709\u9650\u5ea6\u7684\uff0c\u800c\u4e0d\u662f\u65e0\u9650\u53d8\u5f3a\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u7ed3\u679c\uff1a\u9690\u79c1\u66f4\u5f3a\uff0c\u7cbe\u5ea6\u53cd\u800c\u66f4\u9ad8"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u770b\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684\u7cbe\u5ea6\u5bf9\u6bd4\uff08\u8bba\u6587 Table 1\uff09\u3002\u5b9e\u9a8c\u8986\u76d6 CIFAR-10 \u4e0e Fashion-MNIST \u4e24\u4e2a\u6570\u636e\u96c6\uff0c\u4ee5\u53ca\u6a2a\u8de8 CNN \u5230 transformer \u8c31\u7cfb\u7684\u4e09\u79cd\u6a21\u578b\uff1aViT-Tiny\uff08\u7eaf transformer\uff09\u3001PiT-Tiny\uff08\u5e26 pooling\u3001\u4ecb\u4e8e\u4e24\u8005\u4e4b\u95f4\uff09\u3001VGG-16\uff08\u5377\u79ef\u7f51\u7edc\uff09\uff0c\u5ba2\u6237\u7aef\u6570 |C| = 10\uff0c\u5207\u5272\u5c42\u90fd\u653e\u5728 embedding \u4e4b\u540e\u3002CutMixSL \u5728\u51e0\u4e4e\u6240\u6709\u914d\u7f6e\u4e0a\u90fd\u53d6\u5f97\u6700\u9ad8 Top-1 \u7cbe\u5ea6\u3002"
+            },
+            {
+              "type": "table",
+              "caption": "\u88681 CIFAR-10\u3001\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684 Top-1 \u7cbe\u5ea6\uff08%\uff09\u3002CutMixSL \u5728 ViT-Tiny\u3001PiT-Tiny \u4e0a\u660e\u663e\u8d85\u8fc7\u6700\u4f73\u57fa\u7ebf\uff0c\u4f46\u5728\u5377\u79ef\u7f51\u7edc VGG-16 \u4e0a\u7565\u900a\u4e8e SL + Mixup\u3002",
+              "headers": [
+                "\u6a21\u578b\uff08CIFAR-10\uff0c\u65e0\u566a\u58f0\uff09",
+                "\u6700\u4f73\u57fa\u7ebf",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88\uff08SplitFed\uff09",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63\uff08SplitFed\uff09",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20\uff08SL + Mixup\uff09",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5728 CIFAR-10 \u52a0 ViT-Tiny \u4e0a\uff0cCutMixSL \u8fbe\u5230 73.77%\uff0c\u6bd4\u666e\u901a\u5207\u5206\u5b66\u4e60\u7684 57.21% \u9ad8\u51fa 16.56 \u4e2a\u767e\u5206\u70b9\uff0c\u4e5f\u6bd4 SplitFed \u7684 67.88% \u9ad8 5.89 \u4e2a\u767e\u5206\u70b9\uff1b\u6362\u6210 PiT-Tiny\uff0c\u5b83\u7684 71.26% \u540c\u6837\u5927\u5e45\u9886\u5148 SplitFed \u7684 55.63%\u3002\u5728 Fashion-MNIST \u52a0 ViT-Tiny \u4e0a\uff0c\u5b83\u53d6\u5f97 89.75%\uff0c\u662f\u6240\u6709\u65b9\u6cd5\u91cc\u6700\u9ad8\u7684\u3002\u552f\u4e00\u7684\u4f8b\u5916\u662f CIFAR-10 \u52a0 VGG-16\uff1a\u6b64\u65f6 SL + Mixup \u7684 68.20% \u7565\u9ad8\u4e8e CutMixSL \u7684 67.53%\u3002\u8fd9\u4e0e\u524d\u9762\u7684\u76f4\u89c9\u4e00\u81f4\uff1a\u5377\u79ef\u7f51\u7edc\u66f4\u770b\u91cd\u5c40\u90e8\u4fe1\u606f\uff0c\u6574\u5757\u66ff\u6362 patch \u9020\u6210\u7684\u635f\u5931\u6bd4 transformer \u66f4\u5927\uff0c\u6240\u4ee5 Mixup \u66f4\u9002\u5408 CNN\uff0c\u800c patch CutMix \u66f4\u9002\u5408 ViT\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 106.45,
+        "end": 157.46,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 51.01,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 51.91,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 106.45,
+          "global_end": 157.46,
+          "relative_start": 0.0,
+          "relative_end": 51.01,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "ablation-study",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: stronger privacy, higher accuracy"
+            },
+            {
+              "type": "paragraph",
+              "text": "First, accuracy in the noiseless setting (the paper's Table 1). The experiments span two datasets, CIFAR-10 and Fashion-MNIST, and three models chosen to cover the CNN-to-transformer spectrum: ViT-Tiny (a pure transformer), PiT-Tiny (a transformer with a pooling layer, sitting between the two), and VGG-16 (a convolutional network), with |C| = 10 clients and the cut layer placed right after the embedding. CutMixSL takes the top Top-1 accuracy in every configuration but one."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Top-1 accuracy (%) on CIFAR-10 in the noiseless setting. CutMixSL clearly beats the best baseline on ViT-Tiny and PiT-Tiny, but slightly trails SL + Mixup on the convolutional VGG-16.",
+              "headers": [
+                "Model (CIFAR-10, noiseless)",
+                "Best baseline",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88 (SplitFed)",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63 (SplitFed)",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20 (SL + Mixup)",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On CIFAR-10 with ViT-Tiny, CutMixSL reaches 73.77%, which is 16.56 points above plain split learning's 57.21% and 5.89 points above SplitFed's 67.88%. With PiT-Tiny, its 71.26% again clears SplitFed's 55.63% by a wide margin. On Fashion-MNIST with ViT-Tiny it hits 89.75%, the best of any method tested. The lone exception is CIFAR-10 with VGG-16, where SL + Mixup's 68.20% edges out CutMixSL's 67.53%. That fits the intuition: a CNN cares more about local information, so replacing whole patches costs it more than it costs a transformer. Mixup suits CNNs, patch CutMix suits ViT."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5206\u5e03\u5f0f\u8bad\u7ec3\u91cc\u4e00\u4e2a\u53cd\u590d\u51fa\u73b0\u7684\u8bc9\u6c42\u662f\uff1a\u5728\u4e0d\u628a\u7528\u6237\u6570\u636e\u96c6\u4e2d\u5230\u4e00\u5904\u7684\u524d\u63d0\u4e0b\u8bad\u7ec3\u6a21\u578b\u3002\u4e24\u6761\u4e3b\u6d41\u8def\u7ebf\u5404\u6709\u5206\u5de5\u3002\u8054\u90a6\u5b66\u4e60\uff08federated learning\uff09\u8ba9\u539f\u59cb\u6570\u636e\u7559\u5728\u672c\u5730\u3001\u53ea\u4ea4\u6362\u6a21\u578b\u53c2\u6570\uff1b\u5207\u5206\u5b66\u4e60\uff08split learning\uff09\u5219\u628a\u6a21\u578b\u5207\u6210\u4e24\u6bb5\uff0c\u5ba2\u6237\u7aef\u53ea\u628a\u5207\u5272\u5c42\uff08cut-layer\uff09\u7684\u4e2d\u95f4\u6fc0\u6d3b\uff0c\u4e5f\u5c31\u662f\u6240\u8c13\u7684\u300csmashed data\u300d\uff0c\u4e0a\u4f20\u7ed9\u670d\u52a1\u5668\u3002\u8c01\u4f20\u5f97\u5c11\u3001\u8c01\u6cc4\u9732\u5f97\u5c11\uff0c\u662f\u8fd9\u4e24\u6761\u8def\u7ebf\u957f\u671f\u535a\u5f08\u7684\u6838\u5fc3\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u4f46 Vision Transformer\uff08ViT\uff09\u7684\u666e\u53ca\u6253\u7834\u4e86\u5207\u5206\u5b66\u4e60\u539f\u672c\u7684\u9690\u79c1\u5047\u8bbe\u3002ViT \u6ca1\u6709 CNN \u90a3\u6837\u7684 pooling \u548c convolution \u5c42\uff0c\u5207\u5272\u5c42\u8f93\u51fa\u7684 smashed data \u51e0\u4e4e\u4e0d\u5bf9\u8f93\u5165\u505a\u538b\u7f29\u5931\u771f\uff0c\u56e0\u6b64\u548c\u539f\u56fe\u5728\u89c6\u89c9\u4e0a\u9ad8\u5ea6\u76f8\u4f3c\u3002\u76f8\u4f3c\u610f\u5473\u7740\u4e24\u4ef6\u574f\u4e8b\uff1a\u4e00\u662f\u53cd\u6f14\u653b\u51fb\u66f4\u5bb9\u6613\u8fd8\u539f\u51fa\u539f\u59cb\u56fe\u50cf\uff0c\u9690\u79c1\u66f4\u8106\u5f31\uff1b\u4e8c\u662f\u4fdd\u7559\u7684\u4fe1\u606f\u592a\u591a\uff0c\u901a\u4fe1\u5f00\u9500\u4e5f\u66f4\u5927\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fd9\u7bc7\u53d1\u8868\u4e8e NeurIPS 2022\u3001\u6765\u81ea\u5ef6\u4e16\u5927\u5b66\u3001Deakin\u3001MIT \u4e0e\u5965\u5362\u5927\u5b66\u7684\u5de5\u4f5c\u63d0\u51fa\u4e86 DP-CutMixSL\uff1a\u5148\u6309\u9ad8\u65af\u5dee\u5206\u9690\u79c1\u673a\u5236\u7ed9 smashed data \u52a0\u566a\uff0c\u518d\u5728 patch \u7c92\u5ea6\u4e0a\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u6fc0\u6d3b\u968f\u673a CutMix \u62fc\u63a5\u8d77\u6765\u3002\u4f5c\u8005\u8bc1\u660e\u8fd9\u4e00\u6b65\u80fd\u6536\u7d27 R\u00e9nyi \u5dee\u5206\u9690\u79c1\uff08RDP\uff09\u7684\u9690\u79c1\u754c\uff0c\u800c\u5b9e\u9a8c\u91cc\u5b83\u8fd8\u53cd\u8fc7\u6765\u63d0\u5347\u4e86\u7cbe\u5ea6\uff0c\u9690\u79c1\u548c\u7cbe\u5ea6\u8fd9\u6b21\u4e0d\u5fc5\u4e8c\u9009\u4e00\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8bba\u6587 Paper\uff1ahttps://arxiv.org/abs/2210.15986"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 195.2,
+        "end": 239.42,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 44.22,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.12,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 195.2,
+          "global_end": 239.42,
+          "relative_start": 0.0,
+          "relative_end": 44.22,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "takeaway",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. On CIFAR-10, top-1 accuracy (Acc@1, blue, left axis) and the RDP privacy budget \u03b5 (orange, right axis) as the noise variance \u03c3\u00b2 grows. DP-CutMixSL has the highest accuracy at almost every noise level; its \u03b5 is smaller than DP-SL's (stronger privacy) but slightly larger than DP-MixSL's, exactly the accuracy-versus-privacy trade-off.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "A recurring goal in distributed machine learning is to train on user data without ever collecting it in one place. Two families dominate. Federated learning keeps the raw data local and exchanges only model parameters. Split learning cuts the model in two and exchanges only the cut-layer activations (the so-called smashed data), so the full model never has to move. How little you transmit, and how little you leak while doing it, is the tension these two approaches keep negotiating."
+            },
+            {
+              "type": "paragraph",
+              "text": "Vision Transformers break the assumptions that made split learning feel safe. A ViT has none of the pooling or convolution that a CNN uses to compress and distort its input, so the smashed data at the cut layer stays visually close to the original image. That closeness is bad in two ways at once: it makes reconstruction attacks easier, and because so much information survives, it also drives communication cost back up."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper, from Yonsei University, Deakin, MIT, and the University of Oulu, proposes DP-CutMixSL. It first perturbs the smashed data with a Gaussian differential-privacy mechanism, then randomly CutMixes activations from different clients at the patch level. The authors prove this step tightens the R\u00e9nyi differential-privacy (RDP) guarantee, and in their experiments it also raises accuracy. For once, privacy and accuracy do not have to be traded against each other."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2210.15986"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: stronger privacy, higher accuracy"
+            },
+            {
+              "type": "paragraph",
+              "text": "First, accuracy in the noiseless setting (the paper's Table 1). The experiments span two datasets, CIFAR-10 and Fashion-MNIST, and three models chosen to cover the CNN-to-transformer spectrum: ViT-Tiny (a pure transformer), PiT-Tiny (a transformer with a pooling layer, sitting between the two), and VGG-16 (a convolutional network), with |C| = 10 clients and the cut layer placed right after the embedding. CutMixSL takes the top Top-1 accuracy in every configuration but one."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Top-1 accuracy (%) on CIFAR-10 in the noiseless setting. CutMixSL clearly beats the best baseline on ViT-Tiny and PiT-Tiny, but slightly trails SL + Mixup on the convolutional VGG-16.",
+              "headers": [
+                "Model (CIFAR-10, noiseless)",
+                "Best baseline",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88 (SplitFed)",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63 (SplitFed)",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20 (SL + Mixup)",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On CIFAR-10 with ViT-Tiny, CutMixSL reaches 73.77%, which is 16.56 points above plain split learning's 57.21% and 5.89 points above SplitFed's 67.88%. With PiT-Tiny, its 71.26% again clears SplitFed's 55.63% by a wide margin. On Fashion-MNIST with ViT-Tiny it hits 89.75%, the best of any method tested. The lone exception is CIFAR-10 with VGG-16, where SL + Mixup's 68.20% edges out CutMixSL's 67.53%. That fits the intuition: a CNN cares more about local information, so replacing whole patches costs it more than it costs a transformer. Mixup suits CNNs, patch CutMix suits ViT."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u7ed3\u679c\uff1a\u9690\u79c1\u66f4\u5f3a\uff0c\u7cbe\u5ea6\u53cd\u800c\u66f4\u9ad8"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u770b\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684\u7cbe\u5ea6\u5bf9\u6bd4\uff08\u8bba\u6587 Table 1\uff09\u3002\u5b9e\u9a8c\u8986\u76d6 CIFAR-10 \u4e0e Fashion-MNIST \u4e24\u4e2a\u6570\u636e\u96c6\uff0c\u4ee5\u53ca\u6a2a\u8de8 CNN \u5230 transformer \u8c31\u7cfb\u7684\u4e09\u79cd\u6a21\u578b\uff1aViT-Tiny\uff08\u7eaf transformer\uff09\u3001PiT-Tiny\uff08\u5e26 pooling\u3001\u4ecb\u4e8e\u4e24\u8005\u4e4b\u95f4\uff09\u3001VGG-16\uff08\u5377\u79ef\u7f51\u7edc\uff09\uff0c\u5ba2\u6237\u7aef\u6570 |C| = 10\uff0c\u5207\u5272\u5c42\u90fd\u653e\u5728 embedding \u4e4b\u540e\u3002CutMixSL \u5728\u51e0\u4e4e\u6240\u6709\u914d\u7f6e\u4e0a\u90fd\u53d6\u5f97\u6700\u9ad8 Top-1 \u7cbe\u5ea6\u3002"
+            },
+            {
+              "type": "table",
+              "caption": "\u88681 CIFAR-10\u3001\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684 Top-1 \u7cbe\u5ea6\uff08%\uff09\u3002CutMixSL \u5728 ViT-Tiny\u3001PiT-Tiny \u4e0a\u660e\u663e\u8d85\u8fc7\u6700\u4f73\u57fa\u7ebf\uff0c\u4f46\u5728\u5377\u79ef\u7f51\u7edc VGG-16 \u4e0a\u7565\u900a\u4e8e SL + Mixup\u3002",
+              "headers": [
+                "\u6a21\u578b\uff08CIFAR-10\uff0c\u65e0\u566a\u58f0\uff09",
+                "\u6700\u4f73\u57fa\u7ebf",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88\uff08SplitFed\uff09",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63\uff08SplitFed\uff09",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20\uff08SL + Mixup\uff09",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5728 CIFAR-10 \u52a0 ViT-Tiny \u4e0a\uff0cCutMixSL \u8fbe\u5230 73.77%\uff0c\u6bd4\u666e\u901a\u5207\u5206\u5b66\u4e60\u7684 57.21% \u9ad8\u51fa 16.56 \u4e2a\u767e\u5206\u70b9\uff0c\u4e5f\u6bd4 SplitFed \u7684 67.88% \u9ad8 5.89 \u4e2a\u767e\u5206\u70b9\uff1b\u6362\u6210 PiT-Tiny\uff0c\u5b83\u7684 71.26% \u540c\u6837\u5927\u5e45\u9886\u5148 SplitFed \u7684 55.63%\u3002\u5728 Fashion-MNIST \u52a0 ViT-Tiny \u4e0a\uff0c\u5b83\u53d6\u5f97 89.75%\uff0c\u662f\u6240\u6709\u65b9\u6cd5\u91cc\u6700\u9ad8\u7684\u3002\u552f\u4e00\u7684\u4f8b\u5916\u662f CIFAR-10 \u52a0 VGG-16\uff1a\u6b64\u65f6 SL + Mixup \u7684 68.20% \u7565\u9ad8\u4e8e CutMixSL \u7684 67.53%\u3002\u8fd9\u4e0e\u524d\u9762\u7684\u76f4\u89c9\u4e00\u81f4\uff1a\u5377\u79ef\u7f51\u7edc\u66f4\u770b\u91cd\u5c40\u90e8\u4fe1\u606f\uff0c\u6574\u5757\u66ff\u6362 patch \u9020\u6210\u7684\u635f\u5931\u6bd4 transformer \u66f4\u5927\uff0c\u6240\u4ee5 Mixup \u66f4\u9002\u5408 CNN\uff0c\u800c patch CutMix \u66f4\u9002\u5408 ViT\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 157.46,
+        "end": 195.2,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 37.74,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 38.64,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 157.46,
+          "global_end": 195.2,
+          "relative_start": 0.0,
+          "relative_end": 37.74,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "ablation-study",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Interpolation schemes compared on images. Starting from a raw image and its Cutout version: Patch CutMix swaps content only at patch granularity, preserving each patch's internal local structure; CutMix replaces one contiguous region; Mixup blends two whole images by weight. The paper applies the corresponding operations to smashed data.",
+              "width_inches": 6.2,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why ViT makes split learning leak"
+            },
+            {
+              "type": "paragraph",
+              "text": "Start with the trade-off between the two families. Federated learning locks the raw data down locally, but the price is shipping the whole model back and forth, and a ViT is large, so repeatedly moving it burdens edge devices with heavy energy and communication cost. Split learning sidesteps that by exchanging only the cut-layer smashed data and leaving the model in place, which should make it the cheaper option."
+            },
+            {
+              "type": "paragraph",
+              "text": "The trouble is structural. Without pooling or convolution, a ViT barely distorts its hidden representation, so the mutual information between smashed data and the raw input stays high. Put plainly, what the server receives looks too much like the original image: convenient for an attacker trying to invert it, and enough to erase the communication savings split learning was supposed to deliver. The privacy intuitions the field built up around CNNs no longer hold for transformers, and that is the gap this paper sets out to close."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u9690\u79c1\u4e0e\u7cbe\u5ea6\u7684\u6743\u8861"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u52a0\u4e0a\u566a\u58f0\u540e\uff0c\u7cbe\u5ea6\u548c\u9690\u79c1\u5982\u4f55\u8054\u52a8\uff1f\u4f5c\u8005\u626b\u63cf\u4e86\u4e0d\u540c\u7684\u566a\u58f0\u65b9\u5dee\uff0c\u540c\u65f6\u62a5\u544a\u7cbe\u5ea6\u548c RDP \u9690\u79c1\u9884\u7b97 \u03b5\u3002"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "\u56fe3 CIFAR-10 \u4e0a\uff0c\u968f\u566a\u58f0\u65b9\u5dee \u03c3\u00b2 \u53d8\u5316\u7684\u7cbe\u5ea6\uff08Acc@1\uff0c\u84dd\u8272\uff0c\u5de6\u8f74\uff09\u4e0e RDP \u9690\u79c1\u9884\u7b97 \u03b5\uff08\u6a59\u8272\uff0c\u53f3\u8f74\uff09\u3002DP-CutMixSL \u5728\u51e0\u4e4e\u6bcf\u4e2a\u566a\u58f0\u6c34\u5e73\u4e0a\u7cbe\u5ea6\u6700\u9ad8\uff1b\u5b83\u7684 \u03b5 \u6bd4 DP-SL \u66f4\u5c0f\uff08\u9690\u79c1\u66f4\u5f3a\uff09\uff0c\u4f46\u6bd4 DP-MixSL \u7565\u5927\uff0c\u8fd9\u6b63\u662f\u7cbe\u5ea6\u4e0e\u9690\u79c1\u4e4b\u95f4\u7684\u6743\u8861\u3002",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u56fe\u91cc\u53ef\u4ee5\u8bfb\u51fa\u4e00\u4e2a\u6e05\u6670\u7684\u6743\u8861\uff1aDP-CutMixSL \u5728\u51e0\u4e4e\u6bcf\u4e00\u4e2a\u566a\u58f0\u6c34\u5e73\u4e0a\u90fd\u62ff\u5230\u6700\u597d\u7684\u7cbe\u5ea6\uff0c\u4e14\u59cb\u7ec8\u4f18\u4e8e DP-MixSL\uff1b\u5728\u9690\u79c1\u4e00\u4fa7\uff0c\u5b83\u7684 \u03b5 \u6bd4 DP-SL \u66f4\u7d27\uff08\u9690\u79c1\u66f4\u5f3a\uff09\uff0c\u5374\u6bd4 DP-MixSL \u66f4\u677e\uff0c\u8fd9\u4e0e\u524d\u9762\u8bc1\u660e\u7684 \u03b5 \u6b21\u5e8f\u5b8c\u5168\u543b\u5408\uff0c\u56e0\u4e3a Mixup \u4f1a\u628a\u4fe1\u606f\u644a\u8584\u5230\u6574\u5f20\u8868\u5f81\u4e0a\u3002\u4f5c\u8005\u8fd8\u89c2\u5bdf\u5230\uff0c\u6269\u5927\u6df7\u5408\u7684\u5ba2\u6237\u7aef\u7ec4\u4f1a\u540c\u65f6\u62c9\u4f4e\u7cbe\u5ea6\u548c \u03b5\uff0c\u4ed6\u4eec\u5c06\u5176\u5f52\u56e0\u4e8e\u4e00\u79cd\u300c\u85cf\u5728\u4eba\u7fa4\u91cc\u300d\u7684\u6548\u5e94\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u53e6\u6709\u4e24\u7ec4\u8865\u5145\u5b9e\u9a8c\u3002\u53cd\u6f14\u653b\u51fb\uff08\u8bba\u6587 Table 2\uff09\u6309\u91cd\u5efa MSE \u8861\u91cf\u9c81\u68d2\u6027\uff0c\u6392\u5e8f\u4e3a Cutout > patch CutMix > Mixup > \u539f\u59cb smashed data\uff1apatch CutMix \u7684\u91cd\u5efa\u8bef\u5dee\u7ea6\u4e3a 0.0434\uff0c\u800c\u539f\u59cb smashed data \u4ec5 0.0056\uff0c\u628a\u53cd\u6f14\u96be\u5ea6\u62ac\u9ad8\u4e86\u7ea6 8 \u500d\u3002\u53ef\u6269\u5c55\u6027\u65b9\u9762\uff0c\u5ba2\u6237\u7aef\u6570\u4ece 2 \u589e\u52a0\u5230 10 \u65f6\u7cbe\u5ea6\u6301\u7eed\u63d0\u5347\uff1b\u518d\u53e0\u52a0 SplitFed \u5f0f\u7684\u4e0b\u6bb5\u6a21\u578b\u53c2\u6570\u5e73\u5747\uff08\u8bb0\u4f5c CutMixSFL\uff09\uff0c\u8fd8\u80fd\u8fdb\u4e00\u6b65\u63d0\u9ad8\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 195.2,
+        "end": 239.42,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 44.22,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.12,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 195.2,
+          "global_end": 239.42,
+          "relative_start": 0.0,
+          "relative_end": 44.22,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "takeaway",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. On CIFAR-10, top-1 accuracy (Acc@1, blue, left axis) and the RDP privacy budget \u03b5 (orange, right axis) as the noise variance \u03c3\u00b2 grows. DP-CutMixSL has the highest accuracy at almost every noise level; its \u03b5 is smaller than DP-SL's (stronger privacy) but slightly larger than DP-MixSL's, exactly the accuracy-versus-privacy trade-off.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: stronger privacy, higher accuracy"
+            },
+            {
+              "type": "paragraph",
+              "text": "First, accuracy in the noiseless setting (the paper's Table 1). The experiments span two datasets, CIFAR-10 and Fashion-MNIST, and three models chosen to cover the CNN-to-transformer spectrum: ViT-Tiny (a pure transformer), PiT-Tiny (a transformer with a pooling layer, sitting between the two), and VGG-16 (a convolutional network), with |C| = 10 clients and the cut layer placed right after the embedding. CutMixSL takes the top Top-1 accuracy in every configuration but one."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Top-1 accuracy (%) on CIFAR-10 in the noiseless setting. CutMixSL clearly beats the best baseline on ViT-Tiny and PiT-Tiny, but slightly trails SL + Mixup on the convolutional VGG-16.",
+              "headers": [
+                "Model (CIFAR-10, noiseless)",
+                "Best baseline",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88 (SplitFed)",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63 (SplitFed)",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20 (SL + Mixup)",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On CIFAR-10 with ViT-Tiny, CutMixSL reaches 73.77%, which is 16.56 points above plain split learning's 57.21% and 5.89 points above SplitFed's 67.88%. With PiT-Tiny, its 71.26% again clears SplitFed's 55.63% by a wide margin. On Fashion-MNIST with ViT-Tiny it hits 89.75%, the best of any method tested. The lone exception is CIFAR-10 with VGG-16, where SL + Mixup's 68.20% edges out CutMixSL's 67.53%. That fits the intuition: a CNN cares more about local information, so replacing whole patches costs it more than it costs a transformer. Mixup suits CNNs, patch CutMix suits ViT."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "\u56fe3 CIFAR-10 \u4e0a\uff0c\u968f\u566a\u58f0\u65b9\u5dee \u03c3\u00b2 \u53d8\u5316\u7684\u7cbe\u5ea6\uff08Acc@1\uff0c\u84dd\u8272\uff0c\u5de6\u8f74\uff09\u4e0e RDP \u9690\u79c1\u9884\u7b97 \u03b5\uff08\u6a59\u8272\uff0c\u53f3\u8f74\uff09\u3002DP-CutMixSL \u5728\u51e0\u4e4e\u6bcf\u4e2a\u566a\u58f0\u6c34\u5e73\u4e0a\u7cbe\u5ea6\u6700\u9ad8\uff1b\u5b83\u7684 \u03b5 \u6bd4 DP-SL \u66f4\u5c0f\uff08\u9690\u79c1\u66f4\u5f3a\uff09\uff0c\u4f46\u6bd4 DP-MixSL \u7565\u5927\uff0c\u8fd9\u6b63\u662f\u7cbe\u5ea6\u4e0e\u9690\u79c1\u4e4b\u95f4\u7684\u6743\u8861\u3002",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u7ed3\u679c\uff1a\u9690\u79c1\u66f4\u5f3a\uff0c\u7cbe\u5ea6\u53cd\u800c\u66f4\u9ad8"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u770b\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684\u7cbe\u5ea6\u5bf9\u6bd4\uff08\u8bba\u6587 Table 1\uff09\u3002\u5b9e\u9a8c\u8986\u76d6 CIFAR-10 \u4e0e Fashion-MNIST \u4e24\u4e2a\u6570\u636e\u96c6\uff0c\u4ee5\u53ca\u6a2a\u8de8 CNN \u5230 transformer \u8c31\u7cfb\u7684\u4e09\u79cd\u6a21\u578b\uff1aViT-Tiny\uff08\u7eaf transformer\uff09\u3001PiT-Tiny\uff08\u5e26 pooling\u3001\u4ecb\u4e8e\u4e24\u8005\u4e4b\u95f4\uff09\u3001VGG-16\uff08\u5377\u79ef\u7f51\u7edc\uff09\uff0c\u5ba2\u6237\u7aef\u6570 |C| = 10\uff0c\u5207\u5272\u5c42\u90fd\u653e\u5728 embedding \u4e4b\u540e\u3002CutMixSL \u5728\u51e0\u4e4e\u6240\u6709\u914d\u7f6e\u4e0a\u90fd\u53d6\u5f97\u6700\u9ad8 Top-1 \u7cbe\u5ea6\u3002"
+            },
+            {
+              "type": "table",
+              "caption": "\u88681 CIFAR-10\u3001\u65e0\u566a\u58f0\u8bbe\u7f6e\u4e0b\u7684 Top-1 \u7cbe\u5ea6\uff08%\uff09\u3002CutMixSL \u5728 ViT-Tiny\u3001PiT-Tiny \u4e0a\u660e\u663e\u8d85\u8fc7\u6700\u4f73\u57fa\u7ebf\uff0c\u4f46\u5728\u5377\u79ef\u7f51\u7edc VGG-16 \u4e0a\u7565\u900a\u4e8e SL + Mixup\u3002",
+              "headers": [
+                "\u6a21\u578b\uff08CIFAR-10\uff0c\u65e0\u566a\u58f0\uff09",
+                "\u6700\u4f73\u57fa\u7ebf",
+                "CutMixSL"
+              ],
+              "rows": [
+                [
+                  "ViT-Tiny",
+                  "67.88\uff08SplitFed\uff09",
+                  "73.77"
+                ],
+                [
+                  "PiT-Tiny",
+                  "55.63\uff08SplitFed\uff09",
+                  "71.26"
+                ],
+                [
+                  "VGG-16",
+                  "68.20\uff08SL + Mixup\uff09",
+                  "67.53"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5728 CIFAR-10 \u52a0 ViT-Tiny \u4e0a\uff0cCutMixSL \u8fbe\u5230 73.77%\uff0c\u6bd4\u666e\u901a\u5207\u5206\u5b66\u4e60\u7684 57.21% \u9ad8\u51fa 16.56 \u4e2a\u767e\u5206\u70b9\uff0c\u4e5f\u6bd4 SplitFed \u7684 67.88% \u9ad8 5.89 \u4e2a\u767e\u5206\u70b9\uff1b\u6362\u6210 PiT-Tiny\uff0c\u5b83\u7684 71.26% \u540c\u6837\u5927\u5e45\u9886\u5148 SplitFed \u7684 55.63%\u3002\u5728 Fashion-MNIST \u52a0 ViT-Tiny \u4e0a\uff0c\u5b83\u53d6\u5f97 89.75%\uff0c\u662f\u6240\u6709\u65b9\u6cd5\u91cc\u6700\u9ad8\u7684\u3002\u552f\u4e00\u7684\u4f8b\u5916\u662f CIFAR-10 \u52a0 VGG-16\uff1a\u6b64\u65f6 SL + Mixup \u7684 68.20% \u7565\u9ad8\u4e8e CutMixSL \u7684 67.53%\u3002\u8fd9\u4e0e\u524d\u9762\u7684\u76f4\u89c9\u4e00\u81f4\uff1a\u5377\u79ef\u7f51\u7edc\u66f4\u770b\u91cd\u5c40\u90e8\u4fe1\u606f\uff0c\u6574\u5757\u66ff\u6362 patch \u9020\u6210\u7684\u635f\u5931\u6bd4 transformer \u66f4\u5927\uff0c\u6240\u4ee5 Mixup \u66f4\u9002\u5408 CNN\uff0c\u800c patch CutMix \u66f4\u9002\u5408 ViT\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 239.42,
+        "end": 273.85,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 34.43,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 35.33,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 239.42,
+          "global_end": 273.85,
+          "relative_start": 0.0,
+          "relative_end": 34.43,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "takeaway",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. The DP-CutMixSL pipeline. A mixer hands each client a complementary pseudorandom binary mask; every client adds Gaussian noise and applies its mask to produce DP-Cutout smashed data; the server sums the complementary patches from different clients into DP-CutMix smashed data and then runs forward and backward propagation as in vanilla split learning. Crucially, each client only ever uploads a masked, noise-perturbed fraction of its smashed data.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "The message is that for Vision Transformers, split learning does not force a choice between accuracy and privacy. By adding Gaussian noise and then mixing randomly masked patches across clients, DP-CutMixSL both tightens the differential-privacy bound relative to plain split learning and raises accuracy, with that privacy gain provably bounded by a Mixup-based counterpart. It works because transformers rely on global self-attention and operate at the patch level, so swapping whole patches costs them almost nothing."
+            },
+            {
+              "type": "paragraph",
+              "text": "The boundaries are just as clear. The method is tailored to transformers: on a convolutional network that leans on local features, such as VGG-16, patch CutMix actually trails Mixup. And the privacy tightening has a floor: it is bounded below by the Mixup variant, not an unlimited free lunch. Seen in the wider picture, patch-level CutMix reads less like a generic trick and more like a privacy regularizer purpose-built for the transformer era of distributed learning."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "\u56fe1 DP-CutMixSL \u7684\u6574\u4f53\u6d41\u7a0b\u3002mixer \u4e3a\u5404\u5ba2\u6237\u7aef\u751f\u6210\u4e92\u8865\u7684\u4f2a\u968f\u673a\u4e8c\u503c\u63a9\u7801\uff1b\u6bcf\u4e2a\u5ba2\u6237\u7aef\u5148\u6309\u9ad8\u65af DP \u673a\u5236\u52a0\u566a\u3001\u518d\u6309\u63a9\u7801\u505a Cutout\uff0c\u5f97\u5230 DP-Cutout smashed data\uff1b\u670d\u52a1\u5668\u628a\u4e0d\u540c\u5ba2\u6237\u7aef\u7684\u4e92\u8865 patch \u76f8\u52a0\uff0c\u62fc\u6210 DP-CutMix smashed data\uff0c\u4e4b\u540e\u7167\u5e38\u505a\u524d\u5411\u4e0e\u53cd\u5411\u4f20\u64ad\u3002\u5173\u952e\u5728\u4e8e\uff1a\u6bcf\u4e2a\u5ba2\u6237\u7aef\u59cb\u7ec8\u53ea\u4e0a\u4f20\u88ab\u63a9\u7801\u906e\u6321\u540e\u3001\u4e14\u52a0\u8fc7\u566a\u58f0\u7684\u4e00\u90e8\u5206 smashed data\u3002",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u4e3a\u4ec0\u4e48 ViT \u8ba9\u5207\u5206\u5b66\u4e60\u66f4\u5bb9\u6613\u6cc4\u9732"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u5148\u5398\u6e05\u4e24\u6761\u8def\u7ebf\u7684\u53d6\u820d\u3002\u8054\u90a6\u5b66\u4e60\u628a\u539f\u59cb\u6570\u636e\u9501\u5728\u672c\u5730\uff0c\u4ee3\u4ef7\u662f\u8981\u6765\u56de\u642c\u8fd0\u6574\u4e2a\u6a21\u578b\uff1b\u800c ViT \u53c2\u6570\u91cf\u5927\uff0c\u5728\u8fb9\u7f18\u8bbe\u5907\u4e0a\u53cd\u590d\u4f20\u8f93\u6574\u6a21\u578b\u7684\u80fd\u8017\u548c\u901a\u4fe1\u6210\u672c\u90fd\u5f88\u9ad8\u3002\u5207\u5206\u5b66\u4e60\u6362\u4e86\u4e2a\u601d\u8def\uff1a\u53ea\u5728\u5207\u5272\u5c42\u4ea4\u6362 smashed data\uff0c\u6a21\u578b\u672c\u4f53\u4e0d\u52a8\uff0c\u901a\u4fe1\u91cf\u672c\u8be5\u66f4\u7701\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u95ee\u9898\u6070\u6070\u51fa\u5728 ViT \u7684\u7ed3\u6784\u4e0a\u3002\u56e0\u4e3a\u7f3a\u5c11 pooling \u4e0e convolution\uff0cViT \u9690\u85cf\u8868\u5f81\u5bf9\u8f93\u5165\u7684\u5931\u771f\u6781\u5c0f\uff0csmashed data \u4e0e\u539f\u56fe\u4e4b\u95f4\u7684\u4e92\u4fe1\u606f\u5f88\u9ad8\u3002\u6362\u53e5\u8bdd\u8bf4\uff0c\u670d\u52a1\u5668\u6536\u5230\u7684\u4e2d\u95f4\u6fc0\u6d3b\u300c\u592a\u50cf\u300d\u539f\u56fe\u4e86\uff1a\u65e2\u65b9\u4fbf\u653b\u51fb\u8005\u505a\u53cd\u6f14\u8fd8\u539f\uff0c\u4e5f\u8ba9\u672c\u60f3\u7701\u4e0b\u7684\u901a\u4fe1\u91cf\u91cd\u65b0\u53d8\u5927\u3002\u5207\u5206\u5b66\u4e60\u9488\u5bf9 CNN \u65f6\u4ee3\u603b\u7ed3\u51fa\u7684\u90a3\u5957\u9690\u79c1\u5047\u8bbe\uff0c\u5728 transformer \u4e0a\u4e0d\u518d\u6210\u7acb\uff0c\u8fd9\u6b63\u662f\u672c\u6587\u8981\u91cd\u65b0\u56de\u7b54\u7684\u95ee\u9898\u3002"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "\u5c0f\u7ed3\u4e0e\u8fb9\u754c"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fd9\u7bc7\u5de5\u4f5c\u7ed9\u51fa\u7684\u7ed3\u8bba\u662f\uff1a\u5bf9 Vision Transformer \u800c\u8a00\uff0c\u5207\u5206\u5b66\u4e60\u91cc\u7684\u7cbe\u5ea6\u4e0e\u9690\u79c1\u4e0d\u5fc5\u4e92\u76f8\u727a\u7272\u3002\u5148\u52a0\u9ad8\u65af\u566a\u58f0\u3001\u518d\u8de8\u5ba2\u6237\u7aef\u6df7\u5408\u968f\u673a\u906e\u6321\u7684 patch\uff0cDP-CutMixSL \u65e2\u76f8\u5bf9\u666e\u901a\u5207\u5206\u5b66\u4e60\u6536\u7d27\u4e86\u5dee\u5206\u9690\u79c1\u754c\uff0c\u53c8\u63d0\u5347\u4e86\u7cbe\u5ea6\uff0c\u800c\u4e14\u8fd9\u4efd\u9690\u79c1\u589e\u76ca\u88ab\u4e00\u4e2a Mixup \u7248\u672c\u53ef\u8bc1\u660e\u5730 bound \u4f4f\u3002\u5b83\u4e4b\u6240\u4ee5\u6210\u7acb\uff0c\u662f\u56e0\u4e3a transformer \u4f9d\u8d56\u5168\u5c40\u81ea\u6ce8\u610f\u529b\u3001\u53c8\u5929\u7136\u5728 patch \u5c42\u8fd0\u7b97\uff0c\u6362\u6389\u6574\u5757 patch \u5bf9\u5b83\u51e0\u4e4e\u65e0\u635f\u3002"
+            },
+            {
+              "type": "paragraph",
+              "text": "\u8fb9\u754c\u4e5f\u5f88\u660e\u786e\u3002\u8fd9\u5957\u65b9\u6cd5\u662f\u4e3a transformer \u91cf\u8eab\u5b9a\u5236\u7684\uff1a\u5728\u504f\u91cd\u5c40\u90e8\u7279\u5f81\u7684\u5377\u79ef\u7f51\u7edc\uff08\u5982 VGG-16\uff09\u4e0a\uff0cpatch CutMix \u53cd\u800c\u7565\u900a\u4e8e Mixup\u3002\u9690\u79c1\u4e0a\u7684\u6536\u7d27\u540c\u6837\u6709\u4e0a\u9650\uff1a\u5b83\u88ab Mixup \u7248\u672c\u4ece\u4e0b\u65b9 bound\uff0c\u5e76\u4e0d\u662f\u53ef\u4ee5\u65e0\u9650\u589e\u5f3a\u7684\u514d\u8d39\u5348\u9910\u3002\u653e\u5728\u66f4\u5927\u7684\u56fe\u666f\u91cc\uff0cpatch \u7ea7 CutMix \u66f4\u50cf\u662f\u4e00\u79cd\u4e3a\u300ctransformer \u65f6\u4ee3\u7684\u5206\u5e03\u5f0f\u5b66\u4e60\u300d\u4e13\u95e8\u8bbe\u8ba1\u7684\u9690\u79c1\u6b63\u5219\u5316\u624b\u6bb5\u3002"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2022: A Privacy Regularizer Built for the Transformer Era of Split Learning",
+            "subtitle": "Yonsei, MIT, and collaborators propose DP-CutMixSL, patch-level randomized CutMix that tightens the privacy bound and raises accuracy at the same time"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | \u7ed9 Vision Transformer \u7684\u5207\u5206\u5b66\u4e60\u8865\u4e0a\u9690\u79c1\uff1aDP-CutMixSL",
+            "subtitle": "\u5ef6\u4e16\u5927\u5b66\u3001MIT \u7b49\u63d0\u51fa patch \u7ea7\u968f\u673a CutMix\uff0c\u8ba9 split learning \u5728\u66f4\u5f3a\u9690\u79c1\u4e0b\u53cd\u800c\u66f4\u51c6"
+          }
+        }
+      },
+      "segment": {
+        "start": 239.42,
+        "end": 273.85,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 34.43,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 35.33,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 239.42,
+          "global_end": 273.85,
+          "relative_start": 0.0,
+          "relative_end": 34.43,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

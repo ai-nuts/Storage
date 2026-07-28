@@ -1,0 +1,3 @@
+# Title
+
+This paper studies a puzzling training instability in behavior cloning. When you train a policy network with minibatch stochastic gradient descent, the long-horizon reward can swing wildly from one iterate to the next, even though the behavior cloning loss barely moves. The authors trace this to what they call gradient variance amplification, where tiny stochastic gradient noise gets amplified into catastrophic error accumulation through the closed loop between the policy and its environment. Most standard fixes do not help, but taking an exponential moving average of the weights turns out to be remarkably effective, and the same story holds for autoregressive language models.
