@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A ResNet-50 backbone is pretrained with SwAV, a clustering-based contrastive framework that predicts swapped cluster assignments between augmented views and works with modest batch sizes via a feature queue. The embedding is then evaluated by weighted kNN, linear probing, and end-to-end fine-tuning on the labeled stability-classification task.
+
+Supporting detail: SwAV was trained with batch size 1024 across eight NVIDIA V100 32GB GPUs, a queue of 16 batches, 1000 cluster centroids, for 65 epochs over about 10 days. Fine-tuning ran on a single V100 with batch size 128.
+
+Narration: The core method is SwAV, a contrastive framework that assigns image representations to clusters and trains the network to predict the cluster assignment of one augmented view from another. Unlike methods such as SimCLR, SwAV avoids prohibitively large batches by storing recent cluster assignments in a queue. The authors train a standard ResNet-50 backbone with SwAV using a batch size of one thousand twenty-four across eight V100 GPUs, a queue of sixteen batches, and one thousand cluster centroids, stopping after sixty-five epochs and about ten days of compute. To measure representation quality, they use three downstream protocols: a weighted k-nearest-neighbor classifier, a linear evaluation that freezes the backbone and trains a single softmax layer, and full end-to-end fine-tuning of all weights on the labeled data.

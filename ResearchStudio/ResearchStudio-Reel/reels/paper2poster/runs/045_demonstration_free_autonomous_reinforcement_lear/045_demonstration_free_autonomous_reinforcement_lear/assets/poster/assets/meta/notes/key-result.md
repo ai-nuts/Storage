@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: As shown in Figure 4, IBC achieves state-of-the-art evaluation success rates across the environments without any demonstration data, outperforming demonstration-using baselines VaPRL and MEDAL and reaching success rates comparable to the episodic oracle RL upper bound.
+
+Supporting detail: VaPRL and MEDAL struggle where task-relevant interactions are very sparse or where evaluation goals are spread over a region rather than a few points (e.g., the Fetch environments); a demonstration-free version of VaPRL performs noticeably worse than the original.
+
+Narration: The headline result is that IBC reaches state-of-the-art success rates across all six environments, and it does so without a single demonstration. It outperforms VaPRL and MEDAL, two strong baselines that actually use near-expert demonstration data, and in many tasks its success rate is comparable to the oracle: a standard reinforcement learning agent trained in the easy, fully-resettable episodic setting. The demonstration-based baselines especially falter in the Fetch environments, where the task-relevant interactions are sparse and the evaluation goals are spread across a whole region rather than a few discrete points. And when VaPRL is stripped of its demonstrations for a fair comparison, its performance drops noticeably, underscoring just how much the prior methods depend on that extra data.

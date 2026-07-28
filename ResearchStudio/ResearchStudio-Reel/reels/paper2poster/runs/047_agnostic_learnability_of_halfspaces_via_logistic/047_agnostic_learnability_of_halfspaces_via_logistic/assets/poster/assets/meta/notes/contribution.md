@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: The paper (1) proves a matching Ω(√OPT) lower bound for the logistic-risk minimizer via an explicit 2-D distribution, (2) shows an added radial-Lipschitzness assumption yields Õ(OPT) risk, and (3) gives a simple two-phase (logistic + perceptron) algorithm achieving Õ(OPT) for all well-behaved distributions.
+
+Supporting detail: The two-phase algorithm needs only one extra convex minimization and Õ(d/ε²) samples, versus prior methods that solve O(log(1/OPT)) minimization problems.
+
+Narration: The paper makes three contributions that together resolve the gap. First, it constructs an explicit two-dimensional, isotropic, well-behaved distribution on which the global minimizer of the logistic risk provably attains square-root OPT zero-one error, matching the known upper bound and proving that logistic regression alone cannot do better. Second, it identifies a clean sufficient condition, radial Lipschitzness of the density, under which logistic regression does reach the near-optimal order-OPT rate. Third, and most usefully, it introduces a simple two-phase algorithm: run logistic regression, then run a perceptron-style hinge-loss step from that warm start on a restricted domain. This attains near-optimal error for every well-behaved distribution without the radial-Lipschitz assumption, at the cost of just one additional convex optimization, and it is far simpler than prior algorithms that required solving a logarithmic number of minimization problems.

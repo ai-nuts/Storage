@@ -1,0 +1,396 @@
+1
+00:00:00,500 --> 00:00:05,899
+<font color="#FFFFFF">Retrieval-based language models sharpen their
+predictions by pulling examples from a huge</font>
+
+2
+00:00:05,979 --> 00:00:07,869
+<font color="#FFFFFF">external datastore at test time,</font>
+
+3
+00:00:07,949 --> 00:00:12,732
+<font color="#FFFFFF">but that nearest-neighbor search is slow and runs
+at almost every single token.</font>
+
+4
+00:00:12,812 --> 00:00:16,610
+<font color="#FFFFFF">This paper introduces RetoMaton, short for
+retrieval automaton,</font>
+
+5
+00:00:16,690 --> 00:00:20,611
+<font color="#FFFFFF">which builds a weighted finite automaton on top of
+the datastore.</font>
+
+6
+00:00:20,691 --> 00:00:25,659
+<font color="#FFFFFF">By saving pointers between consecutive entries and
+clustering entries into states,</font>
+
+7
+00:00:25,739 --> 00:00:31,446
+<font color="#FFFFFF">RetoMaton lets the model follow cheap automaton
+transitions instead of searching from scratch.</font>
+
+8
+00:00:31,526 --> 00:00:37,478
+<font color="#FFFFFF">The result: up to eighty-three percent fewer
+nearest-neighbor searches with no loss in perplexity,</font>
+
+9
+00:00:37,558 --> 00:00:42,280
+<font color="#FFFFFF">or up to one point eight five lower perplexity when
+the search budget is kept.</font>
+
+10
+00:00:42,660 --> 00:00:48,323
+<font color="#FFFFFF">Retrieval-based language models improve on standard
+neural models by fetching nearest-neighbor</font>
+
+11
+00:00:48,403 --> 00:00:52,845
+<font color="#FFFFFF">examples from an external datastore and blending
+them into the prediction.</font>
+
+12
+00:00:52,925 --> 00:00:57,489
+<font color="#FFFFFF">The catch is cost: that datastore search can fire
+at every single time step,</font>
+
+13
+00:00:57,569 --> 00:01:00,849
+<font color="#FFFFFF">and it is far slower than the model's own forward pass.</font>
+
+14
+00:01:00,929 --> 00:01:06,104
+<font color="#FFFFFF">This frequent search is the single most critical
+bottleneck that keeps these otherwise</font>
+
+15
+00:01:06,184 --> 00:01:08,670
+<font color="#FFFFFF">powerful models out of practical settings.</font>
+
+16
+00:01:09,050 --> 00:01:13,073
+<font color="#FFFFFF">The key observation is that a flat datastore throws
+away structure.</font>
+
+17
+00:01:13,153 --> 00:01:15,277
+<font color="#FFFFFF">If a retrieved entry was useful now,</font>
+
+18
+00:01:15,357 --> 00:01:19,809
+<font color="#FFFFFF">the entry that follows it in the original text is
+very likely useful next.</font>
+
+19
+00:01:19,889 --> 00:01:24,585
+<font color="#FFFFFF">And entries whose key vectors are close tend to be
+followed by the same token.</font>
+
+20
+00:01:24,665 --> 00:01:29,545
+<font color="#FFFFFF">Existing approaches like Adaptive Retrieval simply
+learn when to skip the search,</font>
+
+21
+00:01:29,625 --> 00:01:36,220
+<font color="#FFFFFF">but when they skip they fall back entirely on the
+base language model and discard the retrieval distribution,</font>
+
+22
+00:01:36,300 --> 00:01:39,710
+<font color="#FFFFFF">which hurts most in domains where the base model is weak.</font>
+
+23
+00:01:40,090 --> 00:01:44,138
+<font color="#FFFFFF">RetoMaton makes two changes to the datastore.</font>
+
+24
+00:01:44,218 --> 00:01:48,265
+<font color="#FFFFFF">First,</font>
+
+25
+00:01:48,345 --> 00:01:52,392
+<font color="#FFFFFF">it saves a pointer from every entry to the entry
+that came right after it in the text.</font>
+
+26
+00:01:52,472 --> 00:01:56,520
+<font color="#FFFFFF">Second, it clusters entries with similar key
+vectors into states,</font>
+
+27
+00:01:56,600 --> 00:02:00,647
+<font color="#FFFFFF">and those states share their outgoing pointers.</font>
+
+28
+00:02:00,727 --> 00:02:04,775
+<font color="#FFFFFF">Together these turn the flat datastore into a
+weighted finite automaton.</font>
+
+29
+00:02:04,855 --> 00:02:08,903
+<font color="#FFFFFF">Building it is completely unsupervised, requires no
+extra training data,</font>
+
+30
+00:02:08,982 --> 00:02:13,030
+<font color="#FFFFFF">and works whether the automaton is constructed from
+the model's own training corpus or from a brand-new domain.</font>
+
+31
+00:02:13,410 --> 00:02:17,983
+<font color="#FFFFFF">RetoMaton stores each datastore entry as a triple
+of key, value, and pointer,</font>
+
+32
+00:02:18,063 --> 00:02:22,213
+<font color="#FFFFFF">where the pointer references the entry that
+followed it in the corpus.</font>
+
+33
+00:02:22,293 --> 00:02:25,234
+<font color="#FFFFFF">Entries with close keys are clustered into states,</font>
+
+34
+00:02:25,314 --> 00:02:28,436
+<font color="#FFFFFF">and a state inherits all the pointers of its members.</font>
+
+35
+00:02:28,516 --> 00:02:35,385
+<font color="#FFFFFF">At test time the model keeps a small set of active
+states and traverses the automaton alongside the language model.</font>
+
+36
+00:02:35,465 --> 00:02:41,186
+<font color="#FFFFFF">To move forward it just follows the pointers of
+entries whose value matches the generated token,</font>
+
+37
+00:02:41,266 --> 00:02:42,757
+<font color="#FFFFFF">which is essentially free.</font>
+
+38
+00:02:42,837 --> 00:02:48,316
+<font color="#FFFFFF">A full nearest-neighbor search is only triggered
+when the number of valid onward transitions</font>
+
+39
+00:02:48,396 --> 00:02:50,008
+<font color="#FFFFFF">drops below a threshold tau.</font>
+
+40
+00:02:50,088 --> 00:02:55,144
+<font color="#FFFFFF">The automaton's transition weights are computed
+dynamically from the distance between</font>
+
+41
+00:02:55,224 --> 00:02:58,468
+<font color="#FFFFFF">the current hidden state and the entries in each state,</font>
+
+42
+00:02:58,548 --> 00:03:03,060
+<font color="#FFFFFF">and the resulting distribution is interpolated with
+the base language model.</font>
+
+43
+00:03:03,440 --> 00:03:07,498
+<font color="#FFFFFF">The method is evaluated in two settings.</font>
+
+44
+00:03:07,578 --> 00:03:11,636
+<font color="#FFFFFF">For standard in-domain language modeling the
+authors use WikiText-103,</font>
+
+45
+00:03:11,716 --> 00:03:15,774
+<font color="#FFFFFF">a Wikipedia benchmark with one hundred and three
+million training tokens,</font>
+
+46
+00:03:15,854 --> 00:03:19,912
+<font color="#FFFFFF">and a two hundred forty seven million parameter
+Transformer as the base model,</font>
+
+47
+00:03:19,992 --> 00:03:24,050
+<font color="#FFFFFF">producing a datastore of one hundred and three
+million entries clustered into one million states.</font>
+
+48
+00:03:24,130 --> 00:03:28,188
+<font color="#FFFFFF">For domain adaptation they use the law-domain
+corpus Law-MT with nineteen million tokens</font>
+
+49
+00:03:28,268 --> 00:03:32,326
+<font color="#FFFFFF">and a larger six hundred fifty six million
+parameter base model,</font>
+
+50
+00:03:32,406 --> 00:03:36,464
+<font color="#FFFFFF">clustered into two hundred thousand states.</font>
+
+51
+00:03:36,544 --> 00:03:40,602
+<font color="#FFFFFF">Throughout,</font>
+
+52
+00:03:40,682 --> 00:03:44,740
+<font color="#FFFFFF">RetoMaton is compared against the original kNN-LM
+and against Adaptive Retrieval.</font>
+
+53
+00:03:45,120 --> 00:03:49,184
+<font color="#FFFFFF">The results are strong in both regimes.</font>
+
+54
+00:03:49,264 --> 00:03:53,327
+<font color="#FFFFFF">On WikiText-103,</font>
+
+55
+00:03:53,407 --> 00:03:57,471
+<font color="#FFFFFF">RetoMaton matches the perplexity of kNN-LM while
+skipping eighty-one percent of the searches,</font>
+
+56
+00:03:57,551 --> 00:04:01,615
+<font color="#FFFFFF">and even when it performs a search at every step it
+still lowers perplexity,</font>
+
+57
+00:04:01,695 --> 00:04:05,758
+<font color="#FFFFFF">because the carried-over pointers reinforce the
+correct neighbors.</font>
+
+58
+00:04:05,838 --> 00:04:09,902
+<font color="#FFFFFF">On the Law-MT domain-adaptation task the gains are
+larger and much more robust: perplexity</font>
+
+59
+00:04:09,982 --> 00:04:14,045
+<font color="#FFFFFF">drops from twelve point three four to ten point four nine,</font>
+
+60
+00:04:14,125 --> 00:04:18,189
+<font color="#FFFFFF">and as more searches are saved RetoMaton's
+perplexity climbs only very gently while plain</font>
+
+61
+00:04:18,269 --> 00:04:22,333
+<font color="#FFFFFF">kNN-LM's perplexity blows up exponentially.</font>
+
+62
+00:04:22,413 --> 00:04:26,476
+<font color="#FFFFFF">Overall the automaton either cuts perplexity by up
+to one point eight five,</font>
+
+63
+00:04:26,556 --> 00:04:30,620
+<font color="#FFFFFF">or saves up to eighty-three percent of the searches
+with no loss.</font>
+
+64
+00:04:31,000 --> 00:04:33,743
+<font color="#FFFFFF">An ablation teases apart the two ingredients.</font>
+
+65
+00:04:33,823 --> 00:04:36,754
+<font color="#FFFFFF">Using pointers alone, with no clustering at all,</font>
+
+66
+00:04:36,834 --> 00:04:42,838
+<font color="#FFFFFF">already beats every baseline and matches kNN-LM
+while saving more than sixty percent of searches,</font>
+
+67
+00:04:42,918 --> 00:04:47,354
+<font color="#FFFFFF">so the pointers deliver most of the benefit when
+few searches are saved.</font>
+
+68
+00:04:47,434 --> 00:04:50,553
+<font color="#FFFFFF">Clustering contributes mainly at high saving rates,</font>
+
+69
+00:04:50,633 --> 00:04:52,686
+<font color="#FFFFFF">from about seventy percent onward,</font>
+
+70
+00:04:52,766 --> 00:04:57,139
+<font color="#FFFFFF">where it lets the model stay search-free over
+longer stretches of text.</font>
+
+71
+00:04:57,219 --> 00:05:01,718
+<font color="#FFFFFF">On cluster count, half a million and one million
+means perform similarly,</font>
+
+72
+00:05:01,798 --> 00:05:04,290
+<font color="#FFFFFF">while one hundred thousand is too coarse,</font>
+
+73
+00:05:04,370 --> 00:05:10,500
+<font color="#FFFFFF">and a cheaper greedy clustering wins at zero saved
+searches but fades as the saving fraction grows.</font>
+
+74
+00:05:10,880 --> 00:05:13,618
+<font color="#FFFFFF">The headline numbers are simple to remember.</font>
+
+75
+00:05:13,698 --> 00:05:19,957
+<font color="#FFFFFF">RetoMaton saves up to eighty-three percent of
+nearest-neighbor searches with no loss in perplexity,</font>
+
+76
+00:05:20,037 --> 00:05:26,425
+<font color="#FFFFFF">or alternatively lowers perplexity by as much as
+one point eight five when the search budget is kept.</font>
+
+77
+00:05:26,505 --> 00:05:31,548
+<font color="#FFFFFF">On WikiText-103 it matches kNN-LM while skipping
+eighty-one percent of searches.</font>
+
+78
+00:05:31,628 --> 00:05:38,720
+<font color="#FFFFFF">And on a fine-tuned law-domain model it pushes
+perplexity from eight point six one down to seven point one zero,</font>
+
+79
+00:05:38,800 --> 00:05:42,050
+<font color="#FFFFFF">a relative reduction of more than seventeen percent.</font>
+
+80
+00:05:42,430 --> 00:05:47,254
+<font color="#FFFFFF">The lasting idea is that a retrieval datastore has
+structure worth exploiting.</font>
+
+81
+00:05:47,334 --> 00:05:53,100
+<font color="#FFFFFF">By linking consecutive entries with pointers and
+grouping similar ones into automaton states,</font>
+
+82
+00:05:53,180 --> 00:06:00,204
+<font color="#FFFFFF">RetoMaton lets a language model carry retrieval
+forward in time instead of searching from scratch at every token.</font>
+
+83
+00:06:00,284 --> 00:06:04,730
+<font color="#FFFFFF">It is unsupervised, works with any base model,
+transfers across domains,</font>
+
+84
+00:06:04,810 --> 00:06:07,811
+<font color="#FFFFFF">and unifies token, chunk, and sequence retrieval,</font>
+
+85
+00:06:07,891 --> 00:06:12,400
+<font color="#FFFFFF">all while cutting the dominant cost of
+retrieval-based language modeling.</font>

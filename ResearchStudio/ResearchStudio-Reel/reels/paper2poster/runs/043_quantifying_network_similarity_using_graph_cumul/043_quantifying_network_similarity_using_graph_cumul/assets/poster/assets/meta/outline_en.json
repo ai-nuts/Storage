@@ -1,0 +1,185 @@
+{
+  "lang": "en",
+  "title": "When Comparing Networks, Reach for Cumulants, Not Moments",
+  "subtitle": "A drop-in swap for two-sample tests on networks: sharply more statistical power, an accurate analytic null, and it even works from a single observed graph, all at no extra computational cost.",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "A common way to describe a network is to count its small pieces. How many edges does it have, how many wedges (two edges sharing a node), how many triangles? These subgraph or motif densities are the workhorse features of network analysis, used everywhere from characterizing brain connectomes to comparing biological interaction networks. When two collections of networks need to be told apart, the natural move is to compare their motif densities and check whether the differences between them are real or merely noise."
+    },
+    {
+      "type": "paragraph",
+      "text": "There is a subtle problem with that natural move. Raw motif densities are heavily entangled: a network with many edges tends to have many wedges, and a network with many wedges tends to have many triangles. This redundancy across orders means the densities carry far less independent information than their number suggests, which weakens any test built directly on them, especially when only a handful of graphs are observed. Many existing methods paper over the weakness by resorting to expensive resampling from fitted models just to judge whether an observed difference is real."
+    },
+    {
+      "type": "paragraph",
+      "text": "A paper by Gecia Bravo-Hermsdorff, Lee M. Gunderson, Pierre-Andre Maugis, and Carey E. Priebe, published in JMLR in 2023, argues that a better set of coordinates fixes this. Instead of raw graph moments (the motif densities), it uses graph cumulants: a combinatorial analogue of the mean, variance, and skewness that classical cumulants provide for a single random variable. Cumulants strip out the lower-order redundancy, and swapping them in turns a weak test into a strong one, without changing what you compute or how much it costs."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "width_inches": 4.7,
+      "caption": "Figure 1. Graph cumulants mirror classical cumulants. The top three rows show how the first classical moments expand into cumulants (mean, variance plus mean-squared, and so on) by summing over all partitions of a set of points. The bottom row applies exactly the same combinatorial recipe to a subgraph: a graph moment expands into graph cumulants by summing over all connectivity-respecting partitions of the subgraph's edges."
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2107.11403 (arXiv:2107.11403)."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The problem: comparing networks with no labels"
+    },
+    {
+      "type": "paragraph",
+      "text": "The setting is two-sample testing for networks. You are handed two collections of graphs, each drawn independently from some unknown distribution, and asked whether the two distributions differ. The catch is that the nodes carry no shared labels: there is no correspondence that lets you line up node one in the first graph with node one in the second. All you can use are statistics of the exchangeable, unlabeled edges, which in practice means counts of subgraphs. This is the regime behind tasks like deciding whether two brain connectomes come from the same population, or whether two species' genetic-interaction networks are structurally distinct."
+    },
+    {
+      "type": "paragraph",
+      "text": "Because the only usable signal is subgraph counts, the quality of the test hinges entirely on how those counts are turned into features. Feed in redundant features and the test is starved of information; the covariance you must estimate becomes ill-conditioned, and significance becomes hard to establish without heavy resampling. The question the authors pose is whether a change of coordinates alone can make the same subgraph counts yield a sharper, cheaper test."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "From graph moments to graph cumulants"
+    },
+    {
+      "type": "paragraph",
+      "text": "The intuition comes straight from ordinary statistics. The second moment of a random variable is variance plus mean-squared; the raw moment double-counts what the mean already told you. Cumulants are the coordinates that remove this overlap, so that the variance measures only the genuinely new spread and the third cumulant measures only the genuinely new skew. Graph cumulants do the same thing for subgraphs: each one isolates the excess propensity of a structure, the part that its smaller pieces cannot already account for."
+    },
+    {
+      "type": "paragraph",
+      "text": "Concretely, graph cumulants are obtained from graph moments by a combinatorial Mobius transform. To expand a graph moment for a subgraph g, you enumerate every partition of g's edges that respects connectivity and sum the products of cumulants over the blocks of each partition: mu_g = sum over partitions pi of the edges of g, of the product over blocks b in pi of kappa_{g_b}. Inverting this relation gives the cumulants from the moments. The transform is purely combinatorial, so it adds no meaningful cost."
+    },
+    {
+      "type": "paragraph",
+      "text": "Both tests then follow the same three-step recipe: pick a maximum subgraph order, estimate each sample's statistics, and measure the distance between the two estimates. The distance is the squared Mahalanobis distance, which weights coordinate differences by an analytically computed covariance: d2 = (k_A - k_B) transpose times the inverse of (Sigma_A + Sigma_B) times (k_A - k_B). The only difference between the moment test and the cumulant test is which coordinates go into that formula. The authors use connected subgraphs with up to r = 3 edges; computing the covariances needs subgraph counts up to 2r edges, so both tests share the same complexity, dominated by O(n^omega) matrix operations. Significance is computed analytically, with no sampling from fitted models."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "A head-to-head on synthetic networks"
+    },
+    {
+      "type": "paragraph",
+      "text": "To compare the two tests fairly, the authors stage a deliberately hard contest. They pit a heterogeneous stochastic block model (SBM), which has an uneven degree distribution but no communities, against an assortative one, which has communities but even degrees, holding the edge density fixed so the two are genuinely difficult to separate. Each sample contains s graphs, every graph has n = 128 or n = 256 nodes, and the tests use connected subgraphs up to r = 3 edges."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "width_inches": 3.4,
+      "caption": "Figure 2. An ROC curve for a single setting (s = 4 graphs per sample, n = 256 nodes, r = 3). The vertical axis is the true-positive rate and the horizontal axis is the false-positive rate; a curve hugging the top-left corner is better, and the diagonal is chance. The cumulant curve sits well above the moment curve, so at the canonical false-positive rate of 0.05 the cumulant test detects the difference far more often."
+    },
+    {
+      "type": "paragraph",
+      "text": "The ROC curve makes the gap visible at a glance: the cumulant curve climbs almost immediately toward the perfect corner, while the moment curve lags. But a single setting is only one data point. The real test is what happens as the number of graphs per sample shrinks, which is exactly the regime where practitioners are usually stuck."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "width_inches": 5.4,
+      "caption": "Figure 3. Area under the ROC curve (AUC) as the number of graphs per sample s varies, for graphs with 128 and 256 nodes. The vertical axis is heavily distorted, running from chance to perfect. The cumulant test consistently beats the moment test, and the gap widens as s shrinks. The moment test is undefined for s below 4 (its covariance estimate is singular), whereas the cumulant test keeps working all the way down to a single graph per sample."
+    },
+    {
+      "type": "paragraph",
+      "text": "Two things stand out. First, cumulants win at every sample size, and by the largest margin precisely when data is scarcest. Second, the moment test simply stops existing below four graphs per sample: with too few graphs its covariance estimate is singular and cannot be inverted. The cumulant test has no such wall; it remains defined and useful even at s = 1, letting you compare two single observed networks, a regime where the moment test cannot even be written down."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "A null distribution you can trust"
+    },
+    {
+      "type": "paragraph",
+      "text": "Higher power is only half of what makes a test usable. To control the false-positive rate you also need to know how the test statistic behaves when the two distributions are in fact identical. For a very large number of graphs per sample, both statistics converge to a chi-squared distribution with 5 degrees of freedom. The practical question is how quickly that limit is reached."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure6.png",
+      "width_inches": 5.6,
+      "caption": "Figure 6. Empirical distribution of each test statistic (the squared Mahalanobis distance) under the null, compared with the limiting chi-squared distribution with 5 degrees of freedom (black curves), for 4 and 8 graphs per sample. The cumulant statistic tracks the chi-squared curve closely even with very few graphs, while the moment statistic is visibly shifted and mis-shapen, making analytic error control unreliable for moments in the small-sample regime."
+    },
+    {
+      "type": "paragraph",
+      "text": "The cumulant statistic hugs the chi-squared curve even for just a few graphs per sample, so a practitioner can set a threshold analytically and trust the resulting false-positive rate. The moment statistic, by contrast, deviates noticeably at small samples, so the same analytic threshold would be miscalibrated. This is a second, quieter advantage of cumulants: not only more power, but a null distribution that behaves the way the theory says it should, when you actually need it to."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The same story on real biological networks"
+    },
+    {
+      "type": "paragraph",
+      "text": "Synthetic models are a controlled proving ground, but the interesting question is whether the advantage survives on messy real data. The authors turn to genetic-interaction networks from the FunCoup repository, comparing Arabidopsis (about 1.3×10^4 nodes and 7.9×10^5 edges) against Mouse (about 1.4×10^4 nodes and 9.2×10^5 edges). Crucially, each pair is adjusted to have the same edge density, so a naive low-order test cannot separate them by counting edges alone; any real difference lives in higher-order structure."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "width_inches": 5.4,
+      "caption": "Figure 4. Comparing Arabidopsis and Mouse genetic-interaction networks as the maximum subgraph order r grows. At r = 1 (left) the networks are density-matched, so neither test can tell them apart. At r = 2 (middle) the cumulant test already pulls ahead. At r = 3 (right) the cumulant test improves further, while the moment test overfits and performs worse. Each sample held s = 4 graphs."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ablation over subgraph order is the clearest illustration of why the coordinates matter. Adding more subgraphs gives both tests strictly more information, yet the moment test squanders it: the redundant, correlated features cause it to overfit and its accuracy to slip backward from r = 2 to r = 3. The cumulant test, working in de-correlated coordinates, converts each additional order into a genuine gain. More information helps only if your features can actually use it."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "width_inches": 5.4,
+      "caption": "Figure 5. Comparing Human (about 1.6×10^4 nodes, 13.9×10^5 edges) and Rat (about 1.1×10^4 nodes, 9.0×10^5 edges) genetic-interaction networks at r = 3, as the number of graphs per sample increases from 4 to 16. The cumulant test again dominates, with the widest margin when only 4 graphs are available and both tests converging toward perfect as more graphs are added."
+    },
+    {
+      "type": "paragraph",
+      "text": "The Human-versus-Rat comparison repeats the synthetic finding on real data: cumulants outperform moments across the board, and by the largest margin when the number of graphs per sample is smallest. With more graphs both tests eventually saturate near perfect, but in the data-scarce regime that matters most, the cumulant test is the one that already works."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The bottom line"
+    },
+    {
+      "type": "paragraph",
+      "text": "The recommendation is refreshingly concrete. Whenever you analyze networks through subgraph or motif densities, take one extra combinatorial step and convert them into graph cumulants before you compare. You lose nothing in computational cost, and you gain three things at once: sharply higher statistical power, an accurate chi-squared null distribution for controlling error rates analytically, and the ability to draw conclusions even from a single observed network."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Graph moments versus graph cumulants, side by side.",
+      "headers": [
+        "Property",
+        "Graph moments",
+        "Graph cumulants"
+      ],
+      "rows": [
+        [
+          "Minimum graphs per sample s",
+          "4 (fails below)",
+          "1"
+        ],
+        [
+          "Statistical power (AUC)",
+          "lower",
+          "higher, especially at small s"
+        ],
+        [
+          "Analytic chi-squared null",
+          "deviates at small s",
+          "accurate even at small s"
+        ],
+        [
+          "Adding subgraph orders",
+          "overfits, degrades",
+          "steadily improves"
+        ],
+        [
+          "Computational complexity",
+          "O(n^omega)",
+          "O(n^omega), identical"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "A few caveats keep the claims honest. The experiments use connected subgraphs up to r = 3 edges, and the framework assumes exchangeable, unlabeled edges, so it targets the label-free two-sample setting rather than problems where a node correspondence is known. Within that scope, though, the message is clean: graph cumulants are a more natural first layer of features for comparing the local structure of networks, and switching to them is essentially free. When comparing networks, reach for cumulants, not moments."
+    }
+  ]
+}

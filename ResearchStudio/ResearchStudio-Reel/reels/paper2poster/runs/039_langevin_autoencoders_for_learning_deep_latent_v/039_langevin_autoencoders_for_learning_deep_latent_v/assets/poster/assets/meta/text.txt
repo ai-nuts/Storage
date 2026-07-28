@@ -1,0 +1,947 @@
+                                             Langevin Autoencoders for Learning Deep Latent
+                                                            Variable Models
+
+
+                                                       Shohei Taniguchi                                    Yusuke Iwasawa
+                                                     The University of Tokyo                            The University of Tokyo
+                                              taniguchi@weblab.t.u-tokyo.ac.jp                    iwasawa@weblab.t.u-tokyo.ac.jp
+arXiv:2209.07036v2 [cs.LG] 11 Oct 2022
+
+
+
+
+                                                        Wataru Kumagai                                    Yutaka Matsuo
+                                                      The University of Tokyo                          The University of Tokyo
+                                                kumagai@weblab.t.u-tokyo.ac.jp                    matsuo@weblab.t.u-tokyo.ac.jp
+
+
+
+                                                                                       Abstract
+
+                                                  Markov chain Monte Carlo (MCMC), such as Langevin dynamics, is valid for
+                                                  approximating intractable distributions. However, its usage is limited in the context
+                                                  of deep latent variable models owing to costly datapoint-wise sampling iterations
+                                                  and slow convergence. This paper proposes the amortized Langevin dynamics
+                                                  (ALD), wherein datapoint-wise MCMC iterations are entirely replaced with updates
+                                                  of an encoder that maps observations into latent variables. This amortization
+                                                  enables efficient posterior sampling without datapoint-wise iterations. Despite its
+                                                  efficiency, we prove that ALD is valid as an MCMC algorithm, whose Markov
+                                                  chain has the target posterior as a stationary distribution under mild assumptions.
+                                                  Based on the ALD, we also present a new deep latent variable model named
+                                                  the Langevin autoencoder (LAE). Interestingly, the LAE can be implemented by
+                                                  slightly modifying the traditional autoencoder. Using multiple synthetic datasets,
+                                                  we first validate that ALD can properly obtain samples from target posteriors. We
+                                                  also evaluate the LAE on the image generation task, and show that our LAE can
+                                                  outperform existing methods based on variational inference, such as the variational
+                                                  autoencoder, and other MCMC-based methods in terms of the test likelihood.
+
+
+
+                                         1   Introduction
+
+                                         Variational inference (VI) and Markov chain Monte Carlo (MCMC) are two practical tools to
+                                         approximate intractable distributions. Recently, VI has been dominantly used in deep latent variable
+                                         models (DLVMs) to approximate the posterior distribution over the latent variable z given the
+                                         observation x, i.e., p (z | x). At the core of the success of VI is the invention of amortized variational
+                                         inference (AVI) [Kingma and Welling, 2013, Rezende et al., 2014], which replaces optimization of
+                                         datapoint-wise variational parameters with an encoder that predicts latent variables from observations.
+                                         The framework of learning DLVMs based on AVI is called the variational autoencoder (VAE), which
+                                         is widely used in applications [Kingma et al., 2014, An and Cho, 2015, Zhang et al., 2016, Eslami
+                                         et al., 2018, Kumar et al., 2018]. An important advantage of AVI over traditional VI is that the
+                                         optimized encoder can be used to infer a latent representation even for new data in test time, expecting
+                                         its generalization ability. On the other hand, the approximation power of AVI (or VI itself) is limited
+                                         because it relies on tractable distributions for complex posterior approximations of DLVMs as shown
+                                         in Figure 1 (a). Although there have been attempts to improve their flexibility (e.g., normalizing
+                                         flows [Rezende and Mohamed, 2015, Kingma et al., 2016, Van Den Berg et al., 2018, Huang et al.,
+                                         2018]), such methods typically have architectural constraints (e.g., invertibility in normalizing flows).
+
+
+                                         36th Conference on Neural Information Processing Systems (NeurIPS 2022).
+(a) Variational Inference (b) Langevin Dynamics       (c) Hoffman [2017]         (d) ALD (ours)
+Figure 1: Comparison between existing approximated inference methods and our amortized Langevin
+dynamics (ALD). (a) In variational inference, posteriors are approximated using tractable distributions
+(e.g., Gaussians). (b) In traditional Langevin dynamics (LD), the approximation is performed by
+running gradient-based sampling iterations directly on the latent space for each datapoint. (c) Hoffman
+[2017] uses an encoder that maps the observation into the latent variable to initialize traditional LD,
+but it still relies on datapoint-wise iterations. (d) Our ALD also uses an encoder, but it treats the
+output of the encoder as a posterior sample, and its update is implicitly performed by updating the
+encoder.
+
+
+
+
+Compared to VI, MCMC (e.g., Langevin dynamics) can approximate complex distributions by
+repeating sampling from a Markov chain that has the target distribution as its stationary distribution
+[Liu and Liu, 2001, Robert et al., 2004, Gilks et al., 1995, Geyer, 1992]. However, despite its
+high approximation ability, MCMC has received relatively little attention in learning DLVMs. It is
+because MCMC methods take a long time to converge, making it difficult to be used in the training of
+DLVMs. When learning DLVMs with MCMC, we need to run          time-consuming MCMC iterations for
+sampling from each posterior per data point, i.e., p z | x(i) (i = 1, . . . , n), where n is the number
+of mini-batch data, as shown in Figure 1 (b). Furthermore, we need to re-run the sampling procedure
+when we obtain new data at test time.
+As in VI, there have been some attempts to introduce the concept of amortized inference to MCMC.
+For example, Hoffman [2017] initializes datapoint-wise MCMC using an encoder that predicts latent
+variables from observations as shown in Figure 1 (c). However, as they use encoders only for the
+initialization of MCMC, these methods still rely on datapoint-wise sampling iterations. Not only is it
+time-consuming, but implementations of such partially amortized methods also tend to be complicated
+compared to the simplicity of AVI. To make MCMC more suitable for the inference of DLVMs, a
+more sophisticated framework of amortization is needed.
+This paper proposes amortized Langevin dynamics (ALD), which entirely replaces datapoint-wise
+MCMC iterations with updates of an encoder that maps the observation into the latent variable as
+shown in Figure 1 (d). Since the latent variable depends on the encoder, the updates of the encoder
+can be regarded as implicit updates of latent variables. By replacing MCMC on the latent space
+with one on the encoder’s parameter space, we can benefit from the encoder’s generalization ability.
+For example, after running a Markov chain of the encoder for some mini-batch data, it is expected
+that the encoder can map data into high density area in the latent space; hence we can accelerate
+the convergence of MCMC for other data by initializing it with the encoder. Moreover, despite the
+simplicity, we can theoretically guarantee that ALD has the true posterior as a stationary distribution
+under mild assumptions, which is a critical requirement for valid MCMC algorithms.
+Using our ALD for sampling from the latent posterior, we derive a novel framework of learning
+DLVMs, which we refer to as the Langevin autoencoder (LAE). Interestingly, the learning algorithm
+of LAEs can be regarded as a small modification of traditional autoencoders [Hinton and Salakhut-
+dinov, 2006]. In our experiments, we first show that ALD can properly obtain samples from target
+distributions using toy datasets. Subsequently, we perform numerical experiments of the image
+generation task using the MNIST, SVHN, CIFAR-10, and CelebA datasets. We demonstrate that our
+LAE can outperform existing learning methods based on variational inference, such as the VAE, and
+existing MCMC-based methods in terms of test likelihood.
+
+
+                                                  2
+2     Preliminaries
+2.1   Problem Definition
+
+Consider a probabilistic model with the observation x, the continuous latent variable z, and the model
+parameter θ as follows:
+                                            Z
+                                p (x; θ) = p (x | z; θ) p (z) dz.                                  (1)
+
+To learn this latent variable model (LVM) via maximum likelihood in a gradient-based manner, we
+need to calculate the expectation over the posterior distribution p (z | x; θ) as follows:
+                                               n
+                                            1X                     h                        i
+            ∇θ Ep̂data (x) [log p (x; θ)] ≈       Ep(z(i) |x(i) ;θ) ∇θ log p x(i) , z (i) ; θ , (2)
+                                            n i=1
+
+where p̂data is the empirical distribution define by the training set, and x(1) , . . . , x(n) are mini-batch
+data uniformly drawn from p̂data . However, this expectation cannot be calculated in a closed-form
+because the posterior is intractable. In this paper, we consider to use Monte Carlo approximation by
+obtaining samples from the posterior per data point.
+
+2.2   Langevin Dynamics
+
+Langevin dynamics (LD) [Neal, 2011] is a sampling algorithm based on the following Langevin
+equation:                                                    p
+                               dz = −∇z U (x, z; θ) dt + 2β −1 dB,                                      (3)
+where U is a Lipschitz continuous potential function that satisfies an appropriate growth condition, β
+is an inverse temperature parameter, and B is a Brownian motion. This stochastic differential equation
+(SDE) has pβ (z | x; θ) ∝ exp (−βU (x, z; θ)) as its stationary distribution. We set β = 1 and
+define the potential as follows to obtain the target posterior p (z | x; θ) as its stationary distribution:
+                                    U (x, z; θ) = − log p (x, z; θ) .                                    (4)
+We can obtain samples from the posterior by simulating the SDE of Eq. (3) using the Euler–Maruyama
+method [Kloeden and Platen, 2013] as follows:
+                                          zt+1 ∼ q (zt+1 | zt ) ,                                        (5)
+                            q (z 0 | z) := N (z 0 ; z − η∇z U (x, z; θ) , 2ηI) ,                         (6)
+where η is a step size for discretization. The initial value z0 is typically sampled from the prior p (z).
+When the step size is sufficiently small, the samples asymptotically move to the target posterior
+by repeating this sampling iteration. To remove the discretization error, an additional Metropolis-
+Hastings (MH) rejection step is often used. In a MH step, we first calculate the acceptance rate αt as
+follows:
+                                                                               
+                                         exp (−U (x, zt+1 ; θ)) q (zt | zt+1 )
+                         αt = min 1,                                                                   (7)
+                                           exp (−U (x, zt ; θ)) q (zt+1 | zt )
+The sample zt+1 is accepted with probability αt , and rejected with probability 1 − αt . If the sample
+is rejected, we set zt+1 = zt . LD can be applied to any posterior inference problems for continuous
+latent variables, provided the potential energy is differentiable on the latent space. To obtain the
+posterior samples for all mini-batch data x(1) , . . . x(n) , we should perform iterations of Eq. (5) per
+data point, as shown in Figure 1 (b).
+After obtaining the samples, the gradient in Eq. (2) is approximated using the samples as follows:
+                                                     n   T
+                                                  1 XX              
+                                                                             (i)
+                                                                                  
+                 ∇θ Ep̂data (x) [log p (x; θ)] ≈            ∇θ log p x(i) , zt ; θ ,             (8)
+                                                 nT i=1 t=1
+The time averaged gradient in Eq. (8) is sometimes substituted for the one calculated with the final
+sample as follows:
+                                                      n
+                                                   1X            
+                                                                          (i)
+                                                                               
+                   ∇θ Ep̂data (x) [log p (x; θ)] ≈       ∇θ log p x(i) , zT ; θ ,                (9)
+                                                   n i=1
+
+
+                                                     3
+Algorithm 1 Amortized Langevin dynamics
+  φ ← Initialize parameters
+  Z(1) , . . . , Z(n) ← ∅                                   . Initialize sample sets for all n datapoints.
+  repeat                                 Pn
+      φ0 ∼ q (φ0 | φ) := N φ0 ; φ −
+                                                                                           
+                                       η i=1 ∇φ U       x(i) , z (i)
+                                                                     = fz|x x(i) ; φ , 2ηI
+                                         exp(−V (φ0 ))q (φ|φ0 )
+      φ ← φ0 with probability min 1, exp(−V (φ))q(φ0 |φ) .                             . MH rejection step.
+                                                                                 
+      Z(1) , . . . , Z(n) ← Z(1) ∪ fz|x x(1) ; φ , . . . , Z(N ) ∪ fz|x x(n) ; φ           . Add samples.
+  until convergence of parameters
+  return Z(1) , . . . , Z(n)
+
+
+
+However, in these traditional approaches, we need to run MCMC iterations from random initialization
+every time after updating the model parameter θ. In addition, we also need to run it from stratch to
+perform inference for new data in test time. This inefficiency hinders the practical use of MCMC for
+learning DLVMs. A naive approach to mitigate this problem is to initialize MCMC with a persistent
+sample [Tieleman, 2008, Han et al., 2017] that is the final value of the previous Markov chain.
+However, this approach is also inefficient especially when the training set is large, because we need
+to store persistent samples for all training examples.
+To alleviate the inefficiency of LD for LVMs, Hoffman [2017] has proposed to use a stochastic
+encoder q (z | x) to initialize the datapoint-wise MCMC as shown in Figure 1 (c). The encoder is
+typically defined as a Gaussian distribution as in the VAE:
+                          q (z | x; φ) = N z; µ (x; φ) , diag σ 2 (x; φ) ,
+                                                                        
+                                                                                           (10)
+where µ and σ 2 are mappings from the observation space into the latent space. In the training, LD
+iterations of Eq. (5) are initialized using a sample from the distribution of Eq. (10), and the model
+parameter is updated using the stochastic gradient in Eq. (9). Along with it, the encoder is trained via
+maximization of the evidence lower bound as in VAEs:
+                                                                     
+                                                          p (x, z; θ)
+                                L (φ) = Eq(z|x)p̂(x) log                .                           (11)
+                                                         q (z | x; φ)
+Although initializing LD with the encoder can speed up the convergence, this method still relies
+on datapoint-wise MCMC iterations. Moreover, the encoder has to be trained using the different
+objective, which also makes its implementation complicated. In Section 3, we demonstrate a method
+that entirely remove the datapoint-wise iterations by amortization.
+
+3     Method
+3.1   Amortized Langevin Dynamics
+
+As an alternative to the direct simulation of latent dynamics of Eq. (3), we define a deterministic
+encoder fz|x , which maps the observation into the latent variable, and consider an SDE over its
+parameter φ as follows:
+                                                          √
+                                   dφ = −∇φ V (φ) dt + 2dB,                                   (12)
+                                        n
+                                       X                        
+                             V (φ) :=      U x(i) , fz|x x(i) ; φ ; θ .                       (13)
+                                         i=1
+Because the function fz|x outputs the latent variable, the stochastic dynamics on the parameter
+space induces dynamics on the latent space. The main idea of our amortized Langevin dynamics
+(ALD) is to regard the transition on this induced dynamics as a sampling procedure for the posterior
+distributions, as shown in Figure 1 (d). We can use the Euler–Maruyama method to simulate Eq. (12)
+with discretization:
+                                        φt+1 ∼ q (φt+1 | φt ) ,                                (14)
+                                 0              0
+                            q (φ | φ) := N (φ ; φ − η∇φ V (φ) , 2ηI) .                         (15)
+
+
+                                                    4
+As in the traditional LD, the discretization error can be removed by adding a MH rejection step,
+calculating the acceptance rate as follows:
+                                                                      
+                                       exp (−V (φt+1 )) q (φt | φt+1 )
+                           αt = min 1,                                                                (16)
+                                        exp (−V (φt )) q (φt+1 | φt )
+
+Through the iterations, the posterior sampling is implicitly performed by collecting outputs of the
+encoder for each data point as described in Algorithm
+                                                          1. Note that Z(i) denotes a set of samples of
+the posterior for the i-th data (i.e., p z | x(i) ) obtained using ALD.
+If this implicit update iteration has the posterior as its stationary distribution, this sampling procedure
+is valid as an MCMC algorithm. To obtain the stationary distribution over the latent variables, we
+first derive the stationary distribution over the parameter φ of Eq. (12), then transform it into the
+latent space by considering the change of random variable by the encoder fz|x . Based on this strategy,
+we derive the following theorem:
+                                     Qn                   
+Theorem 1. Let q (Z | X) := i=1 q z (i) | x(i) be a stationary distribution over the latent
+variables that is induced by Eq. (12). When the mapping fz|x meets the following conditions, the
+                                                           Pn                   
+stationary distribution satisfies q (Z | X) ∝ exp − i=1 U x(i) , z (i) .
+
+      1. The mapping has the form of fz|x (x; Φ) = Φg (x), where Φ is a dz × d matrix, g is
+         a mapping from Rdx to Rd , and dx , dz and d are the dimensionalities of x, z and g (x)
+         respectively.
+                                                            
+      2. The rank of G is n, where G is a matrix with g x(i) in row Gi,: .
+
+See the appendix for the solid proof. Theorem 1 suggests that samples obtained by ALD asymp-
+totically converge to the true posterior when we construct the encoder fz|x with an appropriate
+form. Practically, we can implement such a function using a neural network whose parameters are
+fixed except for the last linear layer. In this implementation, the last linear layer takes a role of the
+parameter Φ, and the preceding feature extractor takes a role of the function g.
+To meet the second condition, the dimensionality of the last linear layer should be larger than the
+batch size n. It is relatively easy to meet this condition because the batch size is about 1,000 at most
+in practice.
+
+
+3.2   Remarks
+
+Remark 1: ALD completely removes datapoint-wise iterations.
+Because ALD treats the encoder’s outputs themselves as posterior samples, we no longer need to run
+time-consuming iterations of datapoint-wise MCMC, whereas existing methods, such as Hoffman
+[2017] only use the encoder for initialization of datapoint-wise MCMC.
+Remark 2: ALD is valid as an MCMC algorithm.
+Although the sampling procedure of ALD is quite simple, ALD has the true posterior as its stationary
+distribution under mild assumptions, which guarantee that ALD is valid as an MCMC algorithm.
+Basically, we can meet the assumptions by using a sufficiently wide neural network for the encoder.
+In addition, it is worth mentioning that the traditional LD can be seen as a special case of ALD
+where g x(i) = one-hot (i). In that case, z (i) = fz|x x(i) ; Φ corresponds to the i-th column of
+Φ, which is equivalent to running MCMC on the latent space independently for each data point.
+Remark 3: The encoder may accelerate the convergence of MCMC.
+After running ALD iterations of the encoder for some mini-batch data, it is expected that the encoder
+can map data into high density area in the latent space. Therefore, the encoder can accelerate the
+convergence of MCMC for other data by initializing it with the encoder. This characteristics is useful
+not only in the training of DLVMs to efficiently estimate the gradient of the model parameters but
+also at test time to infer the latent representation for new test data.
+
+
+                                                    5
+Algorithm 2 Langevin Autoencoders
+ 1: θ, Φ, ψ ← Initialize parameters
+ 2: repeat
+ 3:     x(1) , . . . , x(n) ∼ p̂ (x)         . Sample a minibatch of n examples from the training data.
+ 4:     for t = 0, . .P  . , T − 1 do                                           . Run ALD iterations.
+                            n                                  
+ 5:         Vt = − i=1 log p x(i) , z (i) = Φg x(i) ; ψ ; θ
+ 6:         Φ0 ∼ q (Φ       0
+                         Pn| Φ)
+                                  := N (Φ0 ; Φ − η∇Φ Vt , 2ηI) 
+               0
+ 7:         Vt = − i=1 log p x(i) , z (i)     = Φ0 g x(i) ; ψ ; θ 
+                                                  exp(−V 0 )q (Φ|Φ0 )
+ 8:         Φ ← Φ0 with probability min 1, exp(−Vtt )q(Φ0 |Φ) .                   . MH rejection step.
+ 9:     end for P
+                  n                                 
+10:     VT = − i=1 log p x(i) , z (i) = Φg x(i) ; ψ ; θ
+                        PT
+11:     θ ← θ − η∇θ T1 t=1 Vt                                                     . Update the decoder.
+                          PT
+12:     ψ ← ψ − η∇ψ T1 t=1 Vt                                                     . Update the encoder.
+13: until convergence of parameters
+14: return θ, Φ, ψ
+
+
+
+
+3.3   Langevin Autoencoder
+
+Based on ALD, we propose a novel framework of learning deep latent variable models called the
+Langevin autoencoder (LAE). Algorithm 2 is a summary of the LAE’s training procedure. First,
+we prepare an encoder defined by fz|x (x; Φ, ψ) := Φg (x; ψ). The feature extractor g is typically
+implemented using a deep neural network. Before each update of the model parameter θ, the
+encoder’s final linear layer Φ is updated using ALD for T times, and the gradient of θ in Eq. (8) is
+calculated using the time average of Vt . Along with the update of the model parameter, the encoder’s
+feature extractor ψ is also updated using the gradient so that the encoder can map data into high
+density area of the posteriors. Although we describe the parameter update using a simple stochastic
+gradient ascent, it can be substituted for more sophisticated optimization methods, such as Adam [DP
+and Ba, 2015].
+It can be seen that the algorithm is very similar to the one for traditional deterministic autoencoders
+[Hinton and Salakhutdinov, 2006]. In particular, when we skip the ALD iterations in lines 4 to 9
+and the encoder’s final linear layer Φ is also trained via gradient ascent, the algorithm is identical to
+the training of autoencoders regularized by the latent prior p (z). In that case, the encoder tends to
+shrink to the maximum a posteriori (MAP) estimate rather than the posterior; hence the gradient of
+the model parameter θ would be a strongly biased estimate of the marginal log-likelihood gradient.
+Therefore, the additional ALD iterations can be interpreted as the modification to reduce the bias
+of the traditional autoencoder by updating the encoder’s parameters along with the noise-injected
+gradient.
+
+
+4     Related Works
+
+Amortized inference is well-investigated in the context of variational inference. It is often referred
+to as amortized variational inference (AVI) [Rezende and Mohamed, 2015, Shu et al., 2018]. The
+basic idea of AVI is to replace the optimization of the datapoint-wise variational parameters with
+the optimization of shared parameters across all datapoints by introducing an encoder that predicts
+latent variables from observations. The AVI is commonly used in generative models [Kingma and
+Welling, 2013], semi-supervised learning [Kingma et al., 2014], anomaly detection [An and Cho,
+2015], machine translation [Zhang et al., 2016], and neural rendering [Eslami et al., 2018, Kumar
+et al., 2018]. However, in the MCMC literature, there are few works on such amortization. Han
+et al. [2017] use traditional LD to obtain samples from posteriors for the training of deep latent
+variable models. Such Langevin-based algorithms for deep latent variable models are known as
+alternating back-propagation (ABP) and are widely applied in several fields [Xie et al., 2019, Zhang
+et al., 2020, Xing et al., 2018, Zhu et al., 2019]. However, ABP requires datapoint-wise Langevin
+
+
+                                                   6
+           GT                       d>n                       d=n                        d<n
+Figure 2: Effects of changing the encoder’s capacity in the experiment of bivariate Gaussian examples.
+d denotes the dimensionality of the last linear layer’s input.
+
+
+iterations, causing slow convergence. Moreover, when we perform inference for new data in test
+time, ABP requires MCMC iterations from randomly initialized samples again. Li et al. [2017] and
+Hoffman [2017] propose to use a VAE-like encoder to initialize MCMC, and Salimans et al. [2015]
+also proposes to combine VAE-based inference and MCMC by interpreting each MCMC step as an
+auxiliary variable. However, they only amortize the initialization cost in MCMC by using an encoder;
+hence, they still rely on datapoint-wise MCMC iterations.
+Autoencoders (AEs) [Hinton and Salakhutdinov, 2006] are a special case of LAEs, wherein the ALD
+iterations are omitted and a uniform distribution is used as the latent prior p (z). When a different
+distribution is used as the latent prior as regularization, it is known as sparse autoencoders (SAEs)
+[Ng et al., 2011]. As described in the previous section, the encoder of the traditional AE tends to
+converge to MAP estimates of the latent posterior. Therefore, the gradient of the decoder’s parameter
+is biased as the gradient estimate of the marginal log-likelihood. Our LAE can modify this bias by
+adding the ALD iterations before each parameter update, making it valid as training of a generative
+model.
+Variational Autoencoders (VAEs) are based on AVI, wherein an encoder is defined as a variational
+distribution q (z | x; φ) using a neural network.
+                                               h Its parameter φ
+                                                               i is optimized by maximizing the
+evidence lower bound (ELBO), i.e., Eq(z|x;φ) log exp(−U         (x,z))
+                                                           q(z|x;φ)    . Interestingly, there is a contrast
+between VAEs and LAEs relative to when stochastic noise is used in posterior inference. In VAEs,
+noise is used to sample from the variational distribution in calculating the potential U , i.e., in the
+forward calculation. However, in LAEs, noise is used for the parameter update along with the gradient
+calculation ∇φ U , i.e., in the backward calculation. This contrast characterizes their two different
+approaches to approximate posteriors: the optimization-based approach of VAEs and the sampling-
+based approach of LAEs. The advantage of LAEs over VAEs is that LAEs can flexibly approximate
+complex posteriors by obtaining samples, whereas VAEs’ approximation ability is limited by choice
+of variational distribution q (z | x; φ) because it requires a tractable density. Although there are
+several considerations in the improvement of the approximation flexibility, these methods typically
+have architectural constraints (e.g., invertibility and ease of Jacobian calculation in normalizing flows
+[Rezende and Mohamed, 2015, Kingma et al., 2016, Van Den Berg et al., 2018, Huang et al., 2018,
+Titsias and Ruiz, 2019]), or they incur more computational costs (e.g., MCMC sampling for the
+reverse conditional distribution in unbiased implicit variational inference [Titsias and Ruiz, 2019]).
+
+5     Experiment
+In our experiment, we first test our ALD algorithm on toy examples to investigate its behavior, then
+we show the results of its application to the training of deep generative models for image datasets.
+
+5.1   Toy Examples
+
+We perform numerical simulation using toy examples to demonstrate that our ALD can properly
+obtain samples from target distributions. First, we use a LVM where the posterior density can be
+derived in a closed-form. We initially generate three synthetic data x1 , x2 , x3 , where each xi is
+sampled from a bivariate Gaussian distribution as follows:
+                           p (z) = N (µz , Σz ) ,    p (x | z) = N (z, Σx ) .                         (17)
+
+
+                                                    7
+                 GT              Mean-field VI             Full VI            ALD (ours)
+Figure 3: Visualizations of a ground truth posterior (left), an approximation by VI (center), and
+samples by ALD (right) in the neural likelihood example.
+
+
+In this case, we can calculate the exact posterior as follows:
+                                                                 
+                                    p (z | x) = N µz|x , Σz|x ,                                   (18)
+                                                                                 −1
+                   µz|x = Σz|x Σ−1              −1                  −1      −1
+                                                                              
+                                    z µz + Σx x , Σz|x = Σz + Σx                    .             (19)
+                                                                                   
+                                     0               1 0                     0.7 0.6
+In this experiment, we set µz =          , Σz =              , and Σx =                  . We simulate
+                                     0               0 1                     0.7 0.8
+our ALD algorithm for this setting to obtain samples from the posterior. We use a neural network
+of three fully connected layers of 128 units with ReLU activation for the encoder fz|x ; setting the
+step size to 4 × 10−4 , and update the parameters for 3,000 steps. We omit the first 1,000 samples
+as burn-in steps and use the remaining 2,000 samples for qualitative evaluation. As we described in
+Section 3.1, we need to make the last linear layer of the encoder have sufficiently large dimensions to
+guarantee the convergence to the true posterior. To empirically demonstrate this theoretical finding,
+we change the dimensionality of the last linear layer of the encoder from 2 (< n) to 128 ( n).
+The results are summarized in Figure 2. It can be observed that the sample quality is good when
+the dimensionality of the last linear layer is equal to or greater than the number of data points (i.e.,
+d ≥ n). When the dimensionality is smaller than the number of data points, the samples for some
+data points shrink to a small area, while good samples are obtained for the remaining data points.
+In addition to the simple conjugate Gaussian example, we experiment with a complex posterior,
+wherein the likelihood is defined with a randomly initialized neural network. For comparison, we
+also implement the variational inference (VI), in which the posterior is approximated with a Gaussian
+distribution. Figure 3 shows a typical example, which characterizes the difference between VI and
+ALD. The mean-filed VI and the full VI use Gaussians with diagonal and full covariance matrices
+for variational distributions, respectively. The advantage of our ALD over VI is the flexibility of
+posterior approximation. VI methods typically approximate posteriors using variational distributions,
+which have tractable density functions. Hence, their approximation power is limited by the choice
+of variational distribution family, and they often fail to approximate such complex posteriors. In
+particular, the mean-field VI, which is widely used for learning DLVMs, cannot capture the correlation
+between dimensions due to the constraint of the variational distribution. The full VI mitigate the
+inflexibility, but it still cannot capture the multimodality of the true posterior. Moreover, the full VI
+requires computational costs proportional to the square of the dimension of the latent variable. On
+the other hand, ALD can capture such posteriors well. The results in other examples are summarized
+in the appendix.
+
+5.2   Image Generation
+
+To demonstrate the applicability of our LAE to the generative model training, we experiment on image
+generation tasks using MNIST, SVHN, CIFAR10, and CelebA datasets. Note that our goal here is not
+to provide the state-of-the-art results on image generation benchmarks but to verify the effectiveness
+of our ALD as a method of approximate inference in deep latent variable models. For this aim, we
+compare our LAE with some baseline methods, as shown in Table 1. The VAE [Kingma and Welling,
+2013] is one of the most popular deep latent variable models, in which the posterior distribution is
+approximated using the VI. The VAE-flow is an extension of VAE, in which the flexibility of VI is
+improved using normalizing flows [Rezende and Mohamed, 2015]. In addition to VI-based methods,
+we use Hoffman [2017] as a baseline method based on Langevin dynamics (LD). As described in
+Section 2.2, Hoffman [2017] uses a VAE-like encoder to initialize LD, and the encoder is trained by
+
+
+                                                   8
+Table 1: Quantitative results of the image generation for MNIST, SVHN, CIFAR-10, and CelebA.
+We report the mean and standard deviation of the negative evidence lower bound per data dimension
+in three different seeds. Lower is better.
+                             MNIST              SVHN             CIFAR-10           CelebA
+          VAE            1.189 ± 0.002      4.442 ± 0.003     4.820 ± 0.005     4.671 ± 0.001
+       VAE-flow          1.183 ± 0.001      4.454 ± 0.016     4.828 ± 0.005     4.667 ± 0.005
+     Hoffman [2017]      1.189 ± 0.002      4.440 ± 0.007     4.831 ± 0.005     4.662 ± 0.011
+      LAE (ours)         1.177 ± 0.001      4.412 ± 0.002     4.773 ± 0.003     4.636 ± 0.003
+
+
+maximizing the evidence lower bound. We use the same fully connected deep neural networks for the
+model construction of all methods. We set the number of ALD iterations of the LAE to 2, i.e, T = 2
+in Algorithm 2. Please refer to the appendix for more implementation details.
+For evaluation, since the marginal log-likelihood for test data is not tractable, we substitute its
+evidence lower bound (ELBO) for it using a proposal distribution q as follows:
+                                                                  
+                                                       p (x, z; θ)
+                             log p (x; θ) ≥ Eq(z) log                                         (20)
+                                                          q (z)
+
+For the baseline methods, their stochastic encoders are used for the proposal distribution, i.e.,
+q (z) := q (z | x; φ). For our LAE, we use a Gaussian distribution whose mean parameter is defined
+by its encoder, i.e., q (z) := N z; Φg (x; ψ) , σ 2 I . We set σ = 0.05 in the experiment.
+The results are summarized in Table 1. Note that
+the negative ELBO is shown in the table, so lower
+values indicate better results. It can be observed that
+the LAE consistently outperforms baseline methods,
+demonstrating that accurate posterior approximation
+by ALD leads to better results in the training of
+DLVMs. On training speed, we observe that our
+LAE is 2.24 and 1.88 times slower than VAE and
+VAE-flow respectively. This is natural because VAE
+and VAE-flow do not require MCMC steps. Hoffman
+[2017] and our LAE are almost identical in terms of
+training speed.                                             Figure 4: Learning curves comparison.
+We also investigate the effect of the MH rejection step and the number of ALD iterations, i.e., T
+in Algorithm 2, using MNIST dataset. Figure 4 shows a comparison of the learning curves of the
+negative ELBO for MNIST’s test set. It can be seen that the number of ALD iterations has little effect
+on performance as long as the number of steps is at least 2. In addition, we observe that the MH
+rejection step is important to stabilize the training.
+
+6   Conclusion
+This paper proposed amortized Langevin dynamics (ALD), an efficient MCMC method for deep
+latent variable models (DLVMs). ALD amortizes the cost of datapoint-wise iterations by using an
+encoder that predict the latent variable from the observation. We showed that our ALD algorithm
+could accurately approximate posteriors with both theoretical and empirical studies. Using ALD,
+we derived a novel scheme of deep generative models called the Langevin autoencoder (LAE).
+We demonstrated that our LAE performs better than VI-based methods, such as the variational
+autoencoder, and existing LD-based methods in terms of the marginal log-likelihood for test sets.
+This study will be the first step to further work on encoder-based MCMC methods for latent variable
+models. For instance, developing algorithms based on more sophisticated Hamiltonian Monte Carlo
+methods is an exciting direction of future work.
+One of the limitations of MCMC-based learning algorithms is the difficulty in choosing the number
+of MCMC iterations. To reduce the bias of the gradient estimate, we need to run the iterations for
+many times, but there are few clues as to how many MCMC iterations are sufficient in advance.
+
+
+                                                   9
+Recently, a method to remove the bias of MCMC with couplings is proposed by Jacob et al. [2020],
+and it may help to overcome this limitation of MCMC-based learning algorithm in the future work.
+Another limitation of our LAE is that there is a constraint on the structure of the encoder as described
+in Theorem 1. Although the constraint is relatively minor, it may be problematic when applying our
+method to modern DLVMs that have a hierarchical structure in the latent variables (e.g., Vahdat and
+Kautz [2020] and Child [2020]).
+From a broader perspective, developing deep generative models that can synthesize realistic images
+could cause a negative impact, such as abuse of Deepfake technology. We must consider the negative
+aspects and take measures for them.
+
+Acknowledgments and Disclosure of Funding
+This work was supported by JSPS KAKENHI Grant Number JP21J22342 and the Mohammed bin
+Salman Center for Future Science and Technology for Saudi-Japan Vision 2030 at The University of
+Tokyo (MbSC2030). Computational resources of AI Bridging Cloud Infrastructure (ABCI) provided
+by National Institute of Advanced Industrial Science and Technology (AIST) were used for the
+experiments.
+
+References
+Diederik P Kingma and Max Welling.             Auto-encoding variational bayes.        arXiv preprint
+  arXiv:1312.6114, 2013.
+Danilo Jimenez Rezende, Shakir Mohamed, and Daan Wierstra. Stochastic backpropagation and
+  approximate inference in deep generative models. In International conference on machine learning,
+  pages 1278–1286. PMLR, 2014.
+Diederik P Kingma, Shakir Mohamed, Danilo Jimenez Rezende, and Max Welling. Semi-supervised
+  learning with deep generative models. In Advances in neural information processing systems,
+  pages 3581–3589, 2014.
+Jinwon An and Sungzoon Cho. Variational autoencoder based anomaly detection using reconstruction
+   probability. Special Lecture on IE, 2(1), 2015.
+Biao Zhang, Deyi Xiong, Jinsong Su, Hong Duan, and Min Zhang. Variational neural machine
+  translation. arXiv preprint arXiv:1605.07869, 2016.
+SM Ali Eslami, Danilo Jimenez Rezende, Frederic Besse, Fabio Viola, Ari S Morcos, Marta Gar-
+ nelo, Avraham Ruderman, Andrei A Rusu, Ivo Danihelka, Karol Gregor, et al. Neural scene
+ representation and rendering. Science, 360(6394):1204–1210, 2018.
+Ananya Kumar, SM Eslami, Danilo J Rezende, Marta Garnelo, Fabio Viola, Edward Lockhart, and
+  Murray Shanahan. Consistent generative query networks. arXiv preprint arXiv:1807.02033, 2018.
+Danilo Rezende and Shakir Mohamed. Variational inference with normalizing flows. In International
+  conference on machine learning, pages 1530–1538. PMLR, 2015.
+Durk P Kingma, Tim Salimans, Rafal Jozefowicz, Xi Chen, Ilya Sutskever, and Max Welling.
+  Improved variational inference with inverse autoregressive flow. In Advances in neural information
+  processing systems, pages 4743–4751, 2016.
+Rianne Van Den Berg, Leonard Hasenclever, Jakub M Tomczak, and Max Welling. Sylvester
+  normalizing flows for variational inference. In 34th Conference on Uncertainty in Artificial
+  Intelligence 2018, UAI 2018, pages 393–402. Association For Uncertainty in Artificial Intelligence
+  (AUAI), 2018.
+Chin-Wei Huang, David Krueger, Alexandre Lacoste, and Aaron Courville. Neural autoregressive
+  flows. In International Conference on Machine Learning, pages 2078–2087. PMLR, 2018.
+Matthew D Hoffman. Learning deep latent gaussian models with markov chain monte carlo. In
+ International conference on machine learning, pages 1510–1519. PMLR, 2017.
+
+
+                                                  10
+Jun S Liu and Jun S Liu. Monte Carlo strategies in scientific computing, volume 10. Springer, 2001.
+Christian P Robert, George Casella, and George Casella. Monte Carlo statistical methods, volume 2.
+  Springer, 2004.
+Walter R Gilks, Sylvia Richardson, and David Spiegelhalter. Markov chain Monte Carlo in practice.
+ CRC press, 1995.
+Charles J Geyer. Practical markov chain monte carlo. Statistical science, pages 473–483, 1992.
+Geoffrey E Hinton and Ruslan R Salakhutdinov. Reducing the dimensionality of data with neural
+  networks. science, 313(5786):504–507, 2006.
+Radford M Neal. Mcmc using hamiltonian dynamics. Handbook of Markov Chain Monte Carlo,
+  page 113, 2011.
+Peter E Kloeden and Eckhard Platen. Numerical solution of stochastic differential equations, vol-
+  ume 23. Springer Science & Business Media, 2013.
+Tijmen Tieleman. Training restricted boltzmann machines using approximations to the likelihood
+  gradient. In Proceedings of the 25th international conference on Machine learning, pages 1064–
+  1071, 2008.
+Tian Han, Yang Lu, Song-Chun Zhu, and Ying Nian Wu. Alternating back-propagation for generator
+  network. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 31, 2017.
+Kingma DP and Jimmy Ba. Adam: A method for stochastic optimization. In Proc. of the 3rd
+  International Conference for Learning Representations (ICLR), 2015.
+Rui Shu, Hung H Bui, Shengjia Zhao, Mykel J Kochenderfer, and Stefano Ermon. Amortized infer-
+  ence regularization. In Proceedings of the 32nd International Conference on Neural Information
+  Processing Systems, pages 4398–4407, 2018.
+Jianwen Xie, Ruiqi Gao, Zilong Zheng, Song-Chun Zhu, and Ying Nian Wu. Learning dynamic
+   generator model by alternating back-propagation through time. In Proceedings of the AAAI
+   Conference on Artificial Intelligence, volume 33, pages 5498–5507, 2019.
+Jing Zhang, Jianwen Xie, and Nick Barnes. Learning noise-aware encoder-decoder from noisy labels
+   by alternating back-propagation for saliency detection. arXiv preprint arXiv:2007.12211, 2020.
+Xianglei Xing, Ruiqi Gao, Tian Han, Song-Chun Zhu, and Ying Nian Wu. Deformable gen-
+  erator network: Unsupervised disentanglement of appearance and geometry. arXiv preprint
+  arXiv:1806.06298, 2018.
+Yizhe Zhu, Jianwen Xie, Bingchen Liu, and Ahmed Elgammal. Learning feature-to-feature translator
+  by alternating back-propagation for generative zero-shot learning. In Proceedings of the IEEE/CVF
+  International Conference on Computer Vision, pages 9844–9854, 2019.
+Yingzhen Li, Richard E Turner, and Qiang Liu. Approximate inference with amortised mcmc. arXiv
+  preprint arXiv:1702.08343, 2017.
+Tim Salimans, Diederik Kingma, and Max Welling. Markov chain monte carlo and variational
+  inference: Bridging the gap. In International Conference on Machine Learning, pages 1218–1226.
+  PMLR, 2015.
+Andrew Ng et al. Sparse autoencoder. CS294A Lecture notes, 72(2011):1–19, 2011.
+Michalis K Titsias and Francisco Ruiz. Unbiased implicit variational inference. In The 22nd
+ International Conference on Artificial Intelligence and Statistics, pages 167–176. PMLR, 2019.
+Pierre E Jacob, John O’Leary, and Yves F Atchadé. Unbiased markov chain monte carlo methods
+  with couplings. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 82(3):
+  543–600, 2020.
+
+
+                                                 11
+Arash Vahdat and Jan Kautz. Nvae: A deep hierarchical variational autoencoder. Advances in Neural
+  Information Processing Systems, 33:19667–19679, 2020.
+Rewon Child. Very deep vaes generalize autoregressive models and can outperform them on images.
+  In International Conference on Learning Representations, 2020.
+Tim Salimans, Andrej Karpathy, Xi Chen, and Diederik P Kingma. Pixelcnn++: Improving the
+  pixelcnn with discretized logistic mixture likelihood and other modifications. arXiv preprint
+  arXiv:1701.05517, 2017.
+Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint
+  arXiv:1607.06450, 2016.
+Danilo Jimenez Rezende and Fabio Viola. Taming vaes. arXiv preprint arXiv:1810.00597, 2018.
+Yann LeCun, Léon Bottou, Yoshua Bengio, and Patrick Haffner. Gradient-based learning applied to
+  document recognition. Proceedings of the IEEE, 86(11):2278–2324, 1998.
+Yuval Netzer, Tao Wang, Adam Coates, Alessandro Bissacco, Bo Wu, and Andrew Y Ng. Reading
+  digits in natural images with unsupervised feature learning. 2011.
+Alex Krizhevsky, Geoffrey Hinton, et al. Learning multiple layers of features from tiny images. 2009.
+Ziwei Liu, Ping Luo, Xiaogang Wang, and Xiaoou Tang. Deep learning face attributes in the wild. In
+  Proceedings of International Conference on Computer Vision (ICCV), December 2015.
+
+
+
+
+                                                 12
+A    Proof of Theorem 1
+First, we prepare some lemmas.
+Lemma 2. Let h : Rdz ×d → Rdz ×n be a linear map defined by h (Φ) := ΦG. When the rank of G is
+                                              dz ×d
+n, there exists an
+                h orthogonalilinear map τ : R       → Rdz ×d hsuch that τ (Φ)             (1)  (2)
+                                                                                i = [Φ̃ h, Φ̃ ] satisfiesi
+ker h̃ = span 0dz ×n , Φ̃(2) , where h̃ := h ◦ τ −1 , Φ̃(1) := φ̃1 , . . . , φ̃n , Φ̃(2) := φ̃n+1 , . . . φ̃d
+and φ̃i ∈ Rdz for i = 1, . . . , d.
+                                                                                                  
+                                                                                           Λ
+Proof. The singular value decomposition of G is represented by T GT̃ > =                            , where
+                                                                                  0(d−n×n)
+Λ is a n × n diagonal matrix Λ = diag (λ1 , . . . , λn ), and T and T̃ are orthogonal matrices. Since
+the rank of G is n, λ1 , . . . , λn are non-zero. When we set τ (Φ) := ΦT > , we obtain
+                                                     
+                                     h̃ Φ̃ := h τ −1 Φ̃
+                                                                    
+                                            = Φ̃T G = Φ̃ T GT̃ > T̃
+                                                             
+                                                       Λ
+                                            = Φ̃                T̃ .                             (21)
+                                                    0(d−n×n)
+                                             h           i
+From the above equation, ker h̃ = span 0d0 ×n , Φ̃(2) holds.
+
+Lemma 3. For Φ̃ ∈ Rdz ×d , let Φ satisfy:
+                                           h             i
+                                       Φ̃ = Φ̃(1) , Φ̃(2) = τ (Φ) .
+                                                                  h i
+A map h̃(1) : Rdz ×n → Rdz ×n defined by h̃(1) Φ̃(1) := h̃ Φ̃(1) , 0      satisfies ΦG =
+              
+  (1)      (1)
+h̃      Φ̃       and is linear isomorphic.
+
+Proof. From the definition, we have
+                                        
+                             ΦG = τ −1 Φ̃ G = Φ̃T G
+                                               
+                                = Φ̃ T GT̃ > T̃
+                                                i            
+                                                       Λ
+                                  h
+                                = Φ̃(1) , Φ̃(2)                 T̃
+                                                    0(d−n×n)
+                                                         
+                                                    Λ
+                                  h        i
+                                = Φ̃(1) , 0                 T̃
+                                                 0(d−n×n)
+                                       h         i
+                                = τ −1 Φ̃(1) , 0 G
+                                           h         i     h     i
+                                = h ◦ τ −1 Φ̃(1) , 0 = h̃ Φ̃(1) , 0
+                                             
+                                = h̃(1) Φ̃(1) .
+                                                                                 h              i
+By the definition, h̃(1) is linear. Here, h̃(1) is injective, since ker h̃ = span 0d0 ×n , Φ̃(2) , and hence,
+              
+dim Im h̃(1) ≥ dz × n. Since Im h̃(1) ⊂ Rdz ×n , h̃(1) is surjective.
+
+                                                                        := ni=1 U x(i) , fz|x x(i) ; Φ ∈
+                        D
+                                                                           P                           
+Lemma 4.  h For V : Ri 3 φ 7→ V (Φ) = U X, fz|x (X; Φ)                         h                   i
+R, Φ̃ = Φ̃(1) , Φ̃(2) := τ (Φ), Ṽ := V ◦ τ −1 and Ṽ (1) Φ̃(1) := Ṽ Φ̃(1) , 0dz ×(d−n) , Eq.
+(12) is equivalent to
+                                                                       √
+                                dΦ̃(1) = −∇Φ̃(1) Ṽ (1) Φ̃(1) dt + 2dB,                                  (22)
+                                    (2)
+                                          √
+                                dΦ̃ = 2dB.                                                               (23)
+
+
+                                                     13
+Proof. By direct calculation, we obtain
+                            h           i
+                       Ṽ  Φ̃(1) , Φ̃(2)                                                        (24)
+                                    h            i
+                       = V ◦ τ −1 Φ̃(1) , Φ̃(2)
+                                                h         i
+                       = U X, fz|x X; τ −1 Φ̃(1) , Φ̃(2)
+                                          h          i
+                       = U X, h τ −1 Φ̃(1) , Φ̃(2)
+                                           h       i         h   i
+                       = U X, h ◦ τ −1 Φ̃(1) , 0 + h ◦ τ −1 0, Φ̃(2)
+                                          h       i
+                       = U X, h τ −1 Φ̃(1) , 0
+                                                h      i
+                       = U X, fz|x X; τ −1 Φ̃(1) , 0
+                                    h         i
+                       = V ◦ τ −1 Φ̃(1) , 0
+                            h           i
+                       = Ṽ Φ̃(1) , 0 .                                                         (25)
+
+Then, the following equivalence holds:
+                                                 √
+                            dΦ = −∇Φ V (Φ) dt + 2dB,
+                                                          √
+                             ⇔ dτ −1 (Φ) = −τ > ∇Φ̃ Ṽ Φ̃ dt + 2dB
+                                                        √
+                            ⇔ dΦ̃ = −τ ◦ τ > ∇Φ̃ Ṽ Φ̃ dt + 2dτ (B)
+                                                   √                                         (26)
+                                  = −∇Φ̃ Ṽ Φ̃ dt + 2dB,
+
+where we used τ ◦ τ > = id because τ is orthogonal. From Eq. (25), the dynamics in Eq. (26) is
+equivalent to Eq. (22) and Eq. (23).
+
+In the following, we prove Theorem 1 using the above lemmas.
+                                            
+Because the latent variables Z := h̃(1) Φ̃(1) are independent of Φ̃(2) , the stationary distribution
+                                    
+                                   (1)
+q (Z | X) is given by h̃(1)       p∗ (Z), which is the pushforward measure of the probability
+                              #
+               (1)          (1)
+distribution p      Φ̃ by h̃ . Then, we have
+                       q (Z | X)
+                                      
+                                     (1)
+                        = h̃(1)     p∗ (Z)
+                                    #
+
+                                                             d(h̃(1) )−1
+                                             −1      
+                             (1)         (1)
+                       =p               h̃           (Z) det
+                                                                dZ
+                                                                 −1
+                                                         dh̃(1)
+                                              
+                                               −1
+                             (1)         (1)
+                       =p        h̃        (Z) det
+                                                         dΦ̃(1)
+                                     −1      
+                                                                 −1
+                       = p(1)    h̃(1)     (Z) × deth̃(1)
+                                           −1       
+                       ∝ exp −Ṽ        h̃(1)      (Z)
+                                                  −1           
+                       = exp −V τ −1             h̃(1)       (Z) , 0
+                                                       −1         
+                       = exp −U X, τ −1               h̃(1)     (Z) , 0 G
+
+                       = exp (−U (X, Z)) ,
+
+
+                                                          14
+                                VI               VI              ALD               ALD
+               GT             (diag.)           (full)           (hist.)         (sample)
+
+
+
+
+                              Figure 5: Neural likelihood experiments.
+
+                        (1)
+where we used that ddΦ̃
+                     h̃
+                        (1)
+                            = h̃(1) because of the linearity of h̃(1) and is constant with respect to
+                                                                                     
+Z. The last equation is derived as follows. From Lemma 3, ΦG = h̃(1) Φ̃(1) holds when
+     h            i                                  h        i                       
+Φ̃ = Φ̃(1) , Φ̃(2) = τ (Φ). Thus, when Φ = τ −1 Φ̃(1) , 0 , we obtain h̃(1) Φ̃(1) = ΦG =
+    h         i                                   −1
+τ −1 Φ̃(1) , 0 G. In particular, for Φ̃(1) = h̃(1)       (Z), we have
+                                               −1     
+                                        (1)  (1)
+                                Z = h̃     h̃        (Z)
+                                                −1        
+                                      −1       (1)
+                                  =τ         h̃        (Z) , 0 G.
+
+
+
+
+B     Experimental Settings
+B.1   Neural likelihood example
+
+We perform an experiment with a complex posterior, wherein the likelihood is defined with a randomly
+initialized neural network fθ . Particularly, we parameterize fθ by four fully-connected layers of
+128 units with ReLU activation and two dimensional outputs like p (x | z) = N fθ (z) , σx2 I . We
+initialize the weight and bias parameters with N (0, 0.2I) and N (0, 0.1I), respectively. In addition,
+we set the observation variance σx to 0.25. We used the same neural network architecture for the
+encoder fφ . Other settings are same as the conjugate Gaussian experiment described in Section 5.1.
+The results are shown in Figure 5. The left three columns show the density visualizations of the ground
+truth or approximation posteriors of VI methods; the right two columns show the visualizations of
+2D histograms and samples obtained using ALD. For VI method,   we use two different models. One
+uses diagonal Gaussians, i.e., N µ (x; φ) , diag σ 2 (x; φ) , for the variational distribution, and
+the oher uses Gaussians with full covariance N (µ (x; φ) , Σ (x; φ)). From the density visualization
+of GT, the true posterior is multimodal and skewed; this leads to the failure of the Gaussian VI
+methods notwithstanding considering covariance. In contrast, the samples of ALD accurately capture
+such a complex distribution, because ALD does not need to assume any tractable distributions for
+approximating the true posteriors. The samples of ALD capture well the multimodal and skewed
+posterior, while Gaussian VI methods fail it even when considering covariance.
+
+
+                                                  15
+B.2   Image Generation
+
+For the image generation experiments, we use a standard Gaussian disrtibution N (z; 0, I) for the
+latent prior. The latent dimensionality is set to 8 for MNIST, 16 for SVHN, and 32 for CIFAR-10 and
+CelebA. The raw images, which take the values in {0, 1, . . . , 255}, are scaled into the range from −1
+to 1 via preprocessing. Because the values of the preprocessed images are not continuous in a precise
+sense due to the quantization, it is not desirable to use continuous distributions, e.g., Gaussians, for
+the likelihood function p (x | z; θ). Therefore, we define the likelihood using a discretized logistic
+distribution [Salimans et al., 2017] as follows:
+
+                                        dx Z bi
+                                        Y
+                       p (x | z; θ) =             Logistic (x̃i ; µi , s) dx̃i ,
+                                         i   ai
+                                      dx                             
+                                      Y         bi − µi          ai − µi
+                                    =       σ             −σ                ,
+                                                   s                s
+                                       i                                                           (27)
+                                      
+                                         −∞          x = −1
+                                 ai =          1               ,
+                                         xi − 255    otherwise
+                                      
+                                         ∞           x=1
+                                 bi =          1               ,
+                                         xi + 255 otherwise
+
+where µ := fx|z (z; θ), fx|z : Rdz → Rdx . Logistic (·; µ, s) is the density function of a logistic
+distribution with the location parameter µ and the scale parameter s, and σ is the logistic sigmoid
+function. We use a neural network with four fully-connected layers for the decoder function fx|z .
+The number of hidden units are set to 1,024, and ReLU is used for the activation function. Before
+each activation, we apply the layer normalization [Ba et al., 2016] to stabilize training. The scale
+parameter s is also optimized in the training. Because it has a constraint of s > 0, we parameterize
+          −1/2
+s = ζ (b)      , where ζ is the softplus function, and treat b as a learnable parameter instead. When
+the model has sufficiently high expressive power, b may diverge to infinity [Rezende and Viola,
+2018], so we add a regularization term of (b + 2ζ (−b)) /m to the loss function, where m is the
+number of training examples. This regularization corresponds to assuming a standard logistic
+distribution Logistic (b; 0, 1) for the prior distribution of b. We optimize the models using stochastic
+gradient ascent with the learning rate of 1 × 10−4 and the batch size of 100. We run two steps
+of ALD iterations, i.e., T = 2 in Algorithm 2, and the step size η is set to 1 × 10−4 . We use the
+same experimental settings for the baseline models. We run the training iterations for 50 epochs
+for MNIST, SVHN, CIFAR-10 and 20 epochs for CelebA. The implementation is available at
+https://github.com/iShohei220/LAE.
+
+
+B.3   Datasets
+
+All the dataset we use in the experiment is public for non-commercial research purposes. MNIST
+[LeCun et al., 1998], SVHN [Netzer et al., 2011], CIFAR-10 [Krizhevsky et al., 2009], CelebA
+[Liu et al., 2015] are available at http://yann.lecun.com/exdb/mnist/, http://ufldl.
+stanford.edu/housenumbers, https://www.cs.toronto.edu/~kriz/cifar.html, http:
+//mmlab.ie.cuhk.edu.hk/projects/CelebA.html, and https://github.com/tkarras/
+progressive_growing_of_gans, respectively. The images of CelebA are resized to 32 × 32
+in the experiment. We use the default settings of data splits for all datasets.
+
+
+B.4   Computational Resources
+
+We run all the experiments on AI Bridging Cloud Infrastructure (ABCI), which is a large-scale com-
+puting infrastructure provided by National Institute of Advanced Industrial Science and Technology
+(AIST). The experiments are performed on Computing Nodes (V) of ABCI, each of which has four
+NVIDIA V100 GPU accelerators, two Intel Xeon Gold 6148, one NVMe SSD, 384GiB memory, two
+InfiniBand EDR ports (100Gbps each). Please see https://abci.ai for more details.
+
+
+                                                     16
+Table 2: Effects of the number of MCMC iterations of Hoffman [2017]. We report the mean and
+standard deviation of the negative evidence lower bound per data dimension in three different seeds.
+Lower is better.
+                                   MNIST              SVHN          CIFAR-10           CelebA
+    Hoffman [2017]   (T = 0)    1.189 ± 0.002    4.442 ± 0.003    4.820 ± 0.005    4.671 ± 0.001
+    Hoffman [2017]   (T = 2)    1.189 ± 0.002    4.440 ± 0.007    4.831 ± 0.005    4.662 ± 0.011
+    Hoffman [2017]   (T = 10)   1.188 ± 0.001    4.437 ± 0.009    4.832 ± 0.006    4.664 ± 0.004
+    LAE              (T = 2)    1.177 ± 0.001    4.412 ± 0.002    4.773 ± 0.003    4.636 ± 0.003
+
+
+C     Additional Experiments
+In the main result in Section 5, we fix the number of MCMC iterations (i.e., T ) for the model of
+Hoffman [2017]. In this additional experiment, we further investigate the effect of T by changing it
+from 0 to 10. Note that when T = 0, the model is identical to the normal VAE. The result is shown
+in Table 2. It can be seen that the effect is relatively small, and our LAE (with T = 2) shows better
+performance than all cases.
+
+
+
+
+                                                 17
+

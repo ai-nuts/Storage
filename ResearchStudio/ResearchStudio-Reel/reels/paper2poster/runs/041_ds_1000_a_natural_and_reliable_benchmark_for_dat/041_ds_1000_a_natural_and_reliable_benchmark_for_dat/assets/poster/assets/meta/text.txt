@@ -1,0 +1,1841 @@
+                                                  DS-1000: A Natural and Reliable Benchmark for Data Science Code
+                                                                            Generation
+
+
+                                                        Yuhang Lai∗ 1 Chengxi Li∗ 1 Yiming Wang∗ 1 2 Tianyi Zhang∗ 3 Ruiqi Zhong∗ 4
+                                                        Luke Zettlemoyer 5 6 Scott Wen-tau Yih 6 Daniel Fried 7 Sida Wang 6 Tao Yu 1 5
+
+
+                                                                  Abstract                                 accuracy and AlphaCode (Li et al., 2022) can tackle difficult
+arXiv:2211.11501v1 [cs.SE] 18 Nov 2022
+
+
+
+
+                                                                                                           competitive programming problems. We anticipate that
+                                               We introduce DS-1000, a code generation bench-              these barriers will diminish if the community can make solid
+                                               mark with a thousand data science problems                  progress in applying these models to data science problems.
+                                               spanning seven Python libraries, such as NumPy
+                                               and Pandas. Compared to prior works, DS-                    However, we currently lack a benchmark that 1) focuses on
+                                               1000 incorporates three core features. First, our           everyday data science applications, 2) includes naturalistic
+                                               problems reflect diverse, realistic, and practical          intents and contexts, and 3) has a reliable execution-based
+                                               use cases since we collected them from Stack-               evaluation metric. Most of the existing datasets with reliable
+                                               Overflow. Second, our automatic evaluation is               test cases (Hendrycks et al., 2021; Chen et al., 2021a) focus
+                                               highly specific (reliable) – across all Codex-002-          on competition or interview-style programming problems;
+                                               predicted solutions that our evaluation accept,             they measure algorithmic understanding but do not target
+                                               only 1.8% of them are incorrect; we achieve                 real-world usage. Also, as represented by e.g., user prob-
+                                               this with multi-criteria metrics, checking both             lems on StackOverflow, users’ data science coding problems
+                                               functional correctness by running test cases and            usually have diverse contexts including their incorrect code,
+                                               surface-form constraints by restricting API us-             error messages, and input-output examples, which cannot
+                                               ages or keywords. Finally, we proactively defend            be found in most prior data science relevant code generation
+                                               against memorization by slightly modifying our              benchmarks (Yin et al., 2018; Hendrycks et al., 2021; Chan-
+                                               problems to be different from the original Stack-           del et al., 2022b; Chen et al., 2021a). Moreover, most of
+                                               Overflow source; consequently, models cannot                these benchmarks solely rely on surface-form metrics such
+                                               answer them correctly by memorizing the solu-               as BLEU or CodeBLEU (Yin et al., 2018; Agashe et al.,
+                                               tions from pre-training. The current best pub-              2019; Chen et al., 2021b). These metrics diverge from the
+                                               lic system (Codex-002) achieves 43.3% accuracy,             programmer’s intent, increasingly so as model capability
+                                               leaving ample room for improvement. We release              improves (Zhong et al., 2020). To our knowledge, no exist-
+                                               our benchmark at https://ds1000-code-gen.                   ing benchmarks contain both naturally occurring problems
+                                               github.io.                                                  with diverse contexts and reliable evaluation metrics.
+                                                                                                           To fill this gap, we introduce DS-1000, a benchmark with a
+                                                                                                           thousand problems covering seven widely-used Python data
+                                         1. Introduction                                                   science libraries: NumPy, Pandas, TensorFlow, PyTorch,
+                                                                                                           SciPy, Scikit-learn, and Matplotlib. We highlight
+                                         Data science is important in many areas (Romero & Ventura,
+                                                                                                           three core features of DS-1000: 1) it contains realistic
+                                         2013; Bolyen et al., 2019; Faghmous & Kumar, 2014), but
+                                                                                                           problems with diverse contexts, 2) it implements reliable
+                                         requires programming proficiency in specialized libraries,
+                                                                                                           multi-criteria execution-based evaluation metrics, and 3) it
+                                         thus posing substantial barriers to lay users. Fortunately,
+                                                                                                           proactively defends against memorization. We outline how
+                                         these barriers could potentially be reduced by pre-trained
+                                                                                                           we achieved each of them below.
+                                         code generation models: for example, Codex (Chen et al.,
+                                         2021a) can complete small Python snippets with non-trivial        First, we collected naturally occurring problems from Stack-
+                                           *                                                               Overflow, manually scored their representativeness and use-
+                                             Equal contribution. Author ordering determined by alphabet-
+                                         ical order. 1 The University of Hong Kong 2 Peking University
+                                                                                                           fulness, and curated a subset of them to create our bench-
+                                         3
+                                           Stanford University 4 UC Berkeley 5 University of Washington    mark. While inputs in existing code generation datasets
+                                         6
+                                           Meta AI 7 Carnegie Mellon University. Correspondence to: Tao    are either highly structured (problems or code context) or
+                                         Yu <tyu@cs.hku.hk>.                                               restricted in scope, our natural problems are diverse in con-
+                                                                                                           tent and format. For example, users might search for more
+                          DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+              Here is a sample dataframe:                                          Problem
+              df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})                              Prompt        Language Models (GPT-3 Codex)
+              I'd like to add inverses of each existing column to the dataframe and name
+              them based on existing column names with a prefix, e.g. inv_A is an inverse of
+              column A and so on.                                                                                               Predict
+              The resulting dataframe should look like so:
+              result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "inv_A": [1/1,                      Replace [insert] in the code context with
+              1/2, 1/3], "inv_B": [1/4, 1/5, 1/6]})                                                          following predicted code snippets
+              Obviously there are redundant methods like doing this in a loop, but there                result = df.div(1).add_prefix("inv_")
+              should exist much more pythonic ways of doing it … [omitted for brevity]
+                                                                                                                                Execute to evaluate
+              A:
+              <code>                                                          Code Context
+                                                                                                        Multi-criteria Execution-based Evaluation
+              import pandas as pd                                                                                         Test case 1
+              df = pd.DataFrame({"A": [1, 2, 3],"B": [4, 5, 6]})
+                                                                                                   df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+              </code>
+              BEGIN SOLUTION                                                                      ans = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6],
+                                                                                                                     "inv_A": [1/1, 1/2, 1/3],
+              <code>
+                                                                                                                     "inv_B": [1/4, 1/5, 1/6]})
+              [insert]
+              </code>                                                                                                     Test case 2
+              END SOLUTION                                                                                     df,ans = ...[omit for brevity]
+              <code>
+              print(result)                                                                              pd.testing.assert_frame_equal(result, ans)
+              </code>                                                                                             Surface-form constraints
+                                                                                                        for and while should not appear in Syntax Tree
+                                            Reference Solution
+                 result = df.join(df.apply(lambda x: 1/x).add_prefix(“inv_"))                                         Correct/wrong?
+
+
+Figure 1: An example problem in DS-1000. The model needs to fill in the code into “[insert]” in the prompt on the left; the
+code will then be executed to pass the multi-criteria automatic evaluation, which includes the test cases and the surface-form
+constraints; a reference solution is provided at the bottom left.
+
+efficient code implementations (Figure 1), provide incorrect                         turbing them without increasing their difficulty. Therefore,
+code with an error message and ask for bug fixes (Figure 13),                        while building DS-1000, we proactively took measures
+inquire about specific API usage (Figure 14), or ask for code                        against memorization by perturbing each problem.
+that implements functionality they specify with input-output
+                                                                                     Figure 1 shows an example DS-1000 problem, its reference
+examples (Figure 1). These problems better reflect real-
+                                                                                     solution, and an expert-written automatic multi-criteria eval-
+world applications and open up new modeling challenges,
+                                                                                     uation. To answer the problem, the model needs to fill in
+which have been understudied in existing code generation
+                                                                                     the solution; to pass our automatic evaluation, it needs to 1)
+benchmarks.
+                                                                                     return the correct output and 2) avoid inefficient implemen-
+Second, it is challenging to evaluate program solutions to                           tations that use for-loops.
+natural and diverse problems reliably. Unlike competition-
+                                                                                     We use DS-1000 to evaluate several popular code generation
+style problems, natural problems might lack executable con-
+                                                                                     models, including Codex (Chen et al., 2021a), CodeGen
+texts and test cases, allow multiple solutions, depend on
+                                                                                     (Nijkamp et al., 2022), and InCoder (Fried et al., 2022).
+external libraries, etc. To address these challenges, five of
+                                                                                     We found model performance ranges from 7.4% to 43.3%,
+the authors of this paper, all proficient in data science and
+                                                                                     with Codex-002 model being the best. This implies that
+experts in Python, hand-adapted the original problems by
+                                                                                     these models have the potential to reduce the barrier for data
+writing executable code contexts, rewriting problems to be
+                                                                                     analysis, yet still have large room for improvement.
+specific enough to be testable, and implementing automatic
+multi-criteria execution-based evaluation using carefully
+written and reviewed test cases and constraints that check                           2. Benchmark Construction
+functional correctness and surface-form constraints. On
+                                                                                     Our pipeline for building DS-1000 contains five stages, il-
+program solutions predicted by Codex-002, we find that
+                                                                                     lustrated in Figure 2 and described below. 1) We scraped
+only 1.8% of the predicted programs passing our evalua-
+                                                                                     and selected high-quality problems from StackOverflow
+tion are incorrect (false discovery rate), indicating that our
+                                                                                     (Section 2.1). 2) We rewrote the problem and the refer-
+evaluation is reliable.
+                                                                                     ence solution so that the problem is unambiguous and the
+Third, one potential concern for adapting public problems                            reference solution is executable.(Section 2.2) 3) We im-
+is that the models might simply memorize the correspond-                             plemented a multi-criteria automatic evaluation for each
+ing solution during pre-training time (Carlini et al., 2021a).                       problem, which includes test cases and surface-form con-
+We show in Section 2.4 that this can indeed happen: while                            straints (Section 2.3). 4) We performed a pilot study which
+Codex achieves 72.5% accuracy on the popular numpy-100                               shows that Codex can answer problems by memorizing the
+dataset, the accuracy drastically drops to 23.6% after per-                          pre-training corpus, and proactively took measures to pre-
+                          DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+                  ❶ Manually Selecting and Modifying StackOverflow Problems                                                 ❷ Adding Code Context
+                Here is a sample dataframe:                                                                          import pandas as pd
+                                                                                        High vote                    df = pd.DataFrame({"A": [1, 2, 3],
+                 df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+                                                                                        Testable                                        "B": [4, 5, 6]})
+                I'd like to add inverses of each existing column to the dataframe
+                                                                                        Useful                       ### BEGIN SOLUTION
+                and … [omitted for brevity]                                                                          [insert]
+                try:                                                                    Representative               ### END SOLUTION
+                                                                                                                     print(result)
+                 inv_df = df.join(df.apply(lambda x: 1/x).add_prefix("inv_"))
+
+                 ❸ Implementing Automatic Tests                    ❹ Perturbing Original Problem                                 ❺ Red Teaming
+
+                                Test cases                    … I'd like to apply the exponential function to each     df = pd.DataFrame({"A": [1, 2, 3],
+                                                              existing column … The resulting dataframe should                             "B": [4, 5, 6]})
+                           …[omit for brevity]                look like so:                                            ### BEGIN SOLUTION
+               pd.testing.assert_frame_equal(result,                                                                   # A known WRONG SOLUTION
+                                                              result = pd.DataFrame({"A": [1, 2, 3],
+                                ans)                                                                                   result = df.join(df.apply(lambda
+                                                                       "B": [4, 5, 6],
+                       Surface-form constraints                        "exp_A": [e^1, e^2, e^3],                       x:math.e**x).add_prefix('exp_'))
+               for and while should not appear in Syntax               "exp_B": [e^4, e^5, e^6]})                      ### END SOLUTION
+                                 Tree                         … [omitted for brevity]                                  print(result)
+
+
+
+             Figure 2: The pipeline for building DS-1000. See the start of Section 2 for a detailed description.
+
+
+vent this by perturbing the problems and their reference                                  problems were filtered out because they ask for an explana-
+solutions in DS-1000 (Section 2.4). 5) We improved our                                    tion for an algorithm or general content (see Appendix A.1).
+multi-criteria evaluation by requiring it to reject a small
+                                                                                          Controlling Library Version.            Data science libraries
+set of sample predictions that we considered incorrect via
+                                                                                          are continuously evolving. As a result, the semantics
+manual review (Section 2.5), and then calculated the false
+                                                                                          of the problem is determined not only by the language
+discovery rate of our metric on a larger set of sample predic-
+                                                                                          description but also by the software environment (e.g.,
+tions. To reliably carry out this data collection procedure,
+                                                                                          library version). For example, the same code snippet,
+five authors who are computer science students and familiar
+                                                                                          tf.math.reciprocal(A), is only valid in the newer ver-
+with data science spent a total of about 1200 hours con-
+                                                                                          sion of TensorFlow. We fixed the evaluation environment
+structing DS-1000 (including steps from problem selection
+                                                                                          to include the latest versions of libraries that can be installed
+to quality review).
+                                                                                          with Python 3.7.10 and present the detailed documentation
+                                                                                          in Appendix A.1.
+2.1. Problem Selection
+Sourcing Popular StackOverflow Problems. To obtain                                        2.2. Rewriting Problems and Reference Solutions
+natural and high-quality problems, we scraped data from
+                                                                                          Creating Executable Context.             To implement an
+StackOverflow under each library tag (e.g., “NumPy”). To
+                                                                                          execution-based evaluation for each natural language prob-
+select popular problems, we first removed duplicates and se-
+                                                                                          lem, we needed to write an executable context. We first
+lected problems with at least 1 vote, 1000 views, that had an
+                                                                                          added package imports and defined the variables described
+accepted answer. Next, we ranked problems based on votes
+                                                                                          in the problem. For example, in Figure 2, we imported the
+and views and calibrated these statistics based on the time
+                                                                                          Pandas package and created the dataframe described in the
+a problem was created since older problems naturally have
+                                                                                          problem as part of the context. Second, we needed to specify
+more views and votes. We refer readers to Appendix A.1 for
+                                                                                          the desired behavior of the target program to be predicted.
+more details. Among the filtered problems, we randomly
+                                                                                          For example, in Figure 2, a code generation model can in-
+sampled an initial pool containing 4500 problems (1000 for
+                                                                                          fer from the context that the resulting dataframe should be
+NumPy, Pandas, and Matplotlib, 500 for Scikit-learn
+                                                                                          named as result, rather than output.
+and SciPy, 250 for TensorFlow, and 250 for PyTorch).
+                                                                                          Rewriting Matplotlib Problems.         Many Matplotlib
+Filtering Suitable Problems. To select problems from
+                                                                                          problems on StackOverflow clarify their problems with
+the above pool for our benchmark, our annotators scored
+                                                                                          example figures, which, however, cannot be encoded by
+each problem according to the following rubric: whether a
+                                                                                          current pre-trained code models. Therefore, we rewrote the
+problem a) contains input-output examples in the problem,
+                                                                                          StackOverflow problems in symbols (i.e., code and text)
+b) is difficult to predict the solution for models according
+                                                                                          and adopted a different format from other libraries (see
+to the annotators’ judgment, c) is practically useful, d) has
+                                                                                          Figure 15).
+a clear description, and e) is feasible to evaluate the solu-
+tion. We aggregated these scores, reranked the candidate                                  Collecting Reference Solutions. Finally, we obtained the
+problems, and incorporated the top-ranked ones to create                                  reference solution for each problem from multiple high-
+DS-1000. We ended up with 451 unique StackOverflow                                        vote replies, edited all reference solutions to be executable
+problems. More than half of the original StackOverflow                                    given the context we provided, and fixed errors whenever
+                         DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+   Perturbation      Categories                                                 Example
+                     Convert to completing function                             Figure 16, change format of code context
+      Surface        Paraphrase the description of the problem                  Figure 17, express the same problem in different words
+                     Change the example input and output                        Figure 18, replace this example with a longer one
+                     Replace keywords with analogy words                        Figure 19, replace “inv” with “exp”
+                     Change the required index                                  Figure 20, need the specified rows and columns
+     Semantic
+                     Reverse the order of the list, string or dataframe         Figure 21, reverse the needed string
+                     Change the type of the required result                     Figure 22, change the DataFrame to a Series
+                     Combining several surface and semantic perturbations       Figure 23, change examples and replace “highest” with “lowest”
+ Difficult Rewrite
+                     Digging more perturbations that increase the difficulty    Figure 24, hypothesis testing
+
+Table 1: The perturbation categories along with examples. “Surface” perturbations do not change the reference solution,
+while “Semantic” perturbations do.
+
+we noticed them (e.g., Figure 11). Even though we did not                  form metrics such as CodeBLEU (Ren et al., 2020), which
+use the reference solution in DS-1000 for evaluation, we                   requires the whole model prediction to be uniformly similar
+provided them in DS-1000 to facilitate future research.                    to a reference solution; instead, DS-1000 precisely targets
+                                                                           small but important parts of surface form.
+2.3. Implementing Multi-Criteria Evaluations
+                                                                           2.4. Perturbation to Defend Against Memorization
+Our automatic evaluation is multi-criteria, checking both
+functional correctness and surface-form constraints.                       Many models are pre-trained on web text and hence memo-
+                                                                           rize its content (Elangovan et al., 2021; Carlini et al., 2021b);
+Functional Correctness. To evaluate functional correct-
+                                                                           therefore, they might answer our problems correctly by
+ness, we constructed test cases by converting the input-
+                                                                           simply recalling the solutions seen during pre-training if
+output examples provided in the StackOverflow problem;
+                                                                           they were trained on StackOverflow or derivative sites. We
+then the expert annotators manually wrote additional test
+                                                                           demonstrate this effect on numpy-100, 1 a problem set of
+cases to improve the evaluation. To evaluate a predicted
+                                                                           100 NumPy problems with solutions that are copied several
+program, we execute it on the test inputs and compare the
+                                                                           thousand times on GitHub. When prompted to answer a
+outputs with the ground truth.
+                                                                           selected subset of 20 problems, Codex-002 achieves 72.5%
+However, checking the exact equivalence of outputs can in-                 pass@1 accuracy.2
+advertently reject correct programs. Many problems involve
+                                                                           However, if the model truly knows how to solve those prob-
+floating point arithmetic, and many return values are accept-
+                                                                           lems, it should be able to solve similar problems at the
+able since they are close to the ground truth answer, but
+                                                                           same level of difficulty. This motivates us to perturb the
+they are not exactly equal. Some problems require random
+                                                                           problems in two ways: surface perturbations and semantic
+outputs, e.g., generating 100 samples from a distribution,
+                                                                           perturbations. For surface perturbations, we paraphrased
+and even executing the reference solution twice can lead to
+                                                                           the problem or modified the code context in the problem,
+different results. Many problems do not fully specify all the
+                                                                           but the reference solution should stay the same after the
+parameters, e.g., the color scheme for the output figure in
+                                                                           perturbation; for example, changing from “Create a 5x5
+the Matplotlib library, or the hyper-parameters of a learn-
+                                                                           matrix . . . ” to “I need a matrix sized 5x5 . . . ”. For semantic
+ing algorithm in Scikit-learn; therefore, programs with
+                                                                           perturbations, we changed the semantics of the reference
+different parameters can satisfy the requirement, returning
+                                                                           solution without changing its difficulty ; for example, ask-
+values that are different. In all these cases, we relied on the
+                                                                           ing for “min” instead of “max” in the problem. We provide
+best judgment of our expert annotators to implement the
+                                                                           more detailed categories in Table 1. In all of these cases, the
+metric for each problem, which sometimes involves com-
+                                                                           difficulty of the problem does not change for humans.
+plicated techniques, such as using statistical tests to handle
+randomness. See more examples in Appendix A.2.
+Surface-Form Constraints. Functional correctness alone                              Origin    Surface     Semantic     Avg. Perturbation
+is insufficient. For example, vectorized operations can be                           72.5       50.8        23.6               40.6
+expanded using for-loops, which, however, are inefficient
+and do not meet the requirement of the problem. Therefore,                     Table 2: The performance of Codex-002 on numpy-100.
+we introduced additional surface-form constraints that re-
+quire the presence/absence of specific APIs for keywords.                       1
+                                                                                    https://github.com/rougier/numpy-100
+Notably, such a check is different from the standard surface-                   2
+                                                                                    The fraction of Codex-002 samples that are correct.
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+                                 Pandas    NumPy     Matplotlib   Scikit-learn   SciPy   TensorFlow    PyTorch     Total/Avg.
+  Problem                         291       220        155            115         106        45          68          1000
+     Origin                       100        97        111             46          58        17          22           451
+     Surface Perturbation          24        22          0             57          11        11          27           152
+     Semantic Perturbation         88        51         44              9          20        12          11           235
+     Difficult Rewrite             79        50          0              3          17         5           8           162
+  % Surface-Form Constraints      12.0      36.4          0           27.8       17.9        20.0        27.9         19.4
+  Avg. Test Cases                  1.7       2.0         1.0           1.5        1.6         1.6         1.7         1.6
+  Avg. Problem Words              184.8     137.5       21.1         147.3       192.4      133.3        133.4       140.0
+  Avg. Lines of Code Context       9.0       8.3        6.9           11.0        10.2       9.2          9.0         8.9
+  Avg. Lines of Code Solution      5.4       2.5        3.0            3.3         3.1       4.1          2.1         3.6
+
+                                           Table 3: Detailed statistics of DS-1000.
+
+
+We manually applied these perturbations to numpy-100 and          3. Dataset Statistics
+show the result on Table 2. Although the difficulty level
+remains the same to human users, the performance of Codex-        We provide detailed dataset statistics in Table 3. DS-1000
+002 drops to 40.6% after perturbation (50.8% on surface per-      contains 1000 problems originating from 451 unique Stack-
+turbations and 23.6% on semantic perturbations). Further-         Overflow problems. To defend against potential memoriza-
+more, in 36% of the cases, the model still predicted the orig-    tion, more than half of the DS-1000 problems are modified
+inal answer of the problem after the semantic perturbation,       from the original StackOverflow problems (Section 2.4);
+implying that the model is solving the original problems by       they include 152 surface perturbations, 235 semantic pertur-
+memorizing their corresponding solutions. Therefore, we           bations, and 162 difficult rewrites.
+could significantly overestimate model performance if we          DS-1000 has carefully designed testing methods, checking
+test them on problems directly taken from the web. (See           both execution semantics and surface-form constraints. For
+Appendix B for more details)                                      each problem, there are 1.6 test cases (manually annotated
+Therefore, to proactively prevent memorization, we applied        corner test cases) on average, and 19.4% of them are accom-
+the above two perturbations to DS-1000 problems. Per-             panied by surface-form constraints. The average of problem
+turbation is a labor-intensive process. Even for a simple         words in DS-1000 is 140. On average, the reference solution
+perturbation from min to max, our annotators needed to edit       contains 3.6 lines of code. Table 3 shows the library break-
+all mentions of min, smallest, minimum to make the problem        down statistics: Most libraries have a similar distribution
+coherent, and updated the code context, reference solution,       except Matplotlib because we adopted a different problem
+and our evaluation metric accordingly.                            format due to its multimodal nature.
+
+Finally, to make DS-1000 more challenging, we additionally        Table 4 compares DS-1000 to other datasets. Notably,
+introduced several semantic perturbations that increase the       the average number of words per problem in DS-1000 is
+difficulty on purpose (“Difficult Rewrite” in Table 1).           much larger than other data science related datasets (e.g.,
+                                                                  DSP, Chandel et al. 2022a and CoNaLa, Yin et al. 2018).
+                                                                  More importantly, the problems in DS-1000 represent more
+2.5. Quality Assurance
+                                                                  diverse and naturalistic intent and context formats that can-
+To ensure the quality of our benchmark, each problem, refer-      not be seen in any other datasets. Unlike generic Python
+ence solution, and automatic multi-criteria evaluation were       code generation benchmarks (MBPP, Austin et al. 2021 and
+reviewed by at least three expert annotators familiar with the    HumanEval, Chen et al. 2021a), we note that data science
+library. Additionally, we “red teamed” our automatic evalua-      code generation benchmarks have fewer test cases since
+tion by requiring it to reject all programs known to be incor-    the annotators need to define program inputs with complex
+rect, e.g., solutions to semantically perturbed problems (see     objects such as square matrices, classifiers, or dataframes
+Figure 2). After the quality review, we also quantitatively       rather than simple primitives, such as floats or lists. Never-
+measured the evaluation quality by examining whether our          theless, as we will show next, even a few test cases suffice
+multi-criteria automatic metric can reject incorrect Codex-       for DS-1000.
+002 predictions (more details in Section 3).
+                                                                  We evaluate our multi-criteria automatic metric by check-
+                                                                  ing whether it can reject incorrect solutions. We randomly
+                                                                  sampled 10 problems from each library and sampled 40 pre-
+                          DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+Dataset        Problems            Evaluation           Avg. Test Cases     Avg. P Words   Avg. Lines of Code Solution    Data Source
+HumanEval         164              Test Cases                  7.7               23.0                   6.3              Hand-Written
+MBPP              974              Test Cases                  3.0               15.7                   6.7              Hand-Written
+APPS             10000             Test Cases                 13.2              293.2                  18.0              Competitions
+JuICe            1981        Exact Match + BLEU                -                 57.2                   3.3                Notebooks
+DSP              1119             Test Cases                   2.1               71.9                   4.5                Notebooks
+CoNaLa           2879               BLEU                       -                 13.8                   1.1              StackOverflow
+                                 Test Cases +
+DS-1000          1000      Surface-Form Constraints            1.6              140.0                   3.6              StackOverflow
+
+Table 4: Comparison of DS-1000 to other benchmarks. The first three benchmarks target general Python usage and the
+next three involve data science code generation. DS-1000 adapts realistic problems from StackOverflow and checks both
+execution semantics and surface-form constraints.
+
+
+dictions from Codex-002 for each problem (2800 problem-                   4. Benchmarking State-of-the-Art Models
+code examples in total).3 We run our automatic metric on
+all the sample predictions, review the predictions manually,              We used DS-1000 to benchmark five pre-trained code mod-
+calculate how often they disagree, and report the following               els from three different families. The best model Codex-002
+four quantities:                                                          Insertion achieves 43.3% accuracy, indicating room for im-
+                                                                          provement. We also show the results on the perturbed and
+                                                                          unperturbed examples in Section 4.4.
+   • Sample Level False Discovery Rate: among all pre-
+     dicted samples that pass our automatic evaluation,
+     1.8% of them are incorrect according to our annotator.               4.1. Prompt Format
+
+   • Sample Level False Omission Rate: among all pre-                     We provide an official prompt format in DS-1000 because
+     dicted samples that do not pass our automatic eval-                  it significantly impacts the performance of pre-trained lan-
+     uation, 0.5% of them are correct according to our                    guage models (Zhao et al., 2021). Figure 1 shows an exam-
+     annotator.                                                           ple: each prompt starts with a natural language description
+                                                                          and then provides a code context; the code context uses
+   • Problem Level False Positive Percentage: among all                   HTML-like markers to indicate the location of missing code
+     problems, 5.7% of the problems contain at least one                  that a model needs to fill in and provides both left and the
+     incorrect sample prediction that pass our automatic                  right context to the missing code pieces.
+     metric.
+                                                                          We decide to use infilling as our official format because
+   • Problem Level False Negative Percentage: among all                   the right context is important to specify the behavior of
+     problems, 5.7% (it happens to be the same as the above)              the program predictions (e.g., the variable name for the re-
+     problems contain at least one correct sample prediction              sult). More broadly, given that 1) infilling is an important
+     that fails to pass our automatic metric.                             functionality for real-world programming and 2) there is a
+                                                                          growing trend in pre-training with the right context (Agha-
+Generally, problem-level measures are especially stringent                janyan et al., 2022; Fried et al., 2022; Bavarian et al., 2022;
+since they require correctly judging all predictions among                Tay et al., 2022), we expect more future pre-trained models
+the 40 sample predictions. While an apple-to-apple com-                   to perform infilling.
+parison with other datasets is not possible due to the dif-               On the other hand, given that many current language mod-
+ference in the underlying model and benchmark construc-                   els trained on code are not yet capable of infilling, we also
+tion method (as a point of reference, Li et al. (2022) find               provide an official prompt that transfers the right context
+the problem Level False Positive Percentage to be 60% on                  information into the left context (Figure 25 and 26). Nev-
+APPS (Hendrycks et al., 2021)), these measures reflect that               ertheless, despite our best effort to design the prompts for
+DS-1000 is reliable.4                                                     left-to-right models, they still lag behind models with infill-
+    3
+      We use a higher temperature of 0.7 compared with 0.2 in             ing capabilities (Section 4.3). We conjecture that infilling
+Section 4.2 to get more diverse predictions.                              models are inherently more effective at utilizing the right
+    4
+      Some problems in APPS might apply quite similar tests, and          context information. Finally, we only have Completion
+some problems may have even as few as 2 or 3 test cases in the
+                                                                          format for Matplotlib problems because Matplotlib pro-
+test split. Thus, insufficient test coverage probably happens though
+there are more test cases in average (Li et al., 2022).                   vides global access to the current figure so the right context
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+is not necessary.                                                4.4. Results by Perturbation
+From now on, we refer to the infilling prompt format as          In Section 2.4, we demonstrated the risk of memorizing
+Insertion format and the left-context-only format as Com-        the solutions on the numpy-100 problem set; do we observe
+pletion format.                                                  the same effect on DS-1000? To investigate this, we ap-
+                                                                 plied surface perturbations (i.e., the problem changes but
+4.2. Experimental Setup                                          the reference solution does not change) and semantic pertur-
+                                                                 bations (the reference solution will change) to the problems
+Models. We experiment with three families of pre-trained         in DS-1000.
+models: Codex, InCoder (Fried et al., 2022), and Code-
+Gen (Nijkamp et al., 2022). For the Codex models, we             Table 6 shows the results.5 The performance of Codex-002
+experiment with codex-davinci-002 (Codex-002), codex-            drops after perturbation (3.4% on surface perturbations and
+davinci-001 (Codex-001), and codex-cushman-001 (Codex-           9.0% on semantic perturbations) but the drop is much less
+Cushman). For InCoder and CodeGen, we experiment with            severe than what we observed on numpy-100. This indi-
+the 6B parameters models. Among these models, Codex              rectly suggests that Codex-002 might have memorized the
+and CodeGen models are trained to predict the right context      solution for some StackOverflow problems, but the effect is
+while InCoder models are trained for both left-to-right gen-     less severe because they have not been repeated as often as
+eration and infilling. In addition, Codex-002 also supports      numpy-100 on the internet. Still, we believe problem pertur-
+infilling, although the exact model training details are not     bation to be a useful strategy to defend against memorization
+disclosed.                                                       by future models proactively.
+Implementation Details. We generate 40 samples for each          Additionally, we rewrote some problems to create more DS-
+DS-1000 problem with temperature set to 0.2, top-p cutoff        1000 problems by intentionally making them more difficult
+set to 0.95, and max generation length set to 1024. We set       even for human programmers. As expected, Codex-002
+the stop sequence tokens to “</code>” and “# SOLUTION            performs much worse after the rewrite, and we plan to use
+END”. These samples are used in the unbiased estimator of        these problems as a challenge for future models.
+pass@1. For DS-1000, evaluating generated codes does not         We give a preliminary error analysis in Appendix C.
+require special computational resources like GPUs.
+
+4.3. Main Results                                                5. Related Work
+Table 5 displays the pass@1 accuracy on DS-1000. We find         Natural Language to Code. Research on translating natu-
+that DS-1000 can differentiate models with different capa-       ral language to executable forms dates back several decades.
+bilities. The best model Codex-002 achieves a nontrivial         The models have become increasingly capable of producing
+but far-from-perfect average accuracy of 43.3%, indicating       complex and general programs while requiring fewer human
+substantial room for improvement. In contrast, other models      annotations. Zelle & Mooney (1996) and Zettlemoyer &
+like CodeGen-6B or InCoder-6B have much worse overall            Collins (2007) translate natural language queries to domain-
+performance, with accuracy lower than 5% on some libraries.      specific database queries. Liang et al. (2013) and Berant
+Qualitatively, these smaller models often cannot correctly       et al. (2013) parse natural language into first-order logic to
+follow the prompt instruction, generating additional com-        answer generic knowledge-based questions. Yu et al. (2018);
+ments instead of the required code. Future ablation is needed    Scholak et al. (2021) translate natural language problems to
+to understand the underlying cause for this performance gap,     general SQL programs and develop models that can general-
+which could be the difference in model size, lack of instruc-    ize across domains. While all the works above still need to
+tion tuning, or the difference in pre-training data.             train their models on the task they evaluate, recently Li et al.
+                                                                 (2022); Chen et al. (2021a) show that generative models pre-
+In addition, we observe that model accuracy varies across        trained on code can produce Python snippets to tackle com-
+different libraries. This speaks to the importance of a holis-   petitive programming challenges, without any additional
+tic evaluation of multiple data science libraries because        human annotations. Many other recent works corroborated
+performance in a specific library may not directly generalize    this finding (Nijkamp et al., 2022; Fried et al., 2022; Xu
+to other libraries.                                              et al., 2022; Black et al., 2022), and additional techniques
+Moreover, we find that Insertion format often leads to bet-      at inference time further improve the performance (Poesia
+ter performance. The same Codex-002 model has a 4.1%             et al., 2022; Shi et al., 2022).
+average accuracy improvement when used with Insertion               5
+                                                                      Note that the results are not comparable to Table 5 since for
+format than used with Completion format. This shows the          each kind of perturbation, we only selected a subset of problems
+importance of the infilling capability for data science code     to perturb.
+completion.
+                        DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+     Format            Model           Pandas NumPy Matplotlib Scikit-learn SciPy TensorFlow PyTorch Overall
+                 Codex-002              26.5     43.1        57.0           44.8        31.8        39.3         41.8       39.2
+  Left-to-right  Codex-001               9.4     26.6        41.8           18.5        15.0        17.2          9.7       20.2
+  Completion Codex-Cushman               7.9     21.8        40.7           18.0        11.3        12.2         12.4       18.1
+                CodeGen-6B               1.9     12.1        18.6            5.8         7.4        12.8          3.4        8.4
+                InCoder-6B               3.1      4.4        28.3            2.8         2.8         3.8          4.4        7.4
+
+                     Codex-002          30.1     46.5        57.0*          53.7        34.8        53.4         47.7       43.3
+    Insertion
+                    InCoder-6B           2.9      4.6        28.3*           3.1         3.1         7.8          3.2        7.5
+
+Table 5: pass@1 accuracy with 40 samples generated for each problem. The upper part shows accuracy on the left-to-right
+Completion format, while the lower part shows the results of Insertion format. The rightmost “Overall” columns show the
+average accuracy on 1000 problems from all libraries. DS-1000 is able to differentiate the capabilities of different models
+and there is substantial room for improvement even for the best Codex-002 model. ∗ : Matplotlib problems do not have the
+right context so Completion and Insertion formats are the same.
+
+                        Pandas         NumPy       Scikit-learn        SciPy       TensorFlow      PyTorch          Overall
+  Originsurface           37.3           61.2           52.6            33.0          64.9           64.8               53.2
+  Surface                 31.9 −5.4      58.4 −2.8      55.7 +3.1       32.1 −0.9     58.0 −8.9      50.0 −14.8         49.8 −3.4
+  Originsemantic          36.8           56.7           60.6*           40.3          71.3           65.1               47.2
+  Semantic                33.2 −3.6      49.0 −7.7      38.9*−21.7      34.3 −6.0     42.5 −25.8     30.5 −34.6         38.2 −9.0
+  Origindifficult         39.9           52.7            5.0*           58.1          73.0*          53.8*              46.8
+  Difficult Rewrite       17.7 −22.2     27.1 −25.6      0.0*−5.0       13.8 −44.3    38.0*−35.0     28.8*−25.0         21.0 −25.8
+
+Table 6: Effect of three different types of problem perturbation. In each subsection, we compare the accuracy of the
+perturbed problems to that of the original problems. We observe that although Surface and Semantic perturbations also
+cause a performance drop on DS-1000 the performance drop is much smaller compared to that on numpy-100. ∗ : Numbers
+are averaged from less than 10 problems.
+
+Code Generation Benchmarks. As models become in-                     available. Therefore, most recent papers that evaluate on
+creasingly capable, researchers start to build increasingly          real-world programs have to rely on unreliable surface-form
+difficult and general code generation benchmarks. While              metrics (Ren et al., 2020; Chen et al., 2021b; Xu et al., 2022).
+Zelle & Mooney (1996) focused only on domain-specific                This streetlight effect might incentivize the community to
+languages, Yu et al. (2018) builds a Text-to-SQL benchmark           work on problems that are easy to evaluate but not useful
+that evaluates the capability to write broad-domain SQL              in practice. In response to this challenge, our paper man-
+programs. Yin et al. (2018) evaluates the capability to write        ually implements a reliable metric for naturally occurring
+short but general Python snippets, while more recent papers          problems. Future works can consider using models to help
+Hendrycks et al. (2021); Li et al. (2022) evaluate models’           humans write useful tests (Tufano et al., 2020), or formally
+capability to solve competitive programming problems in              verify the correctness of a predicted solution (Chu et al.,
+Python. If code generation models continue to improve, we            2017).
+expect future researchers to focus on more complex tasks.
+At the same time, however, it becomes more difficult to build        6. Conclusion
+reliable benchmarks aligned with real-world applications.
+                                                                     We propose DS-1000, a benchmark for generating code for
+Programs are most useful when they are executed; therefore,
+                                                                     data analysis. Our benchmark 1) contains realistic problems,
+we need to evaluate their execution semantics, and the best
+                                                                     2) implements reliable automatic metrics, and 3) proactively
+general method so far is still to ask experts to manually write
+                                                                     defends against memorization strategies. We hope DS-1000
+test cases. Consequently, most benchmarks with test cases
+                                                                     can track the progress of this research area and facilitate fair
+focus on competition/interview/ programming challenges
+                                                                     comparisons between models, and our methods to construct
+(Hendrycks et al., 2021; Li et al., 2022), because these are
+                                                                     it can inspire other areas where the task is complicated and
+the only applications where a lot of test cases are already
+                                                                     the ground truth is challenging to evaluate.
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+Acknowledgements                                                 Carlini, N., Tramèr, F., Wallace, E., Jagielski, M., Herbert-
+                                                                   Voss, A., Lee, K., Roberts, A., Brown, T. B., Song, D.,
+We thank Noah A. Smith, Tianbao Xie, Shuyang Jiang for             Erlingsson, Ú., Oprea, A., and Raffel, C. Extracting
+their helpful feedback on this work.                               training data from large language models. In Bailey, M.
+                                                                   and Greenstadt, R. (eds.), 30th USENIX Security Sympo-
+References                                                         sium, USENIX Security 2021, August 11-13, 2021, pp.
+                                                                   2633–2650. USENIX Association, 2021b. URL https:
+Agashe, R., Iyer, S., and Zettlemoyer, L. JuICe: A
+                                                                   //www.usenix.org/conference/usenixsecurity21/
+  large scale distantly supervised dataset for open domain
+                                                                   presentation/carlini-extracting.
+  context-based code generation. In Empirical Methods in
+ Natural Language Processing (EMNLP), 2019.                      Chandel, S., Clement, C. B., Serrato, G., and Sundaresan, N.
+Aghajanyan, A., Huang, B., Ross, C., Karpukhin, V., Xu,            Training and evaluating a jupyter notebook data science
+  H., Goyal, N., Okhonko, D., Joshi, M., Ghosh, G., Lewis,         assistant. CoRR, abs/2201.12901, 2022a. URL https:
+  M., et al. Cm3: A causal masked multimodal model of              //arxiv.org/abs/2201.12901.
+  the internet. arXiv preprint arXiv:2201.07520, 2022.
+                                                                 Chandel, S., Clement, C. B., Serrato, G., and Sundaresan, N.
+Austin, J., Odena, A., Nye, M., Bosma, M., Michalewski,            Training and evaluating a jupyter notebook data science
+  H., Dohan, D., Jiang, E., Cai, C., Terry, M., Le, Q., et al.     assistant. arXiv preprint arXiv:2201.12901, 2022b.
+  Program synthesis with large language models. arXiv
+                                                                 Chen, M., Tworek, J., Jun, H., Yuan, Q., Pinto, H. P. d. O.,
+  preprint arXiv:2108.07732, 2021.
+                                                                   Kaplan, J., Edwards, H., Burda, Y., Joseph, N., Brockman,
+Bavarian, M., Jun, H., Tezak, N., Schulman, J., McLeavey,          G., et al. Evaluating large language models trained on
+  C., Tworek, J., and Chen, M. Efficient training of               code. arXiv preprint arXiv:2107.03374, 2021a.
+  language models to fill in the middle. arXiv preprint
+  arXiv:2207.14255, 2022.                                        Chen, X., Gong, L., Cheung, A., and Song, D. Plotcoder:
+                                                                   Hierarchical decoding for synthesizing visualization code
+Berant, J., Chou, A., Frostig, R., and Liang, P. Semantic          in programmatic context. In Association for Computa-
+  parsing on freebase from question-answer pairs. In Pro-          tional Linguistics (ACL), 2021b.
+  ceedings of the 2013 conference on empirical methods in
+  natural language processing, pp. 1533–1544, 2013.              Chu, S., Wang, C., Weitz, K., and Cheung, A. Cosette: An
+                                                                   automated prover for sql. In CIDR, 2017.
+Black, S., Biderman, S., Hallahan, E., Anthony, Q., Gao,
+  L., Golding, L., He, H., Leahy, C., McDonell, K., Phang,       Elangovan, A., He, J., and Verspoor, K. Memorization
+  J., Pieler, M., Prashanth, U. S., Purohit, S., Reynolds, L.,     vs. generalization : Quantifying data leakage in NLP
+  Tow, J., Wang, B., and Weinbach, S. GPT-NeoX-20B: An             performance evaluation. In Merlo, P., Tiedemann, J.,
+  open-source autoregressive language model. In Proceed-           and Tsarfaty, R. (eds.), Proceedings of the 16th Con-
+  ings of BigScience Episode #5 – Workshop on Challenges           ference of the European Chapter of the Association
+  & Perspectives in Creating Large Language Models, vir-           for Computational Linguistics: Main Volume, EACL
+  tual+Dublin, May 2022. Association for Computational             2021, Online, April 19 - 23, 2021, pp. 1325–1335. As-
+  Linguistics.                                                     sociation for Computational Linguistics, 2021. doi:
+                                                                   10.18653/v1/2021.eacl-main.113. URL https://doi.
+Bolyen, E., Rideout, J. R., Dillon, M. R., Bokulich, N. A.,        org/10.18653/v1/2021.eacl-main.113.
+  Abnet, C. C., Al-Ghalith, G. A., Alexander, H., Alm, E. J.,
+  Arumugam, M., et al. Reproducible, interactive, scalable       Faghmous, J. H. and Kumar, V. A big data guide to under-
+  and extensible microbiome data science using qiime 2             standing climate change: The case for theory-guided data
+  (vol 37, pg 852, 2019). Nature biotechnology, 2019.              science. Big data, 2(3):155–163, 2014.
+Carlini, N., Tramèr, F., Wallace, E., Jagielski, M.,             Fried, D., Aghajanyan, A., Lin, J., Wang, S., Wallace, E.,
+  Herbert-Voss, A., Lee, K., Roberts, A., Brown, T.,               Shi, F., Zhong, R., Yih, W., Zettlemoyer, L., and Lewis,
+  Song, D., Erlingsson, Ú., Oprea, A., and Raffel, C.              M. Incoder: A generative model for code infilling and
+  Extracting training data from large language models. In          synthesis. CoRR, abs/2204.05999, 2022.
+  30th USENIX Security Symposium (USENIX Security
+  21), pp. 2633–2650. USENIX Association, August                 Hendrycks, D., Basart, S., Kadavath, S., Mazeika, M., Arora,
+  2021a.    ISBN 978-1-939133-24-3.         URL https:             A., Guo, E., Burns, C., Puranik, S., He, H., Song, D., and
+  //www.usenix.org/conference/usenixsecurity21/                    Steinhardt, J. Measuring coding challenge competence
+  presentation/carlini-extracting.                                 with apps. NeurIPS, 2021.
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+Li, Y., Choi, D. H., Chung, J., Kushman, N., Schrit-             Xu, F. F., Alon, U., Neubig, G., and Hellendoorn, V. J. A
+  twieser, J., Leblond, R., Eccles, T., Keeling, J., Gi-           systematic evaluation of large language models of code.
+  meno, F., Lago, A. D., Hubert, T., Choy, P., de Mas-             In Proceedings of the 6th ACM SIGPLAN International
+  son d’Autume, C., Babuschkin, I., Chen, X., Huang,              Symposium on Machine Programming, pp. 1–10, 2022.
+  P., Welbl, J., Gowal, S., Cherepanov, A., Molloy, J.,
+  Mankowitz, D. J., Robson, E. S., Kohli, P., de Freitas,        Yin, P., Deng, B., Chen, E., Vasilescu, B., and Neubig,
+  N., Kavukcuoglu, K., and Vinyals, O. Competition-level           G. Learning to mine aligned code and natural language
+  code generation with alphacode. CoRR, abs/2203.07814,            pairs from stack overflow. In International Conference on
+  2022. doi: 10.48550/arXiv.2203.07814. URL https:                 Mining Software Repositories, MSR, pp. 476–486. ACM,
+  //doi.org/10.48550/arXiv.2203.07814.                             2018. doi: https://doi.org/10.1145/3196398.3196408.
+
+Liang, P., Jordan, M. I., and Klein, D. Learning Dependency-     Yu, T., Zhang, R., Yang, K., Yasunaga, M., Wang, D., Li, Z.,
+  Based Compositional Semantics. Computational Linguis-            Ma, J., Li, I., Yao, Q., Roman, S., Zhang, Z., and Radev,
+  tics, 39(2):389–446, 06 2013. ISSN 0891-2017. doi:               D. R. Spider: A large-scale human-labeled dataset for
+  10.1162/COLI_a_00127. URL https://doi.org/10.                    complex and cross-domain semantic parsing and text-to-
+  1162/COLI_a_00127.                                               SQL task. In Empirical Methods in Natural Language
+                                                                   Processing (EMNLP), 2018.
+Nijkamp, E., Pang, B., Hayashi, H., Tu, L., Wang, H., Zhou,
+  Y., Savarese, S., and Xiong, C. A conversational paradigm      Zelle, M. and Mooney, R. J. Learning to parse database
+  for program synthesis. CoRR, abs/2203.13474, 2022.               queries using inductive logic programming. In Associa-
+                                                                   tion for the Advancement of Artificial Intelligence (AAAI),
+Poesia, G., Polozov, A., Le, V., Tiwari, A., Soares, G., Meek,     pp. 1050–1055, 1996.
+  C., and Gulwani, S. Synchromesh: Reliable code genera-
+  tion from pre-trained language models. In International        Zettlemoyer, L. and Collins, M. Online learning of relaxed
+  Conference on Learning Representations, 2022. URL                ccg grammars for parsing to logical form. In Proceedings
+  https://openreview.net/forum?id=KmtVD97J43e.                     of the 2007 Joint Conference on Empirical Methods in
+                                                                   Natural Language Processing and Computational Natu-
+Ren, S., Guo, D., Lu, S., Zhou, L., Liu, S., Tang, D., Sun-        ral Language Learning (EMNLP-CoNLL), pp. 678–687,
+  daresan, N., Zhou, M., Blanco, A., and Ma, S. Code-              2007.
+  bleu: a method for automatic evaluation of code syn-
+  thesis. CoRR, abs/2009.10297, 2020. URL https:                 Zhao, Z., Wallace, E., Feng, S., Klein, D., and Singh, S.
+  //arxiv.org/abs/2009.10297.                                      Calibrate before use: Improving few-shot performance
+                                                                   of language models. In International Conference on
+Romero, C. and Ventura, S. Data mining in education. Wiley         Machine Learning, pp. 12697–12706. PMLR, 2021.
+  Interdisciplinary Reviews: Data Mining and Knowledge
+  Discovery, 3(1):12–27, 2013.                                   Zhong, R., Yu, T., and Klein, D. Semantic evaluation for
+                                                                   text-to-SQL with distilled test suites. In Proceedings
+Scholak, T., Schucher, N., and Bahdanau, D. PICARD:
+                                                                   of the 2020 Conference on Empirical Methods in Natu-
+  Parsing incrementally for constrained auto-regressive de-
+                                                                   ral Language Processing (EMNLP), pp. 396–411, On-
+  coding from language models. In Proceedings of the 2021
+                                                                   line, November 2020. Association for Computational Lin-
+  Conference on Empirical Methods in Natural Language
+                                                                   guistics. doi: 10.18653/v1/2020.emnlp-main.29. URL
+  Processing, pp. 9895–9901, Online and Punta Cana, Do-
+                                                                   https://aclanthology.org/2020.emnlp-main.29.
+  minican Republic, November 2021. Association for Com-
+  putational Linguistics.
+Shi, F., Fried, D., Ghazvininejad, M., Zettlemoyer, L., and
+  Wang, S. I. Natural language to code translation with
+  execution. arXiv preprint arXiv:2204.11454, 2022.
+Tay, Y., Dehghani, M., Tran, V. Q., Garcia, X., Bahri, D.,
+  Schuster, T., Zheng, H. S., Houlsby, N., and Metzler, D.
+  Unifying language learning paradigms. arXiv preprint
+  arXiv:2205.05131, 2022.
+Tufano, M., Drain, D., Svyatkovskiy, A., Deng, S. K., and
+  Sundaresan, N. Unit test case generation with transform-
+  ers and focal context. arXiv preprint arXiv:2009.05617,
+  2020.
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+Appendices                                                      A.2. Example Problems
+                                                                Here we present an example problem from each of the seven
+                                                                libraries in DS-1000 to illustrate the challenges we encoun-
+A. Details on Data Collection                                   tered in creating DS-1000.
+A.1. Problem Selection                                          Figure 9 shows a NumPy problem asking how to generate
+Sourcing Popular StackOverflow Problems. We lever-              samples that suit log-uniform distribution. Since the result
+age StackOverflow to collect representative data science        varies with different solutions and different settings, it’s
+code generation problems on each library. To select popular     unreasonable to test the equivalence. Instead, we apply the
+problems, we first removed duplicates and selected prob-        Kolmogorov-Smirnov test that judges whether two groups
+lems with at least 1 vote, 1000 views, and accepted answers.    of samples suit the identical or rather similar population.
+After this initial filtering, we obtain 15881 NumPy problems,   Figure 10 gives a SciPy problem that describes some trou-
+26248 Pandas problems, 1965 PyTorch problems, 8258              ble with the number of stored elements in a sparse matrix
+TensorFlow problems, 4141 SciPy problems, and 4499              and asks for a solution without repetitive type conversion.
+Scikit-learn problems. Next, we performed a stratified          Since our self-made assertion that checks the equivalence
+sampling on problems from each year to further subsample        of two matrices cannot distinguish the difference between
+the problems from Pandas and TensorFlow. We designed a          stored numbers, we need a special design for this problem.
+threshold for each year’s problems differently because older    For functional correctness, we check the type of b, match the
+problems naturally have higher votes. Table 8 displays the      elements, and check the number of non-zero elements(nnz),
+criteria we used to filter each year’s problem on Pandas and    which is the core of the problem. For surface-form con-
+TensorFlow.                                                     straints, we reject the use of .toarray(), .A, .todense(),
+Filtering Suitable Problems. From the initial pool of           and .array(), which might attempt to transform a sparse
+popular problems, our annotators selected problems that         matrix into a dense one.
+are suitable for building DS-1000. Besides the considera-       Figure 11 shows a Pandas problem. We found that the
+tions mentioned in Section 2, we discuss those problems         solution with the highest votes ignores the requirement “but
+that are not selected here. In general, we consider a prob-     does not exactly match it” in the description of the problem,
+lem to be unsuitable if our multi-criteria evaluation is not    and thus we had to fix the bug in our reference solution.
+applicable (untestable problems). For example, we leaved        Besides, we enhanced the test case to check the point.
+StackOverflow problems involving hardware problems (See
+Figure 29), software errors (See Figure 30), concrete exe-      Figure 12 shows a TensorFlow problem. Since there is no
+cution time analysis, etc. out of DS-1000. See Figure 31        built-in testing function defined in TensorFlow 2.10.0, we
+for a concrete example where the problem asks for a natural     had to design it by ourselves.
+language explanation of a method in TensorFlow. We leave        Figure 13 demonstrates a PyTorch problem. Here we use
+incorporating more unsuitable StackOverflow problems for        load_data() to hide the input and let the models learn from
+future work.                                                    the description. The correct solution is not a regular type
+Controlling Library Version. Table 7 details the software       conversion, as indicated in the error message.
+versions that we build DS-1000 with.                            Figure 14 shows a Scikit-learn problem. It requires ap-
+                                                                plying the preprocessing method defined in Scikit-learn
+                                                                to a Pandas dataframe, and it tests whether the models
+                    Package       Version                       learn Scikit-learn, Pandas, and their interaction well.
+                                                                Actually, these data science libraries are not independent of
+                   Seaborn        0.11.2                        others, and this problem exemplifies the interactions.
+                  Matplotlib       3.5.2
+                    NumPy         1.21.6                        Figure 15 shows a Matplotlib problem. Here the origi-
+                    Pandas         1.3.5                        nal problem on StackOverflow contains an example figure,
+                  Scikit-learn     1.0.2                        which cannot be processed by current code models. We
+                     SciPy         1.7.3                        rewrite the original problem into a standalone problem, that
+                  TensorFlow      2.10.0                        is, “Plot y over x and show blue dashed grid lines”. The
+                   PyTorch        1.12.1                        automatic evaluation comes in two parts. First, it compares
+                                                                the image produced by the generated program with the im-
+      Table 7: The versions of software in DS-1000              age produced by the reference program. If two images
+                                                                match exactly, then the generated program is considered
+                                                                correct. Otherwise, the automatic evaluation examines the
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+                 Year        2011    2012     2013    2014      2015     2016      2017        2018       2019       2020        2021       2022
+  Pandas         vote         50      50        14      14        14        4        4           4          2          2            1         1
+                 view         5k      5k       5k       5k        5k       1k       1k          1k        1.1k       1.1k          1k        1k
+                 problems      2       8       467     494       554     2139      2483        1894       1985       809         225          8
+  TensorFlow     vote          -       -         -       -        10        5        4           2          2          1            1         1
+                 view          -       -         -       -        3k       2k       1k         1.6k       1.2k       1.3k          1k        1k
+                 problems      -       -         -       -       100      632      1136        1167       1004        776         185         6
+
+        Table 8: The problem selection parameters and the number of result problems of Pandas and TensorFlow.
+
+
+Matplotlib axis object and asserts the conditions relevant        as complementary information.
+to the problem specification. In this example, the assertions
+are testing the existence of grid lines and the color of the      B. Details of Experiments on numpy-100
+grid lines.
+                                                                  numpy-100 is a collection of 100 NumPy exercises from
+A.3. Problem Perturbation                                         NumPy mailing list, StackOverflow, and NumPy documen-
+                                                                  tation, which has been forked over 4.7k times on GitHub.
+Here, we give an example for each type of perturbation,
+as shown in Table 1. We highlight the changes we made             As shown in Figure 3, in the numpy-100 problem set, each
+through perturbations.                                            problem is given a short, one-sentence description with no
+                                                                  code context, followed by a reference solution.
+Figure 16, Figure 17 and Figure 18 give examples of surface
+perturbations, showing code context perturbation, paraphras-           #### 28. Consider a (6,7,8) shape array, what is the index (x,y,z)
+ing, and changes in example respectively. The original task            of the 100th element?
+
+hasn’t changed.                                                        ```python
+                                                                       print(np.unravel_index(99, (6,7,8)))
+                                                                       ```
+Figure 19 shows how we replace keywords with analogy
+words in a Pandas problem. The perturbed problem asks                               Figure 3: A numpy-100 example.
+for applying an exponential function to column A and B.
+The problem in Figure 20 concentrates on changing the re-         First, we wrote a code context for each problem and applied
+quired index. Here we specify the target index on which           Insertion prompt, as shown in Figure 4.
+to operate using ordinal numbers. Figure 21 gives an ex-
+ample of reversing the order. The desired output string is
+reversed(from “abc,def,ghi,jkl” to “jkl,ghi,def,abc”). We              Problem:
+                                                                       Consider a (6,7,8) shape array, what is the index (x,y,z) of the 100th element?
+expect the models to capture the information and handle the
+perturbation. Figure 22 shows an example of changing the               <code>
+                                                                       import numpy as np
+type of the required result. Here we change the type from              [insert]
+                                                                       print(result)
+pd.DataFrame to pd.Series.                                             </code>
+
+Figure 23 and Figure 24 demonstrate how we get difficult
+rewrites. The example in Figure 23 replaces “highest” with                    Figure 4: A numpy-100 example prompt.
+“lowest” and changes the shape of the desired output (from n
+× 1 to 1 × n). The example in Figure 24, on the other hand,       Then we paraphrased the problems and modified the code
+focuses on digging more perturbations that could increase         contexts as surface perturbations, as shown in Figure 5 and
+the difficulty. The models should not only learn how to use a     Figure 6. We changed the description from “Consider a
+two-sample KS test but also learn how to interpret the result     (6,7,8) shape array, what is the index (x,y,z) of the 100th
+of the KS test.                                                   element?” to “I have an array with shape (6,7,8). I need to
+                                                                  find the index of the 100th element.”. In another way, we
+A.4. Prompt Format                                                changed the code context to require models to complete a
+                                                                  given function.
+As we’ve mentioned in Section 4.1, we also provide a
+prompt of Completion format. Here are two examples (Fig-          For semantic perturbation, we changed the requirements
+ure 25 and Figure 26) showing that we have to translate the       of the problems and also the semantics of the reference
+code in the right context into natural language instructions      solutions without changing their difficulty. As shown in
+                                                                  Figure 7, we changed “100” to “99”.
+                              DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+  Problem:                                                                          which require both natural language understanding and code
+  I have a array with shape (6,7,8). I need to nd the index of the 100th element.   generation abilities.
+  <code>
+  import numpy as np
+  [insert]
+  print(result)
+  </code>
+
+
+
+Figure 5: A numpy-100 example of surface perturbation.
+We expressed the same description in different words.
+
+
+  Problem:
+  Consider a (6,7,8) shape array, what is the index (x,y,z) of the 100th element?
+
+  <code>
+  import numpy as np
+
+  def f():
+      [insert]
+      return result
+  </code>
+
+
+                               fi
+
+Figure 6: A numpy-100 example of surface perturbation.
+We changed the code context.
+
+
+At last, we equipped each problem and its perturbation with
+one test case and an automatic evaluation. Then we tested
+the performance of Codex-002 on them. We sampled 20
+problems from numpy-100 and generated 10 samples for
+each problem with temperature set to 0.7, and top-p cutoff
+set to 0.95.
+
+C. Error Analysis
+We provide a preliminary error analysis by showing an exam-
+ple model error in Figure 8 and provide additional examples
+in Figure 27 and 28. In this example, the problem asks for
+removing adjacent duplicated non-zero values in a given
+array, which cannot be satisfied by a single NumPy opera-
+tion. The reference implements this problem by creating a
+binary array representing the selection and performing two
+operations to meet the problem requirement. However, we
+see Codex-002 fails on the composite request and attempts
+to answer the problem with a single method, np.unique,
+pointed out as incorrect in the problem already.. This exam-
+ple error demonstrates the challenges in DS-1000 problems,
+
+
+   Problem:
+   Consider a (6,7,8) shape array, what is the index (x,y,z) of the 99th element?
+
+   <code>
+   import numpy as np
+   [insert]
+   print(result)
+   </code>
+
+
+
+Figure 7: A numpy-100 example of semantic perturbation.
+We only changed the required index.
+                         DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+              Problem:                                                               Reference Solu on
+              Given a numpy array, I wish to remove the adjacent        # a: 1-d np.array as input
+              (before removing) duplicate non-zero value and all the    selection = np.ones(len(a), dtype = bool)
+              zero value.                                               selection[1:] = a[1:] != a[:-1]
+                                                                        selection &= a != 0
+              For instance, for an array like that:                     result = a[selection]
+              [0,0,1,1,1,2,2,0,1,3,3,3], I'd like to transform it to:
+              [1,2,1,3]. Do you know how to do it?
+                                                                                       Wrong Solu on
+              I just know np.unique(arr) but it would remove all the    # Just mimic mentioned wrong solution
+              duplicate value and keep the zero value. Thank you in     result = np.unique(a)
+              advance!
+
+
+
+Figure 8: An example model mistake. The problem specifies a composite requirement, removing adjacent non-zero
+duplicates, which cannot be solved by a single operation. The model mistakenly generates a single operation that removes
+all duplicates.
+
+             ti   ti
+                                DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+Problem:                                                                                                          Reference Solu on
+I could not find a built-in function in Python to generate a log uniform
+                                                                                       import spicy.stats
+distribution given a min and max value (the R equivalent is here),
+                                                                                       result = scipy.stats.loguniform.rvs(a = min, b = max, size = n)
+something like: loguni[n, min, max, base] that returns n log uniformly
+distributed in the range min and max.
+The closest I found though was numpy.random.uniform .
+That is, given range of x, I want to get samples of given size (n) that suit log-
+uniform distribution.                                                                                           Automa c Evalua on
+Any help would be appreciated!
+                                                                                                                       Test case 1
+A:                                                                                        min = 1
+<code>                                                                                    max = np.e
+import numpy as np                                                                        n = 10000
+min = 1                                                                                   ans = ... # generated by Reference solution
+max = np.e
+n = 10000                                                                                                              Test code
+</code>                                                                                    np.testing.assert_array_equal(result.shape, ans.shape)
+BEGIN SOLUTION                                                                             from scipy.stats import ks_2samp
+<code>                                                                                     # Kolmogorov-Smirnov Test judges whether the two sampled
+[insert]                                                                                   # from similar distribution
+</code>                                                                                    assert ks_2samp(result, ans)[0] <= 0.1
+END SOLUTION
+<code>                                                                                                          Surface-form constraints
+print(result)                                                                                        for and while should not appear in Syntax Tree
+</code>ti        ti   ti
+
+
+
+
+        Figure 9: NumPy example problem involving randomness, requiring the use of a specialist knowledge test.
+
+
+
+
+         Problem:                                                                                                 Reference Solu on
+         I want to remove diagonal elements from a sparse matrix. Since the matrix is sparse,
+         these elements shouldn't be stored once removed.                                            b.setdiag(0)
+                                                                                                     b.eliminate_zeros()
+         Scipy provides a method to set diagonal elements values: setdiag
+         …[omit for brevity]
+         However with csr_matrix, it seems diagonal elements are not removed from storage:
+         …[omit for brevity]
+         >>> b.setdiag(0)
+         >>> b
+         <2x2 sparse matrix of type '<type 'numpy.float64'>'
+                with 4 stored elements in Compressed Sparse Row format>
+         >>> b.toarray()
+         array([[ 0., 1.],                                                                                        Automa c Evalua on
+                     [ 1., 0.]])
+         Through a dense array, we have of course:                                                                      Test case 1
+         >>> csr_matrix(b.toarray())                                                                 a = np.ones((2, 2))
+         <2x2 sparse matrix of type '<type 'numpy.float64'>'
+                with 2 stored elements in Compressed Sparse Row format>                                                 Test case 2
+         Is that intended? If so, is it due to the compressed format of csr matrices? Is there any   a = []
+         workaround else than going from sparse to dense to sparse again?
+         A:                                                                                          ans = sparse.csr_matrix(a)
+         <code>                                                                                      ans.setdiag(0)
+         from scipy import sparse                                                                    ans.eliminate_zeros()
+         import numpy as np
+         a = np.ones((2, 2))
+                                                                                                                         Test code
+         b = sparse.csr_matrix(a)                                                                    assert type(b) == type(ans)
+         </code>                                                                                     # Matching elements
+         BEGIN SOLUTION                                                                              assert len(sparse.find(b != ans)[0]) == 0
+         <code>                                                                                      # Checking number of nonzero elements
+         [insert]                                                                                    assert b.nnz == ans.nnz
+         </code>
+         END SOLUTION                                                                                             Surface-form constraints
+         <code>
+                                                                                                      .toarray(), .A, .todense(), .array() should
+         print(b)
+         </code>                                                                                                  not appear in Syntax Tree
+                ti         ti   ti
+
+
+
+
+Figure 10: An example problem of SciPy. Specific checking on conversion between dense matrix and sparse matrix.
+                                                                                                                                                                                  df['name']       df[name]
+
+
+
+
+                              DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+                                                                                                    DataFrame.columns
+  Problem:                                                                                                        Highest-vote Solu on
+  I have a dataframe with column names, and I want to find the one                 import pandas as pd
+                                                                                 Just iterate over      DataFrame.columns , now this is an example in
+                                                                                                  DataFrame.columns
+  that contains a certain string, but does not exactly match it. I'm               data = {'spike-2': [1,2,3], 'hey spke': [4,5,6], 'spiked-in': [7,8,9], 'no':
+                                                                                 which
+                                                                                   [10,11,you
+                                                                                          12]} will end up with a list of column names that match:
+  searching for 'spike' in column names like 'spike-2', 'hey spike',               import pandas as pd
+                                                                                   df = pd.DataFrame(data)
+
+  'spiked-in' (the 'spike' part is always continuous).                             data = {'spike-2': [1,2,3], 'hey spke': [4,5,6], 'spiked-in': [7,8,9], 'no':
+                                                                                 spike_cols        = [col for col in df.columns if 'spike' in col]
+                                                                                   spike_cols = [col for col in df.columns if 'spike' in col]
+                                                                                  [print
+                                                                                    10,11
+                                                                                        (, 12]}
+                                                                                          list(df.columns))
+  I want the column name to be returned as a string or a variable, so              df = pd.DataFrame(data)
+                                                                                   print(spike_cols)
+
+  I access the column later with df['name'] or df[name] as                         spike_cols = [col for col in df.columns if 'spike' in col]
+
+  normal. I want to get a list like['spike-2', 'spiked-in'].
+                                                                                   print(list(df.columns))
+                                                                                   print(spike_cols)
+                                                                                                                      Reference Solu on
+  I've tried to find ways to do this, to no avail. Any tips?                  result    = [col for col in df.columns
+                                                                                 ['hey spke', 'no', 'spike-2', 'spiked-in']
+                                                                                                        if s in col and col != s]
+                                                                                 ['spike-2', 'spiked-in']
+
+  A:
+                                                                                   ['hey spke', 'no', 'spike-2', 'spiked-in']
+  <code>                                                                           ['spike-2', 'spiked-in']
+                                                                                                                  Automa c Evalua on
+  import pandas as pd                                                                  df.columns
+  data = {'spike-2': [1,2,3], 'hey spke': [4,5,6],                                                                         Test case 1
+                                                                                       [col for col in df.columns if 'spike' in col]                        df.columns                     col
+       'spiked-in': [7,8,9], 'no': [10,11,12]}
+                                                                               datadf.columns
+                                                                                       = {'spike-2':
+                                                                                              'spike'            [1,2,3], 'hey spke': [4,5,6],
+  df = pd.DataFrame(data)
+                                                                                        'spiked-in': [7,8,9], 'no': [10,11,12],
+  s = 'spike'                                                                        [col for col in df.columns if 'spike' in col]    df.columns                                           col
+                                                                                        'spike':        [13,14,15]}
+  </code>                                                                                     'spike'
+                                                                               df df2
+                                                                                   = =pd.DataFrame(data)
+  BEGIN SOLUTION                                                                        df.filter(regex='spike')
+                                                                               s =print
+                                                                                     'spike'
+                                                                                       (df2)
+  <code>
+  [insert]
+                                                                               ansdf2 == df.
+                                                                                          [col     for col in df.columns
+                                                                                            filter(regex='spike')
+  </code>                                                                         print(df2)
+                                                                                                     if s in col and col != s]
+  END SOLUTION                                                                         spike-2   spiked-in
+  <code>                                                                           0
+                                                                                   1
+                                                                                             1
+                                                                                             2
+                                                                                                         7
+                                                                                                         8
+                                                                                                                            Test code
+  print(result)                                                                 assert result == ans
+                                                                                   2         3           9
+
+  </code>                                                                          0
+                                                                                       spike-2
+                                                                                             1
+                                                                                                 spiked-in
+                                                                                                         7
+        ti          ti   ti
+                         ti                                                        1         2           8
+                                                                                   2         3           9
+
+Figure 11: An example problem of Pandas. We need to write reference solutions by ourselves because high-vote replies
+from StackOverflow ignore the requirement “but does not exactly match it”.
+                                                                      DataFrame.filter
+
+
+
+
+                                                                                                    DataFrame.filter
+
+                                                                                                                                                        df[df.columns.drop(spike_cols)]                  DataFrame
+                                                                                                             spike_cols
+
+                                                                                                              df[[col for col in df.columns if "spike" in col]]
+                                                                                                                                                         df[df.columns.drop(spike_cols)]                 DataFrame
+ Problem:                                                                                                         Reference Solu on
+                                                                                                          spike_cols
+                                                                                                     [col for col in df.columns if any(s in col for s in ['spike', 'foo', 'bar'])]         df.filter(regex='(spike)|(foo
+ I'm using tensorflow 2.10.0.                                                                              df[[col for col in df.columns if "spike" in col]]
+                                                                          lengths_transposed = tf.expand_dims(lengths, 1)
+ I have a tensor of lengths in tensorflow, let's say it looks like        range = tf.range(0, 8, 1)
+                                                                                                     [col for col in df.columns if any(s in col for s in ['spike', 'foo', 'bar'])]          df.filter(regex='(spike)|(fo
+ this:                                                                    range_row = tf.expand_dims(range,                           0)
+ [4, 3, 5, 2]                                                             mask = tf.less(range_row, lengths_transposed)
+                                                                          result = tf.where(mask, tf.ones([4, 8]), tf.zeros([4, 8]))
+                                                                        https://stackoverﬂow.com/questions/21285380/ﬁnd-column-whose-name-contains-a-speciﬁc-string
+ I wish to create a mask of 1s and 0s whose number of 0s
+ correspond to the entries to this tensor, padded in front by
+ 1s to a total length of 8. I.e. I want to create this tensor:                                                            Test case 1
+                                                                        https://stackoverﬂow.com/questions/21285380/ﬁnd-column-whose-name-contains-a-speciﬁc-string
+ [[1,1,1,1,0,0,0,0],                                                     lengths = [4, 3, 5, 2]
+                                                                         ans = ... # generated by Reference solution
+  [1,1,1,0,0,0,0,0],
+                                                                                                                          Test case 2
+  [1,1,1,1,1,0,0,0],
+                                                                          lengths, ans = ...[omitted for brevity]
+  [1,1,0,0,0,0,0,0]
+                                                                                                                           Test code
+ ]
+                                                                         def tensor_equal(a, b): # self-made test function
+ How might I do this?                                                        if type(a) != type(b):
+                                                                                 return False
+ A:                                                                          if isinstance(a, type(tf.constant([]))) is not True:
+ <code>                                                                          if isinstance(a, type(tf.Variable([]))) is not True:
+ import tensorflow as tf                                                             return False
+ lengths = [4, 3, 5, 2]                                                      if a.shape != b.shape:
+ </code>                                                                         return False
+ BEGIN SOLUTION                                                              if a.dtype != tf.float32:
+ <code>                                                                          a = tf.cast(a, tf.float32)
+ [insert]                                                                    if b.dtype != tf.float32:
+ </code>                                                                         b = tf.cast(b, tf.float32)
+ END SOLUTION                                                                if not tf.reduce_min(tf.cast(a == b, dtype=tf.int32)):
+ <code>                                                                          return False
+ print(result)                                                               return True
+ </code>                                                                 assert tensor_equal(result, ans)
+               ti
+
+
+
+
+  Figure 12: An example problem of TensorFlow. We implemented well-designed test function for tensor comparison.
+                                 DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+ Problem:                                                                                          Reference Solu on
+ I have this code:                                                                 tensor_of_tensors = torch.stack((list_of_tensors))
+ import torch
+ list_of_tensors = [ torch.randn(3), torch.randn(3),
+ torch.randn(3)]
+ tensor_of_tensors = torch.tensor(list_of_tensors)
+ I am ge ng the error:
+ ValueError: only one element tensors can be converted                                           Automa c Evalua on
+ to Python scalars
+ How can I convert the list of tensors to a tensor of tensors in pytorch?                              Test case 1
+ A:
+                                                                                  torch.random.manual_seed(42)
+ <code>
+                                                                                  list_of_tensors = [torch.randn(3), torch.randn(3),
+ import numpy as np
+                                                                                  torch.randn(3)]
+ import pandas as pd
+ import torch                                                                     ans = ... # generated by Reference solution
+ list_of_tensors = load_data()
+ </code>
+ BEGIN SOLUTION
+ <code>                                                                                                 Test code
+ [insert]                                                                         torch.testing.assert_close(tensor_of_tensors, ans,
+ </code>
+                                                                                                                check_dtype = False)
+ END SOLUTION
+ <code>
+ print(tensor_of_tensors)
+ </code>
+      tti    ti      ti     ti
+
+
+
+
+        Figure 13: An example problem of PyTorch, with failed attempt and error message given in the description.
+
+
+
+
+ Problem:                                                                                        Reference Solu on
+ I'm using the excellent read_csv()func on from pandas, which gives:
+                                                                              df_out = pd.DataFrame(preprocessing.scale(data),
+ In [31]: data = pandas.read_csv("lala.csv",
+                                                                                               index=data.index, columns=data.columns)
+ delimiter=",")
+ In [32]: data
+ Out[32]:
+ <class 'pandas.core.frame.DataFrame'>
+ Int64Index: 12083 entries, 0 to 12082
+ Columns: 569 entries, REGIONC to SCALEKER
+ dtypes: float64(51), int64(518)
+ but when i apply a func on from scikit-learn i loose the informa ons about
+ columns:
+ from sklearn import preprocessing
+ preprocessing.scale(data)                                                                      Automa c Evalua on
+ gives numpy array.
+ Is there a way to apply preprocessing.scale to DataFrames without loosing
+ the informa on(index, columns)?
+                                                                                                     Test case 1
+ A:                                                                           np.random.seed(42)
+ <code>                                                                       data = pd.DataFrame(np.random.rand(3, 3),
+ import numpy as np                                                                              index=['first', 'second', 'third'],
+ import pandas as pd                                                                             columns=['c1', 'c2', ‘c3’])
+ from sklearn import preprocessing
+ data = load_data()                                                           ans = ... # generated by Reference Solution
+ </code>
+ BEGIN SOLUTION
+ <code>                                                                                               Test code
+ [insert]                                                                     # tolerate rounding error
+ </code>                                                                      pd.testing.assert_frame_equal(df_out, ans,
+ END SOLUTION
+                                                                                                  check_dtype=False, check_exact=False)
+ <code>
+ print(df_out)
+ </code>
+            ti
+             ti   ti   ti
+                       ti              ti                    ti
+
+
+
+
+Figure 14: An example problem of Scikit-learn, requiring applying sklearn preprocessing method to Pandas dataframe.
+                                                              DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+11/10/22, 1:55 PM                                                                                       python - Conﬁguring grid-lines in matplotlib plot - Stack Overﬂow
+
+
+      11/10/22, 1:55 PM                                         python - Conﬁguring grid-lines in matplotlib plot - Stack Overﬂow
+
+
+
+
+            Consider the ﬁgure below:
+                                                                                                                                                                             Reference Solu on
+                                                                                                                                                   plt.plot(y, x)
+                                                                                                                                                   plt.grid(color="blue", linestyle="dashed")
+
+
+
+                                                                                                                                                                            Automa c Evalua on
+                                                                                                                                                                                 Test case 1
+                                                                                                                                                   x,y = ...[shown in prompt]
+
+                                                                                                                                                                                  Test code
+            This image has been set up with the following code.                                                                                   # Precisely matching images with np.array
+                                                                                                                                                  from PIL import Image
+                   plt.rc('text', usetex=True)
+                   plt.rc('font', family='serif')
+                   fig, ax = plt.subplots()
+
+            plt.rc('text', usetex=True)
+                   ax.set_xlabel("Run Number", fontsize=25)                                                                                       code_img, oracle_img = ... # load images
+            plt.rc('font', family='serif')
+                   plt.grid(True, linestyle='--')
+                   plt.tick_params(labelsize=20)
+
+            fig, ax = plt.subplots()
+                   ax.set_xticklabels(map(str,range(number_of_runs)))
+                   ax.minorticks_on()
+                                                                                                                                                  sample_image_stat = (
+                                                                                                                                                       code_img.shape == oracle_img.shape
+                   ax.set_ylim([0.75,1.75])
+
+
+
+            ax.set_xlabel("Run Number", fontsize=25)                                                                                                   and np.allclose(code_img, oracle_img)
+            plt.grid(True, linestyle=‘--')                                                                                                        )
+            ...                                                                                                                                   try:
+                                                                                                                                                       assert sample_image_stat
+                                                              Rewrite prompt
+                                                                                                                                                  # IF Failed, matching image components
+            import numpy as np                                                                                                                    ax = plt.gca()
+            import    pandas
+              plt.rc('text'       as
+                           , usetex=Truepd
+                                        )
+              plt.rc('font', family='serif')
+            import
+              fig, ax matplotlib.pyplot
+                      = plt.subplots()       as plt                                                                                               assert ax.xaxis._major_tick_kw["gridOn"]
+                                                                                                                                                  assert "grid_color" in ax.xaxis._major_tick_kw
+                   ax.set_xlabel("Run Number", fontsize=25)
+            x = np.arange(10)                                                                                                                     assert ax.xaxis._major_tick_kw["grid_color"] in
+            y =plt.grid(
+                  np.arange(10)
+                        True, linestyle='--')                                                                                                     ["blue", “b"]
+                   plt.tick_params(labelsize=20)
+                     ax.set_xticklabels(map(str,range(number_of_runs)))
+                                                                                                                                                  assert "grid_linestyle" in ax.xaxis._major_tick_kw
+              # Plot               y over x and show blue dashed grid lines
+                 import matplotlib.pyplot as plt
+                 fig, ax = plt.subplots()
+                     ax.minorticks_on()
+                 number_of_runs = range(1,10)    # use your actual number_of_runs                                                                 assert ax.xaxis._major_tick_kw["grid_linestyle"] in
+              #     SOLUTION                   START
+      https://stackoverﬂow.com/questions/54342199/conﬁguring-grid-lines-in-matplotlib-plot 1/2                                                    ["dashed", "--", "-.", ":"]
+                   ax.set_ylim([0.75,1.75])
+    ti                    ti    ti
+
+
+
+
+  Figure 15: An example problem of Matplotlib. Matplotlib original problems often contain example figures which cannot
+  be processed by current code models. We rewrite original problems into standalone problems in the form of comments.
+
+
+
+
+               import matplotlib.pyplot as plt
+               fig, ax = plt.subplots()
+               number_of_runs = range(1,10)    # use your actual number_of_runs
+
+
+https://stackoverﬂow.com/questions/54342199/conﬁguring-grid-lines-in-matplotlib-plot                                                                                                           1/2
+                  DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+       Problem:
+       I have this example of matrix by matrix mul plica on using numpy arrays:
+       import numpy as np
+       m = np.array([[1,2,3],[4,5,6],[7,8,9]])
+       c = np.array([0,1,2])
+       m * c
+       array([[ 0, 2, 6],
+              [ 0, 5, 12],
+              [ 0, 8, 18]])
+       How can i do the same thing if m is scipy sparse CSR matrix? The result should be csr_matrix as well.
+       This gives dimension mismatch:
+       sp.sparse.csr_matrix(m)*sp.sparse.csr_matrix(c)
+
+
+
+                                                                       A:
+    A:                                                                 <code>
+    <code>                                                             from scipy import sparse
+    from scipy import sparse                                           import numpy as np
+    import numpy as np                                                 example_sA = sparse.csr_matrix(np.array([[1,2,3],
+    sa = sparse.csr_matrix(np.array([[1,2,3],[4,5,6],                  [4,5,6],[7,8,9]]))
+    [7,8,9]]))                                                         example_sB = sparse.csr_matrix(np.array([0,1,2]))
+    sb = sparse.csr_matrix(np.array([0,1,2]))                          def f(sA = example_sA, sB = example_sB):
+    </code>                                                            </code>
+    BEGIN SOLUTION                                                     BEGIN SOLUTION
+    <code>                                                             <code>
+    [insert]                                                           [insert]
+    </code>                                                            </code>
+    END SOLUTION                                                       END SOLUTION
+    <code>                                                             <code>
+    print(result)                                                          return result
+    </code>                                                            </code>
+
+
+
+Figure 16: An example problem of surface perturbation. We expect model complete the function(on the right).
+
+                ti     ti
+
+
+
+
+                                                   Origin
+             Problem:
+             How do I convert data from a Scikit-learn Bunch object (from sklearn.datasets) to
+             a Pandas DataFrame?
+             from sklearn.datasets import load_iris
+             import pandas as pd
+             data = load_iris()
+             print(type(data))
+             data1 = pd. # Is there a Pandas method to accomplish this?
+
+             Problem:
+             Can you give me any suggestion that transforms a sklearn Bunch object (from
+             sklearn.datasets) to a dataframe? I'd like to do it to iris dataset.
+             Thanks!
+             from sklearn.datasets import load_iris
+             import pandas as pd
+             data = load_iris()
+             print(type(data))
+             data1 = pd. # May be you can give me a Pandas method?
+
+Figure 17: An example problem of surface perturbation. The description in the prompt has been paraphrased.
+                     DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+                                                     Origin
+                 Problem:
+                 How to convert a numpy array of dtype=object to torch Tensor?
+                 array([
+                    array([0.5, 1.0, 2.0], dtype=float16),
+                    array([4.0, 6.0, 8.0], dtype=float16)
+                 ], dtype=object)
+
+
+                Problem:
+                How to convert a numpy array of dtype=object to torch Tensor?
+                x = np.array([
+                    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+                    np.array([4.0, 4.56, 9.78, 1.23, 4.56, 77.77], dtype=np.double),
+                    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+                    np.array([4.0, 4.56, 9.78, 1.23, 4.56, 77.77], dtype=np.double),
+                    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+                ], dtype=object)
+
+
+Figure 18: An example problem of surface perturbation. The example input in the prompt has been replaced with another
+one.
+
+
+
+
+                                                            Origin
+                  Problem:
+                  Sample dataframe:
+                  df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+                  I'd like to add inverses of each existing column to the dataframe and name them based on
+                  existing column names with a prefix, e.g. inv_A is an inverse of column A and so on.
+                  The resulting dataframe should look like so:
+                  result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "inv_A": [1/
+                  1, 1/2, 1/3], "inv_B": [1/4, 1/5, 1/6]})
+                  …[omitted for brevity]
+                  Problem:
+                  Sample dataframe:
+                  df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+                  I'd like to add exponentials of each existing column to the dataframe and name them based
+                  on existing column names with a prefix, e.g. exp_A is an exponential of column A and so on.
+                  The resulting dataframe should look like so:
+                  result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "exp_A
+                  ": [e^1, e^2, e^3], "exp_B": [e^4, e^5, e^6]})
+                  Notice that e is the natural constant.
+                  …[omitted for brevity]
+
+Figure 19: An example problem of semantic perturbation. “inverse” has been replaced with an analogy word “exponential”.
+                   DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+                                                             Origin
+                Problem:
+                I have a 2D array `a` to represent a many-many mapping :
+                0 3 1 3
+                3 0 0 0
+                1 0 0 0
+                3 0 0 0
+                What is the quickest way to 'zero' out rows and column entries corresponding to a particular
+                index (e.g. zero_rows = 0, zero_cols = 0 corresponds to the 1st row/column) in this array?
+
+                Problem:
+                I have a 2D array `a` to represent a many-many mapping :
+                0 3 1 3
+                3 0 0 0
+                1 0 0 0
+                3 0 0 0
+                What is the quickest way to 'zero' out the second row and the first column?
+
+
+Figure 20: An example problem of semantic perturbation. The required index of rows and columns has been changed.
+
+
+
+
+                                                      Origin
+                Problem:
+                I have the following dataframe:
+                   text
+                1 "abc"
+                2 "def"
+                3 "ghi"
+                4 "jkl"
+                How can I merge these rows into a dataframe with a single row like the following one?
+                   text
+                1 "abc, def, ghi, jkl"
+
+                Problem:
+                I have the following dataframe:
+                   text
+                1 "abc"
+                2 "def"
+                3 "ghi"
+                4 "jkl"
+                How can I merge these rows into a dataframe with a single row like the following one?
+                   text
+                1 "jkl, ghi, def, abc"
+
+    Figure 21: An example problem of semantic perturbation. The order of the desired string has been reversed.
+                         DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+                                                                Origin
+          Problem:
+          I have a square correlation matrix in pandas, and am trying to divine the most efficient way to return all values
+          where the value (always a float -1 <= x <= 1) is above 0.3.
+          The pandas.DataFrame.filter method asks for a list of columns or a RegEx, but I always want to pass all
+          columns in. Is there a best practice on this?
+          desired DataFrame:
+                     Pearson Correlation Coefficient
+          Col1 Col2
+          0     3                 0.373153
+          1     3                 0.419219
+                4                 0.356149
+          3     4                 0.389972
+
+          Problem:
+          I have a square correlation matrix in pandas, and am trying to divine the most efficient way to return all values
+          where the value (always a float -1 <= x <= 1) is above 0.3.
+          The pandas.DataFrame.filter method asks for a list of columns or a RegEx, but I always want to pass all
+          columns in. Is there a best practice on this?
+          desired Series:
+          0 3 0.373153
+          1 3 0.419219
+             4 0.356149
+          3 4 0.389972
+          dtype: float64
+
+
+Figure 22: An example problem of semantic perturbation. The type of the desired result has been changed but the content
+still keeps the same.
+
+
+                                                              Origin
+         Problem:
+         I have a logis c regression model using Pytorch, where my input is high-dimensional and my output must be a
+         scalar - 0, 1 or 2.
+         I'm using a linear layer combined with a so max layer to return a n x 3 tensor, where each column represents the
+         probability of the input falling in one of the three classes (0, 1 or 2).
+         However, I must return a n x 1 tensor, so I need to somehow pick the highest probability for each input and create
+         a tensor indica ng which class had the highest probability. How can I achieve this using Pytorch?
+         To illustrate, my So max outputs this:
+         [[0.2, 0.1, 0.7],
+          [0.6, 0.2, 0.2],
+          [0.1, 0.8, 0.1]]
+         And I must return this:
+         [[2],
+          [0],
+          [1]]
+
+         Problem:
+         …[omit for brevity]
+         However, I must return a 1 x n tensor, and I want to somehow pick the lowest probability for each input and
+         create a tensor indica ng which class had the lowest probability. How can I achieve this using Pytorch?
+         To illustrate, my So max outputs this:
+         [[0.2, 0.1, 0.7],
+          [0.6, 0.3, 0.1],
+          [0.15, 0.8, 0.05]]
+         And I must return this:
+         [1, 2, 2], which has the type torch.LongTensor
+                 ti ti   ft ti                ft
+
+
+  Figure 23: An example problem that is difficult re-written with a combination of surface and semantic perturbations
+                     DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+                                                           Origin
+Problem:
+I can't gure out how to do a Two-sample KS test in Scipy.
+…[omit for brevity]
+test_stat = kstest(x, 'norm')
+#>>> test_stat
+#(0.021080234718821145, 0.76584491300591395)
+Which means that at p-value of 0.76 we can not reject the null hypothesis that the two distribu ons are iden cal.
+However, I want to compare two distribu ons and see if I can reject the null hypothesis that they are iden cal.
+…[omit for brevity]
+I tried the naive:
+test_stat = kstest(x, z)
+and got the following error:
+TypeError: 'numpy.ndarray' object is not callable
+Is there a way to do a two-sample KS test in Python? If so, how should I do it?
+Thank You in Advance
+
+
+Problem:
+…[omit for brevity]
+Is there a way to do a two-sample KS test in Python, then test whether I can reject the null hypothesis that the
+two distribu ons are iden cal(result=True means able to reject, and the vice versa) based on alpha? If so, how
+should I do it?
+Thank You in Advance
+  fi    ti              ti             ti                                                      ti           ti   ti
+
+                    Figure 24: An example problem that is difficult re-written for more complexity
+
+
+
+
+                  Problem:
+                  Sample dataframe:
+                  df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+
+                  I'd like to add inverses of each exis ng column to the dataframe and name them based
+                  on exis ng column names with a pre x, e.g. inv_A is an inverse of column A and so on.
+                  … [omi ed for brevity]
+                  Obviously there are redundant methods like doing this in a loop, but there should exist
+                  much more pythonic ways of doing it … [omi ed for brevity]
+                  A:
+                  <code>
+                  import pandas as pd
+                  df = pd.DataFrame({"A": [1, 2, 3],"B": [4, 5, 6]})
+                  </code>
+                  result = ...# put solution in this variable
+                  BEGIN SOLUTION
+                  <code>
+
+             ti
+             tt
+                               Figure 25: tiCompletion
+                                             fi     tt
+                                                       prompt corresponding to Figure 1.
+                    DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+   Problem:
+   Say that I want to train BaggingClassifier that uses DecisionTreeClassifier:
+
+   dt = DecisionTreeClassifier(max_depth = 1)
+   bc = BaggingClassifier(dt, n_estimators = 20, max_samples = 0.5, max_features = 0.5)
+   bc = bc.fit(X_train, y_train)
+   I would like to use GridSearchCV to nd the best parameters for both BaggingClassifier and
+   DecisionTreeClassifier(e.g. max_depth from DecisionTreeClassifier and max_samples from
+   BaggingClassifier), what is the syntax for this? Besides, you can just use the default arguments of GridSearchCV.
+
+
+A:
+<code>                                                                   A:
+import numpy as np                                                       <code>
+import pandas as pd                                                      import numpy as np
+from sklearn.ensemble import BaggingClassifier                           import pandas as pd
+from sklearn.model_selection import GridSearchCV                         from sklearn.ensemble import BaggingClassifier
+from sklearn.tree import DecisionTreeClassifier                          from sklearn.model_selection import GridSearchCV
+X_train, y_train = load_data()                                           from sklearn.tree import DecisionTreeClassifier
+assert type(X_train) == np.ndarray
+assert type(y_train) == np.ndarray                                       X_train, y_train = load_data()
+X_test = X_train                                                         assert type(X_train) == np.ndarray
+param_grid = {                                                           assert type(y_train) == np.ndarray
+    'base_estimator__max_depth': [1, 2, 3, 4, 5],                        X_test = X_train
+    'max_samples': [0.05, 0.1, 0.2, 0.5]                                 param_grid = {
+}                                                                            'base_estimator__max_depth': [1, 2, 3, 4, 5],
+dt = DecisionTreeClassifier(max_depth=1)                                     'max_samples': [0.05, 0.1, 0.2, 0.5]
+bc = BaggingClassifier(dt, n_estimators=20,                              }
+max_samples=0.5, max_features=0.5)                                       dt = DecisionTreeClassifier(max_depth=1)
+</code>                                                                  bc = BaggingClassifier(dt, n_estimators=20,
+BEGIN SOLUTION                                                           max_samples=0.5, max_features=0.5)
+<code>                                                                   </code>
+[insert]                                                                 solve this question with example variable `clf` and
+</code>                                                                  put result in `proba`
+END SOLUTION                                                             BEGIN SOLUTION
+<code>                                                                   <code>
+proba = clf.predict_proba(X_test)
+print(proba)
+</code>
+            fi
+
+
+
+ Figure 26: More complex Completion (on the right) prompt that requires additional information for a solution.
+
+
+
+
+    Problem:                                                                             Reference Solu on
+    I am using Pandas to get a dataframe like this:
+       name a b c                                                          # df: pd.DataFrame as input
+    0 Aaron 3 5 7                                                          result = df.replace(df['name'].unique(),
+    1 Aaron 3 6 9                                                           range(1, len(df['name'].unique()) + 1))
+    2 Aaron 3 6 10
+    3 Brave 4 6 0
+    4 Brave 3 6 1
+    I want to replace each name with a unique ID so output looks like:
+      name a b c                                                                           Wrong Solu on
+    0 1 3 5 7
+    1 1 3 6 9                                                              # create a column named "ID"
+    2 1 3 6 10                                                             df['ID'] = df.groupby(['name']).ngroup()
+    3 2 4 6 0
+    4 2 3 6 1                                                              result = df
+    How can I do that?
+
+
+
+Figure 27: An example wrong solution that misunderstands the requirements and modifies on the wrong column.
+
+
+       ti   ti
+                           DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+
+
+                                                                                                 Reference Solu on
+      Problem:                                                                 # x: list of bytes as input
+      I'm using tensor ow 2.10.0.                                              result = [tf.compat.as_str_any(a) for a in x]
+      I have a list of bytes and I want to convert it to a list of strings:
+      x=[b'\xd8\xa8\xd9\x85\xd8\xb3\xd8\xa3\xd9\x84\xd
+      8\xa9',
+         b'\xd8\xa5\xd9\x86\xd8\xb4\xd8\xa7\xd8\xa1',
+          b'\xd9\x82\xd8\xb6\xd8\xa7\xd8\xa1',
+          b'\xd8\xac\xd9\x86\xd8\xa7\xd8\xa6\xd9\x8a',                                                Wrong Solu on
+          b'\xd8\xaf\xd9\x88\xd9\x84\xd9\x8a']                                 # Not using method in Tensorflow
+      How can I get the string result list in Tensor ow?                       result = [item.decode('utf-8') for item in x]
+
+
+
+
+     Figure 28: An example wrong solution that uses a common function instead of a function of TensorFlow.
+
+2022/11/2 20:22                                          python - How to avoid "CUDA out of memory" in PyTorch - Stack Overflow
+
+
+
+
+   How to avoid "CUDA out of memory" in PyTorch
+     ti   flti                       fl
+
+
+
+
+   Asked 2 years, 11 months ago                 Modified 3 months ago             Viewed 288k times
+
+
+                 I think it's a pretty common message for PyTorch users with low GPU memory:
+
+   102               RuntimeError: CUDA out of memory. Tried to allocate 😊 MiB (GPU 😊; 😊 GiB total
+                     capacity; 😊 GiB already allocated; 😊 MiB free; 😊 cached)
+
+
+                 I tried to process an image by loading each layer to GPU and then loading it back:
+
+
+                     for m in self.children():
+                         m.cuda()
+                         x = m(x)
+                         m.cpu()
+                         torch.cuda.empty_cache()
+
+
+                 But it doesn't seem to be very effective. I'm wondering is there any tips and tricks to train
+                 large deep learning models while using little GPU memory.
+
+
+                  python      deep-learning         pytorch        object-detection    low-memory
+
+                            Figure 29: An example untestable problem involving hardware problems.
+
+                 Share Edit Follow Flag                               edited Mar 28 at 12:27                asked Dec 1, 2019 at 20:46
+                                                                            Mateen Ulhaq                            voilalex
+                                                                      Matee 22.4k 16 86         127         voilale 1,525 2       11   17
+
+
+
+
+                 1       What's up with the smileys? lol.. Also, decrease your batch size and/or train on smaller images. Look
+                         at the Apex library for mixed precision training. Finally, when decreasing the batch size to, for
+                         example, 1 you might want to hold off on setting the gradients to zero after every iteration, since it's
+                         only based on a single image. – sansa Dec 1, 2019 at 21:02
+2022/11/2 20:25                                   python - ImportError: No module named sklearn.cross_validation - Stack Overflow
+
+
+
+
+   ImportError: No module named sklearn.cross_validation
+                       DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+
+
+   Asked 7 years, 5 months ago                Modified 1 year, 6 months ago                Viewed 444k times
+
+
+             I am using python 2.7 in Ubuntu 14.04. I installed scikit-learn, numpy and matplotlib with
+             these commands:
+   247
+                  sudo apt-get install build-essential python-dev python-numpy \
+                  python-numpy-dev python-scipy libatlas-dev g++ python-matplotlib \
+                  ipython
+
+
+             But when I import these packages:
+
+
+                  from sklearn.cross_validation import train_test_split
+
+
+             It returns me this error:
+
+
+                  ImportError: No module named sklearn.cross_validation
+
+
+             What I need to do?
+
+
+                  python      scikit-learn
+
+                              Figure 30: An example untestable problem involving software errors.
+2022/11/2 20:16                                 tensorflow - What is the purpose of tf.global_variables_initializer? - Stack Overflow
+             Share Edit Follow Flag                                edited Feb 16, 2019 at 18:23                   asked Jun 5, 2015 at 13:15
+                                                                         desertnaut                                     arthurckl
+   What is the purpose of tf.global_variables_initializer?         deser 54.8k 21 132                  161        arthu 5,071 6         16   16
+
+   Asked 5 years, 4 months ago               Modified 2 months ago           Viewed 37k times
+
+                           perhaps your module name is wrong if you have installed sklearn and anaconda correctly. – CKM
+             I would Oct
+                     like 11,
+                          to understand
+                              2016 at 9:52 what tf.global_variables_initializer does in a bit more detail. A
+             sparse description is given here:
+             15            I am really just repeating it, but you have to use sklearn.model_selection from now on.
+    55                     cross_validation is not usable since sklearn 20+ – Michal Mikuláši Mar 23, 2019 at 18:51
+                    Returns an Op that initializes global variables.
+                           Wow 13 answers to say the same thing. The latest 4 years after the first one (in case bits would fade
+                           with time I suppose) – mins Jan 9, 2021 at 18:12
+             But that doesn't really help me. I know that the op is necessary to initialize the graph, but what
+             does that actually mean? Is this the step where the graph is complied?
+
+                                                                                                         Sorted by:
+          tensorflow
+   15 Answers                   deep-learning
+                                                                                                             Highest score (default)
+                               Figure 31: An example untestable problem involving explanations.
+
+             Share Edit Follow Flag            edited Oct 27, 2019of
+                                                                  at 22:09      asked Jun sub-module
+                                                                                          8, 2017 at 10:38 to
+             It must relate to the renaming and   deprecation         cross_validation
+                                                      nbro                         Tok Toke Faurby
+              model_selection . Try substituting cross_validation to model_selection
+                                                                        14.4k     27     104     188         Faurb 5,618      9    38   60
+   785
+             Share Edit Follow Flag                                edited Nov 26, 2019 at 14:14                   answered Jan 17, 2016 at 22:09
+
+https://stackoverflow.com/questions/30667525/importerror-no-module-named-sklearn-cross-validation                                                  1/6
+                                                                                                    Sorted by:
+   2 Answers
+                                                                                                       Highest score (default)
+

@@ -1,0 +1,3 @@
+# Title
+
+How can we tell whether two networks were drawn from the same underlying distribution? This paper compares two statistical tests based on subgraph counts. The first uses the raw subgraph densities, or graph moments; the second converts them into graph cumulants, a combinatorial analogue of mean, variance, and skew for networks. Through theory, simulation, and real genetic-interaction networks, the authors show that graph cumulants deliver markedly higher statistical power, at no extra computational cost, and even work when only a single graph is observed per sample. Their recommendation is simple: whenever you analyze networks with subgraph or motif densities, use the corresponding graph cumulants instead.

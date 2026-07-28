@@ -1,0 +1,1098 @@
+                                           Bisimulation Makes Analogies in Goal-Conditioned Reinforcement Learning
+
+
+                                                       Philippe Hansen-Estruch 1 Amy Zhang 1 2 Ashvin Nair 1 Patrick Yin 1 Sergey Levine 1
+
+
+                                                                 Abstract
+                                              Building generalizable goal-conditioned agents
+arXiv:2204.13060v3 [cs.LG] 16 May 2022
+
+
+
+
+                                              from rich observations is a key to reinforcement
+                                              learning (RL) solving real world problems. Tradi-
+                                              tionally in goal-conditioned RL, an agent is pro-
+                                              vided with the exact goal they intend to reach.                                                        ?
+                                              However, it is often not realistic to know the
+                                              configuration of the goal before performing a
+                                              task. A more scalable framework would allow                Figure 1. Analogous tasks of dicing carrots and radishes. Although
+                                                                                                         the target objects are different, the skill required and functional
+                                              us to provide the agent with an example of an
+                                                                                                         difference between the initial state and goal images are similar.
+                                              analogous task, and have the agent then infer
+                                                                                                         Our goal is to use this form of analogy to describe goals for new,
+                                              what the goal should be for its current state. We          unseen environments.
+                                              propose a new form of state abstraction called
+                                              goal-conditioned bisimulation that captures func-
+                                              tional equivariance, allowing for the reuse of
+                                                                                                         as cutting long carrots versus short radishes. We use this
+                                              skills to achieve new goals. We learn this rep-
+                                                                                                         equivariance to generalize to new problems and domains,
+                                              resentation using a metric form of this abstrac-
+                                                                                                         by drawing associations to problems and domains we have
+                                              tion, and show its ability to generalize to new
+                                                                                                         experienced in the past. If we can acquire representations
+                                              goals in simulation manipulation tasks. Further,
+                                                                                                         that have these properties, then we can similarly specify
+                                              we prove that this learned representation is suf-
+                                                                                                         goals for goal-conditioned policies in one setting, and have
+                                              ficient not only for goal-conditioned tasks, but
+                                                                                                         them carry out those goals in many diverse settings. This
+                                              is amenable to any downstream task described
+                                                                                                         frees us from needing an exact goal image for achieving the
+                                              by a state-only reward function. Videos can
+                                                                                                         same functional task in a new setting. As shown in Figure 1,
+                                              be found at https://sites.google.com/
+                                                                                                         given an agent that has learned to cut carrots, rather than
+                                              view/gc-bisimulation.
+                                                                                                         needing to present the agent with an image of chopped up
+                                                                                                         radishes, we can instead say something along the lines of,
+                                                                                                         “Do the same thing to the radish that you did to the carrot.”
+                                         1. Introduction
+                                                                                                         Prior work has proposed representation learning objectives
+                                         Goal-conditioned RL has the potential to train agents that
+                                                                                                         that induce invariance to irrelevant factors through the
+                                         can accomplish a variety of tasks when given a goal. How-
+                                                                                                         use of domain knowledge about the relevant state features
+                                         ever, the way the goal is represented in a goal-conditioned
+                                                                                                         for a task (Jonschkowski and Brock, 2015; Jonschkowski
+                                         RL problem has a critical effect on how the resulting policy
+                                                                                                         et al., 2017), via data augmentations and contrastive learn-
+                                         will interpret goals. For example, if a person is asked to
+                                                                                                         ing (Laskin et al., 2020a), dynamics (Watter et al., 2015;
+                                         accomplish the goal of cutting a vegetable, they can perform
+                                                                                                         Gelada et al., 2019), or proxy computer vision tasks (e.g., im-
+                                         this task for any vegetable. The goal is represented in a way
+                                                                                                         age reconstruction or segmentation) (Lange and Riedmiller,
+                                         that is invariant to irrelevant factors, and potentially even
+                                                                                                         2010; Sax et al., 2019). In goal-conditioned problems how-
+                                         equivariant to factors that vary between similar tasks, such
+                                                                                                         ever, which features are relevant or irrelevant depends not
+                                              1
+                                                University of California,    Berkeley 2 Meta AI          only on the current state but also the goal. While there may
+                                         Research.        Correspondence to:     Philippe Hansen-        be uncontrollable aspects of an environment that can always
+                                         Estruch <hansenpmeche@berkeley.edu>,         Amy Zhang          be ignored, knowledge of the task and current state is nec-
+                                         <amyzhang@fb.com>.                                              essary to determine what is relevant to complete the task.
+                                         Proceedings of the 39 th International Conference on Machine    Rather than construct representations that ignore features
+                                         Learning, Baltimore, Maryland, USA, PMLR 162, 2022. Copy-       that are never relevant, our goal is to construct functionally
+                                         right 2022 by the author(s).                                    equivariant representations that only capture changes be-
+                                    Analogies in Goal-Conditioned Reinforcement Learning
+
+
+    (       )+ (                  , )= (                     )     very large, we focus on works exemplifying specific trends
+                                                                   rather than a comprehensive review. Li et al. (2006) defined
+                                                                   various forms of state abstractions for Markov decision
+Figure 2. An example of abstractions with a compositional form.    processes (MDPs) that group states into clusters while pre-
+                                                                   serving some property (e.g. the optimal value, all values,
+tween state-goal pairs. These equivariant representations          or all action values from each state). The strictest form,
+can then be applied to depict goals for new states as a form       which generally preserves the most properties, is bisimu-
+of analogy. A key question therefore is: how do we design          lation (Larsen and Skou, 1989). Bisimulation only groups
+a form of representation learning objective that can perform       states that are indistinguishable w.r.t. reward sequences out-
+this type of analogy?                                              put given any action sequence tested. A related concept is
+In this work, we adapt a strict form of state abstraction called   bisimulation metrics (Ferns and Precup, 2014; Ferns et al.,
+bisimulation (Larsen and Skou, 1989; Ferns et al., 2004)           2011), which measure how “behaviorally similar” states
+to address the goal-conditioned RL problem setting from            are. Gelada et al. (2019); Zhang et al. (2021); Agarwal
+rich observations. Rather than grouping equivalent states as       et al. (2021); Castro et al. (2021) use behavior-based state
+bisimulation does, we group equivalent tasks — allowing            abstractions to achieve better performance on control tasks
+policies to leverage analogous tasks when attempting new           by dropping irrelevant information.
+ones. One can also define a policy-dependent distance met-         Self-supervised RL methods rely on autoencoders (Lange
+ric form of our goal-conditioned bisimulation (GCB) and            and Riedmiller, 2010; Lange et al., 2012; Yarats et al.,
+use it to define a paired-state embedding space. We can then       2021b), contrastive objectives (van den Oord et al., 2018;
+construct an objective for learning a state representation         Laskin et al., 2020a), data augmentation (Yarats et al.,
+that can compose this task abstraction with states to depict       2021a), and mutual information maximization (Anand et al.,
+new goals, capable of “filling in the blank”, as shown in          2019; Choi et al., 2021) to learn representations for down-
+Figure 2. Such a representation is universal — it not only         stream control. Some work focuses on representation learn-
+can be used for any goal-conditioned task, but is sufficient       ing specifically for the goal-conditioned setting — Ghosh
+to train optimal policies for any state-only reward function.      et al. (2019) uses goal-conditioned policies to extract a
+Our contributions consist of the following: 1) an objective        representation where Euclidean distances between states
+that learns a functionally equivariant abstraction over goal-      correspond to expected differences between actions to reach
+conditioned tasks, 2) a demonstration that this embedding          them. Similarly, Yang et al. (2020); Tian et al. (2021) use
+space is capable of composing states with task abstractions        functional distances to plan to reach goals. However, none
+to depict and solve for new goals, 3) a novel value bound          of these methods are capable of performing the types of
+that can be applied to any downstream task, and 4) an evalu-       analogies described in Section 1.
+ation on manipulation environments that shows improved             The idea of using analogies to improve learning is also
+performance on goal-conditioned tasks compared to other            not new (Carbonell, 1983), and much work has stud-
+self-supervised representation learning methods.                   ied how compositionality and analogies arise naturally in
+                                                                   learned representations. Mikolov et al. (2013) showed
+2. Related Work                                                    that latent language representations arising from skip-gram
+                                                                   models were composable and produced analogies: e.g.,
+Our approach learns general-purpose representations for            φ(“capital”) + φ(“Germany”) = φ(“Berlin”). Such analo-
+goal-conditioned RL based on principles from state aggre-          gies allow us to understand the latent space better and also
+gation. Our approach is orthogonal and complementary to            demonstrate the structure of the latent space, which suggests
+goal-conditioned methods: we are not proposing a new al-           it might be useful for downstream tasks. Similar analogies
+gorithm for goal-conditioned RL, but rather a representation       are also possible in visual domains (Reed et al., 2015; Ja-
+learning approach that can be used with goal-conditioned           yaraman and Grauman, 2015). In control, analogy repre-
+methods (and can also be used for general RL problems).            sentations enabled goal-directed grasping (Jang et al., 2018)
+Therefore, in our experiments, we compare to other rep-            and composing plans (Devin et al., 2019). Similar in spirit
+resentation learning approaches and use the same goal-             to this work, our method imposes a network architecture
+conditioned RL algorithm for all baselines. We review prior        to learn analogies, but enforces it through goal-conditioned
+work on representation learning here and more extensive            bisimulation, making it a more general method for RL.
+prior work on goal-conditioned RL in Appendix B.
+                                                                   Metrics have also been leveraged in RL for both MDPs and
+Work in Representation learning for RL can be decom-               states for the goal of positive transfer (Carroll and Seppi,
+posed into two categories: 1) state abstractions, which typi-      2005; Fernández and Veloso, 2006; Konidaris et al., 2012).
+cally make use of task reward, and 2) self-supervised rep-         Song et al. (2016) propose a metric between MDPs using
+resentation learning. As the scope of this body of work is
+                                   Analogies in Goal-Conditioned Reinforcement Learning
+
+the Kantorovich and Hausdorff metrics and use it for trans-      ing. Exact partitioning with bisimulation relations is gener-
+ferring value functions between source tasks and a target        ally impractical in continuous state spaces, as the relation
+task. Gelada et al. (2019) present results that their learned    is highly sensitive to infinitesimal changes in the reward
+representation bounds the bisimulation metric and Zhang          function or dynamics. For this reason, Bisimulation Met-
+et al. (2021); Agarwal et al. (2021); Castro et al. (2021) use   rics (Ferns et al., 2011; Ferns and Precup, 2014; Castro,
+on-policy versions of the bisimulation metric (Castro, 2020)     2020) softens the concept of state partitions, and instead
+to learn an embedding space. Similar to Zhang et al. (2021),     defines a pseudometric space (S, d), where a distance func-
+we embed our metric in a representation space and show           tion d : S × S 7→ R≥0 measures the “behavioral similarity”
+improved performance with downstream control, but with           between two states1 .
+goal-conditioned tasks and the use of analogies rather than
+                                                                 Computing bisimulation metrics is a harder class of problem
+robustness to distractors.
+                                                                 than just finding an optimal policy due to the requirement
+                                                                 that Equation (1) and Equation (2) hold true for ∀a ∈ A. In
+3. Preliminaries                                                 control problems, we typically only care about the optimal
+                                                                 action a∗ for any state. Castro (2020) define on-policy
+We assume that the environment follows a goal-
+                                                                 bisimulation, which we adopt to get the following on-policy
+conditioned Markov Decision Process (GCMDP), which
+                                                                 metric:
+can be described with the tuple M = (S, A, P, G, R, γ)
+where S is the state space, A the action space, P the dy-          d(si , sj ) := Ea∼π |R(si , π ∗ (si )) − R(sj , π ∗ (sj ))|     (3)
+namics model such that P(s0 |s, a) dictates the probability                  + γ · W1 (P(si , π ∗ (si )), P(sj , π ∗ (sj )); d).
+of transitioning to state s0 from state s after applying ac-
+tion a, G ⊂ S is the goal space which is a subset of the         However, this definition relies on a single reward function
+state space, and R(s, a, g) := 1(s0 = g) is a sparse reward      and focuses on grouping equivalent states. In Section 4.1
+function which returns 1 if (s, a) transitions to goal g and     we explore how to modify this metric for goal-conditioned
+0 otherwise. We refer to a state-goal pair (s, g) as a task,     tasks in order to group equivalent (or analogous) tasks.
+drawing connections to the single task RL setting where
+tasks are defined by state-action reward functions. While        4. Functional Equivariance in an Embedding
+our primary concern is learning from images, we do not
+address the partial-observability problem explicitly: we fol-    We now build on the concepts introduced in Section 3 to step
+low prior work and use stacked pixel observations as the         through a goal-conditioned metric in Section 4.1. Naı̈ve lift-
+fully-observed system state s.                                   ing of the bisimulation metric into goal-conditioned MDPs
+                                                                 gives us a metric over a paired state space, since it depends
+As noted in Section 2, bisimulation is a form of state ab-       on both the current state and goal. This construction pre-
+straction that groups states si and sj that are “behaviorally    vents compositional generalization to novel state-goal pairs,
+equivalent” (Li et al., 2006). For any action sequence a0:∞ ,    as we will show in Section 7. To obtain the type of com-
+the probabilistic sequence of rewards from si and sj are         positional behavior we desire, we must leverage this back
+identical. A more compact definition has a recursive form:       into a single state embedding. One form this can take is
+two states are bisimilar if they share both the same im-         through simple arithmetic operations, where adding the task
+mediate reward and equivalent distributions over the next        abstraction embedding to a single state embedding yields
+bisimilar states (Larsen and Skou, 1989; Givan et al., 2003).    the desired goal. We will address how to construct an ob-
+                                                                 jective that gives rise to this property in Section 4.2. First,
+Definition 3.1 (Bisimulation Relations (Givan et al., 2003)).    we introduce the basic version of applying bisimulation to
+Given an MDP M, an equivalence relation B between states         goal-conditioned problems.
+is a bisimulation relation if, for all states si , sj ∈ S that
+are equivalent under B (denoted si ≡B sj ) the following         4.1. Defining a Goal-Conditioned Metric
+conditions hold:
+                                                                 Naı̈vely, we can apply state abstractions and metrics de-
+     R(si , a) = R(sj , a)       ∀a ∈ A,                  (1)    signed for single task settings to goal-conditioned ones by
+  P(G|si , a) = P(G|sj , a) ∀a ∈ A,          ∀G ∈ SB , (2)       redefining them over pairs of states — a state-goal pair that
+                                                                 defines a task. We walk through that process in this section.
+where SB is the partition of S under the relation B (the         Bisimulation is defined only for a single reward function,
+set
+P of all groups   G of equivalent states), and P(G|s, a) =       and therefore cannot be trivially applied to goal-conditioned
+           0
+    0
+   s ∈G P(s  |s, a).                                             settings. Furthermore, the central idea behind bisimulation
+Bisimulation relates functionally equivalent states together        1
+                                                                      Note that d is a pseudometric, meaning the distance between
+in a way can be usefully applied to representation learn-        two different states can be zero.
+                                        Analogies in Goal-Conditioned Reinforcement Learning
+
+is that it is an equivalence relation that allows us to cluster
+                                                                                                                               State
+states to treat them analogously. We propose to lift this                                                                     Encoder
+idea to families of tasks by defining an equivalence relation
+over tasks, giving us a functionally equivariant abstraction.                   state
+Now that we have defined our environment in Section 3,                            s
+                                                                                                                        (s0 , g)
+we can now define a form of goal-conditioned bisimulation                                                 State-Goal
+                                                                            next state                     Encoder
+                                                                                                                                         L   L
+that defines an abstraction over state-goal pairs using a goal-                s0
+conditioned reward function:                                                                                             (s, g)
+                                                                                 goal
+Definition 4.1 (Goal-conditioned Bisimulation Relations).                         g
+Given an MDP M, as described in section 3, we define an                                                                         State
+                                                                                                                               Encoder
+equivalence relation B between states. This relation is a
+goal-conditioned bisimulation   S relation if, for all state-goal
+pairs (si , gi ), (sj , gj ) ∈ S G that are equivalent under B          Figure 3. A flow diagram of the representation learning component
+(denoted si ≡B sj ) the following conditions hold:                      of GCB. The dashed line represents stopped gradients and the state
+                                                                        encoder ψ is a Siamese network using shared weights.
+    R(si , a, gi ) = R(sj , a, gj ), ∀a ∈ A,
+     P(G|si , a) = P(G|sj , a)            ∀a ∈ A, ∀G ∈ SB ,             properties to generalize to new state-goal pairs at evaluation
+                                                                        time using a simple form of arithmetic in latent space. This
+Similar to in Section 3, we can define an on-policy version             property frees us from the traditional goal-conditioned struc-
+of this relation, which gives rise to a paired-state metric:            ture, which requires access to the target goal we want an
+                                                                        agent to reach. Instead, an agent can reason about goals it
+   dπ (si , gi ; sj , gj ) =                                            has never seen before through examples of analogous tasks.
+      |R(si , π(si , gi ), gi ) − R(sj , π(sj , gj ), gj )|       (4)
+       + γW2 (P(s0i |si , π(si , gi ), P(s0j |sj , π(sj , gj ))         5. GCB: Constructing Embedding Spaces
+where π is the goal-conditioned policy and W2 is the Wasser-            We now present an algorithm that combines representa-
+stein distance. This distance metric captures functional                tion learning of the two components presented in Section 4
+equivalence across tasks, but is only defined for state-goal            and downstream control for image-based goal-conditioned
+pairs and therefore cannot handle single states. We address             problems. In principle, GCB can be paired with any goal-
+this issue in the next section by using this metric to define a         conditioned RL method, including both online and offline
+new state abstraction capable of forming analogies.                     algorithms. In the scope of our experiments, however, we
+                                                                        focus on the offline setting to decouple from exploration
+4.2. Defining a State Abstraction to Form Analogies                     difficulties. We first show how GCB utilizes the metric pro-
+                                                                        posed in Section 4.1 to construct a single state representation
+To generalize to novel state-goal combinations and make                 amenable to generalization through the use of analogies.
+analogies across tasks, we need a single state representation
+represented by a state encoder ψ that still maintains the               5.1. Representation Learning Objectives
+properties present in the state-goal representation φ. We
+take inspiration from works that have shown the arithmetic              Our end goal is to construct a single state representation
+properties of embeddings (Mikolov et al., 2013; Jang et al.,            space with the properties introduced in Section 4.2. To
+2018) to enforce the same type of intuitive structure in the            do so, we must first learn an approximation of the policy-
+state encoder:                                                          dependent GCB metric in Equation (4) end-to-end with our
+                                                                        goal-conditioned policy π during offline RL training. We
+    ψ(gi ) − ψ(si ) = φ(si , gi ),      ∀si ∈ S, ∀gi ∈ G.         (5)   construct an embedding space φ where `1 distance between
+                                                                        state-goal pairs corresponds to their distance under the GCB
+From Definition 4.1 we know that if there exists sj ∈                   metric with the following objective:
+S, gj ∈ G such that φ(si , gi ) = φ(sj , gj ), then
+                                                                                     
+              ψ(gj ) − ψ(sj ) := ψ(gi ) − ψ(si ),                             Lφ = ||φ(si , gi ) − φ(sj , gj )||1 − ||ri − rj ||2 (6)
+                                                                                                                              2
+forming an “analogy” of state-goal pairs (si , gi ) and
+(sj , gj ). An example of a form of analogy the represen-                             − γ||φ̄(s0i , gi ) − φ̄(s0j , gj )||2        ,
+tation constructed by ψ should be capable of is shown in
+Figure 2. By learning a single state representation ψ, we               where ¯· denotes a stop-gradient. This objective is a direct
+can use knowledge about different state-goal pairs and their            instantiation of Equation (4) where, instead of learning a
+                                      Analogies in Goal-Conditioned Reinforcement Learning
+
+Algorithm 1 GCB Training Algorithm                                    with our learned representations becomes π(ψ(s), ψ(g)).
+ 1: Given:       RL algorithm A, replay buffer D =                    We show in Section 7.2.2 that this enables better perfor-
+    {(s, a, s0 , r, g)i }N                                            mance on goal-conditioned tasks.
+                         i=1 , learning rates αψ , αφ
+ 2: Initialize π, φ, ψ                                                However, GCB is designed primarily to solve tasks specified
+ 3: for training iteration k = 1, 2, ... do                           by analogies, where at test time the task goal g is unknown
+ 4:    B1 ← {si , ai , s0i , ri , gi }B
+                                      i=1 ∼ D{Sample Batch}           but instead specified by a separate state-goal pair (sa , ga )
+ 5:    B2 ← {sj , aj , s0j , rj , gj }Bj=1 = permute B1               that achieves an analogous outcome with respect to another
+ 6:    φ ← φ − αφ ∇φ Lφ (B1 , B2 )                                    state s. Here, we wish to learn a policy that can condition
+ 7:    ψ ← ψ − αψ ∇ψ Lψ (B1 )                                         on standard state-goal pairs π(ψ(s), φ(s, g)) and success-
+ 8:    Update π(ψ(s), φ(s, g)) with A on B1                           fully evaluate on an analogous pair π(ψ(s), φ(sa , ga )). In
+ 9: end for                                                           Section 7.2.1, we see how GCB enables good performance
+10: for eval episode m = 1, 2, ... do                                 when the policy is tasked by an analogous state-goal pair.
+11:    Sample analogous tasks (s, g) and (sa , ga )
+12:    Rollout policy with π(ψ(s), φ(sa , ga ))                       5.3. Architecture & Additional Implementation Details
+13:    Compute success of final achieved state against g
+14: end for                                                           As shown in Figure 3, GCB uses two encoders: φ(s, g),
+                                                                      which acts as the paired state/goal encoder, and ψ(s), which
+                                                                      acts as the state encoder. Each is implemented as a convolu-
+parameterized distance function dπ , we instead directly opti-        tional neural network with six layers with 32 filters and map
+mize for an embedding space φ with the above property. We             to latent spaces with dimensionality 256. We use Adam for
+prove that this update procedure converges to our desired             optimization (Kingma and Ba, 2015). As we focus on the
+metric in Section 6.                                                  offline RL setting in our experiments, we implement our
+                                                                      method on top of implicit Q-learning (IQL) (Kostrikov et al.,
+We can now use this φ embedding to define an objective
+                                                                      2021), a recent offline RL algorithm. The representation
+for constructing a single state representation that is capable
+                                                                      and policy are trained concurrently.
+of performing simple forms of “arithmetic” as described in
+Equation (5) in Section 4.2:                                          The `1 distance objective in Equation (6) is enforced with
+                                                         2          random pairs of transitions. As is standard in contrastive
+                                                                      learning, to generate random pairs, we sample a batch
+ Lψ =    (φ̄(si , gi ) − φ̄(gi , gi )) − (ψ(gi ) − ψ(si )) . (7)      (s, a, s0 , r, g)i from the replay buffer and randomly permute
+Note that Equation (7) is a slightly different instantiation          the samples in the batch as (s, a, s0 , r, g)j .
+of Equation (5) where we add φ(gi , gi ) as a normalizing             In Appendix D we present ablations to evaluate several im-
+constant. We found this to perform better empirically.2 An            portant implementation decisions: (1) Adding a ground-
+ablation of this design decision can be found in Appendix D.          ing goal point φ(gi , gi ) as a normalizing constant. (2)
+This objective will imbue the single state representation ψ           The choice of `1 distance versus `2 distance for match-
+with the ability to form analogies across tasks.                      ing the GCB metric. (3) Backpropagation of RL gradi-
+In summary, GCB learns two representations: φ(s, g),                  ents to the encoder. (4) Adding a reward decoder model
+which generalizes across state-goal pairs, and ψ(s), which            R(φ(s, g), φ(s0 , g)) and (5) learned dynamics model as in
+is shaped in latent space by φ but can generalize across              DBC (Zhang et al., 2021). Additional implementation de-
+single states. We will show in Section 7.2.1 that φ can cap-          tails and hyperparameters are in Appendix E.
+ture invariances across tasks, which one can think of as              Algorithm 1 details the training of GCB. The entire process
+only storing the “delta” between the initial state and goal,          is summarized as follows: 1) we sample a batch from the
+whereas ψ is capable of a form of arithmetic that captures            replay buffer, 2) randomly permute and match the batch
+functional equivariance across states and analogous tasks.            and update φ according to Equation (6), 3) then update ψ
+                                                                      using φ according to Equation (7), and finally 4) update
+5.2. Combining GCB with Offline Downstream Control                    π using the RL algorithm, where π can be parameterized
+In this section, we describe a way to combine GCB with                either as π(ψ(si ), ψ(gi )) or π(ψ(si ), φ(sa , ga )) depending
+goal-conditioned RL. Note that GCB is primarily a repre-              on the goal specification setting.
+sentation learning method, and is therefore agnostic to the
+downstream goal-conditioned RL algorithm. In the standard             6. Value Bounds and Sufficiency Results
+goal-conditioned setting we learn a policy π(s, g), which
+                                                                      In this section, we first show that our update procedure for
+   2
+    φ(g, g) is the universal goal point in the paired state encoder   the goal-conditioned bisimulation metric has a unique fixed
+space, it should map to the same constant point for all goals.
+                                         Analogies in Goal-Conditioned Reinforcement Learning
+
+point which is our desired metric. Further, we draw connec-              possible state in the MDP, then the information in ψ and φ
+tions between value functions and this metric that allows us             is sufficient to train an optimal policy for any task that can
+to provide transfer guarantees for a learned policy to new               be described by a state-only reward function.
+goals. These results are simple extensions of existing results
+                                                                         Furthermore, we can extend these results to any downstream
+on bisimulation metrics (Ferns et al., 2004). Finally, we
+                                                                         reward function. To do so, we first note that:
+also present a result on the universality of a representation
+learned with this metric that allows us to extend the above              Remark 6.4. For a discrete state space S with cardinality |S|,
+bounds to a larger class of downstream reward functions.                 any reward function R : S 7→ R can be written as a tabular
+                                                                                                                           |S|
+                                                                         combination of states in the form R = {αi si }i=0 , where
+We first show that our goal-conditioned metric definition                αi ∈ R, ∀i, and therefore there also exists a representation
+has a unique fixed point.                                                of that state space (such as one-hots) for which the reward
+Proposition 6.1. Let met be the space of bounded pseu-                   can be written as a linear combination of states.
+dometrics on S and π a goal-conditioned policy that is
+continuously improving. Define F : met 7→ met by                         Then, we can also bound the value difference between two
+                                                                         states si , sj ∈ S for a given policy π and for any reward
+  F(d, π)(si , gi ; sj , gj ) =                                    (8)   function as follows:
+    (1 − c)|R(si , π(si , gi ), gi ) − R(sj , π(sj , gj ), gj )|         Proposition 6.5. For any reward function R ∈ R as defined
+     + cW (d)(Psπi , Psπj ),                                             above and a given policy π,
+
+where c ∈ (0, 1) is a metric discount factor. Then F                                                    |S|
+                                                                                                        X
+has a least fixed point dπ which is a goal-conditioned π-                   |VRπ (si ) − VRπ (sj )| ≤         αk dπ (si , gk ; sj , gk ),   (10)
+bisimulation metric.                                                                                    k=0
+                                                                         where VRπ denotes the value function for a given policy π
+Proof in Appendix C. This result shows that our update pro-              and reward function R.
+cedure in Equation (6) will converge to our desired metric.
+                                                                         Thus, we have shown that not only is our representation
+Next, we can show that, for any policy π, the GCB metric
+                                                                         learning objective sufficient for any downstream task, but
+upper bounds the value difference between any two tasks,
+                                                                         is structured in a way that is amenable for any state-only
+as described by state-goal pairs.
+                                                                         reward function. One can view our method as a general,
+Proposition 6.2. For any two state goal pairs                            reward-agnostic representation learning scheme that ex-
+(si , gi ), (sj , gj ) ∈ (S, G) and a given policy π,                    hibits nice properties for any downstream task. We now
+    |V π (si , gi ) − V π (sj , gj )| ≤ dπ (si , gi ; sj , gj ).   (9)   show the empirical capabilities of our method in Section 7.
+
+Proof in Appendix C. For our learned policy π, this bounds               7. Experiments and Results
+the performance difference of it being applied to a new task
+denoted by state-goal pair (sj , gj ), given its performance             We evaluate and compare GCB to other representation learn-
+on a known task (si , gi ). Another way to interpret Proposi-            ing methods in the goal-conditioned setting. A central
+tion 6.2 is as an intuitive result similar to Bellman’s (Bell-           premise behind the design of GCB is that it can capture
+man, 1957) policy improvement theorem and the extension                  functional equivariance over different tasks, as described by
+in Barreto et al. (2017). If two tasks have a small distance             state-goal pairs. Our experiments are therefore designed to
+in dπ , the policy π will exhibit similar performance when               answer the following questions: 1) Does GCB truly capture
+deployed on them.                                                        these types of analogies? 2) Can GCB use demonstration
+                                                                         state-goal pairs to infer goals for novel states and success-
+We now show a novel result that the representations learned              fully complete those tasks? 3) Can GCB also achieve strong
+by ψ and φ are sufficient for any downstream task, not just              performance on standard, offline goal-conditioned tasks?
+goal-reaching tasks.
+Proposition 6.3. Assume that each state-action pair is vis-              7.1. Baselines and Prior Methods
+ited infinitely often and the step-size parameters decay ap-
+propriately. Also assume that the goal space is the same                 We compare against representation learning methods fol-
+as the state space, such that G := S. Learning with ab-                  lowing the major trends described in Section 2. We evaluate
+straction ψ for any reward function that can be expressed                two contrastive approaches: a temporal contrastive method
+as R : S 7→ R converges to the optimal state-action value                (CPC) (van den Oord et al., 2018) and a data augmenta-
+function in the original MDP.                                            tion contrastive method (CURL) (Laskin et al., 2020a). We
+                                                                         also compare to reconstruction-based methods that use a
+Intuitively, Proposition 6.3 tells us that if our goal space             VAE and context-conditioned VAE (CC-VAE (Nair et al.,
+is sufficiently rich, i.e., our agent learns to access every             2019)). Finally, we evaluate a pure data augmentation
+                                      Analogies in Goal-Conditioned Reinforcement Learning
+
+method, RAD (Laskin et al., 2020b). All of the above
+representation learning methods produce single state rep-               (         )+ (                  ,        )= (                  )
+resentations, which we compare to our ψ representation
+
+                                                                        (         )+ (                  ,        )= (                  )
+directly. As an additional ablation, we can also evaluate the
+paired state representation φ we learn as an intermediate ob-
+jective, which corresponds to a naı̈ve goal-conditioned form         Figure 5. Two examples of analogy arithmetic. The rightmost
+of DBC (Zhang et al., 2021) which we denote by GC-DBC.               image is the nearest neighbor in a test set of the composed repre-
+We also include another baseline that leverage composition-          sentation in ψ space. Top: RHS has the finger pushing the button,
+                                                                     just like in the goal argument to φ, but in a different position and
+ality by arithmetic sums over vectors, compositional plan
+                                                                     orientation, indicating that the representation is equivariant to pose
+vectors (CPV, (Devin et al., 2019)). However, CPVs are
+                                                                     but captures the functional relevance of pushing the button. Bot-
+evaluated in a one-shot imitation learning setting which as-         tom: RHS has the drawer being closed, again matching function
+sumes access to paired reference trajectories. CPV uses              with the goal argument to φ while exhibiting invariance to color
+an architecture π(st , vt ) where vt = g(o0 , oT ) − g(o0 , ot ),    and equivariance to pose.
+where (o0 , ot , oT ) are drawn from the reference trajectory
+in one-shot imitation learning to train π(at |ot ). Our method
+does not have access to paired reference trajectories. Instead,
+we train the CPV architecture π(st , vt ) with (o0 , ot , oT ) be-   the demonstrated policy reaches the goal in roughly 80% of
+ing drawn from the current trajectory. This allows us to             attempted episodes. One epoch defines one full pass through
+learn a compositional latent space for RL.                           the dataset. These environments were designed to contain
+                                                                     several types of variation to showcase the different types of
+7.2. Simulation Manipulation Experiments                             generalization GCB is capable of.
+
+We evaluate GCB on complex manipulation tasks in a PyBul-            7.2.1. GCB M AKES A NALOGIES
+let simulated environment (Coumans and Bai, 2016–2021)
+consisting of randomly generated workspaces, as shown in             In this section, we probe our learned representations φ and ψ
+Figure 4. We focus on the offline RL setting to decouple the         to determine if they have the properties they were designed
+exploration difficulties of this environment from the learn-         to have. In Figure 6 we sample random tasks, encode them
+ing difficulties on various representations. Each initial state      with φ, and sample their nearest neighbors from a small
+in this environment contains a randomized variety of objects         subset of our offline dataset. According to Definition 4.1,
+and a randomly positioned drawer assembly, providing a va-           these tasks being near each other in φ space means they are
+riety of possible goals and distractors to evaluate functional       functionally similar. In comparing the sampled state-goal
+equivariance and generalization.                                     pairs, we see that GCB successfully captures invariance:
+                                                                     features that are irrelevant to the task change across the
+In the Drawer environment, a                                         sample and nearest neighbor in φ space, such as the color
+robot must learn to position a                                       of the drawer and what distractor objects are present in the
+drawer in a target goal location,                                    background. We show a similar result in Figure 7 but with
+while in the other Button and                                        the space of φ shown in a t-SNE plot. We again see that ran-
+Drawer environment, which con-                                       domly sampled points in this space exhibit similar semantic
+sists of two stacked drawers with a                                  tasks. For Figure 5, Figure 6, Figure 7, and Figure 8 the
+button on top, the task of the robot      Figure 4. Button           images shown are the ones given directly to the encoders ψ
+is either to position the top drawer       and Drawer env            and φ. This visualization shows how the φ representation
+correctly or press the button which        with video distractors.   groups state-goal pairs and gives justification that GCB can
+opens or closes a bottom drawer                                      make meaningful analogies. In our next visualization, we
+compartment. More details of the environment are in Ap-              will show that ψ can exhibit functional equivariance.
+pendix F. We create a distribution over tasks by randomizing
+the position, color, and orientation of the drawers. Addition-       While Figure 6 and Figure 7 show that our φ learning ob-
+ally, we include between 0 and 4 distractor objects from a           jective successfully groups equivalent tasks, we must now
+set of 84 object geometries, and in some experiments we              show that ψ is capable of functional equivariance, where
+also overlay distracting real video in the background (Zhang         pertinent factors of variation carry over across tasks. To test
+et al., 2018) from the Kinetics dataset (Kay et al., 2017).          this, we compose example state-goal pairs with new states
+To collect the offline replay buffer, we use a noisy expert          to describe new goals, in the manner shown in Figure 2. In
+policy πdemo (ai |s, g) = π ∗ (ai |s, g) + N (0, 0.3) where          Figure 5 we sample random states s ∈ S and an analogous
+−1 ≤ ai ≤ 1 ∀ i. 50K transitions are collected for the               state/goal (sa , ga ) pair that is functionally similar but has a
+training set for the following offline RL experiments, where         potentially different color drawer, background distractors,
+                                                                     orientation, and/or position. We encode the state and analo-
+                                      Analogies in Goal-Conditioned Reinforcement Learning
+
+  Method              Drawer            Drawer+VD                  BD                BD+VD               Analogy           Analogy+VD
+ GCB (ours)       0.533 ± 0.037        0.448 ± 0.033          0.440 ± 0.026      0.322 ± 0.021        0.403 ± 0.041        0.303 ± 0.027
+    CPV            0.400 ± 0.031        0.209 ± 0.013         0.228 ± 0.024       0.198 ± 0.013        0.176 ± 0.011        0.121 ± 0.009
+  GC-DBC           0.269 ± 0.025        0.261 ± 0.031         0.358 ± 0.023       0.255 ± 0.034             NA                   NA
+  CCVAE            0.443 ± 0.029        0.231 ± 0.017         0.452 ± 0.039       0.225 ± 0.028        0.234 ± 0.012        0.095 ± 0.009
+    VAE            0.463 ± 0.023        0.261 ± 0.018        0.522 ± 0.042        0.115 ± 0.019        0.280 ± 0.024        0.112 ± 0.006
+    CPC            0.305 ± 0.020        0.207 ± 0.014         0.363 ± 0.042       0.154 ± 0.023        0.148 ± 0.026        0.145 ± 0.029
+   CURL            0.259 ± 0.021        0.283 ± 0.030         0.382 ± 0.038       0.198 ± 0.022        0.162 ± 0.021        0.123 ± 0.025
+   RAD             0.245 ± 0.019        0.207 ± 0.010         0.159 ± 0.036       0.108 ± 0.018        0.157 ± 0.028        0.110 ± 0.026
+   Pixel           0.483 ± 0.051        0.256 ± 0.027         0.117 ± 0.016       0.136 ± 0.027        0.132 ± 0.025        0.121 ± 0.033
+
+Table 1. Final avg. success rates with stderr over 5 seeds. BD refers to the Button and Drawer env. and VD refers to Video
+Distractors.
+
+
+
+
+Figure 6. Visualization of nearest neighbors in φ. We sample state-
+goal pairs and find their NN in φ space. Features irrelevant to the
+task have changed, such as drawer color and distractor objects,
+but task-specific components are invariant, such as the relative
+positioning of robot to target object and semantics of the task.
+
+
+
+gous state/goal, and add them to produce ψ(s) + φ(sa , ga ).
+We then sample the nearest neighbor of this point in ψ space
+to find the closest representation of the desired goal. We            Figure 7. Visualization of nearest neighbors in φ as a t-SNE plot.
+find that ψ is able to take the analogous task and produce a          Color corresponds to the predicted value output by the goal-
+reasonable goal for the current environment. If the analo-            conditioned critic.
+gous problem results in pressing the button, ψ then selects
+a similar state where the button is pressed (Figure 5, top),
+maintaining the same orientation as the current initial state.
+If it results in closing the drawer, the goal produced by ψ
+also corresponds to a state where the drawer is being closed
+(Figure 5, bottom). This indicates that the space is able to
+                                                                      to vary, similar to Figure 5. The policy is trained with
+pick up on analogies, by representing tasks in an equivariant
+                                                                      π(ψ(s), φ(s, g)), but is evaluated with π(ψ(s), φ(sa , ga )).
+way such that applying the representation of a task from one
+                                                                      We focus on the Button and Drawer environment as
+initial state to another results in an analogous transformation
+                                                                      it has a richer space of goals — the policy has to use infor-
+to that state3 .
+                                                                      mation from sa , ga to infer the correct goal. Success in this
+As discussed in Section 4.2, we can use analogies to de-              environment requires representations that encode important
+scribe goals for tasks where we do not have access to the             task information across visually different tasks.
+true intended goal. Figure 5 constitutes a qualitative check
+                                                                      As quantitative evidence of GCB’s ability to use analogies,
+that this is likely true, and we design the following exper-
+                                                                      we see in Table 1 that GCB remains the best performer,
+iment to quantitatively measure this ability. We collect
+                                                                      achieving 40% success on average. This shows that GCB
+an evaluation set where each initial state is paired with
+                                                                      can map analogous problems to the current environment,
+an analogous state-goal pair (sa , ga ), where factors that
+                                                                      successfully reaching goals that it was never given goal
+the agent should be invariant or functionally equivariant
+                                                                      images of — rather only an analogous task as an example.
+    3
+      We do not see the exact goal that matches the given initial     In the next section, we see if these properties also help GCB
+state because it is not part of the dataset we sample from.           on standard goal-conditioned RL tasks.
+                                    Analogies in Goal-Conditioned Reinforcement Learning
+
+7.2.2. C OMPARISONS ON GOAL - REACHING                            Acknowledgements
+We have shown that GCB exhibits invariance and functional         This research was supported by a Meta AI-BAIR Commons
+equivariance across tasks, which leads to superior perfor-        project, AN is supported by the Army Research Office under
+mance in a task setting where the agent is given an analogous     W911NF-21-1-009, and the Office of Naval Research, with
+task as a goal descriptor rather than the specified goal image    compute support from Google Cloud, Berkeley Research
+at evaluation time. Now we ask, does GCB also lead to             Computing, Meta, and Azure.
+improved performance on standard goal-reaching tasks? We
+evaluate in the standard goal-conditioned setting on new,
+                                                                  References
+unseen environments where we provide the policy π(s, g)
+the intended true goal image g.                                   Rishabh Agarwal, Marlos C. Machado, Pablo Samuel Cas-
+                                                                    tro, and Marc G Bellemare. Contrastive behavioral sim-
+In the standard goal setting without video distractors, GCB
+                                                                    ilarity embeddings for generalization in reinforcement
+is able to outperform all other representation methods on
+                                                                    learning. In International Conference on Learning Rep-
+the Drawer benchmark achieving 50%+ success, as seen
+                                                                    resentations, 2021.
+in Table 1. In Button and Drawer, GCB maintains
+strong performance, beating all representations except for        Ankesh Anand, Evan Racah, Sherjil Ozair, Yoshua Bengio,
+VAE and CCVAE, where it remains competitive. When real              Marc-Alexandre Côté, and R Devon Hjelm. Unsupervised
+video distractors are added, GCB performs the best in both          State Representation Learning in Atari. In H. Wallach,
+tasks. The performance of GC-DBC shows the necessity of             H. Larochelle, A. Beygelzimer, F. d’ Alché-Buc, E. Fox,
+the compositional single state representation, ψ — without          and R. Garnett, editors, Advances in Neural Information
+it, we are not able to achieve as strong performance on new,       Processing Systems, volume 32. Curran Associates, Inc.,
+unseen environments, as was noted in Section 4.                     2019.
+
+                                                                  Marcin Andrychowicz, Filip Wolski, Alex Ray, Jonas
+8. Discussion
+                                                                   Schneider, Rachel Fong, Peter Welinder, Bob Mcgrew,
+This paper introduces goal-conditioned bisimulation (GCB),         Josh Tobin, Pieter Abbeel, and Wojciech Zaremba. Hind-
+a representation learning method for goal-conditioned RL           sight Experience Replay. In Advances in Neural Informa-
+problems that captures functional equivariance over a family       tion Processing Systems (NeurIPS), 2017.
+of goal-conditioned tasks. We have shown that, at evaluation
+time, an agent can use representations of analogous tasks to      Andre Barreto, Will Dabney, Remi Munos, Jonathan J Hunt,
+achieve unseen goals and even outperform existing repre-            Tom Schaul, Hado P van Hasselt, and David Silver. Suc-
+sentation learning methods in the standard goal-conditioned         cessor Features for Transfer in Reinforcement Learning.
+setting. Furthermore, our method is theoretically backed by         In I. Guyon, U. V. Luxburg, S. Bengio, H. Wallach, R. Fer-
+an equivalence relation that defines what “functional simi-         gus, S. Vishwanathan, and R. Garnett, editors, Advances
+larity” means. The representations learned by our method            in Neural Information Processing Systems, volume 30.
+are structured, in that `1 distance in the space bounds the         Curran Associates, Inc., 2017.
+value difference of different states and tasks. This holds true   Richard Bellman. Dynamic Programming. Dover Publica-
+not only for goal-conditioned problems, but all downstream          tions, 1957.
+tasks describable by a state-only reward function.
+While we show improved success rates in goal-conditioned          Jaime Carbonell. Learning by analogy: Formulating and
+tasks and improved generalization capability on unseen, in-          generalizing plans from past experience. 12 1983.
+distribution environments, it is possible that we can broaden     James Carroll and Kevin Seppi. Task similarity measures
+the definition of functional equivalence beyond that of goal-       for transfer in reinforcement learning task libraries. In
+conditioned bisimulation. As an example, one limitation             In Proceedings of the International Joint Conference on
+of GCB is that the number of steps the policy needs to              Neural Networks, pages 803 – 808 vol. 2, 01 2005.
+complete the task is a determining factor in how close two
+tasks are. While it is not entirely clear how we can broaden      Pablo Samuel Castro. Scalable methods for computing state
+this equivalence relation while maintaining some semantic           similarity in deterministic Markov decision processes. In
+meaning of function, the potential of such an abstraction is        Association for the Advancement of Artificial Intelligence
+plain. We can define equivalences across tasks in different         (AAAI), 2020.
+domains and action spaces, allowing agents to learn from
+third-person demonstrations and unlocking the potential of        Pablo Samuel Castro, Tyler Kastner, Prakash Panangaden,
+large, off-domain datasets.                                         and Mark Rowland. MICo: Improved representations
+                                                                    via sampling-based state similarity for markov decision
+                                 Analogies in Goal-Conditioned Reinforcement Learning
+
+  processes. In A. Beygelzimer, Y. Dauphin, P. Liang,         Norman Ferns and Doina Precup. Bisimulation metrics
+  and J. Wortman Vaughan, editors, Advances in Neural           are optimal value functions. In Uncertainty in Artificial
+  Information Processing Systems, 2021.                        Intelligence (UAI), pages 210–219, 2014.
+Yevgen Chebotar, Karol Hausman, Yao Lu, Ted Xiao,             Carles Gelada, Saurabh Kumar, Jacob Buckman, Ofir
+  Dmitry Kalashnikov, Jacob Varley, Alex Irpan, Ben-            Nachum, and Marc G. Bellemare. DeepMDP: Learning
+  jamin Eysenbach, Ryan Julian, Chelsea Finn, and Sergey        continuous latent space models for representation learn-
+  Levine. Actionable models: Unsupervised offline rein-         ing. In International Conference on Machine Learning
+  forcement learning of robotic skills. In Marina Meila         (ICML), 2019.
+  and Tong Zhang, editors, Proceedings of the 38th Inter-
+  national Conference on Machine Learning, ICML 2021,         Dibya Ghosh, Abhishek Gupta, and Sergey Levine. Learn-
+  18-24 July 2021, Virtual Event, volume 139 of Proceed-        ing actionable representations with goal conditioned poli-
+  ings of Machine Learning Research, pages 1518–1528.           cies. In International Conference on Learning Represen-
+  PMLR, 2021.                                                   tations, 2019.
+
+Jongwook Choi, Archit Sharma, Honglak Lee, Sergey             Robert Givan, Thomas L. Dean, and Matthew Greig. Equiv-
+  Levine, and Shixiang Shane Gu. Variational empow-             alence notions and model minimization in Markov de-
+  erment as representation learning for goal-conditioned        cision processes. Artificial Intelligence, 147:163–223,
+  reinforcement learning. In Marina Meila and Tong Zhang,       2003.
+  editors, Proceedings of the 38th International Conference
+  on Machine Learning, volume 139 of Proceedings of           Beining Han, Chongyi Zheng, Harris Chan, Keiran Paster,
+  Machine Learning Research, pages 1953–1963. PMLR,             Michael R. Zhang, and Jimmy Ba. Learning domain in-
+  18–24 Jul 2021.                                               variant representations in goal-conditioned block MDPs.
+                                                                In Thirty-Fifth Conference on Neural Information Pro-
+Erwin Coumans and Yunfei Bai. Pybullet, a python module         cessing Systems, 2021.
+  for physics simulation for games, robotics and machine
+  learning. http://pybullet.org, 2016–2021.                   Eric Jang, Coline Devin, Vincent Vanhoucke, and Sergey
+                                                                Levine. Grasp2vec: Learning object representations from
+Coline Devin, Daniel Geng, Pieter Abbeel, Trevor Darrell,       self-supervised grasping. In 2nd Annual Conference on
+  and Sergey Levine. Compositional Plan Vectors. In             Robot Learning, CoRL 2018, Zürich, Switzerland, 29-31
+  H. Wallach, H. Larochelle, A. Beygelzimer, F. d’ Alché-      October 2018, Proceedings, volume 87 of Proceedings
+  Buc, E. Fox, and R. Garnett, editors, Advances in Neural      of Machine Learning Research, pages 99–112. PMLR,
+  Information Processing Systems, volume 32. Curran As-         2018.
+  sociates, Inc., 2019.
+                                                              Dinesh Jayaraman and Kristen Grauman. Learning image
+Ben Eysenbach, Xinyang Geng, Sergey Levine, and Russ R          representations tied to egomotion. In ICCV, 2015.
+  Salakhutdinov. Rewriting History with Inverse RL: Hind-
+  sight Inference for Policy Improvement. In H. Larochelle,   Rico Jonschkowski and Oliver Brock. Learning state repre-
+  M. Ranzato, R. Hadsell, M. F. Balcan, and H. Lin, edi-        sentations with robotic priors. Autonomous Robots, 39:
+  tors, Advances in Neural Information Processing Systems,      407–428, 10 2015.
+  volume 33, pages 14783–14795. Curran Associates, Inc.,
+  2020.                                                       Rico Jonschkowski, Roland Hafner, Jonathan Scholz, and
+                                                                Martin Riedmiller. Pves: Position-velocity encoders for
+Fernando Fernández and Manuela Veloso. Probabilistic           unsupervised learning of structured state representations.
+  policy reuse in a reinforcement learning agent. In Pro-       5 2017.
+  ceedings of the Fifth International Joint Conference on
+  Autonomous Agents and Multiagent Systems, AAMAS             L P Kaelbling. Learning to achieve goals. In International
+  ’06, page 720–727, New York, NY, USA, 2006. Associa-          Joint Conference on Artificial Intelligence (IJCAI), vol-
+  tion for Computing Machinery.                                 ume vol.2, pages 1094 – 8, 1993.
+
+Norm Ferns, Prakash Panangaden, and Doina Precup. Met-        Will Kay, João Carreira, Karen Simonyan, Brian Zhang,
+  rics for finite Markov decision processes. In Uncertainty    Chloe Hillier, Sudheendra Vijayanarasimhan, Fabio Viola,
+  in Artificial Intelligence (UAI), pages 162–169, 2004.       Tim Green, Trevor Back, Paul Natsev, Mustafa Suleyman,
+                                                               and Andrew Zisserman. The kinetics human action video
+Norm Ferns, Prakash Panangaden, and Doina Precup. Bisim-       dataset. Computing Research Repository (CoRR), 2017.
+  ulation metrics for continuous Markov decision processes.
+  Society for Industrial and Applied Mathematics, 40(6):      Alexander Khazatsky, Ashvin Nair, Daniel Jing, and Sergey
+ 1662–1714, December 2011.                                      Levine. What can I do here? learning new skills by
+                                   Analogies in Goal-Conditioned Reinforcement Learning
+
+  imagining visual affordances. In IEEE International Con-       Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Corrado,
+  ference on Robotics and Automation, ICRA 2021, Xi’an,            and Jeff Dean. Distributed Representations of Words and
+  China, May 30 - June 5, 2021, pages 14291–14297. IEEE,           Phrases and their Compositionality. In C. J. C. Burges,
+  2021.                                                            L. Bottou, M. Welling, Z. Ghahramani, and K. Q. Wein-
+                                                                   berger, editors, Advances in Neural Information Process-
+Diederik Kingma and Jimmy Ba. Adam: A method for                   ing Systems, volume 26. Curran Associates, Inc., 2013.
+  stochastic optimization. International Conference on
+  Learning Representations (ICLR), 2015.                         Ofir Nachum, Shane Shixiang Gu, Honglak Lee, and Sergey
+                                                                   Levine. Data-Efficient Hierarchical Reinforcement Learn-
+George Konidaris, Ilya Scheidwasser, and Andrew G. Barto.
+                                                                   ing. In Advances in Neural Information Processing Sys-
+  Transfer in reinforcement learning via shared features. J.
+                                                                   tems (NeurIPS), 2018.
+  Mach. Learn. Res., 13:1333–1371, May 2012.
+
+Ilya Kostrikov, Ashvin Nair, and Sergey Levine. Offline          Ashvin Nair, Vitchyr Pong, Murtaza Dalal, Shikhar Bahl,
+   reinforcement learning with implicit q-learning. CoRR,          Steven Lin, and Sergey Levine. Visual Reinforcement
+   abs/2110.06169, 2021.                                           Learning with Imagined Goals. In Advances in Neural
+                                                                   Information Processing Systems (NeurIPS), 2018.
+Sascha Lange and Martin A. Riedmiller. Deep auto-encoder
+  neural networks in reinforcement learning. In IJCNN,           Ashvin Nair, Shikhar Bahl, Alexander Khazatsky, Vitchyr
+  pages 1–8. IEEE, 2010.                                           Pong, Glen Berseth, and Sergey Levine. Contextual imag-
+                                                                   ined goals for self-supervised robotic learning. In Con-
+Sascha Lange, Martin Riedmiller, Arne Voigtlander, and             ference on Robot Learning (CoRL), 2019.
+  Arne Voigtländer. Autonomous reinforcement learning on
+  raw visual input data in a real world application. In Inter-   Soroush Nasiriany, Vitchyr Pong, Steven Lin, and Sergey
+  national Joint Conference on Neural Networks (IJCNN),            Levine. Planning with Goal-Conditioned Policies. In
+  number June, pages 1–8. IEEE, 2012.                              H. Wallach, H. Larochelle, A. Beygelzimer, F. d’ Alché-
+                                                                   Buc, E. Fox, and R. Garnett, editors, Advances in Neural
+K. G. Larsen and A. Skou. Bisimulation through proba-              Information Processing Systems, volume 32. Curran As-
+  bilistic testing (preliminary report). In Symposium on           sociates, Inc., 2019.
+  Principles of Programming Languages, page 344–352.
+  Association for Computing Machinery, 1989.                     Scott E. Reed, Yi Zhang, Yuting Zhang, and Honglak Lee.
+                                                                   Deep visual analogy-making. Advances in Neural Infor-
+Michael Laskin, Aravind Srinivas, and Pieter Abbeel.
+                                                                   mation Processing Systems, 28, 2015.
+ CURL: Contrastive unsupervised representations for re-
+ inforcement learning. In International Conference on
+                                                                 Alexander Sax, Bradley Emi, Amir Zamir, Leonidas Guibas,
+ Machine Learning (ICML), pages 5639–5650. PMLR,
+                                                                   Silvio Savarese, and Jitendra Malik. Mid-Level Visual
+ 2020a.
+                                                                   Representations Improve Generalization and Sample Effi-
+Misha Laskin, Kimin Lee, Adam Stooke, Lerrel Pinto, Pieter         ciency for Learning Visuomotor Policies. In Conference
+ Abbeel, and Aravind Srinivas. Reinforcement Learning              on Robot Learning (CoRL), 2019.
+ with Augmented Data. In H. Larochelle, M. Ranzato,
+ R. Hadsell, M. F. Balcan, and H. Lin, editors, Advances         Tom Schaul, Daniel Horgan, Karol Gregor, and David Sil-
+ in Neural Information Processing Systems, volume 33,              ver. Universal Value Function Approximators. In Interna-
+ pages 19884–19895. Curran Associates, Inc., 2020b.                tional Conference on Machine Learning (ICML), pages
+                                                                   1312–1320, 2015.
+Lihong Li, Thomas J Walsh, and Michael L Littman. To-
+  wards a unified theory of state abstraction for MDPs. In       Dhruv Shah, Benjamin Eysenbach, Nicholas Rhinehart, and
+  International Symposium on Artificial Intelligence and           Sergey Levine. Rapid exploration for open-world naviga-
+  Mathematics (ISAIM), 2006.                                       tion with latent goal models. In 5th Annual Conference
+                                                                   on Robot Learning, 2021.
+Kara Liu, Thanard Kurutach, Christine Tung, Pieter Abbeel,
+  and Aviv Tamar. Hallucinative topological memory for           Jinhua Song, Yang Gao, Hao Wang, and Bo An. Measuring
+  zero-shot visual planning. In Hal Daumé III and Aarti            the distance between finite markov decision processes. In
+  Singh, editors, Proceedings of the 37th International Con-        Proceedings of the 2016 International Conference on Au-
+  ference on Machine Learning, volume 119 of Proceed-               tonomous Agents and Multiagent Systems, AAMAS ’16,
+  ings of Machine Learning Research, pages 6259–6270.               page 468–476, Richland, SC, 2016. International Foun-
+  PMLR, 13–18 Jul 2020.                                             dation for Autonomous Agents and Multiagent Systems.
+                                  Analogies in Goal-Conditioned Reinforcement Learning
+
+Stephen Tian, Suraj Nair, Frederik Ebert, Sudeep Dasari,        representations for reinforcement learning without re-
+  Benjamin Eysenbach, Chelsea Finn, and Sergey Levine.          construction. In International Conference on Learning
+  Model-based visual planning with self-supervised func-        Representations, 2021.
+  tional distances. In International Conference on Learning
+  Representations, 2021.
+
+Aaron van den Oord, Yazhe Li, and Oriol Vinyals. Repre-
+  sentation Learning with Contrastive Predictive Coding.
+  2018.
+
+Angelina Wang, Thanard Kurutach, Pieter Abbeel, and Aviv
+  Tamar. Learning robotic manipulation through visual
+  planning and acting. In Antonio Bicchi, Hadas Kress-
+  Gazit, and Seth Hutchinson, editors, Robotics: Science
+  and Systems XV, University of Freiburg, Freiburg im Breis-
+  gau, Germany, June 22-26, 2019, 2019.
+
+David Warde-Farley, Tom Van De Wiele, Tejas Kulkarni,
+  Catalin Ionescu, Steven Hansen, and Mnih Volodymyr.
+  Unsupervised Control Through Non-Parametric Discrimi-
+  native Rewards. In International Conference on Learning
+  Representations (ICLR), 2019.
+
+Manuel Watter, Jost Tobias Springenberg, Joschka
+ Boedecker, and Martin Riedmiller. Embed to Control:
+ A Locally Linear Latent Dynamics Model for Control
+ from Raw Images. In Advances in Neural Information
+ Processing Systems (NeurIPS), pages 2728–2736, 2015.
+
+Ge Yang, Amy Zhang, Ari Morcos, Joelle Pineau, Pieter
+  Abbeel, and Roberto Calandra. Plan2vec: Unsupervised
+  representation learning by latent plans. In Alexandre M.
+  Bayen, Ali Jadbabaie, George Pappas, Pablo A. Parrilo,
+  Benjamin Recht, Claire Tomlin, and Melanie Zeilinger,
+  editors, Proceedings of the 2nd Conference on Learning
+  for Dynamics and Control, volume 120 of Proceedings
+  of Machine Learning Research, pages 935–946. PMLR,
+ 10–11 Jun 2020.
+
+Denis Yarats, Ilya Kostrikov, and Rob Fergus. Image aug-
+  mentation is all you need: Regularizing deep reinforce-
+  ment learning from pixels. In International Conference
+  on Learning Representations, 2021a.
+
+Denis Yarats, Amy Zhang, Ilya Kostrikov, Brandon Amos,
+  Joelle Pineau, and Rob Fergus. Improving sample effi-
+  ciency in model-free reinforcement learning from images.
+  In Association for the Advancement of Artificial Intelli-
+  gence (AAAI), 2021b.
+
+Amy Zhang, Yuxin Wu, and Joelle Pineau. Natural envi-
+ ronment benchmarks for reinforcement learning. CoRR,
+ abs/1811.06032, 2018.
+
+Amy Zhang, Rowan Thomas McAllister, Roberto Calan-
+ dra, Yarin Gal, and Sergey Levine. Learning invariant
+                                     Analogies in Goal-Conditioned Reinforcement Learning
+
+A. Extra Visualizations
+We add extra Nearest Neighbors visualizations for our arithmetic space. These follow the same logic as shown in Figure
+5. The analogies are sampled by randomizing color, distractor objects, video distractors (if present), and translating and
+rotating the drawer. We provide more details about how we sample these analogies in Section 7.2.1.
+
+
+
+
+Figure 8. More examples of analogy arithmetic. The leftmost image is a sampled start state. The next two images are a sampled analogy
+start and goal. The rightmost image is the nearest neighbor in a test set of the composed representation in ψ space. Each row is a new
+sample, the second to last row is an example of a failure.
+
+B. Extended Related Work
+Goal-Conditioned RL. Goal-conditioned RL learns a policy that can generalize to many reward functions, indexed by
+goals, rather than a single reward function (Kaelbling, 1993; Schaul et al., 2015; Andrychowicz et al., 2017; Nachum
+et al., 2018; Eysenbach et al., 2020). For environments with rich, high-dimensional observations such as images, methods
+                                       Analogies in Goal-Conditioned Reinforcement Learning
+
+have proposed to use existing generative models for encoding observations and goals (Nair et al., 2018; 2019; Khazatsky
+et al., 2021). Using reconstructive generative models for the input representation compresses the state space by encoding
+appearance information, but does not relate to functionality. Goal-conditioned RL has been used to learn general policies in
+the real world on large, diverse datasets (Chebotar et al., 2021). Thus making goal-conditioned RL more sample efficient and
+performant is a practical contribution towards real-world reinforcement learning. Non-parametric methods for exploration
+and planning with images have been considered (Warde-Farley et al., 2019; Nasiriany et al., 2019; Wang et al., 2019; Liu
+et al., 2020; Shah et al., 2021) and could also benefit from improved representation learning. Han et al. (2021) address the
+generalization problem of goal-conditioned policies to novel observations at test time by using an alignment objective for
+data collection across environments. Our method instead naturally finds alignment through an equivalence relation.
+
+C. Proofs of Theoretical Results
+Theorem C.1. Define F π : M → M by F π (d)(s, t) = |Rπs − Rπt | + γW1 (d)(Psπ , Ptπ ), then F π has a least fixed point
+dπ , and dπ is a π-bisimulation metric.
+Proposition 6.1.
+
+             F(d, π)(si , gi ; sj , gj ) = (1 − c)|R(si , π(si , gi ), gi ) − R(sj , π(sj , gj ), gj )| + cW (d)(Psπi , Psπj ).
+
+Then F has a least fixed point dπ which is a goal-conditioned π-bisimulation metric.
+
+Proof. We start from the result in Theorem 2 of Castro (2020), also included as Theorem C.1 here. We can reconstruct
+our GCMDP as an equivalent, standard super-MDP M0 by concatenating the state and goal spaces to construct a new state
+space: S 0 := S × G with new reward function R0 := 1(s0 = (g, g)). We can then rewrite F as:
+
+                       FM0 (d, π)(s0i , s0j ) = (1 − c)|R0 (s0i , π(s0i ) − R0 (s0j , π(s0j ))| + cW (d)(Psπ0i , Psπ0j ).
+
+It should be clear that this is equivalent to the F defined for the GCMDP as the reward functions are identical and the
+dynamics do not change, since P does not depend on the goal. We can then apply Theorem C.1 to this super-MDP to show
+that FM0 has a unique fixed point which is the π-bisimulation metric, proving that the equivalent F also has the same
+unique fixed point.
+
+Proposition C.2. For any π ∈ P(A)S and states x, y ∈ S, we have |V π (x) − V π (y)| ≤ dπ (x, y).
+Proposition 6.2. For any two state goal pairs (si , gi ), (sj , gj ) ∈ (S, G),
+
+                                           |V π (si , gi ) − V π (sj , gj )| ≤ dπ (si , gi ; sj , gj ).
+
+Proof. We start from the result in Proposition 4.8 in Castro et al. (2021), also reproduced here as Proposition C.2. We again
+reconstruct our GCMDP as an equivalent, standard super-MDP M0 by concatenating the state and goal spaces to construct a
+new state space: S 0 := S × G with new reward function R0 := 1(s0 = (g, g)). We can now apply Proposition C.2 to this
+super-MDP, showing the above bound to be true.
+
+Proposition 6.3. If we assume that the goal space is the same as the state space, i.e. G := S, then GCB learns a
+representation sufficient to learn the optimal policy for any downstream reward function that can be expressed as R : S 7→ R.
+
+Proof. As noted in Remark 6.4, a state-only reward function can be written as a set of all states and their rewards,
+             |S|
+R = {αi si }i=0 , where αi ∈ R, ∀i. The optimal policy π ∗ for any reward function R can then be expressed as a series of
+state-reaching policies, which will be within the set of goal-conditioned policies where G = S.
+
+Proposition 6.5. For any reward function R ∈ R as defined above and a given policy π,
+
+                                                                       |S|
+                                                                       X
+                                          |VRπ (si ) − VRπ (sj )| ≤          αk dπ (si , gk ; sj , gk ).
+                                                                       k=0
+                                    Analogies in Goal-Conditioned Reinforcement Learning
+
+Proof. Without loss of generality, we assume αi ≥ 0, ∀i. Starting from Proposition 6.2 we have that ∀g ∈ S,
+
+                                          |V π (si , g) − V π (sj , g)| ≤ dπ (si , g; sj , g).                              (11)
+
+We can express VRπ (si ) as a sum over goal-conditioned values:
+
+                                                                |S|
+                                                                X
+                                                  VRπ (si ) =         αk V π (si , gk ).
+                                                                k=0
+
+We can plug this into the LHS:
+                                                          |S|                         |S|
+                                                          X                           X
+                              |VRπ (si ) − VRπ (sj )| =         αk V π (si , gk ) −         αk V π (sj , gk ) .
+                                                          k=0                         k=0
+
+Combine terms into one summation,
+                                                              |S|
+                                                              X
+                                 |VRπ (si ) − VRπ (sj )| =          αk V π (si , gk ) − V π (sj , gk ) .
+                                                                                                      
+
+                                                              k=0
+
+Then use the triangle inequality to move the absolute value inside the sum,
+                                                              |S|
+                                                              X
+                                  |VRπ (si ) − VRπ (sj )| ≤         αk V π (si , gk ) − V π (sj , gk ) .
+                                                              k=0
+
+Plugging in Equation (11),
+                                                                    |S|
+                                                                    X
+                                        |VRπ (si ) − VRπ (sj )| ≤         αk dπ (si , gk ; sj , gk ).
+                                                                    k=0
+
+
+
+
+D. Additional Ablations
+In this section, we run experiments that modify various aspects of our algorithm to show how different design choices and
+hyperparameters affect performance.
+
+D.1. Dimensionality of φ and ψ
+We start by examining how changing the latent dimensionality of the two spaces we learn, denoted by φ and ψ, affect
+downstream success rate on the Drawer task. In Figure 9 we find that this hyperparameter does not significantly affect
+downstream performance of the control task. All other ablations are performed on the Button and Drawer.
+
+D.2. Grounding ψ with Goal Point φ(g, g)
+As discussed in Section 5, the loss for ψ in Equation (7) which differs from the one proposed in Equation (5). Considering φ
+is trained with pairs, φ(s, g) alone might not properly represent an informative point. Instead, φ(s, g) − φ(g, g) will more
+likely have a well defined distance as it involves a comparison of pairs or tasks. We refer to this as grounding ψ with the
+goal point. We ablate on this difference in Figure 10 by running GCB where ψ’s objective is either Equation (7) (GCB-G) or
+Equation (5) (GCB-NG). Grounding ψ has a strong performance boost compared to not grounding.
+
+D.3. Using `1 vs `2 Norm Objective
+φ’s loss in Equation (6) uses an `1 metric loss on pairs to fit φ’s encoder. In this section we ablate on using `1 or `2
+(||φ(si , gi ) − φ(sj , gj )||2 )) for the first portion of φ’s loss. We report results in Figure 11. There is a large difference
+between the two losses, `1 achieving far better performance. We suspect that `1 results in more stable training of φ.
+                                     Analogies in Goal-Conditioned Reinforcement Learning
+
+
+
+
+Figure 9. Ablation on different dimensionality for φ and ψ. We see that our tuned hyperparameter of 256 performs best, but the range of
+values from 32 to 512 generally does not affect success rate significantly.
+
+
+
+
+Figure 10. Ablation on different ψ objectives. GCB-G uses the grounded loss and GCB-NG does not. Video Distractors are added for
+some ablations.
+
+
+D.4. Backpropagating RL Objectives through GCB
+All other baselines compared to in Section 7 allow critic gradients from IQL’s Q function into the encoder. We ablate using
+critic gradients with Equation (7) to see if it is helpful. Results are shown in Figure 12. Critic gradients seem marginally
+harmful for downstream performance, so we decided to not use them in GCB.
+
+D.5. Adding a Reward Decoder
+In the DBC implementation, a reward decoder is used to help stabilize the representation (Zhang et al., 2021). Considering
+that rewards are sparse in our domain, it might be harder to train a decoder. We ablate using and not using a reward decoder.
+The reward decoder R(φ(s, g), φ(s0 , g)) is an MLP that is trained to predict if a task transition goes to the goal. The reward
+decoder loss is shown in Equation 12 and the gradient backpropagates through the φ encoder.
+
+
+                                                                                            2
+                                             LR =        R(φ(si , gi ), φ(s0i , gi )) − ri        ,                               (12)
+
+
+We report results in Figure 13. The results show that GCB has very little performance difference with and without a reward
+                                      Analogies in Goal-Conditioned Reinforcement Learning
+
+
+
+
+Figure 11. Ablation on different φ objectives. GCB-`1 uses an `1 metric loss and GCB-`2 uses `2 . Video Distractors are added for some
+ablations.
+
+
+
+
+Figure 12. Ablation on different φ objectives. GCB uses no critic gradients and GCB-CG uses critic gradients. Video Distractors are
+added for some ablations.
+
+
+decoder. We decided to leave it in the implementation used for the main results.
+
+D.6. Using Dynamics Model vs Next Observation GCB
+In the definitions of bisimulation metrics discussed in Section 3 and Section 4, a dynamics model P was used to define
+similar next states. There are two possible instantiations for implementing a learned version of this metric: learning a
+dynamics model that outputs a Gaussian next state distribution and calculating the Wasserstein, as proposed in Zhang et al.
+(2021), or using sampled interactions, as introduced in Castro et al. (2021). While we took the latter approach as our main
+method, we investigate using a learned dynamics approach here. An MLP dynamics model f (φ(s, g), a) could be learned
+and used in second portion of our loss in Equation 6. We define that new φ loss as follows:
+
+
+                                 
+                          Lφ =       ||φ(si , gi ) − φ(sj , gj )||1 − ||ri − rj ||2                                              (13)
+                                                                                                                    2
+                              − γ||f (φ̄(si , gi ), ai ) − f (φ̄(sj , gj ), aj ) + φ̄(si , gi ) − φ̄(sj , gj )||2        ,
+                                     Analogies in Goal-Conditioned Reinforcement Learning
+
+
+
+
+Figure 13. Ablation on different φ objectives. GCB-D uses a reward decoder and GCB-ND doesn’t use a reward decoder. Video Distractors
+are added for some ablations.
+
+
+as well as a dynamics loss for training the model f :
+
+                                                                                2
+                                                                  0
+                                         Lf = f (φ(s, g), a) + φ(s , g) − φ(s, g) .
+
+
+We present ablations of using the standard Equation 6 loss versus using a dynamics model and 13 in Figure 14. We find that
+using next observation results in a more stable learning process compared to using a learned dynamics model, although the
+dynamics model method is capable of achieving similar peak performance.
+
+
+
+
+Figure 14. Ablation on different φ objectives. GCB-NO uses next observation and GCB-E uses the dynamics model based loss. Video
+Distractors are added for some ablations.
+
+
+
+E. Implementation Details
+We use a similar encoder architecture to (Laskin et al., 2020b) except we use a six layer convolutional network. The encoder
+has kernels of size 3 × 3 with 32 channels for all the convolutional layers and set stride to 1 everywhere, except of the first
+convolutional layer, which has stride 2, and interpolate with ReLU activations. We modify a PyTorch implementation of
+IQL (Kostrikov et al., 2021) for our offline RL algorithm. The hyperparameters used for the experiment are in Table 2.
+                                    Analogies in Goal-Conditioned Reinforcement Learning
+
+                                                  Hyperparameter              Value
+                                               Offline Sample Count           50000
+                                                         γ                     0.99
+                                                     Batch Size                 256
+                                                 ψ or Encoder LR             5 · 10−4
+                                            ψ or Encoder Weight Decay         10−4
+                                                       φ LR                   10−4
+                                                  φ Weight Decay              10−3
+                                                     Actor LR                 10−4
+                                                      Actor β                   0.9
+                                               Actor logstd Bounds           [−10, 2]
+                                                     Critic LR                10−4
+                                                      Critic β                  0.9
+                                                      Critic τ                0.005
+                                                      Quantile                  0.7
+                                                     Optimizer                Adam
+                                                     Adam β1                    0.9
+
+                                                 Table 2. GCB Hyperparameters.
+
+
+F. Environment Details
+We evaluate our method on two Sawyer manipulation environment domains: Drawer and Button and Drawer. We
+list details of how we constructed our environments for the PyBullet simulation tasks in Section 7. In the following
+paragraphs we describe specific details about how we collected data, evaluated the agent, and formed analogies.
+For each episode of data collection, we first initialize the PyBullet environment with at most four random objects spawned
+with random poses in addition to a randomly chosen drawer pose and openness such that the drawer handle, when fully
+open, fits the xy constraints of the environment. We then roll out a scripted policy π ∗ (s, g) = a∗ to complete its task until
+the goal is achieved or until the 75 timestep limit is reached. In the Drawer environment, the task is to open or close the
+drawer to randomly chosen openness. In the Button and Drawer environment, the task is to either do the same task as
+in the Drawer environment or to press a button.
+For each episode of evaluation, we randomly initialize the PyBullet environment in the same manner as in data collection.
+The goal g is collected by rolling out a scripted policy π ∗ (s, g) = a∗ , rendering the final frame, and marking that as the goal.
+We then reinitialize the environment with the same object poses for evaluating an agent conditioned on g.
+The Drawer environment tasks a robotic agent to open or close a drawer to a specific drawer openness. Specifically, it
+tasks the agent to guide its state image s to a drawer handle and position it as shown in the goal image g using its arm. The
+environment consists of a drawer with a random pose and at most four random distractor objects.
+The Button and Drawer environment tasks a robotic agent to either press a button or guide a drawer handle to a
+specific drawer openness. The environment consists of a button on top of two drawers stacked on top of one another along
+with at most four random distractor objects. The top drawer is taken from the Drawer environment, and the bottom drawer
+is opened or closed by pressing the button.
+To form analogous state goal pairs sa , ga , we first randomly initialize the objects in the the Button and Drawer
+environment. We then take the state and add noise to the pose of the drawer (translation and rotation). The colors of the
+drawer, number and type of distractor objects spawned, and the video distractor in the background of (sa , ga ) will most
+likely change as well.
+In Table 3 and Table 4, we provide the environment parameter settings we used on each environment. We also provide some
+                                                                 (1)                                           (1)
+extra screenshots of states and goals. For the table below, let xp denote the top drawer handle xyz position, dp denote the
+                                            (2)                                                (2)
+desired top drawer handle xyz position, xp denote the bottom drawer handle xyz position, dp denote the desired bottom
+                               (3)                                   (3)
+drawer handle xyz position, xp denote the button z position, and dp denote the desired button z position.
+                                 Analogies in Goal-Conditioned Reinforcement Learning
+
+
+
+
+ (a) Drawer initial state            (b) Drawer final state       (c) Drawer and                   (d) Drawer and
+                                                                  Button initial state             Button final state
+
+                      Figure 15. Sample images from Drawer and Drawer and Button environment.
+
+
+
+
+                      Parameter                                                                Value
+                     Discount γ                                                                0.99
+                    Action Space                                                             [−1, 1]5
+              Action Space Description                                         [x, y, z, yaw rotation, claw grip]
+                        DoF                                                                      5
+        Observation Space (i.e. Image Space)                                              [0, 1]64×64×3
+                  Max Time Steps                                                                75
+                Offline Dataset Size                                                     50K transitions
+                       Reward                                                           1|x(1) −d(1) |≤0.05
+                                                                                            p     p
+            Number of Distractor Objects                                           Uniform Random in [0, 4]
+     Underlying State Space (Not shown to agent)                                                R11
+                                                                [gripper xyz position, gripper quaternion, gripper tips distance,
+Underlying State Space Description (Not shown to agent)
+                                                                                    top drawer xyz position]
+
+                                      Table 3. Parameters used in the Drawer environment.
+
+
+
+
+                      Parameter                                                                       Value
+                      Discount γ                                                                      0.99
+                    Action Space                                                                    [−1, 1]5
+              Action Space Description                                                [x, y, z, yaw rotation, claw grip]
+                         DoF                                                                            5
+         Observation Space (i.e. Image Space)                                                    [0, 1]64×64×3
+                   Max Time Steps                                                                      75
+                 Offline Dataset Size                                                           50K transitions
+                                                                       (
+                                                                        1|x(1) −d(1) |≤0.05                      if doing drawer task
+                                                                            p    p
+                            Reward
+                                                                         1|x(2) −d(2) |≤0.05∧|x(3) −d(3) |≤0.008 if doing button task
+                                                                            p     p            p     p
+            Number of Distractor Objects                                                  Uniform Random in [0, 4]
+     Underlying State Space (Not shown to agent)                                                      R15
+                                                                    [gripper xyz position, gripper quaternion, gripper tips distance,
+Underlying State Space Description (Not shown to agent)
+                                                                top drawer xyz position, bottom drawer xyz position, button z position]
+
+                             Table 4. Parameters used in the Drawer and Button environment.
+

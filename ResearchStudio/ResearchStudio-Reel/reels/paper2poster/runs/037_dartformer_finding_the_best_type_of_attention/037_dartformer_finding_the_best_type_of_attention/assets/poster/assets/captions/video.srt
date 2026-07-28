@@ -1,0 +1,437 @@
+1
+00:00:00,500 --> 00:00:05,516
+<font color="#000000">How do you pick the right attention mechanism for a
+long-range Transformer task,</font>
+
+2
+00:00:05,596 --> 00:00:08,574
+<font color="#000000">and could mixing several types work even better?</font>
+
+3
+00:00:08,654 --> 00:00:10,039
+<font color="#000000">This paper, DARTFormer,</font>
+
+4
+00:00:10,119 --> 00:00:14,753
+<font color="#000000">adapts differentiable neural architecture search to
+answer both questions.</font>
+
+5
+00:00:14,833 --> 00:00:20,486
+<font color="#000000">The authors build a supernetwork that contains many
+efficient attention types in parallel,</font>
+
+6
+00:00:20,566 --> 00:00:24,499
+<font color="#000000">then use a masked validation accuracy drop metric
+to rank them.</font>
+
+7
+00:00:24,579 --> 00:00:28,640
+<font color="#000000">Their search reliably finds the best single
+attention for a task,</font>
+
+8
+00:00:28,720 --> 00:00:34,182
+<font color="#000000">but a surprising second result emerges:
+heterogeneous Transformers that combine several</font>
+
+9
+00:00:34,262 --> 00:00:37,430
+<font color="#000000">attention types beat the average homogeneous model,</font>
+
+10
+00:00:37,510 --> 00:00:39,660
+<font color="#000000">yet never beat the single best one.</font>
+
+11
+00:00:40,040 --> 00:00:45,397
+<font color="#000000">The Transformer's original dot-product attention
+scales quadratically with sequence length,</font>
+
+12
+00:00:45,477 --> 00:00:48,803
+<font color="#000000">so a large family of efficient alternatives has appeared,</font>
+
+13
+00:00:48,883 --> 00:00:52,866
+<font color="#000000">from Longformer and Bigbird to Performer, Reformer,
+and Synthesizer.</font>
+
+14
+00:00:52,946 --> 00:00:58,064
+<font color="#000000">The catch is that no single one wins everywhere:
+earlier long-range benchmarking showed</font>
+
+15
+00:00:58,144 --> 00:01:02,904
+<font color="#000000">that the best attention depends heavily on the task
+when there is no pretraining.</font>
+
+16
+00:01:02,984 --> 00:01:05,951
+<font color="#000000">That leaves practitioners with an awkward question,</font>
+
+17
+00:01:06,031 --> 00:01:11,149
+<font color="#000000">namely how to efficiently discover which attention
+is right for a given long-range task</font>
+
+18
+00:01:11,229 --> 00:01:13,300
+<font color="#000000">without simply training all of them.</font>
+
+19
+00:01:13,680 --> 00:01:16,966
+<font color="#000000">There is a long-standing intuition that each
+attention head can specialize,</font>
+
+20
+00:01:17,046 --> 00:01:20,331
+<font color="#000000">learning a different kind of relationship,</font>
+
+21
+00:01:20,411 --> 00:01:23,697
+<font color="#000000">much as convolutional kernels learn different features.</font>
+
+22
+00:01:23,777 --> 00:01:27,062
+<font color="#000000">If that is true,</font>
+
+23
+00:01:27,142 --> 00:01:30,428
+<font color="#000000">then a Transformer mixing several attention types
+could learn a richer set of relationships</font>
+
+24
+00:01:30,508 --> 00:01:33,793
+<font color="#000000">and outperform any single-attention model.</font>
+
+25
+00:01:33,873 --> 00:01:37,159
+<font color="#000000">This paper takes that intuition seriously and asks
+directly whether the optimal attention</font>
+
+26
+00:01:37,239 --> 00:01:40,524
+<font color="#000000">for a task is actually a mixture of different attentions,</font>
+
+27
+00:01:40,604 --> 00:01:43,890
+<font color="#000000">rather than assuming the answer.</font>
+
+28
+00:01:44,270 --> 00:01:48,100
+<font color="#000000">The paper makes three contributions.</font>
+
+29
+00:01:48,180 --> 00:01:52,010
+<font color="#000000">First, it proposes DARTFormer,</font>
+
+30
+00:01:52,090 --> 00:01:55,920
+<font color="#000000">a differentiable-architecture-search-style method
+that efficiently finds the best attention for a task.</font>
+
+31
+00:01:56,000 --> 00:01:59,830
+<font color="#000000">Second,</font>
+
+32
+00:01:59,910 --> 00:02:03,740
+<font color="#000000">it extends that framework to build and search for
+heterogeneous Transformers that combine multiple attention types,</font>
+
+33
+00:02:03,820 --> 00:02:07,650
+<font color="#000000">using two procedures: an expensive iterative
+pruning method they call NAS Prune,</font>
+
+34
+00:02:07,730 --> 00:02:11,560
+<font color="#000000">and a cheap single-pass method called NAS One-shot.</font>
+
+35
+00:02:11,640 --> 00:02:15,470
+<font color="#000000">Third, and most importantly,</font>
+
+36
+00:02:15,550 --> 00:02:19,380
+<font color="#000000">it shows empirically that these heterogeneous
+Transformers cannot outperform the best</font>
+
+37
+00:02:19,460 --> 00:02:23,290
+<font color="#000000">homogeneous Transformer on the long-range NLP tasks
+studied.</font>
+
+38
+00:02:23,670 --> 00:02:29,012
+<font color="#000000">DARTFormer builds a single-layer supernetwork that
+holds one candidate block for every</font>
+
+39
+00:02:29,092 --> 00:02:31,344
+<font color="#000000">efficient attention type in parallel.</font>
+
+40
+00:02:31,424 --> 00:02:35,883
+<font color="#000000">Borrowing the fixed-alpha trick from differentiable
+architecture search,</font>
+
+41
+00:02:35,963 --> 00:02:40,360
+<font color="#000000">it does not learn softmax edge weights and skips
+bi-level optimization;</font>
+
+42
+00:02:40,440 --> 00:02:43,827
+<font color="#000000">instead it simply averages the candidate block outputs,</font>
+
+43
+00:02:43,907 --> 00:02:47,673
+<font color="#000000">which lets the supernetwork train all the way to
+convergence.</font>
+
+44
+00:02:47,753 --> 00:02:49,123
+<font color="#000000">To rank the attentions,</font>
+
+45
+00:02:49,203 --> 00:02:53,473
+<font color="#000000">it uses a masked validation accuracy drop metric:
+mask out one block,</font>
+
+46
+00:02:53,553 --> 00:02:56,120
+<font color="#000000">measure how far validation accuracy falls,</font>
+
+47
+00:02:56,200 --> 00:03:00,029
+<font color="#000000">and the block whose removal hurts the most is
+judged the best.</font>
+
+48
+00:03:00,109 --> 00:03:05,010
+<font color="#000000">For homogeneous models the top-scoring block is
+chosen; for heterogeneous ones,</font>
+
+49
+00:03:05,090 --> 00:03:08,414
+<font color="#000000">blocks are either pruned worst-first with fine-tuning,</font>
+
+50
+00:03:08,494 --> 00:03:12,890
+<font color="#000000">or the top four are taken directly and stacked into
+a full Transformer.</font>
+
+51
+00:03:13,270 --> 00:03:18,282
+<font color="#000000">All experiments run on three tasks drawn from the
+Long Range Arena benchmark,</font>
+
+52
+00:03:18,362 --> 00:03:20,927
+<font color="#000000">chosen to stress long-sequence modeling.</font>
+
+53
+00:03:21,007 --> 00:03:27,144
+<font color="#000000">These are byte-level binary text classification on
+IMDb with sequences of one thousand tokens,</font>
+
+54
+00:03:27,224 --> 00:03:31,442
+<font color="#000000">ListOps ten-way classification with
+two-thousand-token sequences,</font>
+
+55
+00:03:31,522 --> 00:03:35,939
+<font color="#000000">and byte-level document matching with
+four-thousand-token sequences.</font>
+
+56
+00:03:36,019 --> 00:03:40,965
+<font color="#000000">The search considers nine candidate attention
+mechanisms, including Bigbird,</font>
+
+57
+00:03:41,045 --> 00:03:46,256
+<font color="#000000">Linear Transformer, Linformer, Local attention,
+Longformer, Performer, Reformer,</font>
+
+58
+00:03:46,336 --> 00:03:48,636
+<font color="#000000">Sparse Transformer, and Synthesizer,</font>
+
+59
+00:03:48,716 --> 00:03:53,530
+<font color="#000000">with hyperparameters largely matching the original
+Long Range Arena setup.</font>
+
+60
+00:03:53,910 --> 00:03:55,990
+<font color="#000000">The headline finding splits in two.</font>
+
+61
+00:03:56,070 --> 00:03:57,286
+<font color="#000000">On the positive side,</font>
+
+62
+00:03:57,366 --> 00:04:02,533
+<font color="#000000">the masked-validation-drop search is genuinely
+effective at homogeneous selection: it</font>
+
+63
+00:04:02,613 --> 00:04:07,470
+<font color="#000000">correctly identifies the best attention for text
+classification and for ListOps,</font>
+
+64
+00:04:07,550 --> 00:04:14,568
+<font color="#000000">where Reformer stands out with a drop score of
+nearly twelve while every other attention scores below half a point.</font>
+
+65
+00:04:14,648 --> 00:04:15,864
+<font color="#000000">On the negative side,</font>
+
+66
+00:04:15,944 --> 00:04:21,172
+<font color="#000000">when the authors assemble heterogeneous
+Transformers that mix several attention types,</font>
+
+67
+00:04:21,252 --> 00:04:25,924
+<font color="#000000">none of them beats the best single-attention model
+on any of the three tasks.</font>
+
+68
+00:04:26,004 --> 00:04:30,430
+<font color="#000000">Mixing attention helps you beat the average choice,
+but not the best one.</font>
+
+69
+00:04:30,810 --> 00:04:36,152
+<font color="#000000">A useful practical takeaway comes from comparing
+the two heterogeneous search procedures.</font>
+
+70
+00:04:36,232 --> 00:04:38,040
+<font color="#000000">The expensive NAS Prune method,</font>
+
+71
+00:04:38,120 --> 00:04:41,451
+<font color="#000000">which repeatedly removes the worst block and fine-tunes,</font>
+
+72
+00:04:41,531 --> 00:04:46,751
+<font color="#000000">offers no consistent advantage over the far cheaper
+NAS One-shot method that just takes</font>
+
+73
+00:04:46,831 --> 00:04:49,431
+<font color="#000000">the top-scoring attentions in a single pass,</font>
+
+74
+00:04:49,511 --> 00:04:52,782
+<font color="#000000">at least when good attentions are correctly identified.</font>
+
+75
+00:04:52,862 --> 00:04:58,203
+<font color="#000000">Attempts to tilt the mixture toward the strongest
+attentions or give them more heads also</font>
+
+76
+00:04:58,283 --> 00:05:00,335
+<font color="#000000">failed to produce consistent gains,</font>
+
+77
+00:05:00,415 --> 00:05:03,320
+<font color="#000000">reinforcing that the cheap method is good enough.</font>
+
+78
+00:05:03,700 --> 00:05:06,356
+<font color="#000000">To put concrete numbers on it: on ListOps,</font>
+
+79
+00:05:06,436 --> 00:05:11,110
+<font color="#000000">Reformer earns a masked-validation-drop score of
+eleven point eight five,</font>
+
+80
+00:05:11,190 --> 00:05:15,083
+<font color="#000000">dwarfing every other attention's score of under
+half a point,</font>
+
+81
+00:05:15,163 --> 00:05:17,428
+<font color="#000000">a strikingly clean selection signal.</font>
+
+82
+00:05:17,508 --> 00:05:21,466
+<font color="#000000">On document matching, the best homogeneous model,
+Synthesizer,</font>
+
+83
+00:05:21,546 --> 00:05:23,941
+<font color="#000000">reaches seventy-one point one percent,</font>
+
+84
+00:05:24,021 --> 00:05:31,366
+<font color="#000000">while the heterogeneous NAS Prune and NAS One-shot
+models trail at sixty-seven and sixty-four point seven percent.</font>
+
+85
+00:05:31,446 --> 00:05:37,163
+<font color="#000000">On text classification the best homogeneous
+Performer hits sixty-four point five percent,</font>
+
+86
+00:05:37,243 --> 00:05:40,550
+<font color="#000000">and again neither heterogeneous variant edges ahead.</font>
+
+87
+00:05:40,630 --> 00:05:45,500
+<font color="#000000">Across nine attention mechanisms and three tasks,
+the pattern is consistent.</font>
+
+88
+00:05:45,880 --> 00:05:49,920
+<font color="#000000">For a given task it is often unclear which
+attention will do best,</font>
+
+89
+00:05:50,000 --> 00:05:51,792
+<font color="#000000">and DARTFormer offers a cheap,</font>
+
+90
+00:05:51,872 --> 00:05:57,472
+<font color="#000000">reliable recipe: train a single-layer
+mixed-attention Transformer and use masked validation</font>
+
+91
+00:05:57,552 --> 00:05:59,532
+<font color="#000000">accuracy drop to pick the winner,</font>
+
+92
+00:05:59,612 --> 00:06:05,150
+<font color="#000000">keeping in mind that very low drop scores are a
+warning that the choice may be unreliable.</font>
+
+93
+00:06:05,230 --> 00:06:08,396
+<font color="#000000">The deeper lesson is a cautionary one for the field.</font>
+
+94
+00:06:08,476 --> 00:06:13,077
+<font color="#000000">Combining diverse attention mechanisms does beat
+the average single choice,</font>
+
+95
+00:06:13,157 --> 00:06:15,699
+<font color="#000000">but it never beats the best single choice,</font>
+
+96
+00:06:15,779 --> 00:06:22,690
+<font color="#000000">which suggests the different attentions do not
+simply add complementary biases the way common intuition assumes.</font>

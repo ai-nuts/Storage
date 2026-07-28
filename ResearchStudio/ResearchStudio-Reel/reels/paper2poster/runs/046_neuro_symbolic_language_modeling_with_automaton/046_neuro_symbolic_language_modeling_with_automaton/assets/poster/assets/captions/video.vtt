@@ -1,0 +1,313 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:05.899
+Retrieval-based language models sharpen their
+predictions by pulling examples from a huge
+
+00:00:05.979 --> 00:00:07.869
+external datastore at test time,
+
+00:00:07.949 --> 00:00:12.732
+but that nearest-neighbor search is slow and runs
+at almost every single token.
+
+00:00:12.812 --> 00:00:16.610
+This paper introduces RetoMaton, short for
+retrieval automaton,
+
+00:00:16.690 --> 00:00:20.611
+which builds a weighted finite automaton on top of
+the datastore.
+
+00:00:20.691 --> 00:00:25.659
+By saving pointers between consecutive entries and
+clustering entries into states,
+
+00:00:25.739 --> 00:00:31.446
+RetoMaton lets the model follow cheap automaton
+transitions instead of searching from scratch.
+
+00:00:31.526 --> 00:00:37.478
+The result: up to eighty-three percent fewer
+nearest-neighbor searches with no loss in perplexity,
+
+00:00:37.558 --> 00:00:42.280
+or up to one point eight five lower perplexity when
+the search budget is kept.
+
+00:00:42.660 --> 00:00:48.323
+Retrieval-based language models improve on standard
+neural models by fetching nearest-neighbor
+
+00:00:48.403 --> 00:00:52.845
+examples from an external datastore and blending
+them into the prediction.
+
+00:00:52.925 --> 00:00:57.489
+The catch is cost: that datastore search can fire
+at every single time step,
+
+00:00:57.569 --> 00:01:00.849
+and it is far slower than the model's own forward pass.
+
+00:01:00.929 --> 00:01:06.104
+This frequent search is the single most critical
+bottleneck that keeps these otherwise
+
+00:01:06.184 --> 00:01:08.670
+powerful models out of practical settings.
+
+00:01:09.050 --> 00:01:13.073
+The key observation is that a flat datastore throws
+away structure.
+
+00:01:13.153 --> 00:01:15.277
+If a retrieved entry was useful now,
+
+00:01:15.357 --> 00:01:19.809
+the entry that follows it in the original text is
+very likely useful next.
+
+00:01:19.889 --> 00:01:24.585
+And entries whose key vectors are close tend to be
+followed by the same token.
+
+00:01:24.665 --> 00:01:29.545
+Existing approaches like Adaptive Retrieval simply
+learn when to skip the search,
+
+00:01:29.625 --> 00:01:36.220
+but when they skip they fall back entirely on the
+base language model and discard the retrieval distribution,
+
+00:01:36.300 --> 00:01:39.710
+which hurts most in domains where the base model is weak.
+
+00:01:40.090 --> 00:01:44.138
+RetoMaton makes two changes to the datastore.
+
+00:01:44.218 --> 00:01:48.265
+First,
+
+00:01:48.345 --> 00:01:52.392
+it saves a pointer from every entry to the entry
+that came right after it in the text.
+
+00:01:52.472 --> 00:01:56.520
+Second, it clusters entries with similar key
+vectors into states,
+
+00:01:56.600 --> 00:02:00.647
+and those states share their outgoing pointers.
+
+00:02:00.727 --> 00:02:04.775
+Together these turn the flat datastore into a
+weighted finite automaton.
+
+00:02:04.855 --> 00:02:08.903
+Building it is completely unsupervised, requires no
+extra training data,
+
+00:02:08.982 --> 00:02:13.030
+and works whether the automaton is constructed from
+the model's own training corpus or from a brand-new domain.
+
+00:02:13.410 --> 00:02:17.983
+RetoMaton stores each datastore entry as a triple
+of key, value, and pointer,
+
+00:02:18.063 --> 00:02:22.213
+where the pointer references the entry that
+followed it in the corpus.
+
+00:02:22.293 --> 00:02:25.234
+Entries with close keys are clustered into states,
+
+00:02:25.314 --> 00:02:28.436
+and a state inherits all the pointers of its members.
+
+00:02:28.516 --> 00:02:35.385
+At test time the model keeps a small set of active
+states and traverses the automaton alongside the language model.
+
+00:02:35.465 --> 00:02:41.186
+To move forward it just follows the pointers of
+entries whose value matches the generated token,
+
+00:02:41.266 --> 00:02:42.757
+which is essentially free.
+
+00:02:42.837 --> 00:02:48.316
+A full nearest-neighbor search is only triggered
+when the number of valid onward transitions
+
+00:02:48.396 --> 00:02:50.008
+drops below a threshold tau.
+
+00:02:50.088 --> 00:02:55.144
+The automaton's transition weights are computed
+dynamically from the distance between
+
+00:02:55.224 --> 00:02:58.468
+the current hidden state and the entries in each state,
+
+00:02:58.548 --> 00:03:03.060
+and the resulting distribution is interpolated with
+the base language model.
+
+00:03:03.440 --> 00:03:07.498
+The method is evaluated in two settings.
+
+00:03:07.578 --> 00:03:11.636
+For standard in-domain language modeling the
+authors use WikiText-103,
+
+00:03:11.716 --> 00:03:15.774
+a Wikipedia benchmark with one hundred and three
+million training tokens,
+
+00:03:15.854 --> 00:03:19.912
+and a two hundred forty seven million parameter
+Transformer as the base model,
+
+00:03:19.992 --> 00:03:24.050
+producing a datastore of one hundred and three
+million entries clustered into one million states.
+
+00:03:24.130 --> 00:03:28.188
+For domain adaptation they use the law-domain
+corpus Law-MT with nineteen million tokens
+
+00:03:28.268 --> 00:03:32.326
+and a larger six hundred fifty six million
+parameter base model,
+
+00:03:32.406 --> 00:03:36.464
+clustered into two hundred thousand states.
+
+00:03:36.544 --> 00:03:40.602
+Throughout,
+
+00:03:40.682 --> 00:03:44.740
+RetoMaton is compared against the original kNN-LM
+and against Adaptive Retrieval.
+
+00:03:45.120 --> 00:03:49.184
+The results are strong in both regimes.
+
+00:03:49.264 --> 00:03:53.327
+On WikiText-103,
+
+00:03:53.407 --> 00:03:57.471
+RetoMaton matches the perplexity of kNN-LM while
+skipping eighty-one percent of the searches,
+
+00:03:57.551 --> 00:04:01.615
+and even when it performs a search at every step it
+still lowers perplexity,
+
+00:04:01.695 --> 00:04:05.758
+because the carried-over pointers reinforce the
+correct neighbors.
+
+00:04:05.838 --> 00:04:09.902
+On the Law-MT domain-adaptation task the gains are
+larger and much more robust: perplexity
+
+00:04:09.982 --> 00:04:14.045
+drops from twelve point three four to ten point four nine,
+
+00:04:14.125 --> 00:04:18.189
+and as more searches are saved RetoMaton's
+perplexity climbs only very gently while plain
+
+00:04:18.269 --> 00:04:22.333
+kNN-LM's perplexity blows up exponentially.
+
+00:04:22.413 --> 00:04:26.476
+Overall the automaton either cuts perplexity by up
+to one point eight five,
+
+00:04:26.556 --> 00:04:30.620
+or saves up to eighty-three percent of the searches
+with no loss.
+
+00:04:31.000 --> 00:04:33.743
+An ablation teases apart the two ingredients.
+
+00:04:33.823 --> 00:04:36.754
+Using pointers alone, with no clustering at all,
+
+00:04:36.834 --> 00:04:42.838
+already beats every baseline and matches kNN-LM
+while saving more than sixty percent of searches,
+
+00:04:42.918 --> 00:04:47.354
+so the pointers deliver most of the benefit when
+few searches are saved.
+
+00:04:47.434 --> 00:04:50.553
+Clustering contributes mainly at high saving rates,
+
+00:04:50.633 --> 00:04:52.686
+from about seventy percent onward,
+
+00:04:52.766 --> 00:04:57.139
+where it lets the model stay search-free over
+longer stretches of text.
+
+00:04:57.219 --> 00:05:01.718
+On cluster count, half a million and one million
+means perform similarly,
+
+00:05:01.798 --> 00:05:04.290
+while one hundred thousand is too coarse,
+
+00:05:04.370 --> 00:05:10.500
+and a cheaper greedy clustering wins at zero saved
+searches but fades as the saving fraction grows.
+
+00:05:10.880 --> 00:05:13.618
+The headline numbers are simple to remember.
+
+00:05:13.698 --> 00:05:19.957
+RetoMaton saves up to eighty-three percent of
+nearest-neighbor searches with no loss in perplexity,
+
+00:05:20.037 --> 00:05:26.425
+or alternatively lowers perplexity by as much as
+one point eight five when the search budget is kept.
+
+00:05:26.505 --> 00:05:31.548
+On WikiText-103 it matches kNN-LM while skipping
+eighty-one percent of searches.
+
+00:05:31.628 --> 00:05:38.720
+And on a fine-tuned law-domain model it pushes
+perplexity from eight point six one down to seven point one zero,
+
+00:05:38.800 --> 00:05:42.050
+a relative reduction of more than seventeen percent.
+
+00:05:42.430 --> 00:05:47.254
+The lasting idea is that a retrieval datastore has
+structure worth exploiting.
+
+00:05:47.334 --> 00:05:53.100
+By linking consecutive entries with pointers and
+grouping similar ones into automaton states,
+
+00:05:53.180 --> 00:06:00.204
+RetoMaton lets a language model carry retrieval
+forward in time instead of searching from scratch at every token.
+
+00:06:00.284 --> 00:06:04.730
+It is unsupervised, works with any base model,
+transfers across domains,
+
+00:06:04.810 --> 00:06:07.811
+and unifies token, chunk, and sequence retrieval,
+
+00:06:07.891 --> 00:06:12.400
+all while cutting the dominant cost of
+retrieval-based language modeling.

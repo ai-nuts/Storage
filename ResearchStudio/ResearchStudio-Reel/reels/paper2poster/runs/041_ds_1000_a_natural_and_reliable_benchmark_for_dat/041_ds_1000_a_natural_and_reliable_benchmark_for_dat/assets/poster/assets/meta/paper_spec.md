@@ -1,0 +1,58 @@
+---
+title: DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+authors: Yuhang Lai¹, Chengxi Li¹, Yiming Wang¹², Tianyi Zhang³, Ruiqi Zhong⁴, Luke Zettlemoyer⁵⁶, Scott Wen-tau Yih⁶, Daniel Fried⁷, Sida Wang⁶, Tao Yu¹⁵
+institutes: ¹The University of Hong Kong; ²Peking University; ³Stanford University; ⁴UC Berkeley; ⁵University of Washington; ⁶Meta AI; ⁷Carnegie Mellon University
+venue: ICML 2023
+paper_url: https://arxiv.org/abs/2211.11501
+code_url: https://ds1000-code-gen.github.io/
+title_audio_script: We present DS-1000, a natural and reliable benchmark for data science code generation. DS-1000 gathers a thousand real problems across seven widely used Python libraries such as NumPy and Pandas, all drawn from StackOverflow. It pairs these realistic problems with reliable execution-based evaluation and a built-in defense against memorization, giving the community a trustworthy yardstick for data science coding models.
+---
+
+## Problem
+**Necessary:** Existing code benchmarks target competition or interview-style puzzles, lack naturalistic data science intent and context, and often rely on unreliable surface-form metrics like BLEU.
+**Additional:** No prior benchmark combines naturally occurring, diverse-context problems with reliable execution-based evaluation for everyday data science coding.
+**Audio script:** Data science coding is central to many fields, yet it demands fluency in specialized libraries that create real barriers for everyday users. Code generation models could lower those barriers, but the community lacked a benchmark to measure real progress. Most existing datasets focus on competitive or interview-style problems that test algorithms rather than real-world usage, and many score answers with surface-form metrics like BLEU that drift away from what programmers actually intend. There was no benchmark combining natural, richly contextual problems with a reliable, execution-based way to judge correctness.
+
+## Motivation
+**Necessary:** Real user problems, such as those on StackOverflow, carry diverse contexts including buggy code, error messages, and input-output examples that prior benchmarks omit, and reliable metrics are needed as models grow stronger.
+**Additional:** Surface-form metrics increasingly diverge from programmer intent as model capability improves, so execution-based evaluation becomes essential.
+**Audio script:** Real data science questions rarely look like clean textbook prompts. On StackOverflow, users describe messy contexts: their broken code, the error they hit, and concrete input-output examples of what they want. Prior benchmarks strip that richness away. At the same time, as models get better, surface-form scores like BLEU become misleading, rewarding text that looks right but does not run. This motivates a benchmark built from natural problems and judged by actually executing the code.
+
+## Contribution
+**Necessary:** DS-1000 introduces a thousand realistic data science problems over seven libraries with reliable multi-criteria execution-based evaluation and a proactive perturbation strategy that defends against memorization.
+**Additional:** The authors also benchmark five pre-trained code models across three families, quantify evaluation reliability, and release the benchmark publicly.
+**Audio script:** DS-1000 makes three contributions. First, it provides a thousand realistic problems with diverse contexts, adapted from naturally occurring StackOverflow questions across seven popular Python libraries. Second, it implements reliable multi-criteria evaluation that runs test cases and checks surface-form constraints, so accepted solutions are almost always genuinely correct. Third, it proactively defends against memorization by perturbing problems so models cannot simply recall pre-training answers. The authors release the benchmark and use it to evaluate five state-of-the-art code models.
+
+## Method
+**Necessary:** A five-stage pipeline builds each problem: manually select and modify high-quality StackOverflow posts, add code context with insertion markers, implement automatic tests, perturb the original problem to prevent memorization, and red-team the evaluation. Correctness combines execution test cases with surface-form (API/keyword) constraints.
+**Additional:** Problems use an official insertion (infilling) prompt format with left and right context; surface perturbations keep the reference solution unchanged while semantic perturbations change it, plus difficult rewrites raise the bar.
+**Audio script:** DS-1000 is built through a five-stage pipeline. Annotators first select high-vote, testable, useful, and representative StackOverflow problems and rewrite them for clarity. They add a code context with insertion markers showing exactly where the model must fill in code. They then implement automatic tests that check functional correctness by executing test cases and also enforce surface-form constraints, such as forbidding certain APIs or keywords in the syntax tree. To defend against memorization, they perturb each original problem, using surface perturbations that leave the reference solution unchanged and semantic perturbations that change it, plus deliberately difficult rewrites. Finally they red-team the evaluation, requiring it to reject known-wrong solutions. Every problem, solution, and metric is reviewed by at least three expert annotators.
+
+## Dataset / Benchmark
+**Necessary:** DS-1000 has 1000 problems from 451 unique StackOverflow posts spanning seven libraries (NumPy, Pandas, TensorFlow, PyTorch, SciPy, Scikit-learn, Matplotlib), including 152 surface perturbations, 235 semantic perturbations, and 162 difficult rewrites.
+**Additional:** Each problem averages 1.6 test cases, 140 words, and a 3.6-line reference solution; 19.4% carry surface-form constraints. Its 140 average words far exceed data science datasets like DSP (71.9) and CoNaLa (13.8).
+**Audio script:** DS-1000 contains a thousand problems originating from four hundred fifty-one unique StackOverflow posts, spanning seven widely used Python libraries: NumPy, Pandas, TensorFlow, PyTorch, SciPy, Scikit-learn, and Matplotlib. More than half of the problems are modified from their sources to resist memorization, including one hundred fifty-two surface perturbations, two hundred thirty-five semantic perturbations, and one hundred sixty-two difficult rewrites. On average each problem has one point six test cases, one hundred forty words, and a reference solution of three point six lines, and about one in five carry surface-form constraints. With a hundred forty average words per problem, DS-1000 is far richer in context than other data science datasets.
+
+## Key Result
+**Necessary:** The best model, Codex-002 in Insertion format, reaches only 43.3% average accuracy, and models span 7.4% to 43.3%, showing the benchmark separates capabilities and leaves ample room for improvement.
+**Additional:** Insertion (infilling) format gives Codex-002 a 4.1% average accuracy gain over Completion format; smaller models like InCoder-6B and CodeGen-6B score under 5% on some libraries.
+**Audio script:** DS-1000 clearly separates models of different strength. The best public system, Codex-002 in the insertion format, reaches only forty-three point three percent average accuracy, nontrivial but far from solved, leaving substantial room for improvement. Across five models from three families, accuracy ranges from seven point four percent up to forty-three point three percent. Insertion format, which supplies right-hand context, gives Codex-002 a four point one percent boost over completion format, underscoring the value of infilling for data science coding. Weaker models such as CodeGen-6B and InCoder-6B fall below five percent on some libraries.
+
+## Ablation Study
+**Necessary:** On the numpy-100 probe, Codex-002 accuracy drops from 72.5% to 40.6% after perturbation (50.8% surface, 23.6% semantic), and in 36% of semantic cases the model still emits the original answer, exposing memorization on web-sourced problems.
+**Additional:** On DS-1000 itself the perturbation drop is milder (3.4% surface, 9.0% semantic), indicating less memorization because these problems are less repeated online than numpy-100.
+**Audio script:** To show why memorization matters, the authors probe the popular numpy-100 problem set. Codex-002 scores seventy-two point five percent there, but accuracy collapses to forty point six percent after perturbation, and in thirty-six percent of semantic cases the model still returns the original, now-incorrect answer, evidence that it is recalling memorized solutions rather than reasoning. On DS-1000 the perturbation drop is much gentler, about three to nine percent, because these problems appear less often online. This confirms perturbation as a practical defense against memorization by future models.
+
+## Headline Numbers
+**Necessary:**
+- 1000 problems across 7 Python data science libraries, from 451 unique StackOverflow posts
+- 43.3% best accuracy (Codex-002, Insertion) — far-from-perfect, ample room for improvement
+- 1.8% sample-level false discovery rate — only 1.8% of accepted solutions are actually wrong
+- 140 average words per problem vs 71.9 (DSP) and 13.8 (CoNaLa)
+**Additional:** 0.5% false omission rate; 5.7% problem-level false positive percentage (vs 60% reported on APPS); 19.4% of problems carry surface-form constraints.
+**Audio script:** A few numbers capture DS-1000. It offers a thousand problems over seven libraries, drawn from four hundred fifty-one unique StackOverflow posts. The best model reaches only forty-three point three percent accuracy. The evaluation is highly reliable: among all solutions it accepts, just one point eight percent are actually incorrect, and only about half a percent of rejected ones are truly correct. And with a hundred forty words per problem on average, its contexts are far richer than comparable datasets.
+
+## Takeaway
+**Necessary:** DS-1000 is a realistic, reliably-evaluated, memorization-resistant benchmark on which even the best code model reaches only 43.3%, exposing a large gap in data science code generation.
+**Additional:** Its execution-based multi-criteria metric and perturbation strategy make it a trustworthy, hard-to-game standard for future models.
+**Audio script:** DS-1000 gives the community a data science code benchmark that is realistic, reliably evaluated, and resistant to memorization. Because it is built from natural StackOverflow problems, judged by executing code against test cases and surface-form constraints, and defended by deliberate perturbation, its scores are trustworthy and hard to game. And because even the strongest model reaches only forty-three point three percent, it makes clear how much room remains for progress in data science code generation.

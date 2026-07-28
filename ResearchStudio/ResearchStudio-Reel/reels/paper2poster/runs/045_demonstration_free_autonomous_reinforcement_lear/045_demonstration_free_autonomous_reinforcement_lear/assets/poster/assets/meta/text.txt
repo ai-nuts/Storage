@@ -1,0 +1,869 @@
+              Demonstration-free Autonomous Reinforcement Learning via
+                        Implicit and Bidirectional Curriculum
+
+
+                                      Jigang Kim * 1 2 Daesol Cho * 1 2 H. Jin Kim 1 3
+
+
+                         Abstract                                      uninterrupted interaction. The challenge of applying RL
+     While reinforcement learning (RL) has achieved                    in the real world often arises in robotics where the prac-
+     great success in acquiring complex skills solely                  titioner has to bridge the gap between the tools available
+     from environmental interactions, it assumes that                  (episodic RL) and the non-episodic nature of real-world
+     resets to the initial state are readily available                 learning. In most cases, a multitude of time-consuming and
+     at the end of each episode. Such an assump-                       costly external interventions such as human supervision,
+     tion hinders the autonomous learning of embod-                    task-specific scripted policies, and custom experimental se-
+     ied agents due to the time-consuming and cum-                     tups are deployed to reset the environment after each trial
+     bersome workarounds for resetting in the physi-                   (Kumar et al., 2016; Ha et al., 2020; Nagabandi et al., 2020).
+     cal world. Hence, there has been a growing in-                    These challenges should be addressed from the algorithmic
+     terest in autonomous RL (ARL) methods that                        level by developing RL agents that can learn autonomously
+     are capable of learning from non-episodic in-                     with minimal interventions.
+     teractions. However, existing works on ARL                        Previous works on RL agents in the real world primarily
+     are limited by their reliance on prior data and                   involve a mechanism to handle resets and may leverage
+     are unable to learn in environments where task-                   prior data along with additional consideration for reward
+     relevant interactions are sparse. In contrast, we                 assignment. Reset mechanisms that prevent interventions by
+     propose a demonstration-free ARL algorithm via                    requesting a reset when necessary (Eysenbach et al., 2017;
+     Implicit and Bi-directional Curriculum (IBC).                     Kim et al., 2022) are only viable if manual resets are readily
+     With an auxiliary agent that is conditionally acti-               available. Under the non-episodic autonomous RL (ARL)
+     vated upon learning progress and a bidirectional                  framework (Sharma et al., 2021b), however, manual resets
+     goal curriculum based on optimal transport, our                   are not available on-demand and the agent must learn from
+     method outperforms previous methods, even the                     continual interactions with no interventions. To overcome
+     ones that leverage demonstrations.                                the challenge of the non-episodic setting, many previous
+                                                                       methods rely on some form of prior data with varying de-
+                                                                       grees of privilege, ranging from the expert or sub-optimal
+1. Introduction                                                        trajectories (Sharma et al., 2022; Chen et al., 2022) to exam-
+Reinforcement learning (RL) has enabled interactive agents             ples of states of interest (Zhu et al., 2020). However, a truly
+to learn complex skills in various domains with little to no           autonomous agent should be able to learn from scratch with-
+prior knowledge (Andrychowicz et al., 2020; Baker et al.,              out external interventions and prior data. To that end, we
+2019; Vinyals et al., 2019; Degrave et al., 2022). How-                propose an ARL algorithm that can train a goal-conditioned
+ever, existing algorithms assume an episodic setting where             RL policy without demonstrations under the non-episodic,
+each trial begins from a state sampled from some fixed ini-            sparse reward setting.
+tial state distribution, and they are not designed to learn            It has been well established that existing RL algorithms
+autonomously in the real world which involves continual,               do not perform well in the non-episodic setting (Co-Reyes
+  *
+    Equal contribution , order decided by a coin toss. 1 Seoul         et al., 2020) since the agent is unable to repeatedly practice
+National University 2 Artificial Intelligence Institute of Seoul       for the evaluation task. A common framework for extending
+National University (AIIS) 3 Automation and Systems Re-                conventional RL to the non-episodic setting is to alternate
+search Institute (ASRI). Correspondence to: Jigang Kim                 between multiple objectives within one continual interac-
+<jgkim2020@snu.ac.kr>, Daesol Cho <dscho1234@snu.ac.kr>,               tion, effectively dividing it into multiple episodes. Typi-
+H. Jin Kim <hjinkim@snu.ac.kr>.
+                                                                       cally, the forward episode attempts the original objective
+Proceedings of the 40 th International Conference on Machine           and the backward episode follows an auxiliary objective
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright             that provides an anchor for the forward episode with a good
+2023 by the author(s).
+
+                                                                   1
+              Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+                                                                         curriculum goals.
+                                                                         The main contribution of our work is in proposing a
+                                                                         demonstration-free ARL algorithm via Implicit and Bi-
+                                                                         directional Curriculum (IBC). Evaluations in established
+                                                                         ARL benchmarks and in RL environments modified for
+                                                                         the ARL setting show that our method outperforms ex-
+                                                                         isting methods. Further analyses and ablation studies re-
+                                                                         veal that the proposed implicit curriculum (auxiliary agent)
+                                                                         and explicit curriculum (bidirectional goal curriculum) are
+                                                                         well-formed and necessary to successfully learn in the
+                                                                         demonstration-free, non-episodic setting. To summarize,
+                                                                         the key takeaways from our work are as follows:
+
+                                                                            • To the best of our knowledge, IBC is the first algorithm
+                                                                              for non-episodic RL that can consistently learn with-
+                                                                              out manual resets and demonstrations by leveraging
+Figure 1. IBC proposes a bidirectional curriculum for both forward            curriculum learning.
+and backward episodes. The auxiliary agent is no longer activated
+                                                                            • We propose a conditionally activated auxiliary agent
+after the agent of interest becomes capable.
+                                                                              and a bidirectional goal curriculum based on optimal
+                                                                              transport to guide the agent of interest.
+initialization. An obvious choice for the auxiliary objective               • In various environments, IBC achieves state-of-the-art
+is to return to the initial state distribution (Eysenbach et al.,             performance against previous methods, including even
+2017). However, this is not always the optimal choice as it                   the ones that leverage prior data.
+wastes valuable transitions on returning all the way back to
+the initial state. Instead, it can be set to match other distribu-       2. Related Works
+tions such as the states observed in expert demonstrations,
+(Sharma et al., 2022) or maximize the state diversity (Zhu               Autonomy in RL has gained much interest as RL is in-
+et al., 2020) for better sample efficiency or robustness.                creasingly applied to various real-world robotics applica-
+                                                                         tions. Many practical applications adopted task-specific
+We consider a conditionally activated auxiliary agent that
+                                                                         workarounds to implement resets in the real world with
+returns to the initial state based on our observation that pro-
+                                                                         varying levels of automation – from human supervision and
+viding a strong anchor is crucial, especially if the task of
+                                                                         custom experiment setups (Yahya et al., 2017; Zeng et al.,
+interest involves an interaction that is sparse and unlikely
+                                                                         2020) to scripted actions and pre-trained networks (Sharma
+to occur by chance in the non-episodic setting. Under the
+                                                                         et al., 2020; Thananjeyan et al., 2021). Since then, several
+proposed method, the agent of interest is initially dependent
+                                                                         algorithms for reset-free RL have been proposed, drawing
+on the auxiliary agent but becomes less reliant on it as train-
+                                                                         inspiration from various topics in RL such as multi-task
+ing progresses in an implicit curriculum. When the agent
+                                                                         RL (Gupta et al., 2021; Walke et al., 2021), multi-stage RL
+of interest becomes capable, forward episodes can be rolled
+                                                                         (Smith et al., 2020; Xu et al., 2022), curriculum learning
+out consecutively without the auxiliary agent intervening
+                                                                         (Sharma et al., 2021a), and unsupervised skill discovery
+and more transitions are devoted to training the agent of
+                                                                         (Xu et al., 2020). Recently, the autonomous RL (ARL)
+interest leading to better sample efficiency. While the auxil-
+                                                                         framework formally defined the non-episodic RL setting.
+iary agent initially provides a strong foundation, additional
+                                                                         Several works have sought to address some variation of
+guidance is needed to successfully train the agent of interest.
+                                                                         the ARL problem such as leveraging prior data or human
+Since the agent of interest is goal-conditioned and must
+                                                                         preference to enable single-life and lifelong learning (Chen
+learn without prior data, we generate curriculum goals that
+                                                                         et al., 2022; Lu et al., 2020) or to handle irreversibility in the
+do not rely on demonstrations or predetermined curriculum.
+                                                                         environment (Xie et al., 2022). However, we notice a lack
+Specifically, we propose a bidirectional goal curriculum
+                                                                         of truly autonomous agents in existing methods and propose
+scheme to simultaneously select appropriate goals for the
+                                                                         an ARL algorithm for demonstration-free, non-episodic RL
+forward (agent of interest) and backward (auxiliary agent)
+                                                                         in ergodic environments.
+episodes. To do so, we employ a curriculum based on the
+optimal transport between the desired goals and the can-                 A common framework for replacing manual resets is to al-
+didate states sampled from past trajectories in the replay               ternate between forward and backward episodes (Han et al.,
+buffer to jointly optimize over the forward and backward                 2015). Not all such methods are capable of non-episodic RL
+
+                                                                     2
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+as some of them are not entirely reset-free and instead focus          of the optimal evaluation policy πt (·|s).
+on reducing manual resets through backward episodes (Ey-
+                                                                       Typical implementations of RL algorithms (episodic) in-
+senbach et al., 2017; Kim et al., 2022). Reset-free methods
+                                                                       volve thousands or millions of sampling s0 ∼ ρ0 (s), which
+that learn a separate policy to reset to diverse initial states
+                                                                       require manual resets at the end of every episode. However,
+(Zhu et al., 2020; Xu et al., 2020) are only viable in environ-
+                                                                       under the ARL framework (non-episodic), the initial state
+ments where task-relevant interactions are likely to occur
+                                                                       s0 ∼ ρ0 (s) is sampled only once at the beginning and the
+by chance and either require prior data such as states of
+                                                                       agent interacts with the environment through the actions at
+interest or are geared towards acquiring behavior primitives
+                                                                       determined by the algorithm A until t →− ∞.
+for downstream tasks. MEDAL (Sharma et al., 2022) and
+VaPRL (Sharma et al., 2021a) are directly comparable to our            ARL defines the Deployed Policy Evaluation metric, which
+method, but MEDAL returns to the state distribution of the             measures how fast the policy πt improves in terms of the
+optimal policy instead of the initial state which requires ex-         evaluation performance for a given task:
+pert demonstrations. While VaPRL can technically operate                                    X∞ h                    i
+without demonstrations, we have found that removing them                             D(A) =       J (π ∗ ) − J (πt )         (1)
+results in significant performance degradation in practice.                                      t=0
+This is likely due to the subgoal curricula scheme proposed                                     P∞
+                                                                       where J(π) = Eρ0 ,π,P [ t=0 γ t r (st , at )], and π ∗ is the
+in VaPRL which relies on demonstrations both for gathering
+                                                                       optimal policy. The goal of algorithm A is to minimize
+good goal candidates and in calculating the cost for the goal
+                                                                       D(A) by learning as fast as possible.
+selection process.
+Curriculum learning has been deployed in RL to improve                 3.2. Surrogate Objective for Curriculum-based RL
+sample efficiency, encourage exploration, and solve complex
+multi-stage tasks (Narvekar et al., 2020). Such strengths are          We replace the original RL objective with a surrogate ob-
+also desirable in the non-episodic setting. Curriculum in              jective to be utilized for curriculum generation in Section 4
+episodic RL often involves distribution matching to some               and describe it in detail. Let T be the joint distribution of
+desired task distribution (Ren et al., 2019; Klink et al., 2022;       some initial state s0 and goal g. Then, the original objective
+Huang et al., 2022; Cho et al., 2023) and task difficulty (Flo-        maxπ J(π) can be represented as,
+rensa et al., 2018; Sukhbaatar et al., 2017; Portelas et al.,                      max V π (T ) :=        E        [V π (s0 , g)]      (2)
+                                                                                     π                 (s0 ,g)∼T
+2020; Jiang et al., 2021). However, these methods are not
+designed for the non-episodic setting. To address this, we             where V π (s0 , g) is the goal-conditioned value function.
+propose an auxiliary agent and bidirectional goal curricu-
+lum to incorporate both task difficulty and task distribution          Our approach relies on the following generalizability con-
+matching. The auxiliary agent gradually fades away in an               dition (Florensa et al., 2018; Luo et al., 2018; Asadi et al.,
+implicit curriculum conditioned on the learning progress               2018; Ren et al., 2019) that is characterized by the Lipschitz
+(success rate) of the agent of interest. To apply goal cur-            continuity-based assumption:
+riculum in the non-episodic setting, we generate curriculum                        |V π (T ′ ) − V π (T )| ≤ L · D (T , T ′ )          (3)
+goals not only for the task goal (forward episode) but also
+for the initial state (backward episode) based on the Wasser-          where L is the Lipschitz constant and D(T , T ′ ) =
+stein distance metric.                                                 inf µ∈Γ(T ,T ′ ) (Eµ [d((s0 , g), (s′0 , g ′ ))]) is the Wasserstein
+                                                                       distance based on the distance metric d(·, ·). Γ (T , T ′ ) de-
+                                                                       notes the set of all possible transport plans µ.
+3. Preliminary
+                                                                       Under Eq (3), optimizing Eq (2) can be relaxed into the
+3.1. Autonomous Reinforcement Learning                                 following lower-bound maximization,
+                                                                                        h                          i
+We assume an ergodic environment for the demonstration-                             max V π (T ) − L · D (T , T ∗ )         (4)
+free, non-episodic setting, similar to many previous works                               T ,π
+on autonomous RL (ARL). We consider the Markov de-                     where (s∗0 , g ∗ ) ∼ T ∗ is the joint distribution of the target
+cision process (MDP) M = (S, G, A, P, r, γ, ρ0 ), where                initial state s∗0 and target goal state g ∗ . Intuitively, it maxi-
+S denotes the state space, G the goal space, A the ac-                 mizes the policy performance and closeness to T , which  ∗
+tion space, P(s′ |s, a) the transition dynamics, γ the dis-            results in a task curriculum with increasing difficulty.
+count factor, and ρ0 the initial state distribution of the
+evaluation setting. The learning algorithm A is defined
+                             t
+as A : {sj , aj , rj , sj+1 }j=0 7→ {at , πt (·|s)}, which maps        4. Method
+the collected data until time t to an action at to be applied          For a truly autonomous RL without external interventions
+during the non-episodic training and its current best guess            and human supervision, we introduce 1) a conditionally
+
+                                                                   3
+              Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+
+
+
+                                                                          Figure 3. Visualization of ρf0 (s) at various timesteps. As training
+                                                                          progresses, the initial state distribution of the forward agent ρf0 (s)
+                                                                          gradually shifts from ρ0 (s) to ρtar (s).
+
+
+                                                                          In practice, it suffices for ρtar (s), which is only used for
+                                                                          bidirectional curriculum and not for RL, to contain a min-
+                                                                          imal number of key points that roughly outline the task to
+                                                                          be adequate for the goal curriculum generation. This is be-
+                                                                          cause the curriculum goals effectively “fill in the blanks” by
+       Figure 2. Overview of the proposed method, IBC.                    proposing past states from the replay buffer that are close
+                                                                          to ρtar (s). Typically, specifying ρtar (s) requires only a
+                                                                          handful of samples (∼ 10) from ρ0 (s) and geval combined
+activated auxiliary agent (πa ) that aids the forward agent               to approximate ρ∗ (s). For some tasks, it suffices to specify
+(πf ) and 2) a bidirectional curriculum generation process for            ρtar (s) with a single example from ρ0 (s) and geval each.
+both forward and auxiliary agents that enables non-episodic               Unlike previous ARL methods, we do not require demon-
+RL without demonstrations via calibrated guidance.                        strations with thousands of transitions or access to the expert
+                                                                          policy.
+4.1. Non-Episodic RL with an Auxiliary Agent
+                                                                          Until now, we have considered the setting where πf has
+During non-episodic training, we alternate between the two                converged and is fully capable. However, most of the roll-
+agents such that the auxiliary agent guides the forward agent             outs by πf before convergence will lead the agent to an
+only when necessary. Specifically, we conditionally activate              arbitrary state rather than sg∗ , leading to highly-varying
+the auxiliary agent when the forward agent has failed at                  initial states for the next rollout which results in unstable
+the given goal state such that the auxiliary agent gradually              learning. For this reason, we need an auxiliary agent that
+disappears as the forward agent improves which results in                 provides an anchor and guides the forward agent. More
+better sample efficiency. Let us consider the hypothetical                precisely, the auxiliary agent tries to bring the forward agent
+setting where the forward agent is fully capable and the                  back to the set of target initial states s∗0 ∼ ρ0,tar (s). Even
+auxiliary agent does not intervene at all. Under this setting,            though ρ0,tar (s) can be an arbitrary set of states that are
+the forward agent repeatedly attempts its target goal states              useful for the repeated practice of the forward agent, we
+sg∗ ∼ ρtar (s) without resets. Thus, the agent is no longer               set ρ0,tar (s) to include the environmental initial state dis-
+restricted by ρ0 (s) unlike in episodic settings and we can               tribution ρ0 (s). This is because providing a strong anchor
+consider a better initial state distribution by appropriately             is crucial in practice and the evaluation will be performed
+designing ρtar (s).                                                       from ρ0 (s).
+Interestingly, a previous work (Kakade & Langford, 2002)                  While the proposed auxiliary agent resembles the standard
+provides theoretical grounds that ρ0 (s) close to ρ∗ (s) en-              backward agent from previous literature, there are two key
+ables efficient training in RL, where ρ∗ (s) denotes the state            differences. First, the auxiliary agent is activated only when
+marginal distribution of the optimal policy π ∗ . If we set               the forward agent fails at the given curriculum goal such
+ρtar (s) to be a subset of ρ∗ (s) from the optimal policy that            that the initial state for the forward agent ρf0 (s) gradually
+achieves the evaluation goal geval , we can approximately                 evolves from ρ0 (s) to ρ0,tar (s) in an implicit curriculum
+satisfy this ideal initial state distribution. Note that the target       as πf improves (Figure 3). This is by design such that
+goal sg∗ achieved by the forward agent policy πf from the                 the forward agent approximately satisfies the theoretically-
+previous rollout becomes the initial state for the next rollout.          grounded ideal initial state condition at convergence. Sec-
+                                                                          ond, the auxiliary agent does not directly return to ρ0,tar (s)
+
+                                                                      4
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+which encompasses ρ0 (s), but to the intermediate goal for              where ϕ(·) is a mapping function that abstracts the state
+s∗0 obtained from the bidirectional goal curriculum. Thus,              space into the goal space. To solve Eq (5), we iteratively
+the goals proposed to the auxiliary agent are more diverse              update T and policies πf , πa until πf achieves a desirable
+than the typical backward agent.                                        evaluation performance. The policy optimization is simply
+                                                                        achieved by applying off-the-shelf RL algorithms such as
+Algorithm 1 IBC                                                         SAC (Haarnoja et al., 2018). The optimization of T is
+                                                                        defined by the Wasserstein Barycenter problem augmented
+ 1: Input: Tb , Tb ∗ , Bf , πf , Qπf , Ba , πa , Qπa
+                                                                        with a value bias term.
+ 2: s ∼ ρ0 (s) by env.reset(), set O to {f }
+    O denotes agent selection ({f }:forward, {a}:auxiliary)             Inspired by Ren et al. (2019), we enforce T and T ∗ to be
+ 3: while not done do                                                   a set of K particles (|Tb | = |Tb ∗ | = K) where (s0 , g)i ∼ Tb ,
+ 4:   get curriculum goal gO ∼ Tb                                       and (s∗0 , ϕ(sg∗ ))i ∼ Tb ∗ , rather than parameterizing their
+ 5:   while until (reach gO or max episode steps) do                    distribution. Then, to address the Wasserstein Barycenter
+ 6:      a ← πO (·|s, gO )                                              problem (Eq (5)) in the combinatorial setting, we assign
+ 7:      s′ ← P(s′ |s, a), r ← r(s, a, gO )                             candidates for Tb to Tb ∗ via the following bipartite matching
+ 8:      BO ← BO ∪ (s, gO , a, r, s′ )                                  problem:
+ 9:      update πO , QπO
+10:      s ← s′                                                                                         X         
+                                                                                                                               i
+                                                                                                                                      
+11:   end while                                                                        min
+                                                                                        i
+                                                                                                                 w (s∗0 , sg∗ ) , τ i     (6)
+                                                                                  τ i ={st ,∀t}∈B            i
+12:   for once every N iteration do                                                                 (
+                                                                                                    s∗
+                                                                                                     0 ,sg ∗)
+13:      update Tb according to Eq (4) by solving Eq (6)                where w(·, ·) becomes
+14:   end for
+15:   if O was {a} then set O to {f }
+16:   else if πf succeeded then keep O as {f }                                              
+                                                                         w (s∗0 , sg∗ ) , τ i := c ϕa (s∗,i
+                                                                                       i                           i
+17:   else set O to {a}                                                                                 0 ) − ϕa (s0 )
+                                                                                                                       2
+18: end while                                                                    
+                                                                                                            1
+                                                                                                                           
+                                                                                           i        i          πf i      i
+                                                                         + min ϕf (sg∗ ) − ϕf (st ) 2 − V (s0 , ϕf (st )) ,
+                                                                            t                               L
+                                                                                                                            (7)
+4.2. Bidirectional Curriculum Generation
+While our non-episodic training process involving an aux-                when we define the distance metric d((s, g), (s′ , g ′ )) from
+iliary agent, ρ0,tar (s), and ρtar (s) approximately satisfies          Eq (3) as c ∥ϕa (s) − ϕa (s′ )∥2 + ∥g − g ′ ∥2 (c is a hyperpa-
+the ideal initial state condition, it might not be sufficient           rameter). With the costs w defined according to Eq (7), we
+for autonomous training in environments where target states             can construct a bipartite graph G({Va , Vb }, E). Let Va
+are difficult to be achieved from scratch. Thus, we need to             be the set of nodes representing candidates for Tb and Vb
+find intermediate goals that can guide the learning of the              be the set of nodes for Tb ∗ . The weights of the edges are
+agent. To find such goals without relying on demonstrations,            defined as E(va , vb ) = −w(va , vb ), where va ∈ Va and
+the candidates must be obtained from past trajectories with             vb ∈ V b .
+highly varying initial states due to non-episodic training. We          To solve the bipartite matching problem, the Minimum Cost
+propose a bidirectional goal curriculum based on the surro-             Maximum Flow algorithm is utilized to find K edges with
+gate problem (Eq (4)) for both forward and auxiliary agents             the minimum combined cost of connecting Va and Vb
+without relying on demonstrations in the non-episodic set-              (Ahuja et al., 1993). The resulting K forward curriculum
+ting.                                                                   goals will be proposed towards a region of the state space
+For autonomous curriculum generation, we sample the can-                considered to be close to sg∗ ∼ ρtar (s) and within the
+didates for T from past states in the replay buffer B. To               capability of the forward agent as indicated by the value
+prevent a degenerate solution in the curriculum selection               bias term. Similarly, the K auxiliary curriculum goals will
+process, a diversity constraint is incorporated such that for           be proposed towards a region considered to be close to
+every trajectory τ = (s0 , ..., stf inal ) ∈ B, at most one state       s∗0 ∼ ρ0,tar (s).
+can be chosen for T . Then, Eq (4) is transformed as follows,
+       h                          i                                     5. Experiment
+max V πf (T ) − L · D (T , T ∗ )
+πf ,T                                                                   We include six sparse reward environments to evaluate
+         1 [(s0 , ϕf (st )) ∈ T ] ≤ 1,                                  our method. Two environments – Tabletop Manipulation,
+       X
+  s.t.                                     s0 , st ∈ τ, ∀τ ∈ B
+        t                                                               Sawyer Door – are from established ARL benchmark, EARL
+                                                             (5)        (Sharma et al., 2021b), and the remaining four environments
+
+                                                                    5
+              Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+
+                               Table 1. Conceptual comparison between our work and baseline algorithms.
+             Demo-free            Curriculum                                     Agent Configuration                                Backward Towards
+ oracle RL      ✓                      ✗                                            single (SAC)                                             N/A
+    R3L         ✓                      ✗               forward (VICE, Fu et al. (2018)) & backward (RND, Burda et al. (2018))   maxH(s) for diverse states
+  VaPRL         ✗         backward subgoal only (✓)                                 single (SAC)                                            ρ0 (s)
+  MEDAL         ✗                      ✗                            forward (SAC) & backward (VICE with ρ∗ (s))                  ρ∗ (s) from expert demos
+ IBC(ours)      ✓        both forward & backward (✓)       dual (forward & auxiliary) →
+                                                                                      − single as training proceeds (SAC)       ρtar (s) (a subset of ρ∗ (s))
+
+
+
+
+              (a) Fetch Pick&Place                                (b) Fetch Push                                     (c) Fetch Reach
+
+
+
+
+                (d) Sawyer Door                            (e) Tabletop Manipulation                                (f) Point-U-Maze
+
+
+
+
+Figure 4. Comparison of evaluation success rates of various algorithms. Shading indicates standard deviation across 5 seeds.
+
+
+– Fetch environments (Plappert et al., 2018), Point-U-Maze                    et al., 2018) in an episodic setting with goal relabeling
+– are modified versions of existing MuJoCo-based OpenAI                       technique (Andrychowicz et al., 2017) common for sparse
+Gym environments (Todorov et al., 2012; Brockman et al.,                      reward environments.
+2016) for the ARL setting. These environments represent
+                                                                              There exist other ARL methods such as R3L (Zhu et al.,
+a mixture of robotic manipulation and locomotion tasks.
+                                                                              2020) but we did not include them as they are already out-
+Detailed descriptions of the environments are provided in
+                                                                              performed by VaPRL and MEDAL. We summarize the con-
+Appendix A.
+                                                                              ceptual comparison between our method and previous ARL
+We compare with other previous methods designed for the                       baselines in Table 1.
+ARL framework, which can be summarized as follows:
+MEDAL (Sharma et al., 2022) – a backward agent that min-                      5.1. Results and Analyses
+imizes the distance between its state marginal distribution                   We follow the evaluation setting similar to the EARL bench-
+and the expert state distribution.                                            mark (Sharma et al., 2021b). Specifically, the agent inter-
+VaPRL (Sharma et al., 2021a) – value-based subgoal cur-                       acts with the environment after initially being spawned at
+ricula towards the initial state distribution ρ0 (s) during the               s0 ∼ ρ0 (s) and occasionally being reset to s0 ∼ ρ0 (s)
+backward episode; amenable to demonstration-free setting,                     after hundreds of thousands of steps. Since we focus on
+but reports on the version with demonstration data.                           minimizing the deployed policy evaluation metric, D(A),
+                                                                              we report on J(πt ) in 10k training step intervals by av-
+oracle RL – a standard RL baseline such as SAC (Haarnoja                      eraging returns from the policy over multiple evaluation
+
+                                                                          6
+              Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+
+
+
+Figure 5. Visualization of the curriculum goals and their average normalized distance to assigned target goals (Left: Fetch Pick&Place,
+Right: Tabletop Manipulation). The red and blue dots indicate the curriculum goals for the forward and auxiliary agents, respectively.
+Note that the exact positions of the robots and objects are meaningless; these are just rendered from their default states.
+
+
+episodes. The code implementation of IBC and the instruc-
+tions for reproducing the main result is available at https:
+//github.com/snu-larr/ibc_official.
+
+Evaluation results. As shown in Figure 4, the proposed
+method achieves state-of-the-art performance against other
+baselines, without requiring any demonstration data and
+even achieving comparable average return (success rate) to                 (a) Fetch Pick&Place          (b) Tabletop Manipulation
+the oracle RL (episodic RL setting). Although some prior
+works such as VaPRL and MEDAL utilize nearly expert-                  Figure 6. Episode ratio of the auxiliary agent and evaluation suc-
+level demonstration data, they have difficulty in environ-            cess rate.
+ments where the task-relevant interactions are very sparse
+in the non-episodic setting or the evaluation goals geval are
+uniformly spread over some region rather than a few points            indicates that the curriculum goals for both forward and
+such as Fetch environments. Furthermore, these methods                auxiliary agents have properly converged to their respective
+are somewhat sensitive to the composition of the demon-               target states. The visualizations in Figure 5 provide further
+stration data in practice, which is detailed in Appendix B.           validation. Specifically, the forward curriculum goals grad-
+For a fair comparison with our method, we also evaluated              ually converge toward the ρtar (s), which encompasses a
+a version of VaPRL without demonstrations; it performed               region in the air and on the table for the Fetch Pick & Place,
+noticeably worse than the original VaPRL.                             and five discrete points for the Tabletop Manipulation, re-
+                                                                      spectively. The auxiliary curriculum goals also converge to
+To validate whether the intervention of the auxiliary agent           the target goal states ρ0,tar (s), initially. However, there is a
+vanishes as training proceeds, we plot the episode ratio of           gradual shift of the auxiliary curriculum goals towards ρ∗ (s)
+the auxiliary agent within the latest 1k episodes. As shown           after initial convergence which is reflected in the slight in-
+in Figure 6, the auxiliary agent does not intervene when the          crease in average distance to goals for the backward episode
+forward agent is fully trained.                                       (ρ0,tar (s)), especially visible in the Fetch Pick & Place en-
+                                                                      vironment. This is because the candidates for the backward
+Bidirectional curriculum. To validate whether the bidi-               curriculum goals, which eventually become the initial states
+rectional curriculum goals are properly interpolated and              for the forward agent, are obtained from both ρ0,tar (s) and
+eventually converge to the desired target distributions, we           ρtar (s) ⊂ ρ∗ (s) when the forward agent remains at inter-
+evaluate the progress of the curriculum goals qualitatively           mediate proficiency (∼50%) for prolonged timesteps during
+and quantitatively. To do so, we visualize the forward and            training such as in Fetch Pick & Place, but less so in Table-
+auxiliary curriculum goals and plot the corresponding nor-            top Manipulation.
+malized distance averaged over target goals assigned by
+bipartite matching (Section 4.2).                                     5.2. Ablation Study
+The plots in Figure 5 demonstrate that the average distance           To investigate the role of the goal curriculum, we conduct
+to goals consistently decreases as training proceeds, which           an experiment without the proposed bidirectional curricu-
+
+                                                                  7
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+
+
+
+     (a) Fetch Pick&Place              (b) Sawyer Door                      (a) Fetch Pick&Place                (b) Fetch Push
+
+
+
+
+   (c) Tabletop Manipulation          (d) Point-U-Maze                        (c) Point-U-Maze            (d) Tabletop Manipulation
+
+                                                                       Figure 8. Normalized distance to goal and evaluation success rate
+                                                                       for the reward-free variant.
+
+Figure 7. Ablation study – removing the bidirectional curriculum
+and auxiliary agent proposed in this work degrades performance.        when dealing with high-dimensional inputs such as images.
+                                                                       Prior work based on control as inference framework for fu-
+                                                                       ture event matching (Fu et al., 2018; Eysenbach et al., 2021)
+lum (IBC w/o Bidirectional). We additionally ablate the                enables reward-free methods that can also be applied to goal-
+auxiliary agent to validate its effectiveness (IBC w/o Bidi-           conditioned RL such as C-learning (Eysenbach et al., 2020).
+rectional & Auxiliary). The latter corresponds to naive RL,            We evaluate the performance of a variant of our method
+where only a forward agent tries to optimize the task reward           that replaces the SAC agent with a C-learning agent. For
+in a reset-free setting, without any backward episodes to              the sake of simplicity, we do not implement bidirectional
+return to some region such as ρ0 (s).                                  curriculum goals for this variant but note that it is trivial to
+                                                                       do so.
+As shown in Figure 7, there is consistent performance degra-
+dation in most of the environments for IBC w/o Bidirec-                We additionally report the normalized distance to goal met-
+tional, which demonstrates the importance of gradually                 ric along with the success rate for this variant as it is based
+guiding the forward agent from easier initial states and goals         on future state matching and does not consider the threshold
+to difficult ones. For IBC w/o Bidirectional & Auxiliary,              for success. Full results are available in Appendix B. In
+there is an additional degradation in most of the environ-             most environments, the C-learning variant achieves high
+ments, more so in object manipulation environments. The                success rates and even matches the proposed method in
+exact degree of the degradation may vary according to the              some environments. However, there are environments with
+given task and the choice of goal space mapping ϕ(s). In               low success rates, albeit with visible improvements in terms
+the case of Tabletop Manipulation, bidirectional curriculum            of the normalized distance to goal metric. This is because
+generation does not have much effect on performance since              C-learning is reward-agnostic and tries to match the entirety
+the state space is relatively simple and does not benefit from         of the desired future state, but some state elements may
+intermediate curriculum goals. In the case of Point-U-Maze,            be more important than others for success depending on
+the auxiliary agent is less effective since the initial state is       the task. Instead of matching in the state space, modifying
+quite far from the goal states.                                        the reward-free method to operate in a goal space that au-
+                                                                       tonomously evolves towards the state elements that are most
+                                                                       salient for the given task can be a promising approach for
+5.3. Towards Reward-free Operation
+                                                                       future research.
+To further enhance the autonomy of our method, we inves-
+tigate the viability of the reward-free setting. While the             6. Conclusion
+proposed method operates on sparse rewards under the goal-
+conditioned setting which involves minimal human effort                In this work, we considered a non-episodic RL setting where
+(defining the threshold for success), eliminating the need             the agent should learn how to perform the given task au-
+for explicit reward specification can be desirable, especially         tonomously without any external interventions such as man-
+
+                                                                   8
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+ual resets and prior data. We proposed IBC, a demonstration-        Chen, A. S., Sharma, A., Levine, S., and Finn, C. You
+free autonomous learning algorithm based on implicit and              only live once: Single-life reinforcement learning. arXiv
+bidirectional curriculum generation. We have shown that our           preprint arXiv:2210.08863, 2022.
+method outperforms previous methods, both in terms of sam-
+ple efficiency and final average success rate. Our method is        Cho, D., Lee, S., and Kim, H. J. Outcome-directed rein-
+limited to reversible environments and still requires mini-           forcement learning by uncertainty & temporal distance-
+mal human inputs for specifying sparse rewards. We’d like             aware curriculum goal generation. arXiv preprint
+to build upon our method towards the reward-free setting,             arXiv:2301.11741, 2023.
+which has shown some promise in our results, by adopting            Co-Reyes, J. D., Sanjeev, S., Berseth, G., Gupta, A., and
+the contextual MDP framework and devising a task-relevant             Levine, S. Ecological reinforcement learning. arXiv
+goal space curriculum discovery for the reward-free setting.          preprint arXiv:2006.12478, 2020.
+
+7. Acknowledgement                                                  Degrave, J., Felici, F., Buchli, J., Neunert, M., Tracey, B.,
+                                                                      Carpanese, F., Ewalds, T., Hafner, R., Abdolmaleki, A.,
+This work was supported by the Korea Research Institute               de Las Casas, D., et al. Magnetic control of tokamak
+for Defense Technology Planning and Advancement (KRIT)                plasmas through deep reinforcement learning. Nature,
+Grant funded by the Defense Acquisition Program Admin-                602(7897):414–419, 2022.
+istration(DAPA) (No. KRIT-CT-23-003, Development of
+AI tank crews based on deep reinforcement learning and              Eysenbach, B., Gu, S., Ibarz, J., and Levine, S. Leave no
+establishment of virtual combat experiment)                           trace: Learning to reset for safe and autonomous rein-
+                                                                      forcement learning. arXiv preprint arXiv:1711.06782,
+                                                                      2017.
+References
+                                                                    Eysenbach, B., Salakhutdinov, R., and Levine, S. C-
+Ahuja, R. K., Magnanti, T. L., and Orlin, J. B. Network
+                                                                      learning: Learning to achieve goals via recursive clas-
+ Flows: Theory, Algorithms, and Applications. Prentice
+                                                                      sification. In International Conference on Learning Rep-
+  Hall, Englewood Cliffs, NJ, 1st edition, 1993.
+                                                                      resentations, 2020.
+Andrychowicz, M., Wolski, F., Ray, A., Schneider, J., Fong,         Eysenbach, B., Levine, S., and Salakhutdinov, R. R. Re-
+  R., Welinder, P., McGrew, B., Tobin, J., Abbeel, P., and            placing rewards with examples: Example-based policy
+  Zaremba, W. Hindsight experience replay. arXiv preprint             search via recursive classification. Advances in Neural
+  arXiv:1707.01495, 2017.                                             Information Processing Systems, 34:11541–11552, 2021.
+
+Andrychowicz, O. M., Baker, B., Chociej, M., Jozefowicz,            Florensa, C., Held, D., Geng, X., and Abbeel, P. Automatic
+  R., McGrew, B., Pachocki, J., Petron, A., Plappert, M.,             goal generation for reinforcement learning agents. In
+  Powell, G., Ray, A., et al. Learning dexterous in-hand              International conference on machine learning, pp. 1515–
+  manipulation. The International Journal of Robotics                 1528. PMLR, 2018.
+ Research, 39(1):3–20, 2020.
+                                                                    Fu, J., Singh, A., Ghosh, D., Yang, L., and Levine, S. Varia-
+Asadi, K., Misra, D., and Littman, M. Lipschitz continuity            tional inverse control with events: A general framework
+  in model-based reinforcement learning. In International             for data-driven reward definition. Advances in neural
+  Conference on Machine Learning, pp. 264–273. PMLR,                  information processing systems, 31, 2018.
+  2018.                                                             Gupta, A., Yu, J., Zhao, T. Z., Kumar, V., Rovinsky, A.,
+                                                                     Xu, K., Devlin, T., and Levine, S. Reset-free reinforce-
+Baker, B., Kanitscheider, I., Markov, T., Wu, Y., Powell, G.,
+                                                                      ment learning via multi-task learning: Learning dexterous
+  McGrew, B., and Mordatch, I. Emergent tool use from
+                                                                      manipulation behaviors without human intervention. In
+  multi-agent autocurricula. In International Conference
+                                                                     2021 IEEE International Conference on Robotics and
+  on Learning Representations, 2019.
+                                                                     Automation (ICRA), pp. 6664–6671. IEEE, 2021.
+Brockman, G., Cheung, V., Pettersson, L., Schneider, J.,            Ha, S., Xu, P., Tan, Z., Levine, S., and Tan, J. Learning to
+  Schulman, J., Tang, J., and Zaremba, W. Openai gym.                 walk in the real world with minimal human effort. arXiv
+  arXiv preprint arXiv:1606.01540, 2016.                              preprint arXiv:2002.08550, 2020.
+
+Burda, Y., Edwards, H., Storkey, A., and Klimov, O. Ex-             Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. Soft
+  ploration by random network distillation. arXiv preprint            actor-critic: Off-policy maximum entropy deep reinforce-
+  arXiv:1810.12894, 2018.                                             ment learning with a stochastic actor. In International
+
+                                                                9
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+  conference on machine learning, pp. 1861–1870. PMLR,               Portelas, R., Colas, C., Hofmann, K., and Oudeyer, P.-Y.
+  2018.                                                                Teacher algorithms for curriculum learning of deep rl in
+                                                                       continuously parameterized environments. In Conference
+Han, W., Levine, S., and Abbeel, P. Learning compound
+                                                                       on Robot Learning, pp. 835–853. PMLR, 2020.
+  multi-step controllers under unknown dynamics. In 2015
+  IEEE/RSJ International Conference on Intelligent Robots            Ren, Z., Dong, K., Zhou, Y., Liu, Q., and Peng, J. Explo-
+  and Systems (IROS), pp. 6435–6442. IEEE, 2015.                       ration via hindsight goal generation. Advances in Neural
+Huang, P., Xu, M., Zhu, J., Shi, L., Fang, F., and Zhao,               Information Processing Systems, 32, 2019.
+  D. Curriculum reinforcement learning using optimal
+  transport via gradual domain adaptation. arXiv preprint            Sharma, A., Ahn, M., Levine, S., Kumar, V., Hausman,
+  arXiv:2210.10195, 2022.                                              K., and Gu, S. Emergent real-world robotic skills via
+                                                                       unsupervised off-policy reinforcement learning. arXiv
+Jiang, M., Grefenstette, E., and Rocktäschel, T. Prioritized          preprint arXiv:2004.12974, 2020.
+   level replay. In International Conference on Machine
+   Learning, pp. 4940–4950. PMLR, 2021.                              Sharma, A., Gupta, A., Levine, S., Hausman, K., and Finn,
+                                                                       C. Autonomous reinforcement learning via subgoal cur-
+Kakade, S. and Langford, J. Approximately optimal ap-                  ricula. Advances in Neural Information Processing Sys-
+  proximate reinforcement learning. In In Proc. 19th In-               tems, 34:18474–18486, 2021a.
+  ternational Conference on Machine Learning. Citeseer,
+  2002.                                                              Sharma, A., Xu, K., Sardana, N., Gupta, A., Hausman, K.,
+Kim, J., hyeon Park, J., Cho, D., and Kim, H. J. Automating            Levine, S., and Finn, C. Autonomous reinforcement
+  reinforcement learning with example-based resets. IEEE               learning: Formalism and benchmarking. arXiv preprint
+  Robotics and Automation Letters, 2022.                               arXiv:2112.09605, 2021b.
+
+Klink, P., Yang, H., D’Eramo, C., Peters, J., and Pajarinen,         Sharma, A., Ahmad, R., and Finn, C. A state-distribution
+  J. Curriculum reinforcement learning via constrained op-             matching approach to non-episodic reinforcement learn-
+  timal transport. In International Conference on Machine              ing. arXiv preprint arXiv:2205.05212, 2022.
+  Learning, pp. 11341–11358. PMLR, 2022.
+                                                                     Smith, L., Dhawan, N., Zhang, M., Abbeel, P., and Levine, S.
+Kumar, V., Todorov, E., and Levine, S. Optimal control with            Avid: learning multi-stage tasks via pixel-level translation
+  learned local models: Application to dexterous manipula-             of human videos. In Robotics: Science and Systems XVI,
+  tion. In 2016 IEEE International Conference on Robotics              Virtual Event / Corvalis, Oregon, USA, July 12-16, 2020,
+  and Automation (ICRA), pp. 378–383. IEEE, 2016.                      2020.
+Lu, K., Grover, A., Abbeel, P., and Mordatch, I. Reset-free
+  lifelong learning with skill-space planning. arXiv preprint        Sukhbaatar, S., Lin, Z., Kostrikov, I., Synnaeve, G., Szlam,
+  arXiv:2012.03548, 2020.                                              A., and Fergus, R. Intrinsic motivation and auto-
+                                                                       matic curricula via asymmetric self-play. arXiv preprint
+Luo, Y., Xu, H., Li, Y., Tian, Y., Darrell, T., and Ma, T.             arXiv:1703.05407, 2017.
+  Algorithmic framework for model-based deep reinforce-
+  ment learning with theoretical guarantees. arXiv preprint          Thananjeyan, B., Balakrishna, A., Nair, S., Luo, M., Srini-
+  arXiv:1807.03858, 2018.                                              vasan, K., Hwang, M., Gonzalez, J. E., Ibarz, J., Finn,
+                                                                       C., and Goldberg, K. Recovery rl: Safe reinforcement
+Nagabandi, A., Konolige, K., Levine, S., and Kumar, V.                 learning with learned recovery zones. IEEE Robotics and
+  Deep dynamics models for learning dexterous manipula-                Automation Letters, 6(3):4915–4922, 2021.
+  tion. In Conference on Robot Learning, pp. 1101–1112.
+  PMLR, 2020.                                                        Todorov, E., Erez, T., and Tassa, Y. Mujoco: A physics
+Narvekar, S., Peng, B., Leonetti, M., Sinapov, J., Taylor,             engine for model-based control. In 2012 IEEE/RSJ Inter-
+  M. E., and Stone, P. Curriculum learning for reinforce-              national Conference on Intelligent Robots and Systems,
+  ment learning domains: A framework and survey. arXiv                 pp. 5026–5033. IEEE, 2012. doi: 10.1109/IROS.2012.
+  preprint arXiv:2003.04960, 2020.                                     6386109.
+
+Plappert, M., Andrychowicz, M., Ray, A., McGrew, B.,                 Vinyals, O., Babuschkin, I., Czarnecki, W. M., Mathieu, M.,
+  Baker, B., Powell, G., Schneider, J., Tobin, J., Chociej,            Dudzik, A., Chung, J., Choi, D. H., Powell, R., Ewalds,
+  M., Welinder, P., et al. Multi-goal reinforcement learn-             T., Georgiev, P., et al. Grandmaster level in starcraft ii
+  ing: Challenging robotics environments and request for               using multi-agent reinforcement learning. Nature, 575
+  research. arXiv preprint arXiv:1802.09464, 2018.                     (7782):350–354, 2019.
+
+                                                                10
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+Walke, H. R., Yang, J. H., Yu, A., Kumar, A., Orbik, J.,
+ Singh, A., and Levine, S. Don’t start from scratch: Lever-
+ aging prior data to automate robotic reinforcement learn-
+ ing. In 6th Annual Conference on Robot Learning, 2021.
+Xie, A., Tajwar, F., Sharma, A., and Finn, C. When to
+  ask for help: Proactive interventions in autonomous re-
+  inforcement learning. arXiv preprint arXiv:2210.10765,
+  2022.
+Xu, K., Verma, S., Finn, C., and Levine, S. Continual learn-
+  ing of control primitives: Skill discovery via reset-games.
+ Advances in Neural Information Processing Systems, 33:
+  4999–5010, 2020.
+
+Xu, K., Hu, Z., Doshi, R., Rovinsky, A., Kumar, V., Gupta,
+ A., and Levine, S. Dexterous manipulation from images:
+ Autonomous real-world rl via substep guidance. arXiv
+  preprint arXiv:2212.09902, 2022.
+Yahya, A., Li, A., Kalakrishnan, M., Chebotar, Y., and
+  Levine, S. Collective robot reinforcement learning with
+  distributed asynchronous guided policy search. In 2017
+  IEEE/RSJ International Conference on Intelligent Robots
+  and Systems (IROS), pp. 79–86. IEEE, 2017.
+Zeng, A., Song, S., Lee, J., Rodriguez, A., and Funkhouser,
+  T. Tossingbot: Learning to throw arbitrary objects with
+  residual physics. IEEE Transactions on Robotics, 36(4):
+  1307–1319, 2020.
+Zhu, H., Yu, J., Gupta, A., Shah, D., Hartikainen, K., Singh,
+  A., Kumar, V., and Levine, S. The ingredients of real-
+  world robotic reinforcement learning. arXiv preprint
+  arXiv:2004.12570, 2020.
+
+
+
+
+                                                                11
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+A. Experimental Details
+A.1. Environment
+   • Sawyer Door: We use the original EARL benchmark environment (Sharma et al., 2021b). The evaluation goal state
+     geval is the state where the door is fully closed and the target goal states sg∗ ∼ ρtar (s) during the non-episodic training
+     are set to the corresponding states for door hinge angles between -60 degrees (open) and 0 degrees (closed).
+
+   • Tabletop Manipulation: We use the original EARL benchmark environment (Sharma et al., 2021b). The evaluation
+     goal states consist of 4 discrete points and the target goal states are 5 discrete points (4 discrete evaluation goal points +
+     1 initial state of the object).
+
+   • Point-U-Maze: We used the 12 × 12 U-shaped maze environment where the initial position of the agent is [0, 0] and
+     the evaluation goal position is at the other end of the maze located at [0, 8]. The target goal states are randomly sampled
+     in the feasible (not interfering with the maze walls, free space) state space.
+
+   • Fetch Pick&Place, Fetch Push: We modified the original Fetch environments from the gym-robotics package to
+     convert it to a reversible (ergodic) setting by defining a constraint on the block position. The evaluation goals and target
+     goal states are identical to the original Fetch Pick&Place, Fetch Push environments.
+
+   • Fetch Reach: We use the original Fetch environment from the gym-robotics package, where the evaluation goals and
+     target goal states are obtained from uniformly sampled states in the area encompassing a region in the air and on the
+     table.
+
+
+
+
+  (a) Sawyer Door     (b) Tabletop Manip.    (c) Point-U-Maze (d) Fetch Pick&Place        (e) Fetch Push       (f) Fetch Reach
+
+                                            Figure 9. Environments used in this work.
+
+
+A.2. IBC Implementation
+
+
+                                                Table 2. Hyperparameters for IBC
+            critic hidden dimension         512                        discount factor γ                          0.99
+               critic hidden depth           3        curriculum buffer Bc capacity (# of trajectories)           1000
+                  critic target τ           0.01      # of curriculum candidates, K (# of trajectories)            50
+         critic target update frequency      2      curriculum update frequency (once every N episode)             20
+            actor hidden dimension          512                           learning rate                           1e-4
+               actor hidden depth            3                           RL optimizer                            ADAM
+             actor update frequency          2                  init temperature αinit of SAC                      0.5
+                  RL batch size             512           replay buffer B capacity (# of transitions)              1e6
+             c in curriculum update          3                        Lipschitz constant L                          5
+
+We use a goal-relabeling technique (Andrychowicz et al., 2017) with SAC for sparse reward, goal-conditioned RL. There
+is a separate trajectory-level buffer Bc for the bidirectional goal curriculum. The values of various hyperparameters are
+detailed in Table 2. We set the goal space transformation of the auxiliary agent ϕa to abstract the proprioceptive states (e.g.
+gripper position in manipulation tasks and agent position in navigation or reaching tasks), and the goal space transformation
+of the forward agent ϕf to abstract the object-centric states when available (e.g. object position in manipulation tasks and
+agent position in navigation or reaching tasks).
+
+                                                               12
+            Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+A.3. Baseline Implementations
+The baseline algorithms are trained as follows,
+
+  • VaPRL (Sharma et al., 2021a): There is no official code implementation, so we implemented it ourselves. We closely
+    followed the details in the original paper and validated whether we have properly implemented the algorithm by
+    obtaining statistically similar results when using demonstrations to the ones reported in (Sharma et al., 2021b).
+  • MEDAL (Sharma et al., 2022): We follow the default setting in the original implementation from https://github.
+    com/architsharma97/medal.
+  • naive RL: We train a single agent to reach the given goal state until success or pre-determined, environment-specific
+    maximum episode steps. After that, the target goal is resampled without resetting and the agent repeats the above
+    process for hundreds of thousands of steps. We use SAC (Haarnoja et al., 2018) with the goal relabeling technique
+    (Andrychowicz et al., 2017).
+
+  • oracle RL: Standard episodic RL is applied. Specifically, we use SAC (Haarnoja et al., 2018) with the goal relabeling
+    technique (Andrychowicz et al., 2017).
+
+VaPRL and MEDAL require expert or near-expert demonstrations. For Sawyer Door and Tabletop Manipulation environ-
+ments, we use the demonstration data (forward & backward episodes) provided by the EARL benchmark (Sharma et al.,
+2021b). For other environments, we collected demonstrations of similar quality (expert-level) and quantity (comparable
+amount of total timesteps) by rolling out the trained oracle RL policy.
+
+
+
+
+                                                          13
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+B. Additional Experimental Results
+B.1. Sawyer Door with Velocity Inputs
+For the Sawyer Door environment in the EARL benchmark (Sharma et al., 2021b), we found instances of the door moving
+due to inertia even when the robot arm is not in contact. Without velocity information, this can violate the Markov Decision
+Process (MDP) assumption that the transition probability be fully observable. That is, a different next state s′ can be
+obtained from the identical current state s and action a.
+To alleviate it, we additionally experiment with the velocity-augmented state inputs. We concatenate the translational
+velocity of the door handle (3-dimensional) and train the agent with IBC and other baselines. The results in Figure 10
+demonstrate that there are slight increases in the final average success rates and training stability with velocity-augmented
+states.
+
+
+
+
+                                    (a) Sawyer Door                        (b) Sawyer Door w Vel
+
+
+                            Figure 10. Experimental results for variants of Sawyer Door environments.
+
+
+B.2. Sensitivity of Baseline Algorithms to the Demonstration Data
+Although prior works (VaPRL, MEDAL) have shown some progress in developing a better ARL algorithm, these have some
+restrictions due to requiring demonstration data for selecting the curriculum subgoals or for computing the reward for the
+backward policy. Furthermore, we found that these baselines are somewhat sensitive to the composition of the demonstration
+data.
+Specifically, we collected demonstration data for the Sawyer Door environment in two different ways. The first dataset
+consists of expert trajectories with fixed goal states (with trajectories of similar lengths), and the second dataset consists of
+expert trajectories with diverse goal states (with trajectories of varying lengths). Since we terminate the rollout right after
+the agent achieves the goal, trajectories may vary in length.
+As shown in Figure 11, both VaPRL and MEDAL are somewhat sensitive to the composition of the data. It may be due to
+the subgoal selection strategy in VaPRL that is dependent on the length of the demonstration trajectory, or in the case of
+MEDAL, an imbalance in the expert state distribution (for training the backward reward) caused by trajectories of varying
+lengths due to the diverse goals.
+
+
+
+
+                                      (a) MEDAL                                   (b) VaPRL
+
+                          Figure 11. Sensitivity of baselines to the composition of the demonstration data.
+
+                                                                14
+            Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+B.3. Episode Ratio of the Auxiliary Agent
+We include the full results of the auxiliary agent episode ratio (Figure 12). The overall trend discussed in the main script
+also applies to the full result. We additionally report the results of Sawyer Door with velocity inputs as mentioned in B.1,
+and we have found that the backward episode ratio decreases when the velocity inputs are augmented.
+
+
+
+
+        (a) Sawyer Door                (b) Sawyer Door w Vel           (c) Tabletop Manipulation              (d) Point-U-Maze
+
+
+
+
+                     (e) Fetch Pick&Place                    (f) Fetch Push                   (g) Fetch Reach
+
+                          Figure 12. Full results of auxiliary agent episode ratio and evaluation success rate.
+
+
+
+
+                                                                  15
+              Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+B.4. Curriculum Visualization
+We report the full results for the curriculum visualization from the main script. As shown in Figure 13, curriculum goals for
+both forward and auxiliary agents converge to their respective target state distribution.
+
+
+
+
+                         (a) Fetch Pick&Place                                            (b) Tabletop Manipulation
+
+
+
+
+                            (c) Fetch Push                                                    (d) Sawyer Door
+
+
+
+
+                                                            (e) Point-U-Maze
+
+Figure 13. Full results of the curriculum goals visualization and their average normalized distance to assigned target goals. The red and
+blue dots indicate the curriculum goals for the forward and auxiliary agents, respectively. Note that the exact positions of the robots and
+objects are meaningless; these are just rendered from their default states.
+
+
+
+
+                                                                    16
+             Demonstration-free Autonomous Reinforcement Learning via Implicit and Bidirectional Curriculum
+
+B.5. Ablation Study
+We report the full results of the ablation study from the main script. As shown in Figure 14, success rates generally decrease
+as we remove the bidirectional goal curriculum, with further degradation when the auxiliary agent is removed.
+
+
+
+
+         (a) Sawyer Door               (b) Sawyer Door w Vel           (c) Tabletop Manipulation              (d) Point-U-Maze
+
+
+
+
+                       (e) Fetch Pick&Place                  (f) Fetch Push                   (g) Fetch Reach
+
+
+
+
+Figure 14. Full results of ablation study – removing the bidirectional curriculum and auxiliary agent proposed in this work degrades
+performance.
+
+
+B.6. Reward-free Variant
+We report the full results of the reward-free variant (C-learning variant) from the main script in Figure 15. The overall trend
+discussed in the main script also applies to the full result. One thing of note is that the reward-free variant performs better in
+the Sawyer Door environment when the door velocity is augmented.
+
+
+
+
+         (a) Sawyer Door               (b) Sawyer Door w Vel                  (c) Point-U-Maze           (d) Tabletop Manipulation
+
+
+
+
+                       (e) Fetch Pick&Place                  (f) Fetch Push                   (g) Fetch Reach
+
+              Figure 15. Full results of the reward-free variant – normalized distance to goal and evaluation success rate.
+
+
+
+
+                                                                  17
+

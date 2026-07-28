@@ -1,0 +1,1687 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-15T06:11:41Z",
+  "title": "\"VideoComposer: Compositional Video Synthesis with Motion Controllability\"",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Controllable image generation has come a long way. Hand a diffusion model a sketch, a depth map, or a prompt, and it will return an image whose structure, layout, and style are broadly what you asked for. Move the same idea to video, though, and it stops working cleanly. Video carries a temporal axis that images don't: the way things move varies enormously from clip to clip, and every generated frame has to stay consistent with its neighbors instead of drifting on its own. The spatial control signals designed for a single image simply don't tell the model how anything should move."
+            },
+            {
+              "type": "paragraph",
+              "text": "Put differently, image generation answers \"what to draw,\" while controllable video generation also has to answer \"how it should move.\" VideoComposer, from Alibaba Group and Ant Group and published at NeurIPS 2023, is aimed squarely at that second question. Its central claim is that to control a video you have to control its content and its motion together, not just its appearance."
+            },
+            {
+              "type": "paragraph",
+              "text": "To do that, the paper decomposes a video into three families of freely combinable conditions: textual, spatial, and temporal. A user supplies any subset, and the model recomposes a video that obeys all of them at once. That is the \"compositional\" in the title. The single most distinctive move is to reuse the motion vectors already sitting inside compressed video as an explicit temporal control signal. The rest of this post unpacks how those conditions are encoded and fused, and why motion vectors turn out to be such a convenient handle on time."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2306.02018  ·  Code: https://github.com/damo-vilab/videocomposer  ·  Project page: https://videocomposer.github.io"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Compositional video synthesis at a glance. (a-c) VideoComposer generates videos that follow textual, spatial, and temporal conditions, or any subset of them; (d) from just two hand-drawn strokes, a red one specifying the motion and a white one specifying the shape, it synthesizes a video that matches the intended movement and form. The figure sets up the core intuition: conditions snap together freely, and motion itself becomes something the user can edit.",
+              "width_inches": 3.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The hard part of controllable video is motion"
+            },
+            {
+              "type": "paragraph",
+              "text": "Diffusion models have made customizable image generation remarkably controllable, and the obvious next step is to extend that control to video. Video adds two difficulties images never had. The first is the sheer variety of temporal dynamics: the same caption, \"a tiger walking,\" spans a huge space of speeds and directions. The second is inter-frame consistency: each generated frame must stay coherent with the frames around it, or the result flickers and jumps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Prior customizable-image methods mostly offer spatial control. They can pin down what a scene looks like, but they give no principled handle on how it evolves over time. Stacking single-frame controls like sketches or depth maps frame by frame tends to break consistency across frames. Controllable video synthesis stayed an open problem precisely because it lacked an interface that could describe motion explicitly without sacrificing consistency."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method: a video as a composition of conditions"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer is built on a Video Latent Diffusion Model (VLDM), which denoises video in a compressed latent space for efficiency. During training, a video is decomposed into three kinds of conditions: textual, spatial (a single image or a single sketch), and temporal (motion vectors, depth sequences, mask sequences, sketch sequences). Because the conditions are freely combinable, the model learns to reassemble a video that satisfies whatever subset it is handed."
+            },
+            {
+              "type": "paragraph",
+              "text": "The architecture below is the key to the whole paper. Three paths are worth tracing: how every sequential condition flows into one shared encoder, how text and style are injected separately, and how the encoded conditions join the noisy latent inside the diffusion backbone."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Overall architecture of VideoComposer. Left: a video is decomposed into textual, spatial, and temporal conditions; the sequential ones are all embedded by a shared STC-encoder, while text and style are injected via CLIP. Middle: the encoded conditions are summed in Condition Fusion, concatenated with the noisy latent along the channel dimension, and used to jointly guide the VLDM's denoising before a decoder reconstructs the video. Right: inside the STC-encoder, two Conv2D layers plus pooling capture local spatial structure, and a temporal Transformer models change across frames. This module is what unifies heterogeneous conditions while improving temporal consistency.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Three design choices are worth holding onto. First, a unified interface: motion vectors, depth maps, masks, and sketch sequences all pass through the same Spatio-Temporal Condition encoder (STC-encoder), where two convolutions and a pooling layer capture local spatial structure and a temporal Transformer models how things change across frames. That both accommodates heterogeneous conditions and, by modeling time explicitly, improves inter-frame consistency. Second, fusion: the encoded conditions are summed element-wise and concatenated with the noisy latent along the channel dimension before entering the diffusion network, while text and style enter through cross-attention. Third, a two-stage schedule: the model is first pre-trained on plain text-to-video, then trained compositionally, with DDIM sampling and classifier-free guidance at inference."
+            },
+            {
+              "type": "paragraph",
+              "text": "The denoising objective is the standard diffusion loss: the network learns to predict the added noise from the noisy latent, given the conditions and the timestep,"
+            },
+            {
+              "type": "paragraph",
+              "text": "L_VLDM = E[ ‖ ε − ε_θ(z_t, c, t) ‖² ],  where c is the freely combinable set of conditions above."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The key move: motion vectors as an explicit control signal"
+            },
+            {
+              "type": "paragraph",
+              "text": "The most recognizable idea in VideoComposer is finding a ready-made, cheap, and explicit representation of motion: motion vectors. They already exist inside compressed formats like H.264, where they encode the displacement between adjacent frames. The paper extracts them and treats them as one temporal condition, which means where things move and how fast is no longer left to the model but is something the user can prescribe directly."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Examples of motion vectors. Small red arrows overlaid on the source video encode the direction and magnitude of local motion: the windsurfer's sail lifts upward while the water spreads outward, and the off-road car moves down and to the right as a whole. Notice how the motion vectors strip away most static appearance and keep only where and how things move, which is exactly what makes them a good temporal control signal.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: no cost to text-to-video, finer conditional control"
+            },
+            {
+              "type": "paragraph",
+              "text": "A natural worry is whether piling on all these compositional conditions hurts basic text-to-video quality. The paper answers on the MSR-VTT benchmark. In the zero-shot setting, VideoComposer reaches an FVD of 580 and a CLIPSIM of 0.2932, competitive with the leading text-to-video methods of the time. More tellingly, it improves over its own first-stage text-to-video pre-training, which scored FVD 803. Adding compositional, multi-condition control did not cost text-to-video quality; if anything it helped slightly."
+            },
+            {
+              "type": "paragraph",
+              "text": "Qualitatively, the model follows the conditions it is given. The figure below shows compositional image-to-video generation: a single frame plus a caption already produces a video, and adding one more temporal condition, a depth, mask, or motion-vector sequence, gives finer control over how the structure evolves over time."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 4. Compositional image-to-video generation. Six examples, each with two rows: the top uses only a single image plus text, the bottom adds one temporal condition. Comparing the two rows in each pair, adding the temporal condition makes the subject's motion and the way its structure evolves track the intent more closely, while the subject's identity stays consistent.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The most vivid demonstration of motion control is directing a video from nothing but a simple hand-drawn stroke. The figure below places VideoComposer next to CogVideo, which offers only coarse motion control: given a direction arrow, or even a curved path, VideoComposer moves a box along the specified direction and walks a tiger along an arc, with fine-grained and flexible control."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure9.png",
+              "caption": "Figure 9. Versatile motion control from hand-crafted motions. (a) CogVideo offers only limited motion control; (b) VideoComposer, given a single red hand-drawn stroke as the trajectory, makes \"a box move from left to right\" and \"a tiger walk along an arc on the grassland,\" with the direction and path clearly controllable. This is what it means for motion vectors plus the STC-encoder to turn motion into a dimension the user can sketch and edit.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure9.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Ablation: what the motion vectors and the STC-encoder each contribute"
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper isolates the two components with a motion-control error (lower is better). Text alone gives an error of 4.03. Adding motion vectors as an explicit temporal condition drops it to 2.67, and turning on the STC-encoder brings it down further to 2.18. Both parts matter: the motion vectors supply the temporal signal, and the STC-encoder makes the model actually use it, sharpening motion control and inter-frame consistency."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Motion-controllability ablation (motion-control error, lower is better). Motion vectors and the STC-encoder each give a clear reduction, and the two together do best.",
+              "headers": [
+                "Configuration",
+                "Motion-control error ↓"
+              ],
+              "rows": [
+                [
+                  "Text only",
+                  "4.03"
+                ],
+                [
+                  "+ Motion vectors",
+                  "2.67"
+                ],
+                [
+                  "+ Motion vectors + STC-encoder (full)",
+                  "2.18"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The qualitative ablation tells the same story: removing the STC-encoder degrades both how well the video follows the specified temporal structure and how consistent it stays across frames. The figure below marks these deficient regions with red boxes."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "Figure 10. Qualitative ablation. Three representative examples; the last two rows compare VideoComposer without the STC-encoder against the full model under the same text plus a single temporal condition (sketch, depth, or motion vectors). Red boxes mark deficient regions: without the STC-encoder, structural fidelity and inter-frame consistency are visibly weaker.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure10.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway: motion as an editable dimension"
+            },
+            {
+              "type": "paragraph",
+              "text": "The value of VideoComposer is less any single headline number than the framing it offers: treat a video as a composition of textual, spatial, and temporal conditions, give the temporal dimension an explicit signal drawn from compressed-video motion vectors, and pair it with a unified STC-encoder that digests heterogeneous conditions while holding consistency together. It is trained on two public datasets, WebVid10M (about 10.3M video-caption pairs) and LAION-400M, and freely composes 8-plus condition types, from text and images to sketches, motion vectors, and depth, mask, and sketch sequences."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth staying honest about scope. The reported numbers are zero-shot text-to-video metrics and qualitative demonstrations, and motion controllability is a dedicated error on 1000 caption-video pairs, not a general \"motion-correctness\" score; resolution, length, and realism remain bounded by the underlying VLDM. Still, the direction is clear: decompose a video into conditions, give motion its own explicit signal, and generation becomes markedly more controllable, from text and sketches to depth maps or two hand-drawn strokes."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "这两年，图像生成的可控性进步得很快：给一张草图、一张深度图、一句提示词，模型就能画出结构、构图、风格都合你意的图片。但把同样的思路搬到视频上，事情立刻变难。视频比图像多了一根「时间轴」，不同片段的运动模式千差万别，而且每一帧都要和前后帧保持一致，不能各画各的。为图像设计的那套空间控制信号，搬到视频里并不能告诉模型「东西该怎么动」。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换句话说，图像生成解决的是「画什么」，而可控视频生成还要解决「怎么动」。来自阿里巴巴与蚂蚁集团、发表于 NeurIPS 2023 的 VideoComposer，正是冲着这个「运动可控」的问题去的。它的核心主张是：想控制一段视频，就得同时控制它的内容与运动，而不只是外观。"
+            },
+            {
+              "type": "paragraph",
+              "text": "为此，论文把一段视频拆解成三类可以自由组合的条件——文本条件（textual）、空间条件（spatial）、时间条件（temporal）——用户给出其中任意一个子集，模型就重新「组合」出同时满足这些条件的视频。这就是标题里「Compositional（组合式）」的含义。而其中最关键的一步，是把压缩视频里本就存在的运动向量（motion vectors）拿来当作显式的时间控制信号。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2306.02018　·　代码：https://github.com/damo-vilab/videocomposer　·　项目主页：https://videocomposer.github.io"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 组合式视频生成总览。(a-c) VideoComposer 可以生成同时遵循文本、空间、时间条件（或其任意子集）的视频；(d) 更进一步，仅凭两笔手绘——红色笔画指定运动方向、白色笔画指定形状轮廓——模型就能合成符合预期运动与形状的视频。这张图先建立一个直觉：条件可以自由拼装，运动本身也变成了用户可编辑的一维。",
+              "width_inches": 2.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题：可控视频难在「运动」"
+            },
+            {
+              "type": "paragraph",
+              "text": "过去一年里，扩散模型（diffusion model）让定制化图像生成变得相当可控。很自然地，人们希望把同样的能力延伸到视频。但视频有两个图像没有的麻烦：一是时间动态的多样性，同样一句「一只老虎在走」，可以慢走、快跑、左行、右行，运动模式空间极大；二是时序一致性，生成的每一帧都要在内容上与相邻帧连贯，否则画面会闪烁、跳变。"
+            },
+            {
+              "type": "paragraph",
+              "text": "以往的定制化图像方法主要提供空间层面的控制，能规定「长什么样」，却没有一个原则性的手段去规定「随时间如何演变」。如果只是把草图、深度图这类为单帧设计的控制信号逐帧堆上去，又很容易破坏帧与帧之间的一致性。可控视频生成因此长期是个开放难题——缺的正是一个既能显式描述运动、又不牺牲一致性的接口。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "方法：把视频当作「条件的组合」"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 建立在视频潜在扩散模型（Video Latent Diffusion Model, VLDM）之上——先把视频压到一个低维潜在空间里去噪，以此换取效率。训练时，一段视频被分解为三类条件：文本条件、空间条件（如单帧图像、单张草图）、时间条件（如运动向量、深度序列、掩码序列、草图序列）。这些条件可以任意组合，模型学会「无论给到哪一组，都重新拼出满足全部条件的视频」。"
+            },
+            {
+              "type": "paragraph",
+              "text": "下面这张架构图是理解全篇的钥匙。请重点看三条通路：所有「序列型」条件如何汇入同一个编码器、文本与风格如何单独注入、以及编码后的条件如何与噪声一起喂给扩散主干。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2 VideoComposer 总体架构。左侧：一段视频被分解为文本、空间、时间三类条件；各类序列条件统一送入 STC-encoder 编码，文本与风格则经 CLIP 注入。中部：编码后的条件在 Condition Fusion 中逐元素相加，再沿通道维与带噪潜变量拼接，共同引导视频潜在扩散模型（VLDM）去噪，最后由解码器还原视频。右侧：STC-encoder 内部为两层 Conv2D＋池化捕捉空间结构，再接一个时序 Transformer 建模跨帧变化。它是把「多种异构条件」统一成一种表示、同时提升时序一致性的关键模块。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "把这套流程拆开看，有三个设计值得记住。其一，统一接口：无论是运动向量、深度图、掩码还是草图序列，都先过同一个 Spatio-Temporal Condition 编码器（STC-encoder）——两层卷积加池化抓住局部空间结构，再由时序 Transformer 建模「跨帧如何变化」。这样既容纳了异构条件，又因为显式建模了时间关系而改善了帧间一致性。其二，融合方式：编码后的各条件逐元素相加后，沿通道维与带噪潜变量拼接进入扩散网络；文本与风格则通过交叉注意力（cross-attention）注入。其三，两阶段训练：先做纯文本到视频（text-to-video）预训练，再做组合式训练；推理时用 DDIM 采样配合无分类器引导（classifier-free guidance）。"
+            },
+            {
+              "type": "paragraph",
+              "text": "整个去噪目标其实就是标准的扩散损失，模型学习从带噪潜变量 z_t 中、在条件 c 与时间步 t 下预测所加噪声 ε："
+            },
+            {
+              "type": "paragraph",
+              "text": "L_VLDM = E[ ‖ ε − ε_θ(z_t, c, t) ‖² ]（c 即上面那组可自由组合的条件）。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "关键一招：把压缩视频的运动向量拿来当控制信号"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 最有辨识度的想法，是给「运动」找到一个现成、廉价又显式的表示：运动向量。它本就存在于 H.264 这类压缩视频格式里，用来编码相邻帧之间的位移变化。论文把它抽取出来，作为一路时间条件——于是「东西往哪儿动、动多快」不再是模型自由发挥，而是用户可以直接规定的量。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3 运动向量示例。红色小箭头叠加在原视频上，方向与长度分别表示每个局部区域的运动方向与幅度：帆船的帆面向上、水面向外扩散，越野车整体向右下行进。可以看到运动向量几乎剥离了静态外观，只保留「哪里在动、往哪动」的信息——这正是它适合当时间控制信号的原因。",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果：文本到视频不打折，条件控制更细"
+            },
+            {
+              "type": "paragraph",
+              "text": "一个自然的担心是：加了这么多组合条件，会不会拖累最基本的文本到视频质量？论文在 MSR-VTT 基准上给出了答案。在零样本（zero-shot）设置下，VideoComposer 取得 FVD 580、CLIPSIM 0.2932，与当时领先的文本到视频方法相当；更值得注意的是，它比自己第一阶段的纯文本到视频预训练（FVD 803）还要好。也就是说，引入组合式的多条件控制不但没有牺牲文生视频质量，反而略有提升。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在定性层面，模型能忠实地跟随用户给的各类条件。下图展示的是「组合式图像到视频生成」：同一张单帧图像加一句文本可以生成一段视频，而再叠加一路时间条件（深度序列、掩码序列或运动向量）后，对随时间演变的结构就有了更细的控制。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图4 组合式图像到视频生成。六个例子，每个上下两段：上段仅用「单帧图像＋文本」生成，下段额外加入一路时间条件。对比每组上下两行可以看到，加入时间条件后，主体的运动与结构随时间的演变更贴合预期，同时画面主体身份保持一致。",
+              "width_inches": 3.3,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "运动控制最直观的演示，是仅凭手绘的简单笔画来「导演」一段视频。下图把 VideoComposer 与只能做粗略运动控制的 CogVideo 放在一起对比：给定一个方向箭头（甚至一段弧线），VideoComposer 就能让盒子沿指定方向平移、让老虎沿弧线行走，运动细粒度且灵活。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure9.png",
+              "caption": "图9 用手绘运动实现多样化运动控制。(a) CogVideo 只能做有限的运动控制；(b) VideoComposer 凭一段红色手绘笔画指定运动轨迹，就能让「盒子从左往右移动」「老虎沿弧线在草地上行走」，运动方向与路径都清晰可控。这说明运动向量＋STC-encoder 让「运动」真正成为一个可由用户手绘编辑的维度。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure9.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融：运动向量与 STC-encoder 各自贡献了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一个「运动控制误差」（motion-control error，越低越好）来量化这两个部件各自的作用。只用文本时误差为 4.03；把运动向量作为显式时间条件加入后，误差降到 2.67；再打开 STC-encoder，进一步降到 2.18。两个部件缺一不可：运动向量提供了时间信号，而 STC-encoder 让模型真正「用上」这个信号，从而锐化运动控制、增强帧间一致性。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 运动可控性消融（motion-control error，越低越好）。运动向量与 STC-encoder 分别带来显著下降，二者叠加效果最好。",
+              "headers": [
+                "配置",
+                "运动控制误差 ↓"
+              ],
+              "rows": [
+                [
+                  "仅文本（text only）",
+                  "4.03"
+                ],
+                [
+                  "＋运动向量",
+                  "2.67"
+                ],
+                [
+                  "＋运动向量 ＋ STC-encoder（完整）",
+                  "2.18"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "定性消融也印证了这一点：去掉 STC-encoder 后，生成视频对指定时序结构的贴合度和帧间一致性都会变差。下图用红框标出了这些缺陷区域。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "图10 定性消融。三个代表性例子，第三、四行分别是「去掉 STC-encoder」与完整 VideoComposer 在同一文本＋单路时间条件（草图/深度/运动向量）下的生成结果。红框标出缺陷区域：没有 STC-encoder 时，结构还原与帧间一致性明显更弱。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure10.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结：让「运动」成为可编辑的一维"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 的价值，不在于某个单点指标的刷新，而在于它把可控视频生成重新组织成了一个清晰的框架：把视频看作文本、空间、时间三类条件的组合，再用压缩视频里现成的运动向量为时间维度提供显式信号，配上统一的 STC-encoder 来消化异构条件、维持一致性。它训练于两个公开数据集——WebVid10M（约 10.3M 视频-字幕对）与 LAION-400M，支持文本、单帧图像、单张草图、运动向量、深度/掩码/草图序列、风格等 8 种以上条件的任意组合。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要保持清醒的是，论文报告的是零样本文生视频指标与定性演示，运动可控性用的是在 1000 个字幕-视频对上定义的专门误差，而非某种通用的「运动正确率」；生成分辨率、时长与真实感也仍受底层 VLDM 能力限制。但它给出的方向是明确的：当我们把一段视频拆成条件、并单独给运动一个显式信号时，视频生成会变得可控得多——用户可以同时驾驭内容与运动，输入既可以是文本、草图、深度图，也可以只是两笔手绘。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 294.8,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 294.8,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 28.76,
+          "relative_start": 0.5,
+          "relative_end": 28.76,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 28.76,
+          "global_end": 53.76,
+          "relative_start": 28.76,
+          "relative_end": 53.76,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 53.76,
+          "global_end": 83.24,
+          "relative_start": 53.76,
+          "relative_end": 83.24,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 83.24,
+          "global_end": 116.4,
+          "relative_start": 83.24,
+          "relative_end": 116.4,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 116.4,
+          "global_end": 160.04,
+          "relative_start": 116.4,
+          "relative_end": 160.04,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 160.04,
+          "global_end": 187.75,
+          "relative_start": 160.04,
+          "relative_end": 187.75,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 187.75,
+          "global_end": 217.59,
+          "relative_start": 187.75,
+          "relative_end": 217.59,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 217.59,
+          "global_end": 242.87,
+          "relative_start": 217.59,
+          "relative_end": 242.87,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 242.87,
+          "global_end": 269.28,
+          "relative_start": 242.87,
+          "relative_end": 269.28,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 269.28,
+          "global_end": 294.76,
+          "relative_start": 269.28,
+          "relative_end": 294.76,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Compositional video synthesis at a glance. (a-c) VideoComposer generates videos that follow textual, spatial, and temporal conditions, or any subset of them; (d) from just two hand-drawn strokes, a red one specifying the motion and a white one specifying the shape, it synthesizes a video that matches the intended movement and form. The figure sets up the core intuition: conditions snap together freely, and motion itself becomes something the user can edit.",
+              "width_inches": 3.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The hard part of controllable video is motion"
+            },
+            {
+              "type": "paragraph",
+              "text": "Diffusion models have made customizable image generation remarkably controllable, and the obvious next step is to extend that control to video. Video adds two difficulties images never had. The first is the sheer variety of temporal dynamics: the same caption, \"a tiger walking,\" spans a huge space of speeds and directions. The second is inter-frame consistency: each generated frame must stay coherent with the frames around it, or the result flickers and jumps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Prior customizable-image methods mostly offer spatial control. They can pin down what a scene looks like, but they give no principled handle on how it evolves over time. Stacking single-frame controls like sketches or depth maps frame by frame tends to break consistency across frames. Controllable video synthesis stayed an open problem precisely because it lacked an interface that could describe motion explicitly without sacrificing consistency."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "这两年，图像生成的可控性进步得很快：给一张草图、一张深度图、一句提示词，模型就能画出结构、构图、风格都合你意的图片。但把同样的思路搬到视频上，事情立刻变难。视频比图像多了一根「时间轴」，不同片段的运动模式千差万别，而且每一帧都要和前后帧保持一致，不能各画各的。为图像设计的那套空间控制信号，搬到视频里并不能告诉模型「东西该怎么动」。"
+            },
+            {
+              "type": "paragraph",
+              "text": "换句话说，图像生成解决的是「画什么」，而可控视频生成还要解决「怎么动」。来自阿里巴巴与蚂蚁集团、发表于 NeurIPS 2023 的 VideoComposer，正是冲着这个「运动可控」的问题去的。它的核心主张是：想控制一段视频，就得同时控制它的内容与运动，而不只是外观。"
+            },
+            {
+              "type": "paragraph",
+              "text": "为此，论文把一段视频拆解成三类可以自由组合的条件——文本条件（textual）、空间条件（spatial）、时间条件（temporal）——用户给出其中任意一个子集，模型就重新「组合」出同时满足这些条件的视频。这就是标题里「Compositional（组合式）」的含义。而其中最关键的一步，是把压缩视频里本就存在的运动向量（motion vectors）拿来当作显式的时间控制信号。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2306.02018　·　代码：https://github.com/damo-vilab/videocomposer　·　项目主页：https://videocomposer.github.io"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 组合式视频生成总览。(a-c) VideoComposer 可以生成同时遵循文本、空间、时间条件（或其任意子集）的视频；(d) 更进一步，仅凭两笔手绘——红色笔画指定运动方向、白色笔画指定形状轮廓——模型就能合成符合预期运动与形状的视频。这张图先建立一个直觉：条件可以自由拼装，运动本身也变成了用户可编辑的一维。",
+              "width_inches": 2.8,
+              "src": "assets/blog/figures/figure1.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 28.76,
+        "end": 53.76,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 25.0,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 25.9,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 28.76,
+          "global_end": 53.76,
+          "relative_start": 0.0,
+          "relative_end": 25.0,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Compositional video synthesis at a glance. (a-c) VideoComposer generates videos that follow textual, spatial, and temporal conditions, or any subset of them; (d) from just two hand-drawn strokes, a red one specifying the motion and a white one specifying the shape, it synthesizes a video that matches the intended movement and form. The figure sets up the core intuition: conditions snap together freely, and motion itself becomes something the user can edit.",
+              "width_inches": 3.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The hard part of controllable video is motion"
+            },
+            {
+              "type": "paragraph",
+              "text": "Diffusion models have made customizable image generation remarkably controllable, and the obvious next step is to extend that control to video. Video adds two difficulties images never had. The first is the sheer variety of temporal dynamics: the same caption, \"a tiger walking,\" spans a huge space of speeds and directions. The second is inter-frame consistency: each generated frame must stay coherent with the frames around it, or the result flickers and jumps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Prior customizable-image methods mostly offer spatial control. They can pin down what a scene looks like, but they give no principled handle on how it evolves over time. Stacking single-frame controls like sketches or depth maps frame by frame tends to break consistency across frames. Controllable video synthesis stayed an open problem precisely because it lacked an interface that could describe motion explicitly without sacrificing consistency."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 组合式视频生成总览。(a-c) VideoComposer 可以生成同时遵循文本、空间、时间条件（或其任意子集）的视频；(d) 更进一步，仅凭两笔手绘——红色笔画指定运动方向、白色笔画指定形状轮廓——模型就能合成符合预期运动与形状的视频。这张图先建立一个直觉：条件可以自由拼装，运动本身也变成了用户可编辑的一维。",
+              "width_inches": 2.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题：可控视频难在「运动」"
+            },
+            {
+              "type": "paragraph",
+              "text": "过去一年里，扩散模型（diffusion model）让定制化图像生成变得相当可控。很自然地，人们希望把同样的能力延伸到视频。但视频有两个图像没有的麻烦：一是时间动态的多样性，同样一句「一只老虎在走」，可以慢走、快跑、左行、右行，运动模式空间极大；二是时序一致性，生成的每一帧都要在内容上与相邻帧连贯，否则画面会闪烁、跳变。"
+            },
+            {
+              "type": "paragraph",
+              "text": "以往的定制化图像方法主要提供空间层面的控制，能规定「长什么样」，却没有一个原则性的手段去规定「随时间如何演变」。如果只是把草图、深度图这类为单帧设计的控制信号逐帧堆上去，又很容易破坏帧与帧之间的一致性。可控视频生成因此长期是个开放难题——缺的正是一个既能显式描述运动、又不牺牲一致性的接口。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 53.76,
+        "end": 83.24,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 29.48,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 30.38,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 53.76,
+          "global_end": 83.24,
+          "relative_start": 0.0,
+          "relative_end": 29.48,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method: a video as a composition of conditions"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer is built on a Video Latent Diffusion Model (VLDM), which denoises video in a compressed latent space for efficiency. During training, a video is decomposed into three kinds of conditions: textual, spatial (a single image or a single sketch), and temporal (motion vectors, depth sequences, mask sequences, sketch sequences). Because the conditions are freely combinable, the model learns to reassemble a video that satisfies whatever subset it is handed."
+            },
+            {
+              "type": "paragraph",
+              "text": "The architecture below is the key to the whole paper. Three paths are worth tracing: how every sequential condition flows into one shared encoder, how text and style are injected separately, and how the encoded conditions join the noisy latent inside the diffusion backbone."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Overall architecture of VideoComposer. Left: a video is decomposed into textual, spatial, and temporal conditions; the sequential ones are all embedded by a shared STC-encoder, while text and style are injected via CLIP. Middle: the encoded conditions are summed in Condition Fusion, concatenated with the noisy latent along the channel dimension, and used to jointly guide the VLDM's denoising before a decoder reconstructs the video. Right: inside the STC-encoder, two Conv2D layers plus pooling capture local spatial structure, and a temporal Transformer models change across frames. This module is what unifies heterogeneous conditions while improving temporal consistency.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Three design choices are worth holding onto. First, a unified interface: motion vectors, depth maps, masks, and sketch sequences all pass through the same Spatio-Temporal Condition encoder (STC-encoder), where two convolutions and a pooling layer capture local spatial structure and a temporal Transformer models how things change across frames. That both accommodates heterogeneous conditions and, by modeling time explicitly, improves inter-frame consistency. Second, fusion: the encoded conditions are summed element-wise and concatenated with the noisy latent along the channel dimension before entering the diffusion network, while text and style enter through cross-attention. Third, a two-stage schedule: the model is first pre-trained on plain text-to-video, then trained compositionally, with DDIM sampling and classifier-free guidance at inference."
+            },
+            {
+              "type": "paragraph",
+              "text": "The denoising objective is the standard diffusion loss: the network learns to predict the added noise from the noisy latent, given the conditions and the timestep,"
+            },
+            {
+              "type": "paragraph",
+              "text": "L_VLDM = E[ ‖ ε − ε_θ(z_t, c, t) ‖² ],  where c is the freely combinable set of conditions above."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融：运动向量与 STC-encoder 各自贡献了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一个「运动控制误差」（motion-control error，越低越好）来量化这两个部件各自的作用。只用文本时误差为 4.03；把运动向量作为显式时间条件加入后，误差降到 2.67；再打开 STC-encoder，进一步降到 2.18。两个部件缺一不可：运动向量提供了时间信号，而 STC-encoder 让模型真正「用上」这个信号，从而锐化运动控制、增强帧间一致性。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 运动可控性消融（motion-control error，越低越好）。运动向量与 STC-encoder 分别带来显著下降，二者叠加效果最好。",
+              "headers": [
+                "配置",
+                "运动控制误差 ↓"
+              ],
+              "rows": [
+                [
+                  "仅文本（text only）",
+                  "4.03"
+                ],
+                [
+                  "＋运动向量",
+                  "2.67"
+                ],
+                [
+                  "＋运动向量 ＋ STC-encoder（完整）",
+                  "2.18"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "定性消融也印证了这一点：去掉 STC-encoder 后，生成视频对指定时序结构的贴合度和帧间一致性都会变差。下图用红框标出了这些缺陷区域。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "图10 定性消融。三个代表性例子，第三、四行分别是「去掉 STC-encoder」与完整 VideoComposer 在同一文本＋单路时间条件（草图/深度/运动向量）下的生成结果。红框标出缺陷区域：没有 STC-encoder 时，结构还原与帧间一致性明显更弱。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure10.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 83.24,
+        "end": 116.4,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 33.16,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 34.06,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 83.24,
+          "global_end": 116.4,
+          "relative_start": 0.0,
+          "relative_end": 33.16,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The hard part of controllable video is motion"
+            },
+            {
+              "type": "paragraph",
+              "text": "Diffusion models have made customizable image generation remarkably controllable, and the obvious next step is to extend that control to video. Video adds two difficulties images never had. The first is the sheer variety of temporal dynamics: the same caption, \"a tiger walking,\" spans a huge space of speeds and directions. The second is inter-frame consistency: each generated frame must stay coherent with the frames around it, or the result flickers and jumps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Prior customizable-image methods mostly offer spatial control. They can pin down what a scene looks like, but they give no principled handle on how it evolves over time. Stacking single-frame controls like sketches or depth maps frame by frame tends to break consistency across frames. Controllable video synthesis stayed an open problem precisely because it lacked an interface that could describe motion explicitly without sacrificing consistency."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method: a video as a composition of conditions"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer is built on a Video Latent Diffusion Model (VLDM), which denoises video in a compressed latent space for efficiency. During training, a video is decomposed into three kinds of conditions: textual, spatial (a single image or a single sketch), and temporal (motion vectors, depth sequences, mask sequences, sketch sequences). Because the conditions are freely combinable, the model learns to reassemble a video that satisfies whatever subset it is handed."
+            },
+            {
+              "type": "paragraph",
+              "text": "The architecture below is the key to the whole paper. Three paths are worth tracing: how every sequential condition flows into one shared encoder, how text and style are injected separately, and how the encoded conditions join the noisy latent inside the diffusion backbone."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Overall architecture of VideoComposer. Left: a video is decomposed into textual, spatial, and temporal conditions; the sequential ones are all embedded by a shared STC-encoder, while text and style are injected via CLIP. Middle: the encoded conditions are summed in Condition Fusion, concatenated with the noisy latent along the channel dimension, and used to jointly guide the VLDM's denoising before a decoder reconstructs the video. Right: inside the STC-encoder, two Conv2D layers plus pooling capture local spatial structure, and a temporal Transformer models change across frames. This module is what unifies heterogeneous conditions while improving temporal consistency.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Three design choices are worth holding onto. First, a unified interface: motion vectors, depth maps, masks, and sketch sequences all pass through the same Spatio-Temporal Condition encoder (STC-encoder), where two convolutions and a pooling layer capture local spatial structure and a temporal Transformer models how things change across frames. That both accommodates heterogeneous conditions and, by modeling time explicitly, improves inter-frame consistency. Second, fusion: the encoded conditions are summed element-wise and concatenated with the noisy latent along the channel dimension before entering the diffusion network, while text and style enter through cross-attention. Third, a two-stage schedule: the model is first pre-trained on plain text-to-video, then trained compositionally, with DDIM sampling and classifier-free guidance at inference."
+            },
+            {
+              "type": "paragraph",
+              "text": "The denoising objective is the standard diffusion loss: the network learns to predict the added noise from the noisy latent, given the conditions and the timestep,"
+            },
+            {
+              "type": "paragraph",
+              "text": "L_VLDM = E[ ‖ ε − ε_θ(z_t, c, t) ‖² ],  where c is the freely combinable set of conditions above."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "问题：可控视频难在「运动」"
+            },
+            {
+              "type": "paragraph",
+              "text": "过去一年里，扩散模型（diffusion model）让定制化图像生成变得相当可控。很自然地，人们希望把同样的能力延伸到视频。但视频有两个图像没有的麻烦：一是时间动态的多样性，同样一句「一只老虎在走」，可以慢走、快跑、左行、右行，运动模式空间极大；二是时序一致性，生成的每一帧都要在内容上与相邻帧连贯，否则画面会闪烁、跳变。"
+            },
+            {
+              "type": "paragraph",
+              "text": "以往的定制化图像方法主要提供空间层面的控制，能规定「长什么样」，却没有一个原则性的手段去规定「随时间如何演变」。如果只是把草图、深度图这类为单帧设计的控制信号逐帧堆上去，又很容易破坏帧与帧之间的一致性。可控视频生成因此长期是个开放难题——缺的正是一个既能显式描述运动、又不牺牲一致性的接口。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "方法：把视频当作「条件的组合」"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 建立在视频潜在扩散模型（Video Latent Diffusion Model, VLDM）之上——先把视频压到一个低维潜在空间里去噪，以此换取效率。训练时，一段视频被分解为三类条件：文本条件、空间条件（如单帧图像、单张草图）、时间条件（如运动向量、深度序列、掩码序列、草图序列）。这些条件可以任意组合，模型学会「无论给到哪一组，都重新拼出满足全部条件的视频」。"
+            },
+            {
+              "type": "paragraph",
+              "text": "下面这张架构图是理解全篇的钥匙。请重点看三条通路：所有「序列型」条件如何汇入同一个编码器、文本与风格如何单独注入、以及编码后的条件如何与噪声一起喂给扩散主干。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2 VideoComposer 总体架构。左侧：一段视频被分解为文本、空间、时间三类条件；各类序列条件统一送入 STC-encoder 编码，文本与风格则经 CLIP 注入。中部：编码后的条件在 Condition Fusion 中逐元素相加，再沿通道维与带噪潜变量拼接，共同引导视频潜在扩散模型（VLDM）去噪，最后由解码器还原视频。右侧：STC-encoder 内部为两层 Conv2D＋池化捕捉空间结构，再接一个时序 Transformer 建模跨帧变化。它是把「多种异构条件」统一成一种表示、同时提升时序一致性的关键模块。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "把这套流程拆开看，有三个设计值得记住。其一，统一接口：无论是运动向量、深度图、掩码还是草图序列，都先过同一个 Spatio-Temporal Condition 编码器（STC-encoder）——两层卷积加池化抓住局部空间结构，再由时序 Transformer 建模「跨帧如何变化」。这样既容纳了异构条件，又因为显式建模了时间关系而改善了帧间一致性。其二，融合方式：编码后的各条件逐元素相加后，沿通道维与带噪潜变量拼接进入扩散网络；文本与风格则通过交叉注意力（cross-attention）注入。其三，两阶段训练：先做纯文本到视频（text-to-video）预训练，再做组合式训练；推理时用 DDIM 采样配合无分类器引导（classifier-free guidance）。"
+            },
+            {
+              "type": "paragraph",
+              "text": "整个去噪目标其实就是标准的扩散损失，模型学习从带噪潜变量 z_t 中、在条件 c 与时间步 t 下预测所加噪声 ε："
+            },
+            {
+              "type": "paragraph",
+              "text": "L_VLDM = E[ ‖ ε − ε_θ(z_t, c, t) ‖² ]（c 即上面那组可自由组合的条件）。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 116.4,
+        "end": 160.04,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 43.64,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.54,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 116.4,
+          "global_end": 160.04,
+          "relative_start": 0.0,
+          "relative_end": 43.64,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: no cost to text-to-video, finer conditional control"
+            },
+            {
+              "type": "paragraph",
+              "text": "A natural worry is whether piling on all these compositional conditions hurts basic text-to-video quality. The paper answers on the MSR-VTT benchmark. In the zero-shot setting, VideoComposer reaches an FVD of 580 and a CLIPSIM of 0.2932, competitive with the leading text-to-video methods of the time. More tellingly, it improves over its own first-stage text-to-video pre-training, which scored FVD 803. Adding compositional, multi-condition control did not cost text-to-video quality; if anything it helped slightly."
+            },
+            {
+              "type": "paragraph",
+              "text": "Qualitatively, the model follows the conditions it is given. The figure below shows compositional image-to-video generation: a single frame plus a caption already produces a video, and adding one more temporal condition, a depth, mask, or motion-vector sequence, gives finer control over how the structure evolves over time."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 4. Compositional image-to-video generation. Six examples, each with two rows: the top uses only a single image plus text, the bottom adds one temporal condition. Comparing the two rows in each pair, adding the temporal condition makes the subject's motion and the way its structure evolves track the intent more closely, while the subject's identity stays consistent.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The most vivid demonstration of motion control is directing a video from nothing but a simple hand-drawn stroke. The figure below places VideoComposer next to CogVideo, which offers only coarse motion control: given a direction arrow, or even a curved path, VideoComposer moves a box along the specified direction and walks a tiger along an arc, with fine-grained and flexible control."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure9.png",
+              "caption": "Figure 9. Versatile motion control from hand-crafted motions. (a) CogVideo offers only limited motion control; (b) VideoComposer, given a single red hand-drawn stroke as the trajectory, makes \"a box move from left to right\" and \"a tiger walk along an arc on the grassland,\" with the direction and path clearly controllable. This is what it means for motion vectors plus the STC-encoder to turn motion into a dimension the user can sketch and edit.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure9.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "效果：文本到视频不打折，条件控制更细"
+            },
+            {
+              "type": "paragraph",
+              "text": "一个自然的担心是：加了这么多组合条件，会不会拖累最基本的文本到视频质量？论文在 MSR-VTT 基准上给出了答案。在零样本（zero-shot）设置下，VideoComposer 取得 FVD 580、CLIPSIM 0.2932，与当时领先的文本到视频方法相当；更值得注意的是，它比自己第一阶段的纯文本到视频预训练（FVD 803）还要好。也就是说，引入组合式的多条件控制不但没有牺牲文生视频质量，反而略有提升。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在定性层面，模型能忠实地跟随用户给的各类条件。下图展示的是「组合式图像到视频生成」：同一张单帧图像加一句文本可以生成一段视频，而再叠加一路时间条件（深度序列、掩码序列或运动向量）后，对随时间演变的结构就有了更细的控制。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图4 组合式图像到视频生成。六个例子，每个上下两段：上段仅用「单帧图像＋文本」生成，下段额外加入一路时间条件。对比每组上下两行可以看到，加入时间条件后，主体的运动与结构随时间的演变更贴合预期，同时画面主体身份保持一致。",
+              "width_inches": 3.3,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "运动控制最直观的演示，是仅凭手绘的简单笔画来「导演」一段视频。下图把 VideoComposer 与只能做粗略运动控制的 CogVideo 放在一起对比：给定一个方向箭头（甚至一段弧线），VideoComposer 就能让盒子沿指定方向平移、让老虎沿弧线行走，运动细粒度且灵活。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure9.png",
+              "caption": "图9 用手绘运动实现多样化运动控制。(a) CogVideo 只能做有限的运动控制；(b) VideoComposer 凭一段红色手绘笔画指定运动轨迹，就能让「盒子从左往右移动」「老虎沿弧线在草地上行走」，运动方向与路径都清晰可控。这说明运动向量＋STC-encoder 让「运动」真正成为一个可由用户手绘编辑的维度。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure9.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 160.04,
+        "end": 187.75,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 27.71,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 28.61,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 160.04,
+          "global_end": 187.75,
+          "relative_start": 0.0,
+          "relative_end": 27.71,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The hard part of controllable video is motion"
+            },
+            {
+              "type": "paragraph",
+              "text": "Diffusion models have made customizable image generation remarkably controllable, and the obvious next step is to extend that control to video. Video adds two difficulties images never had. The first is the sheer variety of temporal dynamics: the same caption, \"a tiger walking,\" spans a huge space of speeds and directions. The second is inter-frame consistency: each generated frame must stay coherent with the frames around it, or the result flickers and jumps."
+            },
+            {
+              "type": "paragraph",
+              "text": "Prior customizable-image methods mostly offer spatial control. They can pin down what a scene looks like, but they give no principled handle on how it evolves over time. Stacking single-frame controls like sketches or depth maps frame by frame tends to break consistency across frames. Controllable video synthesis stayed an open problem precisely because it lacked an interface that could describe motion explicitly without sacrificing consistency."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: no cost to text-to-video, finer conditional control"
+            },
+            {
+              "type": "paragraph",
+              "text": "A natural worry is whether piling on all these compositional conditions hurts basic text-to-video quality. The paper answers on the MSR-VTT benchmark. In the zero-shot setting, VideoComposer reaches an FVD of 580 and a CLIPSIM of 0.2932, competitive with the leading text-to-video methods of the time. More tellingly, it improves over its own first-stage text-to-video pre-training, which scored FVD 803. Adding compositional, multi-condition control did not cost text-to-video quality; if anything it helped slightly."
+            },
+            {
+              "type": "paragraph",
+              "text": "Qualitatively, the model follows the conditions it is given. The figure below shows compositional image-to-video generation: a single frame plus a caption already produces a video, and adding one more temporal condition, a depth, mask, or motion-vector sequence, gives finer control over how the structure evolves over time."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 4. Compositional image-to-video generation. Six examples, each with two rows: the top uses only a single image plus text, the bottom adds one temporal condition. Comparing the two rows in each pair, adding the temporal condition makes the subject's motion and the way its structure evolves track the intent more closely, while the subject's identity stays consistent.",
+              "width_inches": 5.0,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The most vivid demonstration of motion control is directing a video from nothing but a simple hand-drawn stroke. The figure below places VideoComposer next to CogVideo, which offers only coarse motion control: given a direction arrow, or even a curved path, VideoComposer moves a box along the specified direction and walks a tiger along an arc, with fine-grained and flexible control."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure9.png",
+              "caption": "Figure 9. Versatile motion control from hand-crafted motions. (a) CogVideo offers only limited motion control; (b) VideoComposer, given a single red hand-drawn stroke as the trajectory, makes \"a box move from left to right\" and \"a tiger walk along an arc on the grassland,\" with the direction and path clearly controllable. This is what it means for motion vectors plus the STC-encoder to turn motion into a dimension the user can sketch and edit.",
+              "width_inches": 6.3,
+              "src": "assets/blog/figures/figure9.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融：运动向量与 STC-encoder 各自贡献了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一个「运动控制误差」（motion-control error，越低越好）来量化这两个部件各自的作用。只用文本时误差为 4.03；把运动向量作为显式时间条件加入后，误差降到 2.67；再打开 STC-encoder，进一步降到 2.18。两个部件缺一不可：运动向量提供了时间信号，而 STC-encoder 让模型真正「用上」这个信号，从而锐化运动控制、增强帧间一致性。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 运动可控性消融（motion-control error，越低越好）。运动向量与 STC-encoder 分别带来显著下降，二者叠加效果最好。",
+              "headers": [
+                "配置",
+                "运动控制误差 ↓"
+              ],
+              "rows": [
+                [
+                  "仅文本（text only）",
+                  "4.03"
+                ],
+                [
+                  "＋运动向量",
+                  "2.67"
+                ],
+                [
+                  "＋运动向量 ＋ STC-encoder（完整）",
+                  "2.18"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "定性消融也印证了这一点：去掉 STC-encoder 后，生成视频对指定时序结构的贴合度和帧间一致性都会变差。下图用红框标出了这些缺陷区域。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "图10 定性消融。三个代表性例子，第三、四行分别是「去掉 STC-encoder」与完整 VideoComposer 在同一文本＋单路时间条件（草图/深度/运动向量）下的生成结果。红框标出缺陷区域：没有 STC-encoder 时，结构还原与帧间一致性明显更弱。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure10.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 187.75,
+        "end": 217.59,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 29.84,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 30.74,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 187.75,
+          "global_end": 217.59,
+          "relative_start": 0.0,
+          "relative_end": 29.84,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Controllable image generation has come a long way. Hand a diffusion model a sketch, a depth map, or a prompt, and it will return an image whose structure, layout, and style are broadly what you asked for. Move the same idea to video, though, and it stops working cleanly. Video carries a temporal axis that images don't: the way things move varies enormously from clip to clip, and every generated frame has to stay consistent with its neighbors instead of drifting on its own. The spatial control signals designed for a single image simply don't tell the model how anything should move."
+            },
+            {
+              "type": "paragraph",
+              "text": "Put differently, image generation answers \"what to draw,\" while controllable video generation also has to answer \"how it should move.\" VideoComposer, from Alibaba Group and Ant Group and published at NeurIPS 2023, is aimed squarely at that second question. Its central claim is that to control a video you have to control its content and its motion together, not just its appearance."
+            },
+            {
+              "type": "paragraph",
+              "text": "To do that, the paper decomposes a video into three families of freely combinable conditions: textual, spatial, and temporal. A user supplies any subset, and the model recomposes a video that obeys all of them at once. That is the \"compositional\" in the title. The single most distinctive move is to reuse the motion vectors already sitting inside compressed video as an explicit temporal control signal. The rest of this post unpacks how those conditions are encoded and fused, and why motion vectors turn out to be such a convenient handle on time."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2306.02018  ·  Code: https://github.com/damo-vilab/videocomposer  ·  Project page: https://videocomposer.github.io"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Compositional video synthesis at a glance. (a-c) VideoComposer generates videos that follow textual, spatial, and temporal conditions, or any subset of them; (d) from just two hand-drawn strokes, a red one specifying the motion and a white one specifying the shape, it synthesizes a video that matches the intended movement and form. The figure sets up the core intuition: conditions snap together freely, and motion itself becomes something the user can edit.",
+              "width_inches": 3.0,
+              "src": "assets/blog/figures/figure1.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "消融：运动向量与 STC-encoder 各自贡献了什么"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文用一个「运动控制误差」（motion-control error，越低越好）来量化这两个部件各自的作用。只用文本时误差为 4.03；把运动向量作为显式时间条件加入后，误差降到 2.67；再打开 STC-encoder，进一步降到 2.18。两个部件缺一不可：运动向量提供了时间信号，而 STC-encoder 让模型真正「用上」这个信号，从而锐化运动控制、增强帧间一致性。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 运动可控性消融（motion-control error，越低越好）。运动向量与 STC-encoder 分别带来显著下降，二者叠加效果最好。",
+              "headers": [
+                "配置",
+                "运动控制误差 ↓"
+              ],
+              "rows": [
+                [
+                  "仅文本（text only）",
+                  "4.03"
+                ],
+                [
+                  "＋运动向量",
+                  "2.67"
+                ],
+                [
+                  "＋运动向量 ＋ STC-encoder（完整）",
+                  "2.18"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "定性消融也印证了这一点：去掉 STC-encoder 后，生成视频对指定时序结构的贴合度和帧间一致性都会变差。下图用红框标出了这些缺陷区域。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "图10 定性消融。三个代表性例子，第三、四行分别是「去掉 STC-encoder」与完整 VideoComposer 在同一文本＋单路时间条件（草图/深度/运动向量）下的生成结果。红框标出缺陷区域：没有 STC-encoder 时，结构还原与帧间一致性明显更弱。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure10.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 217.59,
+        "end": 242.87,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 25.28,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 26.18,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 217.59,
+          "global_end": 242.87,
+          "relative_start": 0.0,
+          "relative_end": 25.28,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure10.png",
+              "caption": "Figure 10. Qualitative ablation. Three representative examples; the last two rows compare VideoComposer without the STC-encoder against the full model under the same text plus a single temporal condition (sketch, depth, or motion vectors). Red boxes mark deficient regions: without the STC-encoder, structural fidelity and inter-frame consistency are visibly weaker.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure10.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway: motion as an editable dimension"
+            },
+            {
+              "type": "paragraph",
+              "text": "The value of VideoComposer is less any single headline number than the framing it offers: treat a video as a composition of textual, spatial, and temporal conditions, give the temporal dimension an explicit signal drawn from compressed-video motion vectors, and pair it with a unified STC-encoder that digests heterogeneous conditions while holding consistency together. It is trained on two public datasets, WebVid10M (about 10.3M video-caption pairs) and LAION-400M, and freely composes 8-plus condition types, from text and images to sketches, motion vectors, and depth, mask, and sketch sequences."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth staying honest about scope. The reported numbers are zero-shot text-to-video metrics and qualitative demonstrations, and motion controllability is a dedicated error on 1000 caption-video pairs, not a general \"motion-correctness\" score; resolution, length, and realism remain bounded by the underlying VLDM. Still, the direction is clear: decompose a video into conditions, give motion its own explicit signal, and generation becomes markedly more controllable, from text and sketches to depth maps or two hand-drawn strokes."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 组合式视频生成总览。(a-c) VideoComposer 可以生成同时遵循文本、空间、时间条件（或其任意子集）的视频；(d) 更进一步，仅凭两笔手绘——红色笔画指定运动方向、白色笔画指定形状轮廓——模型就能合成符合预期运动与形状的视频。这张图先建立一个直觉：条件可以自由拼装，运动本身也变成了用户可编辑的一维。",
+              "width_inches": 2.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结：让「运动」成为可编辑的一维"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 的价值，不在于某个单点指标的刷新，而在于它把可控视频生成重新组织成了一个清晰的框架：把视频看作文本、空间、时间三类条件的组合，再用压缩视频里现成的运动向量为时间维度提供显式信号，配上统一的 STC-encoder 来消化异构条件、维持一致性。它训练于两个公开数据集——WebVid10M（约 10.3M 视频-字幕对）与 LAION-400M，支持文本、单帧图像、单张草图、运动向量、深度/掩码/草图序列、风格等 8 种以上条件的任意组合。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要保持清醒的是，论文报告的是零样本文生视频指标与定性演示，运动可控性用的是在 1000 个字幕-视频对上定义的专门误差，而非某种通用的「运动正确率」；生成分辨率、时长与真实感也仍受底层 VLDM 能力限制。但它给出的方向是明确的：当我们把一段视频拆成条件、并单独给运动一个显式信号时，视频生成会变得可控得多——用户可以同时驾驭内容与运动，输入既可以是文本、草图、深度图，也可以只是两笔手绘。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 242.87,
+        "end": 269.28,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 26.41,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 27.31,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 242.87,
+          "global_end": 269.28,
+          "relative_start": 0.0,
+          "relative_end": 26.41,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Compositional video synthesis at a glance. (a-c) VideoComposer generates videos that follow textual, spatial, and temporal conditions, or any subset of them; (d) from just two hand-drawn strokes, a red one specifying the motion and a white one specifying the shape, it synthesizes a video that matches the intended movement and form. The figure sets up the core intuition: conditions snap together freely, and motion itself becomes something the user can edit.",
+              "width_inches": 3.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway: motion as an editable dimension"
+            },
+            {
+              "type": "paragraph",
+              "text": "The value of VideoComposer is less any single headline number than the framing it offers: treat a video as a composition of textual, spatial, and temporal conditions, give the temporal dimension an explicit signal drawn from compressed-video motion vectors, and pair it with a unified STC-encoder that digests heterogeneous conditions while holding consistency together. It is trained on two public datasets, WebVid10M (about 10.3M video-caption pairs) and LAION-400M, and freely composes 8-plus condition types, from text and images to sketches, motion vectors, and depth, mask, and sketch sequences."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth staying honest about scope. The reported numbers are zero-shot text-to-video metrics and qualitative demonstrations, and motion controllability is a dedicated error on 1000 caption-video pairs, not a general \"motion-correctness\" score; resolution, length, and realism remain bounded by the underlying VLDM. Still, the direction is clear: decompose a video into conditions, give motion its own explicit signal, and generation becomes markedly more controllable, from text and sketches to depth maps or two hand-drawn strokes."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 组合式视频生成总览。(a-c) VideoComposer 可以生成同时遵循文本、空间、时间条件（或其任意子集）的视频；(d) 更进一步，仅凭两笔手绘——红色笔画指定运动方向、白色笔画指定形状轮廓——模型就能合成符合预期运动与形状的视频。这张图先建立一个直觉：条件可以自由拼装，运动本身也变成了用户可编辑的一维。",
+              "width_inches": 2.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结：让「运动」成为可编辑的一维"
+            },
+            {
+              "type": "paragraph",
+              "text": "VideoComposer 的价值，不在于某个单点指标的刷新，而在于它把可控视频生成重新组织成了一个清晰的框架：把视频看作文本、空间、时间三类条件的组合，再用压缩视频里现成的运动向量为时间维度提供显式信号，配上统一的 STC-encoder 来消化异构条件、维持一致性。它训练于两个公开数据集——WebVid10M（约 10.3M 视频-字幕对）与 LAION-400M，支持文本、单帧图像、单张草图、运动向量、深度/掩码/草图序列、风格等 8 种以上条件的任意组合。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要保持清醒的是，论文报告的是零样本文生视频指标与定性演示，运动可控性用的是在 1000 个字幕-视频对上定义的专门误差，而非某种通用的「运动正确率」；生成分辨率、时长与真实感也仍受底层 VLDM 能力限制。但它给出的方向是明确的：当我们把一段视频拆成条件、并单独给运动一个显式信号时，视频生成会变得可控得多——用户可以同时驾驭内容与运动，输入既可以是文本、草图、深度图，也可以只是两笔手绘。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "VideoComposer: Making Motion, Not Just Appearance, Controllable in Video Generation",
+            "subtitle": "A NeurIPS 2023 paper from Alibaba Group and Ant Group treats a video as a composition of textual, spatial, and temporal conditions, and turns motion vectors from compressed video into an explicit control signal."
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不只是让视频「生成」，还要让运动「可控」",
+            "subtitle": "阿里巴巴与蚂蚁集团提出 VideoComposer：把视频拆成文本、空间、时间三类条件，用压缩视频里的运动向量为生成过程装上「方向盘」"
+          }
+        }
+      },
+      "segment": {
+        "start": 269.28,
+        "end": 294.76,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 25.48,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 26.38,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 269.28,
+          "global_end": 294.76,
+          "relative_start": 0.0,
+          "relative_end": 25.48,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

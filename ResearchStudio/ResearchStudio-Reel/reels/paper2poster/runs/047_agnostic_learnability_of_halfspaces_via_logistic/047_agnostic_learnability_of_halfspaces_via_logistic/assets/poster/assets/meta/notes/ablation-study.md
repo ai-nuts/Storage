@@ -1,0 +1,7 @@
+# Ablation Study
+
+Core claim: The upper-bound analysis is deliberately versatile: the same argument recovers Frei et al.'s Õ(√OPT) guarantee for general well-behaved distributions and also applies to the hinge loss, which is precisely what makes the two-phase algorithm possible.
+
+Supporting detail: Theorem 3.4 separates the two regimes: bounded distributions give O((1+Cκ)OPT) with Cκ=∫₀ᴮκ(r)dr, while sub-exponential ones give O((1+Cκ)OPT·ln(1/OPT)) with the integral taken to 3α₂ln(1/OPT), isolating the ln(1/OPT) factor as the sole cost of heavier tails.
+
+Narration: Although this is a theory paper without experimental ablations, the analysis is structured to expose which assumptions buy which guarantees, playing the role an ablation would. The single upper-bound argument is versatile enough to recover the earlier square-root OPT rate for general well-behaved distributions as a special case, and crucially it also goes through for the hinge loss, not just the logistic loss; this dual applicability is what enables the perceptron second phase. The theorem cleanly separates the bounded and sub-exponential regimes, showing that the only price of moving from bounded to heavier sub-exponential tails is an extra logarithmic factor in one over OPT. Likewise, the constant Cκ, an integral of the radial-Lipschitzness modulus, isolates exactly how much the density's radial smoothness matters, vanishing when the density is radially symmetric.

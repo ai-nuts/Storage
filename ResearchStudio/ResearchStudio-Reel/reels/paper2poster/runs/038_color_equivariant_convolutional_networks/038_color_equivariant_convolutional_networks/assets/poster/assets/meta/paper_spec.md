@@ -1,0 +1,59 @@
+---
+title: Color Equivariant Convolutional Networks
+authors: Attila Lengyel¹, Ombretta Strafforello¹, Robert-Jan Bruintjes¹, Alexander Gielisse¹, Jan van Gemert¹
+institutes: ¹Computer Vision Lab, Delft University of Technology
+venue: NeurIPS 2023
+paper_url: https://arxiv.org/abs/2310.19368
+code_url: https://github.com/Attila94/CEConv
+title_audio_script: Color is a powerful cue that convolutional networks readily exploit for object recognition, but it becomes a liability when the colors seen at test time differ from those in training. This paper introduces Color Equivariant Convolutions, or CEConvs, a new building block that shares shape features across the color spectrum while preserving discriminative color information. By hard-wiring parameter sharing over discrete hue shifts, CEConvs let networks like ResNets generalize to underrepresented colors and stay robust to test-time hue shifts, without throwing color away.
+---
+
+## Problem
+**Necessary:** CNNs exploit color for recognition but fail under train-test color distribution shifts; color invariance fixes robustness only by discarding all color, sacrificing discriminative power.
+**Additional:** Balanced training data covering every color variation is impossible due to the long tail of real-world appearance, so underrepresented colors are systematically misclassified.
+**Audio script:** Convolutional neural networks lean heavily on color to recognize objects, but real-world data rarely contains every color a class can take. When a model trained mostly on red cars sees a blue one, accuracy collapses. The classic remedy, color invariance, sidesteps the problem by removing color entirely, but that throws away a genuinely useful signal. The paper frames the real challenge as keeping color information while still generalizing across colors that were rare or absent during training.
+
+## Motivation
+**Necessary:** Equivariance has been extended to many geometric transformations, but photometric transformations like hue shifts remain largely unexplored, despite early CNN layers learning highly color-selective filters.
+**Additional:** Prior work either applies color invariants as preprocessing or uses quaternion/offset-equivariant networks, none of which share features across colors while retaining color information.
+**Audio script:** Group equivariant convolutions taught networks to share parameters across rotations and flips, dramatically improving data efficiency for geometric transformations. Yet photometric changes, such as shifts in hue, had been left aside. Studies of trained CNNs show that early layers learn strongly color-selective neurons, which suggests color is a natural axis for equivariance. This motivates treating a hue shift the same way prior work treated a rotation: as a symmetry the network should respect by design, rather than something it must relearn from data.
+
+## Contribution
+**Necessary:** The paper introduces Color Equivariant Convolutions (CEConvs), a novel building block enforcing equivariance to discrete hue shifts that shares shape features across colors while retaining color, and drops into existing architectures such as ResNets.
+**Additional:** It also shows CNNs benefit from color yet are not robust to color-based domain shifts, and demonstrates CEConvs improve robustness to train-test color shifts, complementing color augmentations.
+**Audio script:** The core contribution is the Color Equivariant Convolution, a new layer that hard-wires parameter sharing over hue shifts. It shares shape information across the color spectrum while keeping color in a dedicated group dimension of the feature map. Because it is formulated in the language of symmetry groups, it slots directly into standard networks like ResNet with no architectural surgery. The authors demonstrate, through both controlled toy experiments and realistic benchmarks, that this design improves robustness to color shifts between training and testing and works hand in hand with color augmentation.
+
+## Method
+**Necessary:** CEConvs define color equivariance as equivariance to the group Hn of discrete 360/n-degree rotations about the [1,1,1] diagonal in RGB space, sharing parameters across hue-transformed copies of each filter and storing color in an extra feature-map dimension.
+**Additional:** Building on Group Equivariant Convolutions, the input-layer filter is rotated by the hue matrix Hn(k) while hidden layers use cyclically permuted filter copies; hybrid networks apply CEConvs only in early ResNet stages and pool over the color dimension to introduce early color invariance and control the parameter cost.
+**Key equation:** `$[f \star \psi^i](x,k) = \sum_{y\in\mathbb{Z}^2}\sum_{c=1}^{C^l} f_c(y)\cdot H_n(k)\psi_c^i(y-x)$`
+**Audio script:** A hue shift in HSV space becomes, in RGB space, a rotation around the gray diagonal from black to white. The authors formalize this as the group H-n of n discrete rotations about that diagonal, a subgroup of all three-dimensional rotations. A Color Equivariant Convolution correlates the input with hue-rotated copies of each filter, producing feature maps that carry an extra dimension indexing the hue rotation. In hidden layers, filters are cyclically permuted across this dimension so equivariance is preserved throughout the network. Because the extra dimension multiplies the number of feature maps, the authors decompose filters into spatial and pointwise components and offer hybrid variants that use color equivariance only in the early, most color-selective stages, keeping parameter and compute cost in check.
+
+## Dataset / Benchmark
+**Necessary:** Two controlled MNIST variants (long-tailed ColorMNIST, 30 classes; biased ColorMNIST, 10 classes) plus eight natural-image classification benchmarks: CIFAR-10, CIFAR-100, Flowers-102, STL-10, Oxford-IIIT Pet, Caltech-101, Stanford Cars, and ImageNet.
+**Additional:** Robustness is measured on hue-shifted test sets spanning -180° to 180°; ResNet-18 is used for high-resolution datasets and ResNet-44 for CIFAR, all trained on a single NVIDIA A40 GPU.
+**Audio script:** The evaluation spans two scales. First, two synthetic MNIST variants isolate the phenomenon: a long-tailed ColorMNIST with strong class imbalance, and a biased ColorMNIST where each class has a characteristic hue with tunable spread. Then, eight standard image classification benchmarks, from CIFAR and STL-10 to Flowers-102, Stanford Cars, and ImageNet, test the method in realistic settings. To probe robustness, every test image is re-rendered under a gradual hue shift from minus one-hundred-eighty to plus one-hundred-eighty degrees, and accuracy is averaged across the full sweep.
+
+## Key Result
+**Necessary:** On the hue-shifted test sets CE-ResNets are far more robust than vanilla ResNets while matching them on the original data; e.g. on Flowers-102 average hue-shift accuracy rises from 13.41% (baseline) to 33.33% (CEConv), and on CIFAR-100 from 47.01% to 62.11% (CEConv-2).
+**Additional:** In the long-tailed ColorMNIST toy setting CECNN reaches 91.35±0.40% versus 71.59±0.61% for the vanilla CNN, with the largest gains on the rarest classes; on Flowers-102 the CE-CNN accuracy peaks at -120°, 0°, and 120° hue shifts.
+**Audio script:** The headline finding is robustness without a cost to clean accuracy. On the original, unshifted test sets, color equivariant ResNets perform on par with vanilla ResNets. But when the test images are hue-shifted, the gap opens dramatically. On Flowers-102, average accuracy across hue shifts jumps from about thirteen percent for the baseline to thirty-three percent for the fully equivariant model, and similar gains appear on CIFAR-100 and Stanford Cars. In the controlled long-tailed experiment the equivariant network reaches ninety-one percent against the baseline's seventy-two percent, with the biggest improvements exactly on the rare classes that shape sharing is meant to help.
+
+## Ablation Study
+**Necessary:** Three ablations show a) more hue rotations increase test-time hue-shift robustness at a slight capacity cost, b) removing group coset pooling breaks hue invariance, and c) hue-equivariant networks need weaker color-jitter augmentation to match the same robustness and accuracy.
+**Additional:** Hybrid CE-ResNets using CEConvs in only one or two early stages give the best accuracy-robustness trade-off on most datasets, and color equivariance benefits datasets whose neurons are more color-selective (e.g. Flowers-102, color selectivity 0.70).
+**Audio script:** The ablations clarify the design choices. Increasing the number of discrete hue rotations makes the network more robust to test-time hue shifts, though it slightly reduces capacity because channels must shrink to keep parameters fixed. Group coset pooling turns out to be the mechanism that yields hue invariance; remove it, and the network behaves like a regular one. Finally, color equivariance and color-jitter augmentation are complementary: an equivariant network needs a lower intensity of augmentation to reach the same robustness. A color-selectivity analysis further explains when the method helps, showing that datasets with more color-selective neurons benefit from equivariance up to later stages.
+
+## Headline Numbers
+**Necessary:**
+- Flowers-102 hue-shifted accuracy: 13.41% (baseline) -> 33.33% (CEConv), roughly 2.5x.
+- Long-tailed ColorMNIST: 91.35±0.40% (CECNN) vs 71.59±0.61% (CNN), +19.76 points.
+- CIFAR-100 hue-shifted accuracy: 47.01% (baseline) -> 62.11% (CEConv-2), +15.1 points.
+- Stanford Cars hue-shifted accuracy: 55.59% (baseline) -> 68.17% (CEConv-2), +12.6 points.
+**Additional:** Compute overhead is modest: MACs increase by only |Hn|/k² + |Hn| and parameters by |Hn|/k² + 1 thanks to the spatial/pointwise filter decomposition.
+**Audio script:** A few numbers capture the impact. On Flowers-102 under hue shifts, accuracy nearly triples, from thirteen to thirty-three percent. On the long-tailed color experiment the equivariant network gains almost twenty points over the baseline. CIFAR-100 improves by fifteen points and Stanford Cars by roughly thirteen points on hue-shifted tests. And all of this comes at a modest compute overhead, since the filter decomposition keeps the increase in operations and parameters to a small factor of the number of hue rotations.
+
+## Takeaway
+**Necessary:** By making convolutions equivariant to hue shifts, networks can share shape features across colors and stay robust to color distribution shifts while keeping, not discarding, discriminative color information.
+**Additional:** CEConvs drop into existing architectures like ResNet, complement color augmentation, and help most on color-selective datasets, with hybrid early-stage variants giving the best trade-off.
+**Audio script:** The lasting message is that color deserves the same equivariance treatment that rotations and translations have long enjoyed. Instead of choosing between exploiting color and being robust to color changes, Color Equivariant Convolutions let a network do both, by sharing shape information across the color spectrum while keeping color in its own dimension. The block plugs into standard architectures, plays well with augmentation, and delivers its largest gains precisely where color matters most, offering a practical route to color-robust recognition.

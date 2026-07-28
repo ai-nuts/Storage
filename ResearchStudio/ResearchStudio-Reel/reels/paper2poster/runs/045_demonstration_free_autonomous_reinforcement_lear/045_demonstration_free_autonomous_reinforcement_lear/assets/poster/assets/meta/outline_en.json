@@ -1,0 +1,165 @@
+{
+  "lang": "en",
+  "title": "Learning Robot Skills With No Resets and No Demonstrations",
+  "subtitle": "IBC pairs a self-fading helper agent with an optimal-transport curriculum to make reinforcement learning fully autonomous (ICML 2023)",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Almost every reinforcement learning success story quietly relies on a convenience that the physical world does not offer: the reset. In a simulator, the moment an episode ends the environment snaps back to a fixed starting state, ready for another attempt. On a real robot, that snap-back is a person walking over to re-stack the blocks, a scripted homing routine, or a custom rig, and it is slow, expensive, and the opposite of autonomous."
+    },
+    {
+      "type": "paragraph",
+      "text": "Autonomous reinforcement learning (ARL) tries to drop the reset assumption and learn from a single, uninterrupted stream of experience. The catch is that most existing autonomous methods trade one crutch for another: they lean on demonstrations, such as expert trajectories or a handful of example states of interest, to bootstrap a curriculum or to define where the agent should return to. When the interactions that matter are rare and almost never happen by chance, those demonstration-dependent methods struggle."
+    },
+    {
+      "type": "paragraph",
+      "text": "A paper from Seoul National University, presented at ICML 2023, asks whether an agent can learn genuinely from scratch: no resets, and no demonstrations either. Their method, IBC (Implicit and Bidirectional Curriculum), lets the agent manufacture its own training signal from nothing but the experience it collects. The idea has two moving parts, sketched in the figure below."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. IBC generates a bidirectional curriculum for both forward and backward episodes. Early on, an auxiliary agent (blue) keeps returning the agent of interest (red) toward useful starting states; as the forward agent improves, the auxiliary agent is activated less and less, until only forward episodes remain at convergence.",
+      "width_inches": 3.1
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2305.09943"
+    },
+    {
+      "type": "paragraph",
+      "text": "Code: https://github.com/snu-larr/ibc_official"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why demonstration-free autonomous RL is hard"
+    },
+    {
+      "type": "paragraph",
+      "text": "In the standard episodic setting, every attempt starts from the same place, so learning is stable. Remove the reset and the ground shifts. Before the policy has converged, a forward agent that fails at its task simply wanders off and is left stranded in some arbitrary state. The next attempt then begins from that arbitrary state, so the agent is effectively practicing from a constantly moving, often useless starting point. This instability is enough to make naive reset-free learning collapse."
+    },
+    {
+      "type": "paragraph",
+      "text": "Prior reset-free methods patch the problem in ways that quietly reintroduce human effort. Some still ask for occasional manual resets. Others only succeed when the useful interactions happen to occur by chance. The two most directly comparable methods, VaPRL and MEDAL, both depend on demonstration data: VaPRL uses it to seed a subgoal curriculum, and MEDAL uses it to define the state distribution its backward agent should return to. The goal of this work is an agent that supplies its own anchor and its own curriculum, using only what it has already seen."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: two curricula, one autonomous loop"
+    },
+    {
+      "type": "paragraph",
+      "text": "IBC alternates between two roles throughout training. A forward agent pursues the task. An auxiliary agent brings the system back toward a set of target initial states so the forward agent can try again. Both are ordinary Soft Actor-Critic (SAC) policies, each with its own replay buffer. What makes the loop autonomous is how the two roles are scheduled and how their goals are chosen."
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "An implicit curriculum that fades on its own"
+    },
+    {
+      "type": "paragraph",
+      "text": "The first idea is deliberately simple. The auxiliary agent is activated only when the forward agent fails. Early in training the forward agent fails often, so the auxiliary agent intervenes frequently and does most of the work of resetting the system to a good starting state. As the forward agent gets better, it fails less, so the auxiliary agent steps in less and less. Nobody schedules this fade-out by hand; it is an implicit curriculum that emerges from the activation rule itself. By the end of training the auxiliary agent has effectively disappeared, and the paper confirms that its share of episodes drops toward zero once the forward agent is fully trained."
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "text": "An explicit curriculum from optimal transport"
+    },
+    {
+      "type": "paragraph",
+      "text": "On top of the fading helper sits an explicit, bidirectional goal curriculum, and this is where the demonstrations would normally go. Instead of expert data, IBC samples candidate states from its own replay buffers and frames curriculum generation as an optimal transport problem: a Wasserstein Barycenter, augmented with a value-based bias so that goals which are both close to the target and currently achievable are preferred. The resulting assignment is solved as a bipartite matching with a Minimum Cost Maximum Flow algorithm, producing a set of intermediate goals for the forward agent and a matching set for the auxiliary agent. A Lipschitz-continuity assumption on the goal-conditioned value function lets the method relax the true objective into a tractable lower bound, and a diversity constraint keeps the selected goals from collapsing onto a single trajectory."
+    },
+    {
+      "type": "paragraph",
+      "text": "The practical payoff is striking. To specify the target distribution the agent should aim for, IBC needs only about 10 example states, and sometimes a single one, rather than the thousands of demonstration transitions prior autonomous methods assume. Figure 3 shows the effect over training: the forward agent's initial-state distribution, which starts scattered, is gently pulled along the curriculum until it concentrates around the states that matter."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. The forward agent's initial-state distribution over the course of training. Guided by the curriculum, it moves from an early, spread-out distribution toward the small set of target states, using only a few example states rather than demonstrations.",
+      "width_inches": 5.6
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Does it work?"
+    },
+    {
+      "type": "paragraph",
+      "text": "The authors evaluate IBC on 6 sparse-reward environments spanning manipulation and locomotion. Two of them, Tabletop Manipulation and Sawyer Door, come from EARL, an established benchmark for autonomous RL. The other 4, Fetch Pick&Place, Fetch Push, Fetch Reach, and Point-U-Maze, are standard Gym tasks built on MuJoCo and adapted to the reset-free setting. Evaluation follows the EARL protocol: the agent is spawned once, interacts continually, and is reset only rarely, with performance measured as the deployed-policy success rate and averaged over 5 seeds."
+    },
+    {
+      "type": "paragraph",
+      "text": "The headline result is that IBC reaches state-of-the-art success rates across these environments without a single demonstration. It outperforms VaPRL and MEDAL, two strong baselines that actually use near-expert demonstration data, and on many tasks its success rate approaches the oracle: a standard RL agent trained in the easy, fully resettable episodic setting. The demonstration-based baselines falter most in the Fetch environments, where the task-relevant interactions are sparse and the evaluation goals are spread over a whole region rather than a few discrete points. Stripping VaPRL of its demonstrations for a fair comparison makes it noticeably worse, underscoring how much the prior methods depend on that extra data."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "Figure 4. Evaluation success rate over training on a representative environment. The episodic oracle (gray dashed) learns in the easy resettable setting and marks an upper bound; IBC (blue) climbs to near-perfect success without resets or demonstrations, while the demonstration-free baselines (flat lower curves) never take off. Shading is standard deviation over 5 seeds.",
+      "width_inches": 4.4
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Which part is doing the work?"
+    },
+    {
+      "type": "paragraph",
+      "text": "An ablation peels the method apart to check that both pieces earn their place. Removing the bidirectional curriculum causes a consistent drop in performance. Further removing the auxiliary agent, which reduces IBC to naive reset-free RL, causes a larger drop still, especially in the object-manipulation tasks. The effect is task-dependent: the bidirectional curriculum matters little in the simple Tabletop Manipulation state space, and the auxiliary agent helps less in Point-U-Maze, where the start is already far from the goal. But across the board, taking either component away hurts."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure7.png",
+      "caption": "Figure 7. Ablation on a representative environment. Full IBC (blue) reaches the ceiling; removing the bidirectional curriculum (orange) makes learning slower and lower; further removing the auxiliary agent, leaving naive reset-free RL (green), collapses it. Both components are needed.",
+      "width_inches": 3.6
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "What IBC changes"
+    },
+    {
+      "type": "paragraph",
+      "text": "The table below places IBC next to its closest neighbors. Its distinguishing feature is the empty column: it is the first method the authors are aware of that consistently learns these tasks with neither manual resets nor demonstrations, while still matching approaches that rely on expert data."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. How IBC compares on the two costs autonomous RL is trying to remove.",
+      "headers": [
+        "Method",
+        "Needs demonstrations",
+        "Needs manual resets"
+      ],
+      "rows": [
+        [
+          "Oracle RL (episodic)",
+          "No",
+          "Yes (every episode)"
+        ],
+        [
+          "VaPRL",
+          "Yes",
+          "No"
+        ],
+        [
+          "MEDAL",
+          "Yes",
+          "No"
+        ],
+        [
+          "IBC (ours)",
+          "No",
+          "No"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "The recipe is worth restating because it is so lightweight. Take two SAC agents, a forward one and an auxiliary one. Activate the auxiliary agent only when the forward agent fails, and its help fades away on its own as an implicit curriculum. Feed both agents intermediate goals proposed by an optimal-transport matching over states the agents have already visited, and you get an explicit bidirectional curriculum that needs a handful of example states instead of a demonstration dataset."
+    },
+    {
+      "type": "paragraph",
+      "text": "The honest caveats are stated plainly. IBC assumes a reversible (ergodic) environment, so an auxiliary agent can, in principle, undo whatever the forward agent did; irreversible mistakes are out of scope. It also still needs a human to specify a sparse reward. The authors point to a reward-free variant, hinted at by their C-learning experiments, as the natural next step. Even with those limits, IBC is a clean demonstration that an agent can learn manipulation and locomotion skills on its own, generating the curriculum it needs from the experience it already has."
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Title
+
+Retrieval-based language models sharpen their predictions by pulling examples from a huge external datastore at test time, but that nearest-neighbor search is slow and runs at almost every single token. This paper introduces RetoMaton, short for retrieval automaton, which builds a weighted finite automaton on top of the datastore. By saving pointers between consecutive entries and clustering entries into states, RetoMaton lets the model follow cheap automaton transitions instead of searching from scratch. The result: up to eighty-three percent fewer nearest-neighbor searches with no loss in perplexity, or up to one point eight five lower perplexity when the search budget is kept.

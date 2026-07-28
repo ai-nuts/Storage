@@ -1,0 +1,3 @@
+# Title
+
+How do you pick the right attention mechanism for a long-range Transformer task, and could mixing several types work even better? This paper, DARTFormer, adapts differentiable neural architecture search to answer both questions. The authors build a supernetwork that contains many efficient attention types in parallel, then use a masked validation accuracy drop metric to rank them. Their search reliably finds the best single attention for a task, but a surprising second result emerges: heterogeneous Transformers that combine several attention types beat the average homogeneous model, yet never beat the single best one.

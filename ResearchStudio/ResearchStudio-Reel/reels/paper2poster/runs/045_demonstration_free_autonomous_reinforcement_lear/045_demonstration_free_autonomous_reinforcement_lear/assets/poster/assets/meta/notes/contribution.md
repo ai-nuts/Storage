@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: The paper introduces IBC, to the best of the authors' knowledge the first non-episodic RL algorithm that consistently learns without manual resets and without demonstrations, by combining a conditionally activated auxiliary agent (an implicit curriculum) with a bidirectional goal curriculum based on optimal transport (an explicit curriculum).
+
+Supporting detail: Across six sparse-reward manipulation and locomotion environments, IBC reaches state-of-the-art performance, outperforming baselines that use expert demonstrations and approaching the episodic oracle RL upper bound.
+
+Narration: The core contribution is a method called IBC, short for Implicit and Bidirectional Curriculum. As far as the authors know, it is the first algorithm for non-episodic reinforcement learning that consistently learns without any manual resets and without any demonstrations. It brings together two ideas. The first is a conditionally activated auxiliary agent that forms an implicit curriculum: it helps the main agent early on and then gradually disappears as the main agent becomes capable. The second is a bidirectional goal curriculum, grounded in optimal transport, that automatically proposes intermediate goals for both the forward and the backward directions. Together these let the agent bootstrap its own training signal, and across six sparse-reward environments IBC beats methods that rely on expert data while approaching the performance of an idealized episodic oracle.

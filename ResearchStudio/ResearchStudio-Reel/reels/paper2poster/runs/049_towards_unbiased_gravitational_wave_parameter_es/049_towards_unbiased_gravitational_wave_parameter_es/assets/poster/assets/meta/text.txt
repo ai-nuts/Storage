@@ -1,0 +1,449 @@
+              Towards Unbiased Gravitational-Wave Parameter Estimation
+                    using Score-Based Likelihood Characterization
+
+
+                     Ronan Legin * 1 2 3 Maximiliano Isi * 4 Kaze Wong * 4 Alexandre Adam 1 2 3
+                           Laurence Perreault-Levasseur 1 2 3 4 5 Yashar Hezaveh 1 2 3 4 5
+
+
+                        Abstract                                     other areas of astronomy, GW parameter estimation has
+                                                                     traditionally assumed that instrumental noise is Gaussian
+     Gravitational wave (GW) parameter estimation                    and stationary (Abbott et al., 2020). This idealization is
+     has conventionally relied on the assumption of                  approximately justified for short segments of data by the
+     Gaussian and stationary noise. However, noise                   central limit theorem, and has the additional advantage of
+     from real-world detectors, such as LIGO, Virgo                  having a tractable and inexpensive likelihood.
+     and KAGRA, often deviates considerably from
+     these assumptions. In this paper, we use score-                 However, in reality, the statistics of noise often deviate sig-
+     based diffusion models to learn an empirical noise              nificantly from a stationary Gaussian: most notably, the
+     distribution directly from detector data, which                 instruments evolve over time, and the data are contaminated
+     can then be combined with the forward simula-                   by both transient non-Gaussian excursions (“glitches”) and
+     tor of the physical model to provide an unbiased                the nonlinear evolution of narrow spectral features (“lines”)
+     model of the likelihood function. We validate the               (Abbott et al., 2016c;a; Buikema et al., 2020); in principle,
+     method by performing inference on a simulated                   the data are also contaminated by subthreshold astrophysical
+     gravitational wave event injected in real detector              signals (Abbott et al., 2021c). Since no generative models
+     noise from LIGO, demonstrating its potential for                exist for most of these contaminants, they can usually only
+     providing accurate and scalable GW parameter                    be handled by bespoke treatment of the affected data seg-
+     estimation.                                                     ments, which can be computationally expensive and can
+                                                                     result in biases. The most prominent example of this was
+                                                                     the first detection of a binary neutron star merger (Abbott
+                                                                     et al., 2017b), which was famously contaminated by a loud
+1. Introduction
+                                                                     glitch in one of the LIGO detectors.
+Gravitational-wave (GW) detectors, like LIGO (Aasi et al.,
+                                                                     In this work, we showcase a new inference framework to
+2015) Virgo (Acernese et al., 2015) and KAGRA (Aso et al.,
+                                                                     carry out GW parameter estimation without assuming sta-
+2013), record noisy time series encoding astrophysically-
+                                                                     tionary Gaussian noise, and without sacrificing the advan-
+valuable signals from black hole and neutron star collisions
+                                                                     tages of deterministic signal models on which standard GW
+in far away galaxies (Abbott et al., 2016b; 2017b; 2021b).
+                                                                     inference relies. This would make it possible to analyze
+Extracting science from these data requires using Bayesian
+                                                                     signals contaminated by noise artifacts without the need
+inference to estimate the source parameters (like black hole
+                                                                     for special data treatments, and reduce biases in the anal-
+masses and spins) (Veitch et al., 2015; Ashton et al., 2019;
+                                                                     ysis of large collections of signals which would otherwise
+Romero-Shaw et al., 2020; Biwer et al., 2019). As in many
+                                                                     be sensitive even to small departures from the Gaussian
+   *
+     Equal contribution 1 Department of Physics, Université         assumption.
+de Montréal, Montréal, Canada 2 Mila - Quebec Artificial In-
+telligence Institute, Montréal, Canada 3 Ciela - Montreal In-       We propose to do this by adapting the method used by Legin
+stitute for Astrophysical Data Analysis and Machine Learn-           et al. (2023), originally focused on modelling noise in image
+ing, Montréal, Canada 4 Center for Computational Astro-             data from the Hubble Space Telescope (HST) and the James
+physics, Flatiron Institute, New York, USA 5 Perimeter Insti-        Webb Space Telescope (JWST). In a similar spirit, we train
+tute for Theoretical Physics, Waterloo, Ontario, Canada. Cor-        a score-based diffusion model on samples of LIGO noise to
+respondence to: Ronan Legin <ronan.legin@umontreal.ca>,
+Maximiliano Isi <misi@flatironinstitute.org>, Kaze Wong              learn the gradient of the log probability density of the noise
+<kwong@flatironinstitute.org>.                                       distribution with respect to data elements; combined with
+                                                                     the Jacobian of the physical signal model, we use Langevin
+Proceedings of the 40 th International Conference on Machine         sampling to produce draws from the likelihood without
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright           assuming any specific noise properties besides additivity.
+2023 by the author(s).
+
+                                                                 1
+                                       Non Gaussian likelihood in GW with diffusion model
+
+The structure of the paper is as follows. In Section 2 we                For simplicity, below we assume χ1 = χ2 = 0 and a sky
+summarize the inference method and describe our specific                 location given by right ascension α = 1.95 rad, declination
+forward model and data. In Section 3 we present examples                 δ = −1.27 rad and polarization angle ψ = 0.82 rad, consis-
+of our setup applied to recover parameters for a simulated               tent with the first ever GW detection, GW150914 (Abbott
+gravitational wave event in real detector noise. We discuss              et al., 2016b;d).
+our results and future work in Section 4.
+                                                                         2.3. Data
+2. Method                                                                We train the score-based network on 11 h of actual LIGO
+2.1. Score-based models for non-Gaussian likelihoods                     data around GW150914 (GPS time 1126259462.423 s) ob-
+                                                                         tained from the Gravitational Wave Open Science Center
+In this section, we present a concise overview of the tech-              (Abbott et al., 2021a; Abbot et al., 2023). We split these
+nique introduced by Legin et al. (2023) to perform inference             data into 4 s segments for training, taking care to discard
+using non-Gaussian likelihoods. The setting is that of an                the one segment containing the true signal. Following stan-
+inverse problem with additive noise. With this single as-                dard LIGO-Virgo practice, we use data sampled at 4096 Hz;
+sumption, we can model the likelihood, or more precisely                 we apply no filters besides those pre-applied to the public
+the gradient of the log (aka, score) of the likelihood, by               data, but we begin the likelihood integration at 20 Hz. We
+learning the score of the noise distribution. Given samples              train the network in the Fourier domain, after applying a
+x ∼ Q(x) from the underlying distribution of noise, Q,                   Tukey window with shape parameter αT = 0.1 to each 4 s
+the score function, ∇x log Q(x), is learned with a neural                segment. For this demonstration, we only make use of the
+network using denoising score matching (Hyvärinen, 2005;                LIGO-Hanford instrument.
+Vincent, 2011; Song et al., 2020). The trained score model
+can then be used to construct the score of the likelihood                To test our inference framework, we add a simulated signal
+                                                                         into noise data occurring after the end of our training set
+      ∇θ log p(xO | θ) = −∇x log Q(x)∇θ M (θ) ,               (1)        (GPS time 1126310000 seconds). The simulated signal had
+                                                                         parameters consistent with GW150914 (M = 29 M⊙ , η =
+where xO = M (θ) + x is an observed GW signal and                        0.2495, χ1 = χ2 = 0, dL = 400 Mpc) and was placed at
+where M (θ) is the physical model, which takes as input the              the center of a 4 s segment of noise, mimicking the standard
+parameters of interest, θ. During inference, x are residuals             setup for a real analysis.
+between the observation and the model, whose statistics
+should follow the noise if the signal model is accurate.
+                                                                         3. Results
+To generate samples from this likelihood, we employ sam-
+pling techniques based on Langevin dynamics which ex-                    We demonstrate the potential of SLIC for GW astronomy
+plicitly make use of the score function to sample from the               in two ways: (1) by showing it can generate realistic syn-
+underlying distribution. Specifically, we use a Metropolis-              thetic noise, and (2) that it can be used to recover source
+adjusted Langevin algorithm (MALA) to sample the target                  parameters from a simulated signal in real LIGO data.
+distribution. Following Legin et al. (2023), we refer to the             For (1), we sample 1024 noise realizations from SLIC and
+setup as Score-based LIkelihood Characterization (SLIC).                 compare their Fourier amplitudes to the noise power spec-
+                                                                         tral density (PSD) estimated from actual LIGO data using
+2.2. Forward model                                                       Welch’s method. Figure 1 shows that the PSD estimated
+                                                                         from both the model samples and Welch’s method are in
+For our physical model M (θ), we use the differentiable ver-
+                                                                         close agreement.1 In particular, the model can reproduce
+sion of the IMRP HENOM D waveform model (Khan et al.,
+                                                                         key features of LIGO noise, like narrow spectral lines in the
+2016) implemented in the RIPPLE package (Edwards et al.,
+                                                                         PSD, which are highly localized features that are difficult
+2023). The ability to automatically differentiate the wave-
+                                                                         to learn in general. In addition to reproducing an overall
+form is crucial to compute the required Jacobian. For a
+                                                                         power spectrum, the SLIC model can also encapsulate phase
+binary system with masses m1/2 and dimensionless spins
+                                                                         correlations encoding non-Gaussian features, like glitches.
+χ1/2 , this waveform model is parameterized in terms of
+                                                                         Figure 1 demonstrates the model’s ability to capture intri-
+the chirp mass, M = (m1 m2 )3/5 /(m1 + m2 )1/5 , the sym-                cate details in the noise distribution and gives us confidence
+metric mass ratio, η = m1 m2 /(m1 + m2 ), and the spin                   that the model can generate realistic noise samples for our
+magnitudes; the spins are assumed to be aligned with the                 analysis.
+orbital angular momentum of the binary. We sample in M
+                                                                             1
+and η, as well as in the source luminosity distance, dL (a                     Exact agreement is not expected given the differences in data
+scaling factor for the signal amplitude), the coalescence                (11 h of training data vs 1 h outside training window), and estima-
+                                                                         tion techniques (mean over independent 4s segments vs Welch).
+(signal arrival) time, tc , and a fiducial coalescence phase, ϕc .
+
+                                                                     2
+                                         Non Gaussian likelihood in GW with diffusion model
+
+                                                                         plying our framework to real signals contaminated by in-
+             10 39                                                       strumental glitches, such as GW170817. First, we need to
+                                                                         expand the length of data the model can generate: currently,
+             10 41                                                       our model can only be used to analyze 4 s segments of
+                                                                         data, suitable for binary black holes like GW150914 but not
+PSD (1/Hz)
+
+
+
+
+             10 43
+                                                                         for binary neutron stars like GW170817, which typically
+             10 45                                                       require 128 s of data. Training a model for a longer seg-
+                                                                         ment requires more data, modifications in the architecture
+             10 47                                                       of the model such as dilating the convolution window, and
+             10 49     SLIC                                              longer training. Additionally, we currently only analyze
+                       Welch                                             data from a single detector at a time, rather than coherently
+                 101            102                    103               modeling data from a network of detectors in our inference
+                               Frequency (Hz)                            step. Coherent analysis will significantly improve parameter
+                                                                         estimation because true signals appear coherently across
+                                                                         detectors, while noise (even non-Gaussian) does not. Ex-
+Figure 1. One-sided noise power spectral density (PSD) of LIGO           tending our pipeline to coherently analyze multi-detector
+noise as estimated from 1024 samples of synthetic 4s-long seg-           data by training score models for different instruments is a
+ments of noise generated by our score-based model trained on             straightforward extension of our setup that we are actively
+11 h of LIGO noise (SLIC, blue), compared to a mean Welch                developing.
+estimate measured empirically from 1 h of real LIGO Hanford
+noise recorded after the data used in training and not overlapping       Currently, we are using MALA as our sampler. This could
+with it (Welch, dashed gray). The blue band represents the 68%           limit efficiency when we tackle the full problem compact-
+symmetric confidence interval around the median (solid blue line).       binary inference problem, which generally requires sam-
+SLIC is able to capture key features of the spectral properties of       pling over 15 dimensions with a nontrivial posterior struc-
+LIGO noise, resolving lines more finely than the Welch estimate          ture. Integrating the likelihood as learned by our score-
+thanks to its exposure to greater amounts of data (11 h vs 1 h).
+                                                                         based model with more powerful sampling algorithms such
+                                                                         as FLOW MC (Wong et al., 2023a) promises significant im-
+Next (2), knowing SLIC can faithfully generate noise sam-                provements in performance. Methods like FLOW MC can
+ples, we check that the SLIC likelihood can infer source                 explore complex, high-dimensional spaces much more effi-
+parameters without bias. To this end, we inject simulated                ciently than MALA (e.g., Wong et al., 2023b). By combin-
+signals with known parameters into real LIGO noise not                   ing the SLIC likelihood with an advanced sampler, we could
+seen in training, and estimate the parameters using both our             achieve fast, accurate parameter estimation for real gravita-
+model and a standard Gaussian likelihood assuming a Welch                tional wave events even in the presence of non-Gaussianities
+PSD as in Fig. 1. Figure 2 shows the resulting posterior dis-            and nonstationarity in the data.
+tributions for the five varied parameters under both methods.            In conclusion, we have demonstrated a method for learn-
+As shown, the SLIC posterior is capable of recovering the                ing the likelihood function for gravitational wave parameter
+true injected values with high credibility. For this example,            estimation using score-based diffusion models that will al-
+we have chosen a segment of real data without significant                low us to analyze real data with fewer or no idealizations.
+glitches, such that the Gaussian likelihood also recovers the            While promising, this framework currently relies on simple
+true parameters.                                                         samplers that limit its applicability to simplified problems
+                                                                         in lower dimensions. Integrating advanced sampling tech-
+4. Discussion                                                            niques would be a major step towards applying this method
+                                                                         for real gravitational wave inference in high-dimensional,
+In this work, we trained a score-based diffusion model to                multi-modal parameter spaces. With further development,
+learn the likelihood of real GW detector data. We coupled                machine learning models and sampling algorithms will en-
+that to a deterministic forward model for the signal in order            able fast, scalable and unbiased Bayesian inference for fu-
+to carry out inference without the standard idealization of              ture gravitational wave observations.
+stationary Gaussian noise. The model is trained on actual
+noise samples and does not assume any knowledge specific
+to the GW detectors, which makes this a powerful tool for
+                                                                         Acknowledgements
+the analysis of current and future detectors, such as Cos-               This material is based upon work supported by NSF’s LIGO
+mic Explorer (Abbott et al., 2017a) and Einstein Telescope               Laboratory which is a major facility fully funded by the Na-
+(Punturo et al., 2010).                                                  tional Science Foundation. This work is partially supported
+We are working on a number of improvements before ap-                    by Schmidt Futures, a philanthropic initiative founded by
+
+                                                                     3
+                                                   Non Gaussian likelihood in GW with diffusion model
+
+
+
+
+                                                                                                                    SLIC result
+                                                                                                                    Gaussian Likelihood
+                 48
+              0.2
+                 40
+              0.2
+                 32
+              0.2
+                 24
+              0.2
+                    5
+                  42
+                    0
+         dL/Mpc
+                  40
+                    5
+                  37
+                    0
+                  35
+                  0.5
+                  0.0
+           c
+                  0.5
+
+
+
+
+                             +2
+                  1.0
+                  00 .000
+                         4
+                      0
+                    0
+          tc/s
+               0.0
+             4
+                  00
+             0.0
+                   8
+                  00
+             0.0
+
+
+                              .0
+
+                                   .5
+
+                                         .0
+
+                                              .5
+
+
+                                                    24
+
+                                                          32
+
+                                                                40
+
+                                                                      48
+
+                                                                           0
+
+                                                                                5
+
+                                                                                     0
+
+                                                                                            5
+                                                                                          1.0
+
+                                                                                                0.5
+
+                                                                                                      0.0
+
+                                                                                                            0.5
+
+
+
+                                                                                                                    8
+
+                                                                                                                          4
+
+                                                                                                                                     0
+
+                                                                                                                                         4
+                                                                           35
+
+                                                                                37
+
+                                                                                     40
+
+                                                                                          42
+
+
+
+
+                                                                                                                   00
+
+                                                                                                                         00
+
+                                                                                                                                00
+
+                                                                                                                                         00
+                             28
+
+                                   28
+
+                                        29
+
+                                              29
+
+
+                                                   0.2
+
+                                                         0.2
+
+                                                               0.2
+
+                                                                     0.2
+
+
+
+
+                                                                                                                  0.0
+
+                                                                                                                        0.0
+
+                                                                                                                              0.0
+
+                                                                                                                                     0.0
+
+
+
+
+                                        /M                                      dL/Mpc                 c                      tc/s         +2
+
+
+Figure 2. Posterior distribution of the five recovered parameters of a simulated signal using SLIC (orange) and the standard Gaussian
+likelihood (blue). The contours are the 10%, 39.35% and 90% interval. The true values are marked by the black lines. The posterior
+distribution using SLIC has a smaller variance compared to the Gaussian likelihood.
+
+
+
+
+                                                                                4
+                                    Non Gaussian likelihood in GW with diffusion model
+
+Eric and Wendy Schmidt as part of the Virtual Institute for         Abbott, R. et al. GWTC-3: Compact Binary Coalescences
+Astrophysics (VIA). The Flatiron Institute is supported by            Observed by LIGO and Virgo During the Second Part of
+the Simons Foundation. The work is in part supported by               the Third Observing Run. 11 2021b.
+computational resources provided by Calcul Quebec and
+the Digital Research Alliance of Canada. Y.H. and L.P.              Abbott, R. et al. GWTC-2.1: Deep Extended Catalog of
+acknowledge support from the Canada Research Chairs Pro-              Compact Binary Coalescences Observed by LIGO and
+gram, the National Sciences and Engineering Council of               Virgo During the First Half of the Third Observing Run.
+Canada through grants RGPIN-2020-05073 and 05102, and                 8 2021c.
+the Fonds de recherche du Québec through grants 2022-NC-
+301305 and 300397.                                                  Acernese, F. et al. Advanced Virgo: a second-generation
+                                                                      interferometric gravitational wave detector. Class. Quant.
+                                                                      Grav., 32(2):024001, 2015. doi: 10.1088/0264-9381/32/
+References                                                            2/024001.
+Aasi, J. et al. Advanced LIGO. Class. Quant. Grav., 32:
+  074001, 2015. doi: 10.1088/0264-9381/32/7/074001.                 Ashton, G. et al. BILBY: A user-friendly Bayesian inference
+                                                                      library for gravitational-wave astronomy. Astrophys. J.
+Abbot, R. et al.   Gravitational wave open science                    Suppl., 241(2):27, 2019. doi: 10.3847/1538-4365/ab06fc.
+  center (1126216262-1126302662), 2023.       URL
+  https://gwosc.org/archive/links/O1/                               Aso, Y., Michimura, Y., Somiya, K., Ando, M., Miyakawa,
+  H1/1126216262/1126302662/simple/.                                   O., Sekiguchi, T., Tatsumi, D., and Yamamoto, H. In-
+                                                                      terferometer design of the KAGRA gravitational wave
+Abbott, B. P. et al. Sensitivity of the Advanced LIGO                 detector. Phys. Rev. D, 88(4):043007, 2013. doi:
+  detectors at the beginning of gravitational wave as-                10.1103/PhysRevD.88.043007.
+  tronomy. Phys. Rev. D, 93(11):112004, 2016a. doi:
+ 10.1103/PhysRevD.93.112004. [Addendum: Phys.Rev.D                  Biwer, C. M., Capano, C. D., De, S., Cabero, M., Brown,
+  97, 059901 (2018)].                                                 D. A., Nitz, A. H., and Raymond, V. PyCBC Inference:
+                                                                      A Python-based parameter estimation toolkit for compact
+Abbott, B. P. et al. Observation of Gravitational Waves from
+                                                                      binary coalescence signals. Publ. Astron. Soc. Pac., 131
+  a Binary Black Hole Merger. Phys. Rev. Lett., 116(6):
+                                                                      (996):024503, 2019. doi: 10.1088/1538-3873/aaef0b.
+  061102, 2016b. doi: 10.1103/PhysRevLett.116.061102.
+Abbott, B. P. et al. Characterization of transient noise in         Buikema, A. et al. Sensitivity and performance of the Ad-
+ Advanced LIGO relevant to gravitational wave signal                  vanced LIGO detectors in the third observing run. Phys.
+  GW150914. Class. Quant. Grav., 33(13):134001, 2016c.                Rev. D, 102(6):062003, 2020. doi: 10.1103/PhysRevD.
+  doi: 10.1088/0264-9381/33/13/134001.                               102.062003.
+
+Abbott, B. P. et al. Properties of the Binary Black Hole            Edwards, T. D. P., Wong, K. W. K., Lam, K. K. H., Coogan,
+  Merger GW150914. Phys. Rev. Lett., 116(24):241102,                  A., Foreman-Mackey, D., Isi, M., and Zimmerman, A.
+  2016d. doi: 10.1103/PhysRevLett.116.241102.                         ripple: Differentiable and Hardware-Accelerated Wave-
+                                                                      forms for Gravitational Wave Data Analysis. 2 2023.
+Abbott, B. P. et al. Exploring the Sensitivity of Next Gener-
+  ation Gravitational Wave Detectors. Class. Quant. Grav.,          Hyvärinen, A. Estimation of non-normalized statistical mod-
+  34(4):044001, 2017a. doi: 10.1088/1361-6382/aa51f4.                 els by score matching. J. Mach. Learn. Res., 6:695–709,
+                                                                      dec 2005. ISSN 1532-4435.
+Abbott, B. P. et al. GW170817: Observation of Gravitational
+  Waves from a Binary Neutron Star Inspiral. Phys. Rev.             Khan, S., Husa, S., Hannam, M., Ohme, F., Pürrer, M.,
+  Lett., 119(16):161101, 2017b. doi: 10.1103/PhysRevLett.            Jiménez Forteza, X., and Bohé, A. Frequency-domain
+ 119.161101.                                                          gravitational waves from nonprecessing black-hole bi-
+Abbott, B. P. et al. A guide to LIGO–Virgo detector                   naries. II. A phenomenological model for the advanced
+  noise and extraction of transient gravitational-wave sig-           detector era. Phys. Rev. D, 93(4):044007, 2016. doi:
+  nals. Class. Quant. Grav., 37(5):055002, 2020. doi:                10.1103/PhysRevD.93.044007.
+ 10.1088/1361-6382/ab685e.
+                                                                    Legin, R., Adam, A., Hezaveh, Y., and Perreault Levasseur,
+Abbott, R. et al. Open data from the first and second ob-             L. Beyond Gaussian Noise: A Generalized Approach
+  serving runs of Advanced LIGO and Advanced Virgo.                   to Likelihood Analysis with non-Gaussian Noise. arXiv
+ SoftwareX, 13:100658, 2021a. doi: 10.1016/j.softx.2021.              e-prints, art. arXiv:2302.03046, February 2023. doi: 10.
+ 100658.                                                              48550/arXiv.2302.03046.
+
+                                                                5
+                                    Non Gaussian likelihood in GW with diffusion model
+
+Punturo, M. et al. The Einstein Telescope: A third-
+  generation gravitational wave observatory. Class. Quant.
+  Grav., 27:194002, 2010. doi: 10.1088/0264-9381/27/19/
+  194002.
+Romero-Shaw, I. M. et al. Bayesian inference for compact
+  binary coalescences with bilby: validation and applica-
+  tion to the first LIGO–Virgo gravitational-wave transient
+  catalogue. Mon. Not. Roy. Astron. Soc., 499(3):3295–
+  3319, 2020. doi: 10.1093/mnras/staa2850.
+Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A.,
+  Ermon, S., and Poole, B. Score-Based Generative Mod-
+  eling through Stochastic Differential Equations. arXiv
+  e-prints, art. arXiv:2011.13456, November 2020. doi:
+  10.48550/arXiv.2011.13456.
+Veitch, J. et al. Parameter estimation for compact binaries
+  with ground-based gravitational-wave observations using
+  the LALInference software library. Phys. Rev. D, 91(4):
+  042003, 2015. doi: 10.1103/PhysRevD.91.042003.
+Vincent, P. A connection between score matching and
+  denoising autoencoders. Neural Comput., 23(7):1661–
+  1674, 2011. doi: 10.1162/NECO\ a\ 00142. URL
+  https://doi.org/10.1162/NECO_a_00142.
+
+Wong, K. W. k., Gabrié, M., and Foreman-Mackey, D.
+ flowMC: Normalizing flow enhanced sampling package
+ for probabilistic inference in JAX. J. Open Source Softw.,
+ 8(83):5021, 2023a. doi: 10.21105/joss.05021.
+Wong, K. W. K., Isi, M., and Edwards, T. D. P. Fast gravita-
+ tional wave parameter estimation without compromises.
+ 2 2023b.
+
+
+
+
+                                                               6
+

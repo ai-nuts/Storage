@@ -1,0 +1,7 @@
+# Method
+
+Core claim: VideoComposer is built on a Video Latent Diffusion Model. Each video is decomposed into textual, spatial, and temporal conditions; sequential conditions pass through the STC-encoder (two 2D convolutions, average pooling, then a temporal Transformer), are fused by element-wise addition, and concatenated with the noisy latent along the channel dimension, while text and style are injected via cross-attention. A two-stage strategy first pre-trains text-to-video, then trains compositionally; DDIM with classifier-free guidance is used at inference.
+
+Supporting detail: Motion vectors are extracted in standard formats to encode inter-frame variation; single-image and single-sketch spatial conditions are repeated along time to align with the temporal conditions before fusion.
+
+Narration: VideoComposer is a latent diffusion model that denoises video in a compressed latent space. Each training video is decomposed into three families of conditions, textual, spatial, and temporal, combined freely. Sequential conditions like motion vectors, depth maps, masks, and sketches all pass through one shared STC-encoder: two convolutions and pooling capture local spatial structure, then a temporal Transformer models change across frames. Encoded conditions are summed and concatenated with the noisy latent, while text and style enter through cross-attention. Training runs in two stages, and inference uses DDIM sampling with classifier-free guidance.

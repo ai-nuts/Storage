@@ -1,0 +1,7 @@
+# Method
+
+Core claim: A five-stage pipeline builds each problem: manually select and modify high-quality StackOverflow posts, add code context with insertion markers, implement automatic tests, perturb the original problem to prevent memorization, and red-team the evaluation. Correctness combines execution test cases with surface-form (API/keyword) constraints.
+
+Supporting detail: Problems use an official insertion (infilling) prompt format with left and right context; surface perturbations keep the reference solution unchanged while semantic perturbations change it, plus difficult rewrites raise the bar.
+
+Narration: DS-1000 is built through a five-stage pipeline. Annotators first select high-vote, testable, useful, and representative StackOverflow problems and rewrite them for clarity. They add a code context with insertion markers showing exactly where the model must fill in code. They then implement automatic tests that check functional correctness by executing test cases and also enforce surface-form constraints, such as forbidding certain APIs or keywords in the syntax tree. To defend against memorization, they perturb each original problem, using surface perturbations that leave the reference solution unchanged and semantic perturbations that change it, plus deliberately difficult rewrites. Finally they red-team the evaluation, requiring it to reject known-wrong solutions. Every problem, solution, and metric is reviewed by at least three expert annotators.

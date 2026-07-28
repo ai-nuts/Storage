@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: This is a theoretical paper with no empirical datasets; guarantees are proven for the family of "well-behaved" distributions (isotropic, bounded, satisfying the soft-margin and sub-exponential regularity conditions of Diakonikolas et al. 2020d and Frei et al. 2021b).
+
+Supporting detail: The lower-bound instance is an explicit distribution Q over R²×{−1,+1} with four parts Q₁–Q₄ (illustrated in Figure 1); the upper bounds cover both bounded (‖x‖≤B) and (α₁,α₂)-sub-exponential feature distributions.
+
+Narration: Because this is a learning-theory paper, there are no benchmark datasets or empirical tables; the "data" are distribution classes and the results are theorems with explicit constants. The positive results hold for the standard family of well-behaved distributions used in prior work, meaning the marginal on features is isotropic and satisfies soft-margin and sub-exponential regularity conditions. The negative result is carried by a concrete counterexample: an explicit distribution Q on the two-dimensional plane, built from four parts and illustrated in the paper's single figure, that is fully well-behaved yet defeats logistic regression. The upper bounds are stated in two regimes, one for bounded feature distributions where the norm is at most B, and one for sub-exponential feature distributions, so the guarantees span the settings that matter for isotropic log-concave data.

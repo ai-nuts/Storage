@@ -1,0 +1,1675 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T16:04:17Z",
+  "title": "Neuro-Symbolic Language Modeling with Automaton-augmented Retrieval",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Retrieval-augmented language models earn their accuracy with a simple trick: at every step they look up the most similar past contexts in a large external datastore and blend those neighbors' next tokens into the prediction. kNN-LM showed this can sharply lower perplexity and adapt a model to a new domain without any retraining. The price is speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "That nearest-neighbor search can fire at every single token, and it is far slower than the model's own forward pass. In practice it is the search, not the neural network, that dominates the cost, and it is what keeps these otherwise strong models out of production."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper from Carnegie Mellon and AWS, RetoMaton (short for \"retrieval automaton\"), attacks that cost directly. Its observation is that a flat datastore throws away structure the retrieval could reuse, and its fix is to compile the datastore into a weighted finite automaton that the model walks alongside decoding. The payoff: up to 83% of nearest-neighbor searches skipped with no loss in perplexity, or up to 1.85 lower perplexity when the search budget is kept."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2201.12431    ·    Code: https://github.com/neulab/retomaton"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The bottleneck: searching a flat datastore"
+            },
+            {
+              "type": "paragraph",
+              "text": "kNN-LM stores one entry per training token: a key (the LM's hidden state at that position) and a value (the token that actually followed). At test time it embeds the current context, finds the k nearest keys, and turns their values into a second next-token distribution that is interpolated with the base LM. Because there is one entry per token, and hundreds of millions of tokens, each search is expensive, and the model runs one for every token it generates."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' key observation is that this flat list ignores two kinds of structure. First, entries are correlated in time: if a retrieved entry was useful now, the entry that came right after it in the original corpus is very likely useful next. Second, entries with nearby keys tend to be followed by the same token. A flat datastore rediscovers both facts from scratch on every step. Prior work such as Adaptive Retrieval (AdaptRet) learns when to skip a search, but when it skips it falls back on the base LM alone and discards the retrieval signal, which hurts most in exactly the domains where retrieval helps."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Two changes turn the datastore into an automaton"
+            },
+            {
+              "type": "paragraph",
+              "text": "RetoMaton makes two unsupervised changes to the datastore, both illustrated in Figure 2. First, it saves a pointer from every entry to its successor, the entry that came next in the text. Second, it clusters entries with similar key vectors into states, and every state inherits the outgoing pointers of all its members. Together, the pointers and the clusters turn the flat list into a weighted finite automaton whose states are groups of similar contexts and whose transitions are the \"what came next\" links."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Building the automaton, unsupervised. Two sentences share the continuation \"... is ...\". Each entry is a (key, value) pair; a pointer links every entry to its successor in the text, and entries with close keys are merged into shared states (1 and 2). Merging lets one search cover many contexts at once, and the pointers let the model step forward without searching again.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "At inference the model keeps a small set of active states and traverses the automaton in parallel with the LM (Figure 1). To move forward it simply follows the pointers of entries whose value matches the token just generated, which is essentially free. The transition weights are not fixed: they are computed on the fly from the distance between the current hidden state and the entries in each state, then interpolated with the base LM as p(w | c, S) = lambda * p_auto(w | c, S) + (1 - lambda) * p_LM(w | c), so retrieval still adapts to the live context. A full kNN search is triggered only when the number of valid onward transitions falls below a threshold tau. That threshold is the single knob that trades accuracy (restart often, search more) against speed (search rarely). Building the automaton needs no training data and works whether it is built from the model's own training corpus or from a brand-new domain."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: fewer searches, same or better perplexity"
+            },
+            {
+              "type": "paragraph",
+              "text": "On WikiText-103 (in-domain, 103M training tokens, a 247M-parameter Transformer base LM, datastore clustered into 1M states), RetoMaton matches kNN-LM's perplexity while skipping 81% of the searches. More striking, even at FoSS=0, when it searches on every step just as kNN-LM does, it still lowers perplexity, from 16.65 (kNN-LM) and 16.35 (AdaptRet) down to 16.08 (Table 1). FoSS, the Fraction of Saved Searches, serves as a hardware-independent proxy for wall-clock savings."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. WikiText-103 in-domain perplexity at FoSS=0 (no searches saved). Lower is better.",
+              "headers": [
+                "Model",
+                "Perplexity"
+              ],
+              "rows": [
+                [
+                  "kNN-LM",
+                  " 16.65"
+                ],
+                [
+                  "AdaptRet",
+                  " 16.35"
+                ],
+                [
+                  "RetoMaton (pointers only)",
+                  " 16.12"
+                ],
+                [
+                  "RetoMaton",
+                  " 16.08"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The gains are larger and more robust under domain shift. Building the datastore from Law-MT (19M tokens, a 656M-parameter base LM, 200K states), RetoMaton drops perplexity from 12.34 (kNN-LM) to 10.49 at FoSS=0, and as more searches are saved its perplexity climbs only gently while plain kNN-LM's rises sharply, because kNN-LM has nothing to fall back on but the base model. With a base LM already fine-tuned on Law-MT, RetoMaton still adds the largest gain (Table 2), cutting perplexity from 8.61 to 7.10, a 17.5% relative reduction, against 7.93 for kNN-LM and 7.81 for AdaptRet."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Law-MT with a base LM fine-tuned on Law-MT. Perplexity at two saving levels; lower is better.",
+              "headers": [
+                "Model",
+                "FoSS=0",
+                "FoSS=0.5"
+              ],
+              "rows": [
+                [
+                  "fine-tuned LM",
+                  " 8.61",
+                  " -"
+                ],
+                [
+                  "kNN-LM",
+                  " 7.93 (-7.9%)",
+                  " 8.25 (-4.2%)"
+                ],
+                [
+                  "AdaptRet",
+                  " 7.81 (-9.2%)",
+                  " 7.91 (-8.1%)"
+                ],
+                [
+                  "RetoMaton",
+                  " 7.10 (-17.5%)",
+                  " 7.15 (-17.0%)"
+                ]
+              ],
+              "note": "Parentheses show the relative reduction over the fine-tuned LM. RetoMaton keeps almost all of its gain even after saving half of the searches."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What does the work: pointers or clusters?"
+            },
+            {
+              "type": "paragraph",
+              "text": "An ablation separates the two ingredients. Pointers alone, with no clustering, already beat every baseline and match kNN-LM while saving more than 60% of searches, so the \"what came next\" links carry most of the benefit at low saving rates: the pointers-only variant reaches 16.12 at FoSS=0, essentially tied with the full model's 16.08. Clustering helps mainly at high FoSS (roughly 0.7 and above), where merged states allow longer search-free stretches. On cluster count, 500K and 1M states behave similarly while 100K is too coarse, and a cheaper greedy merge wins at FoSS=0 but fades as more searches are saved."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why it matters"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting idea is that a retrieval datastore has structure worth compiling. By linking consecutive entries with pointers and grouping similar ones into states, RetoMaton lets a language model carry retrieval forward in time instead of searching from scratch at every token. The construction is unsupervised, model-agnostic, transfers across domains, and unifies token-, chunk-, and sequence-level retrieval in one mechanism."
+            },
+            {
+              "type": "paragraph",
+              "text": "The honest boundary: RetoMaton reduces how often the model searches, not the cost of a single search or the memory of storing hundreds of millions of entries, so the datastore still has to live somewhere and be compiled once before it pays off. Within those limits, it is a clean, training-free way to make retrieval-based language models substantially cheaper to run."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "检索增强的语言模型（retrieval-augmented LM）之所以准，靠的是一个朴素的技巧：每一步都在一个大型外部数据库（datastore）里检索与当前上下文最相似的历史片段，再把这些近邻的“下一个词”融合进预测。kNN-LM 已经证明，这样做能显著降低困惑度（perplexity），还能在不重新训练的情况下把模型迁移到新领域。代价是速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这个最近邻搜索几乎在每一个 token 上都要触发，而它远比模型自身的一次前向计算慢。实际部署中，真正的开销来自搜索，而不是神经网络本身，这也正是这类效果不错的模型迟迟难以落地的原因。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自卡内基梅隆大学（CMU）与 AWS 的这篇 ICML 2022 论文提出了 RetoMaton（“retrieval automaton”，检索自动机），直接针对这一开销。作者的观察是：扁平的数据库丢掉了检索本可以复用的结构；他们的做法是把数据库编译成一个加权有限自动机（weighted finite automaton），让模型在解码的同时“走”这张自动机。收益是：在困惑度不变的前提下省去最多 83% 的最近邻搜索，或者在保持搜索预算时把困惑度再降最多 1.85。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2201.12431    ·    代码：https://github.com/neulab/retomaton"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "瓶颈：在扁平数据库上反复搜索"
+            },
+            {
+              "type": "paragraph",
+              "text": "kNN-LM 为每个训练 token 存一条记录：一个 key（该位置上 LM 的隐藏状态）和一个 value（真实出现的下一个词）。测试时它把当前上下文编码成向量，找出最近的 k 个 key，把它们的 value 汇成第二个“下一个词”分布，再与基础 LM 的分布做插值。由于每个 token 一条记录、总量高达数亿条，单次搜索非常昂贵，而模型每生成一个 token 就要搜一次。"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的关键观察是：这张扁平的列表忽略了两类结构。其一，条目在时间上高度相关：如果某条检索结果此刻有用，那么它在原语料中紧接着的下一条，很可能下一步也有用。其二，key 相近的条目，往往后接同一个词。扁平数据库在每一步都要把这两点从头重新发现。此前的工作如 Adaptive Retrieval（AdaptRet）学习“何时跳过搜索”，但一旦跳过，它就只能退回到基础 LM、丢掉检索信号，而这恰恰在检索最能帮上忙的领域里最伤性能。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "两处改动，把数据库变成自动机"
+            },
+            {
+              "type": "paragraph",
+              "text": "RetoMaton 对数据库做了两处无监督改动，都画在图2里。第一，为每条记录保存一个指针，指向它在文本中的后继（紧接其后的那条记录）。第二，把 key 向量相近的条目聚成状态（state），每个状态继承其全部成员的出边指针。指针与聚类一起，把扁平列表变成了一个加权有限自动机：状态是相似上下文的集合，转移则是“下一个是什么”的链接。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2 无监督地构建自动机。两句话共享“... is ...”这段延续。每条记录是一个 (key, value) 对；指针把每条记录连到它在文本中的后继，key 相近的条目被合并进共享状态（1 和 2）。合并让一次搜索覆盖多个上下文，指针则让模型无需再搜索就能向前一步。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "推理时，模型维护一小组活跃状态，与 LM 并行地在自动机上前进（图1）。要向前一步，它只需沿着 value 与刚生成 token 相符的那些条目的指针走，几乎不花代价。转移权重不是固定的：它们由当前隐藏状态与各状态内条目之间的距离动态算出，再与基础 LM 插值，即 p(w | c, S) = lambda * p_auto(w | c, S) + (1 - lambda) * p_LM(w | c)，因此检索仍会随实时上下文自适应。只有当合法后继转移的数量低于阈值 tau 时，才触发一次完整的 kNN 搜索。这个阈值是唯一的旋钮，用来在精度（频繁重启、搜索更多）与速度（很少搜索）之间权衡。构建自动机不需要任何训练数据，无论是用模型自己的训练语料、还是一个全新领域都同样适用。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：搜索更少，困惑度持平甚至更好"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 WikiText-103（同域，103M 训练 token，247M 参数的 Transformer 基础 LM，数据库聚成 1M 个状态）上，RetoMaton 在跳过 81% 搜索的同时，困惑度与 kNN-LM 持平。更值得注意的是，即便在 FoSS=0（每一步都搜，和 kNN-LM 一样）时，它仍能把困惑度从 16.65（kNN-LM）和 16.35（AdaptRet）降到 16.08（表1）。FoSS（Fraction of Saved Searches，省下搜索的比例）在这里作为与硬件无关的、对实际墙钟时间节省的近似。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 WikiText-103 同域困惑度，FoSS=0（不省搜索）。越低越好。",
+              "headers": [
+                "模型",
+                "困惑度"
+              ],
+              "rows": [
+                [
+                  "kNN-LM",
+                  " 16.65"
+                ],
+                [
+                  "AdaptRet",
+                  " 16.35"
+                ],
+                [
+                  "RetoMaton（仅指针）",
+                  " 16.12"
+                ],
+                [
+                  "RetoMaton",
+                  " 16.08"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在领域迁移上，收益更大也更稳。用 Law-MT（19M token，656M 参数基础 LM，200K 个状态）构建数据库、把通用模型迁到法律文本后，RetoMaton 在 FoSS=0 时把困惑度从 12.34（kNN-LM）降到 10.49。而且随着省下的搜索变多，它的困惑度只是缓慢上升，kNN-LM 却急剧变差，因为 kNN-LM 一旦跳过搜索，除了基础模型就无可依靠。当基础 LM 本身已在 Law-MT 上微调时，RetoMaton 依然带来最大增益（表2）：把困惑度从 8.61 降到 7.10，相对降低 17.5%，而 kNN-LM 为 7.93、AdaptRet 为 7.81。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 Law-MT，基础 LM 已在 Law-MT 上微调。两个节省档位下的困惑度，越低越好。",
+              "headers": [
+                "模型",
+                "FoSS=0",
+                "FoSS=0.5"
+              ],
+              "rows": [
+                [
+                  "微调后 LM",
+                  " 8.61",
+                  " -"
+                ],
+                [
+                  "kNN-LM",
+                  " 7.93 (-7.9%)",
+                  " 8.25 (-4.2%)"
+                ],
+                [
+                  "AdaptRet",
+                  " 7.81 (-9.2%)",
+                  " 7.91 (-8.1%)"
+                ],
+                [
+                  "RetoMaton",
+                  " 7.10 (-17.5%)",
+                  " 7.15 (-17.0%)"
+                ]
+              ],
+              "note": "括号内为相对微调后 LM 的降幅。即便省去一半搜索，RetoMaton 仍保住几乎全部增益。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "到底是谁在起作用：指针还是聚类？"
+            },
+            {
+              "type": "paragraph",
+              "text": "一项消融把两种成分拆开看。只用指针、完全不做聚类，就已经击败所有基线，并在省下超过 60% 搜索的同时与 kNN-LM 持平，可见在低节省率下，“下一个是什么”的链接贡献了大部分收益：仅指针版本在 FoSS=0 时达到 16.12 的困惑度，与完整模型的 16.08 几乎打平。聚类主要在高 FoSS（大约 0.7 及以上）时发挥作用，此时合并后的状态让模型能在更长的文本片段上保持无需搜索。至于聚类数量，500K 与 1M 个状态表现相近，100K 则过于粗糙；更省成本的贪心合并在 FoSS=0 时占优，但随节省比例增大而逐渐落后。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作留下的核心思路是：检索数据库本身有值得“编译”的结构。通过用指针把相邻条目串起来、把相似条目聚成自动机状态，RetoMaton 让语言模型把检索沿时间向前携带，而不必在每个 token 上重付一次搜索。它的构建是无监督的、与模型无关、可跨领域迁移，并在一个动态机制里统一了 token 级、chunk 级与序列级检索。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要看清边界：RetoMaton 降低的是搜索的频率，而不是单次搜索的代价，也不是存下数亿条记录所需的内存，数据库本身仍要有地方安放。节省是通过 FoSS 来衡量的，它是对墙钟时间的近似，而非某个固定系统上的实测时间；而且自动机需要先对每个数据库构建一次，之后才开始“回本”。在这些限制之内，它是一种干净、无需训练、能让检索式语言模型运行成本大幅下降的方法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 372.87,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 372.87,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 42.66,
+          "relative_start": 0.5,
+          "relative_end": 42.66,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 42.66,
+          "global_end": 69.05,
+          "relative_start": 42.66,
+          "relative_end": 69.05,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 69.05,
+          "global_end": 100.09,
+          "relative_start": 69.05,
+          "relative_end": 100.09,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 100.09,
+          "global_end": 133.41,
+          "relative_start": 100.09,
+          "relative_end": 133.41,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 133.41,
+          "global_end": 183.44,
+          "relative_start": 133.41,
+          "relative_end": 183.44,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 183.44,
+          "global_end": 225.12,
+          "relative_start": 183.44,
+          "relative_end": 225.12,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 225.12,
+          "global_end": 271.0,
+          "relative_start": 225.12,
+          "relative_end": 271.0,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 271.0,
+          "global_end": 310.88,
+          "relative_start": 271.0,
+          "relative_end": 310.88,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 310.88,
+          "global_end": 342.43,
+          "relative_start": 310.88,
+          "relative_end": 342.43,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 342.43,
+          "global_end": 372.78,
+          "relative_start": 342.43,
+          "relative_end": 372.78,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Retrieval-augmented language models earn their accuracy with a simple trick: at every step they look up the most similar past contexts in a large external datastore and blend those neighbors' next tokens into the prediction. kNN-LM showed this can sharply lower perplexity and adapt a model to a new domain without any retraining. The price is speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "That nearest-neighbor search can fire at every single token, and it is far slower than the model's own forward pass. In practice it is the search, not the neural network, that dominates the cost, and it is what keeps these otherwise strong models out of production."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper from Carnegie Mellon and AWS, RetoMaton (short for \"retrieval automaton\"), attacks that cost directly. Its observation is that a flat datastore throws away structure the retrieval could reuse, and its fix is to compile the datastore into a weighted finite automaton that the model walks alongside decoding. The payoff: up to 83% of nearest-neighbor searches skipped with no loss in perplexity, or up to 1.85 lower perplexity when the search budget is kept."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2201.12431    ·    Code: https://github.com/neulab/retomaton"
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "检索增强的语言模型（retrieval-augmented LM）之所以准，靠的是一个朴素的技巧：每一步都在一个大型外部数据库（datastore）里检索与当前上下文最相似的历史片段，再把这些近邻的“下一个词”融合进预测。kNN-LM 已经证明，这样做能显著降低困惑度（perplexity），还能在不重新训练的情况下把模型迁移到新领域。代价是速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这个最近邻搜索几乎在每一个 token 上都要触发，而它远比模型自身的一次前向计算慢。实际部署中，真正的开销来自搜索，而不是神经网络本身，这也正是这类效果不错的模型迟迟难以落地的原因。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自卡内基梅隆大学（CMU）与 AWS 的这篇 ICML 2022 论文提出了 RetoMaton（“retrieval automaton”，检索自动机），直接针对这一开销。作者的观察是：扁平的数据库丢掉了检索本可以复用的结构；他们的做法是把数据库编译成一个加权有限自动机（weighted finite automaton），让模型在解码的同时“走”这张自动机。收益是：在困惑度不变的前提下省去最多 83% 的最近邻搜索，或者在保持搜索预算时把困惑度再降最多 1.85。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2201.12431    ·    代码：https://github.com/neulab/retomaton"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 42.66,
+        "end": 69.05,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 26.39,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 27.29,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 42.66,
+          "global_end": 69.05,
+          "relative_start": 0.0,
+          "relative_end": 26.39,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The bottleneck: searching a flat datastore"
+            },
+            {
+              "type": "paragraph",
+              "text": "kNN-LM stores one entry per training token: a key (the LM's hidden state at that position) and a value (the token that actually followed). At test time it embeds the current context, finds the k nearest keys, and turns their values into a second next-token distribution that is interpolated with the base LM. Because there is one entry per token, and hundreds of millions of tokens, each search is expensive, and the model runs one for every token it generates."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' key observation is that this flat list ignores two kinds of structure. First, entries are correlated in time: if a retrieved entry was useful now, the entry that came right after it in the original corpus is very likely useful next. Second, entries with nearby keys tend to be followed by the same token. A flat datastore rediscovers both facts from scratch on every step. Prior work such as Adaptive Retrieval (AdaptRet) learns when to skip a search, but when it skips it falls back on the base LM alone and discards the retrieval signal, which hurts most in exactly the domains where retrieval helps."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "检索增强的语言模型（retrieval-augmented LM）之所以准，靠的是一个朴素的技巧：每一步都在一个大型外部数据库（datastore）里检索与当前上下文最相似的历史片段，再把这些近邻的“下一个词”融合进预测。kNN-LM 已经证明，这样做能显著降低困惑度（perplexity），还能在不重新训练的情况下把模型迁移到新领域。代价是速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这个最近邻搜索几乎在每一个 token 上都要触发，而它远比模型自身的一次前向计算慢。实际部署中，真正的开销来自搜索，而不是神经网络本身，这也正是这类效果不错的模型迟迟难以落地的原因。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自卡内基梅隆大学（CMU）与 AWS 的这篇 ICML 2022 论文提出了 RetoMaton（“retrieval automaton”，检索自动机），直接针对这一开销。作者的观察是：扁平的数据库丢掉了检索本可以复用的结构；他们的做法是把数据库编译成一个加权有限自动机（weighted finite automaton），让模型在解码的同时“走”这张自动机。收益是：在困惑度不变的前提下省去最多 83% 的最近邻搜索，或者在保持搜索预算时把困惑度再降最多 1.85。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2201.12431    ·    代码：https://github.com/neulab/retomaton"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 69.05,
+        "end": 100.09,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 31.04,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.94,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 69.05,
+          "global_end": 100.09,
+          "relative_start": 0.0,
+          "relative_end": 31.04,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Two changes turn the datastore into an automaton"
+            },
+            {
+              "type": "paragraph",
+              "text": "RetoMaton makes two unsupervised changes to the datastore, both illustrated in Figure 2. First, it saves a pointer from every entry to its successor, the entry that came next in the text. Second, it clusters entries with similar key vectors into states, and every state inherits the outgoing pointers of all its members. Together, the pointers and the clusters turn the flat list into a weighted finite automaton whose states are groups of similar contexts and whose transitions are the \"what came next\" links."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Building the automaton, unsupervised. Two sentences share the continuation \"... is ...\". Each entry is a (key, value) pair; a pointer links every entry to its successor in the text, and entries with close keys are merged into shared states (1 and 2). Merging lets one search cover many contexts at once, and the pointers let the model step forward without searching again.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "At inference the model keeps a small set of active states and traverses the automaton in parallel with the LM (Figure 1). To move forward it simply follows the pointers of entries whose value matches the token just generated, which is essentially free. The transition weights are not fixed: they are computed on the fly from the distance between the current hidden state and the entries in each state, then interpolated with the base LM as p(w | c, S) = lambda * p_auto(w | c, S) + (1 - lambda) * p_LM(w | c), so retrieval still adapts to the live context. A full kNN search is triggered only when the number of valid onward transitions falls below a threshold tau. That threshold is the single knob that trades accuracy (restart often, search more) against speed (search rarely). Building the automaton needs no training data and works whether it is built from the model's own training corpus or from a brand-new domain."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "检索增强的语言模型（retrieval-augmented LM）之所以准，靠的是一个朴素的技巧：每一步都在一个大型外部数据库（datastore）里检索与当前上下文最相似的历史片段，再把这些近邻的“下一个词”融合进预测。kNN-LM 已经证明，这样做能显著降低困惑度（perplexity），还能在不重新训练的情况下把模型迁移到新领域。代价是速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这个最近邻搜索几乎在每一个 token 上都要触发，而它远比模型自身的一次前向计算慢。实际部署中，真正的开销来自搜索，而不是神经网络本身，这也正是这类效果不错的模型迟迟难以落地的原因。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自卡内基梅隆大学（CMU）与 AWS 的这篇 ICML 2022 论文提出了 RetoMaton（“retrieval automaton”，检索自动机），直接针对这一开销。作者的观察是：扁平的数据库丢掉了检索本可以复用的结构；他们的做法是把数据库编译成一个加权有限自动机（weighted finite automaton），让模型在解码的同时“走”这张自动机。收益是：在困惑度不变的前提下省去最多 83% 的最近邻搜索，或者在保持搜索预算时把困惑度再降最多 1.85。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2201.12431    ·    代码：https://github.com/neulab/retomaton"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 100.09,
+        "end": 133.41,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 33.32,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 34.22,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 100.09,
+          "global_end": 133.41,
+          "relative_start": 0.0,
+          "relative_end": 33.32,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why it matters"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasting idea is that a retrieval datastore has structure worth compiling. By linking consecutive entries with pointers and grouping similar ones into states, RetoMaton lets a language model carry retrieval forward in time instead of searching from scratch at every token. The construction is unsupervised, model-agnostic, transfers across domains, and unifies token-, chunk-, and sequence-level retrieval in one mechanism."
+            },
+            {
+              "type": "paragraph",
+              "text": "The honest boundary: RetoMaton reduces how often the model searches, not the cost of a single search or the memory of storing hundreds of millions of entries, so the datastore still has to live somewhere and be compiled once before it pays off. Within those limits, it is a clean, training-free way to make retrieval-based language models substantially cheaper to run."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作留下的核心思路是：检索数据库本身有值得“编译”的结构。通过用指针把相邻条目串起来、把相似条目聚成自动机状态，RetoMaton 让语言模型把检索沿时间向前携带，而不必在每个 token 上重付一次搜索。它的构建是无监督的、与模型无关、可跨领域迁移，并在一个动态机制里统一了 token 级、chunk 级与序列级检索。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要看清边界：RetoMaton 降低的是搜索的频率，而不是单次搜索的代价，也不是存下数亿条记录所需的内存，数据库本身仍要有地方安放。节省是通过 FoSS 来衡量的，它是对墙钟时间的近似，而非某个固定系统上的实测时间；而且自动机需要先对每个数据库构建一次，之后才开始“回本”。在这些限制之内，它是一种干净、无需训练、能让检索式语言模型运行成本大幅下降的方法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 133.41,
+        "end": 183.44,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 50.03,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 50.93,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 133.41,
+          "global_end": 183.44,
+          "relative_start": 0.0,
+          "relative_end": 50.03,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Building the automaton, unsupervised. Two sentences share the continuation \"... is ...\". Each entry is a (key, value) pair; a pointer links every entry to its successor in the text, and entries with close keys are merged into shared states (1 and 2). Merging lets one search cover many contexts at once, and the pointers let the model step forward without searching again.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The bottleneck: searching a flat datastore"
+            },
+            {
+              "type": "paragraph",
+              "text": "kNN-LM stores one entry per training token: a key (the LM's hidden state at that position) and a value (the token that actually followed). At test time it embeds the current context, finds the k nearest keys, and turns their values into a second next-token distribution that is interpolated with the base LM. Because there is one entry per token, and hundreds of millions of tokens, each search is expensive, and the model runs one for every token it generates."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' key observation is that this flat list ignores two kinds of structure. First, entries are correlated in time: if a retrieved entry was useful now, the entry that came right after it in the original corpus is very likely useful next. Second, entries with nearby keys tend to be followed by the same token. A flat datastore rediscovers both facts from scratch on every step. Prior work such as Adaptive Retrieval (AdaptRet) learns when to skip a search, but when it skips it falls back on the base LM alone and discards the retrieval signal, which hurts most in exactly the domains where retrieval helps."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2 无监督地构建自动机。两句话共享“... is ...”这段延续。每条记录是一个 (key, value) 对；指针把每条记录连到它在文本中的后继，key 相近的条目被合并进共享状态（1 和 2）。合并让一次搜索覆盖多个上下文，指针则让模型无需再搜索就能向前一步。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "瓶颈：在扁平数据库上反复搜索"
+            },
+            {
+              "type": "paragraph",
+              "text": "kNN-LM 为每个训练 token 存一条记录：一个 key（该位置上 LM 的隐藏状态）和一个 value（真实出现的下一个词）。测试时它把当前上下文编码成向量，找出最近的 k 个 key，把它们的 value 汇成第二个“下一个词”分布，再与基础 LM 的分布做插值。由于每个 token 一条记录、总量高达数亿条，单次搜索非常昂贵，而模型每生成一个 token 就要搜一次。"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的关键观察是：这张扁平的列表忽略了两类结构。其一，条目在时间上高度相关：如果某条检索结果此刻有用，那么它在原语料中紧接着的下一条，很可能下一步也有用。其二，key 相近的条目，往往后接同一个词。扁平数据库在每一步都要把这两点从头重新发现。此前的工作如 Adaptive Retrieval（AdaptRet）学习“何时跳过搜索”，但一旦跳过，它就只能退回到基础 LM、丢掉检索信号，而这恰恰在检索最能帮上忙的领域里最伤性能。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 183.44,
+        "end": 225.12,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 41.68,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 42.58,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 183.44,
+          "global_end": 225.12,
+          "relative_start": 0.0,
+          "relative_end": 41.68,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Two changes turn the datastore into an automaton"
+            },
+            {
+              "type": "paragraph",
+              "text": "RetoMaton makes two unsupervised changes to the datastore, both illustrated in Figure 2. First, it saves a pointer from every entry to its successor, the entry that came next in the text. Second, it clusters entries with similar key vectors into states, and every state inherits the outgoing pointers of all its members. Together, the pointers and the clusters turn the flat list into a weighted finite automaton whose states are groups of similar contexts and whose transitions are the \"what came next\" links."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Building the automaton, unsupervised. Two sentences share the continuation \"... is ...\". Each entry is a (key, value) pair; a pointer links every entry to its successor in the text, and entries with close keys are merged into shared states (1 and 2). Merging lets one search cover many contexts at once, and the pointers let the model step forward without searching again.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "At inference the model keeps a small set of active states and traverses the automaton in parallel with the LM (Figure 1). To move forward it simply follows the pointers of entries whose value matches the token just generated, which is essentially free. The transition weights are not fixed: they are computed on the fly from the distance between the current hidden state and the entries in each state, then interpolated with the base LM as p(w | c, S) = lambda * p_auto(w | c, S) + (1 - lambda) * p_LM(w | c), so retrieval still adapts to the live context. A full kNN search is triggered only when the number of valid onward transitions falls below a threshold tau. That threshold is the single knob that trades accuracy (restart often, search more) against speed (search rarely). Building the automaton needs no training data and works whether it is built from the model's own training corpus or from a brand-new domain."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: fewer searches, same or better perplexity"
+            },
+            {
+              "type": "paragraph",
+              "text": "On WikiText-103 (in-domain, 103M training tokens, a 247M-parameter Transformer base LM, datastore clustered into 1M states), RetoMaton matches kNN-LM's perplexity while skipping 81% of the searches. More striking, even at FoSS=0, when it searches on every step just as kNN-LM does, it still lowers perplexity, from 16.65 (kNN-LM) and 16.35 (AdaptRet) down to 16.08 (Table 1). FoSS, the Fraction of Saved Searches, serves as a hardware-independent proxy for wall-clock savings."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. WikiText-103 in-domain perplexity at FoSS=0 (no searches saved). Lower is better.",
+              "headers": [
+                "Model",
+                "Perplexity"
+              ],
+              "rows": [
+                [
+                  "kNN-LM",
+                  " 16.65"
+                ],
+                [
+                  "AdaptRet",
+                  " 16.35"
+                ],
+                [
+                  "RetoMaton (pointers only)",
+                  " 16.12"
+                ],
+                [
+                  "RetoMaton",
+                  " 16.08"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The gains are larger and more robust under domain shift. Building the datastore from Law-MT (19M tokens, a 656M-parameter base LM, 200K states), RetoMaton drops perplexity from 12.34 (kNN-LM) to 10.49 at FoSS=0, and as more searches are saved its perplexity climbs only gently while plain kNN-LM's rises sharply, because kNN-LM has nothing to fall back on but the base model. With a base LM already fine-tuned on Law-MT, RetoMaton still adds the largest gain (Table 2), cutting perplexity from 8.61 to 7.10, a 17.5% relative reduction, against 7.93 for kNN-LM and 7.81 for AdaptRet."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Law-MT with a base LM fine-tuned on Law-MT. Perplexity at two saving levels; lower is better.",
+              "headers": [
+                "Model",
+                "FoSS=0",
+                "FoSS=0.5"
+              ],
+              "rows": [
+                [
+                  "fine-tuned LM",
+                  " 8.61",
+                  " -"
+                ],
+                [
+                  "kNN-LM",
+                  " 7.93 (-7.9%)",
+                  " 8.25 (-4.2%)"
+                ],
+                [
+                  "AdaptRet",
+                  " 7.81 (-9.2%)",
+                  " 7.91 (-8.1%)"
+                ],
+                [
+                  "RetoMaton",
+                  " 7.10 (-17.5%)",
+                  " 7.15 (-17.0%)"
+                ]
+              ],
+              "note": "Parentheses show the relative reduction over the fine-tuned LM. RetoMaton keeps almost all of its gain even after saving half of the searches."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "检索增强的语言模型（retrieval-augmented LM）之所以准，靠的是一个朴素的技巧：每一步都在一个大型外部数据库（datastore）里检索与当前上下文最相似的历史片段，再把这些近邻的“下一个词”融合进预测。kNN-LM 已经证明，这样做能显著降低困惑度（perplexity），还能在不重新训练的情况下把模型迁移到新领域。代价是速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这个最近邻搜索几乎在每一个 token 上都要触发，而它远比模型自身的一次前向计算慢。实际部署中，真正的开销来自搜索，而不是神经网络本身，这也正是这类效果不错的模型迟迟难以落地的原因。"
+            },
+            {
+              "type": "paragraph",
+              "text": "来自卡内基梅隆大学（CMU）与 AWS 的这篇 ICML 2022 论文提出了 RetoMaton（“retrieval automaton”，检索自动机），直接针对这一开销。作者的观察是：扁平的数据库丢掉了检索本可以复用的结构；他们的做法是把数据库编译成一个加权有限自动机（weighted finite automaton），让模型在解码的同时“走”这张自动机。收益是：在困惑度不变的前提下省去最多 83% 的最近邻搜索，或者在保持搜索预算时把困惑度再降最多 1.85。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2201.12431    ·    代码：https://github.com/neulab/retomaton"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：搜索更少，困惑度持平甚至更好"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 WikiText-103（同域，103M 训练 token，247M 参数的 Transformer 基础 LM，数据库聚成 1M 个状态）上，RetoMaton 在跳过 81% 搜索的同时，困惑度与 kNN-LM 持平。更值得注意的是，即便在 FoSS=0（每一步都搜，和 kNN-LM 一样）时，它仍能把困惑度从 16.65（kNN-LM）和 16.35（AdaptRet）降到 16.08（表1）。FoSS（Fraction of Saved Searches，省下搜索的比例）在这里作为与硬件无关的、对实际墙钟时间节省的近似。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 WikiText-103 同域困惑度，FoSS=0（不省搜索）。越低越好。",
+              "headers": [
+                "模型",
+                "困惑度"
+              ],
+              "rows": [
+                [
+                  "kNN-LM",
+                  " 16.65"
+                ],
+                [
+                  "AdaptRet",
+                  " 16.35"
+                ],
+                [
+                  "RetoMaton（仅指针）",
+                  " 16.12"
+                ],
+                [
+                  "RetoMaton",
+                  " 16.08"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在领域迁移上，收益更大也更稳。用 Law-MT（19M token，656M 参数基础 LM，200K 个状态）构建数据库、把通用模型迁到法律文本后，RetoMaton 在 FoSS=0 时把困惑度从 12.34（kNN-LM）降到 10.49。而且随着省下的搜索变多，它的困惑度只是缓慢上升，kNN-LM 却急剧变差，因为 kNN-LM 一旦跳过搜索，除了基础模型就无可依靠。当基础 LM 本身已在 Law-MT 上微调时，RetoMaton 依然带来最大增益（表2）：把困惑度从 8.61 降到 7.10，相对降低 17.5%，而 kNN-LM 为 7.93、AdaptRet 为 7.81。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 Law-MT，基础 LM 已在 Law-MT 上微调。两个节省档位下的困惑度，越低越好。",
+              "headers": [
+                "模型",
+                "FoSS=0",
+                "FoSS=0.5"
+              ],
+              "rows": [
+                [
+                  "微调后 LM",
+                  " 8.61",
+                  " -"
+                ],
+                [
+                  "kNN-LM",
+                  " 7.93 (-7.9%)",
+                  " 8.25 (-4.2%)"
+                ],
+                [
+                  "AdaptRet",
+                  " 7.81 (-9.2%)",
+                  " 7.91 (-8.1%)"
+                ],
+                [
+                  "RetoMaton",
+                  " 7.10 (-17.5%)",
+                  " 7.15 (-17.0%)"
+                ]
+              ],
+              "note": "括号内为相对微调后 LM 的降幅。即便省去一半搜索，RetoMaton 仍保住几乎全部增益。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 225.12,
+        "end": 271.0,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 45.88,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 46.78,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 225.12,
+          "global_end": 271.0,
+          "relative_start": 0.0,
+          "relative_end": 45.88,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "What does the work: pointers or clusters?"
+            },
+            {
+              "type": "paragraph",
+              "text": "An ablation separates the two ingredients. Pointers alone, with no clustering, already beat every baseline and match kNN-LM while saving more than 60% of searches, so the \"what came next\" links carry most of the benefit at low saving rates: the pointers-only variant reaches 16.12 at FoSS=0, essentially tied with the full model's 16.08. Clustering helps mainly at high FoSS (roughly 0.7 and above), where merged states allow longer search-free stretches. On cluster count, 500K and 1M states behave similarly while 100K is too coarse, and a cheaper greedy merge wins at FoSS=0 but fades as more searches are saved."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "到底是谁在起作用：指针还是聚类？"
+            },
+            {
+              "type": "paragraph",
+              "text": "一项消融把两种成分拆开看。只用指针、完全不做聚类，就已经击败所有基线，并在省下超过 60% 搜索的同时与 kNN-LM 持平，可见在低节省率下，“下一个是什么”的链接贡献了大部分收益：仅指针版本在 FoSS=0 时达到 16.12 的困惑度，与完整模型的 16.08 几乎打平。聚类主要在高 FoSS（大约 0.7 及以上）时发挥作用，此时合并后的状态让模型能在更长的文本片段上保持无需搜索。至于聚类数量，500K 与 1M 个状态表现相近，100K 则过于粗糙；更省成本的贪心合并在 FoSS=0 时占优，但随节省比例增大而逐渐落后。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 271.0,
+        "end": 310.88,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 39.88,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 40.78,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 271.0,
+          "global_end": 310.88,
+          "relative_start": 0.0,
+          "relative_end": 39.88,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: fewer searches, same or better perplexity"
+            },
+            {
+              "type": "paragraph",
+              "text": "On WikiText-103 (in-domain, 103M training tokens, a 247M-parameter Transformer base LM, datastore clustered into 1M states), RetoMaton matches kNN-LM's perplexity while skipping 81% of the searches. More striking, even at FoSS=0, when it searches on every step just as kNN-LM does, it still lowers perplexity, from 16.65 (kNN-LM) and 16.35 (AdaptRet) down to 16.08 (Table 1). FoSS, the Fraction of Saved Searches, serves as a hardware-independent proxy for wall-clock savings."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. WikiText-103 in-domain perplexity at FoSS=0 (no searches saved). Lower is better.",
+              "headers": [
+                "Model",
+                "Perplexity"
+              ],
+              "rows": [
+                [
+                  "kNN-LM",
+                  " 16.65"
+                ],
+                [
+                  "AdaptRet",
+                  " 16.35"
+                ],
+                [
+                  "RetoMaton (pointers only)",
+                  " 16.12"
+                ],
+                [
+                  "RetoMaton",
+                  " 16.08"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The gains are larger and more robust under domain shift. Building the datastore from Law-MT (19M tokens, a 656M-parameter base LM, 200K states), RetoMaton drops perplexity from 12.34 (kNN-LM) to 10.49 at FoSS=0, and as more searches are saved its perplexity climbs only gently while plain kNN-LM's rises sharply, because kNN-LM has nothing to fall back on but the base model. With a base LM already fine-tuned on Law-MT, RetoMaton still adds the largest gain (Table 2), cutting perplexity from 8.61 to 7.10, a 17.5% relative reduction, against 7.93 for kNN-LM and 7.81 for AdaptRet."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Law-MT with a base LM fine-tuned on Law-MT. Perplexity at two saving levels; lower is better.",
+              "headers": [
+                "Model",
+                "FoSS=0",
+                "FoSS=0.5"
+              ],
+              "rows": [
+                [
+                  "fine-tuned LM",
+                  " 8.61",
+                  " -"
+                ],
+                [
+                  "kNN-LM",
+                  " 7.93 (-7.9%)",
+                  " 8.25 (-4.2%)"
+                ],
+                [
+                  "AdaptRet",
+                  " 7.81 (-9.2%)",
+                  " 7.91 (-8.1%)"
+                ],
+                [
+                  "RetoMaton",
+                  " 7.10 (-17.5%)",
+                  " 7.15 (-17.0%)"
+                ]
+              ],
+              "note": "Parentheses show the relative reduction over the fine-tuned LM. RetoMaton keeps almost all of its gain even after saving half of the searches."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作留下的核心思路是：检索数据库本身有值得“编译”的结构。通过用指针把相邻条目串起来、把相似条目聚成自动机状态，RetoMaton 让语言模型把检索沿时间向前携带，而不必在每个 token 上重付一次搜索。它的构建是无监督的、与模型无关、可跨领域迁移，并在一个动态机制里统一了 token 级、chunk 级与序列级检索。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要看清边界：RetoMaton 降低的是搜索的频率，而不是单次搜索的代价，也不是存下数亿条记录所需的内存，数据库本身仍要有地方安放。节省是通过 FoSS 来衡量的，它是对墙钟时间的近似，而非某个固定系统上的实测时间；而且自动机需要先对每个数据库构建一次，之后才开始“回本”。在这些限制之内，它是一种干净、无需训练、能让检索式语言模型运行成本大幅下降的方法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 310.88,
+        "end": 342.43,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 31.55,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 32.45,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 310.88,
+          "global_end": 342.43,
+          "relative_start": 0.0,
+          "relative_end": 31.55,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Retrieval-augmented language models earn their accuracy with a simple trick: at every step they look up the most similar past contexts in a large external datastore and blend those neighbors' next tokens into the prediction. kNN-LM showed this can sharply lower perplexity and adapt a model to a new domain without any retraining. The price is speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "That nearest-neighbor search can fire at every single token, and it is far slower than the model's own forward pass. In practice it is the search, not the neural network, that dominates the cost, and it is what keeps these otherwise strong models out of production."
+            },
+            {
+              "type": "paragraph",
+              "text": "This ICML 2022 paper from Carnegie Mellon and AWS, RetoMaton (short for \"retrieval automaton\"), attacks that cost directly. Its observation is that a flat datastore throws away structure the retrieval could reuse, and its fix is to compile the datastore into a weighted finite automaton that the model walks alongside decoding. The payoff: up to 83% of nearest-neighbor searches skipped with no loss in perplexity, or up to 1.85 lower perplexity when the search budget is kept."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. RetoMaton at inference. From the context (\"The U.S.\"), a single kNN search seeds several automaton states (the colored circles), each a cluster of datastore entries that share outgoing pointers. The model then follows those pointers in parallel as it decodes \"president is Joe Biden,\" reusing retrieval across steps instead of searching from scratch at every token. Dashed arrows are transitions that were allowed but not taken.",
+              "width_inches": 6.0,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2201.12431    ·    Code: https://github.com/neulab/retomaton"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1 RetoMaton 的推理过程。从上下文（“The U.S.”）出发，一次 kNN 搜索点亮若干自动机状态（图中彩色圆圈），每个状态是一簇共享出边指针的数据库条目。随后模型在解码“president is Joe Biden”时并行地沿这些指针前进，把检索结果跨步复用，而不是在每个 token 上从头搜索。虚线箭头表示允许但本次未走的转移。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么重要"
+            },
+            {
+              "type": "paragraph",
+              "text": "这项工作留下的核心思路是：检索数据库本身有值得“编译”的结构。通过用指针把相邻条目串起来、把相似条目聚成自动机状态，RetoMaton 让语言模型把检索沿时间向前携带，而不必在每个 token 上重付一次搜索。它的构建是无监督的、与模型无关、可跨领域迁移，并在一个动态机制里统一了 token 级、chunk 级与序列级检索。"
+            },
+            {
+              "type": "paragraph",
+              "text": "也要看清边界：RetoMaton 降低的是搜索的频率，而不是单次搜索的代价，也不是存下数亿条记录所需的内存，数据库本身仍要有地方安放。节省是通过 FoSS 来衡量的，它是对墙钟时间的近似，而非某个固定系统上的实测时间；而且自动机需要先对每个数据库构建一次，之后才开始“回本”。在这些限制之内，它是一种干净、无需训练、能让检索式语言模型运行成本大幅下降的方法。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2022 | From a Flat Datastore to an Automaton: Making Retrieval LMs Fast",
+            "subtitle": "RetoMaton skips up to 83% of nearest-neighbor searches with no loss in perplexity (CMU and AWS)"
+          },
+          "zh": {
+            "title": "ICML 2022 | 把检索数据库变成自动机：让检索式语言模型跑得更快",
+            "subtitle": "RetoMaton 在困惑度不变的前提下省去最多 83% 的最近邻搜索（CMU 与 AWS）"
+          }
+        }
+      },
+      "segment": {
+        "start": 342.43,
+        "end": 372.78,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 30.35,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.25,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 342.43,
+          "global_end": 372.78,
+          "relative_start": 0.0,
+          "relative_end": 30.35,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

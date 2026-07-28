@@ -1,0 +1,2567 @@
+                                                         Agnostic Learnability of Halfspaces via Logistic Loss∗
+                                              Ziwei Ji†1 , Kwangjun Ahn‡2 , Pranjal Awasthi§3 , Satyen Kale¶3 , and Stefani Karp‖3,4
+                                                                           1
+                                                                               University of Illinois Urbana-Champaign
+                                                                               2
+                                                                                 Massachusetts Institute of Technology
+                                                                                          3
+                                                                                            Google Research
+arXiv:2201.13419v1 [cs.LG] 31 Jan 2022
+
+
+
+
+                                                                                    4
+                                                                                      Carnegie Mellon University
+
+                                                                                           February 1, 2022
+
+
+                                                                                                 Abstract
+                                                     We investigate approximation guarantees provided by logistic regression for the fundamental problem
+                                                of agnostic learning of homogeneous halfspaces. Previously, for a certain broad class of “well-behaved” dis-
+                                                tributions on the examples,                                           e
+                                                                             Diakonikolas et al. (2020d) proved an Ω(OPT)      lower bound, while Frei et al.
+                                                                               
+                                                                     e
+                                                                        √
+                                                (2021b) proved an O       OPT upper bound, where OPT denotes the best zero-one/misclassification risk
+                                                of a homogeneous halfspace. In this paper, we close this gap by constructing a well-behaved√ distribution
+                                                                                                                                                  
+                                                such that the global minimizer of the logistic risk over this distribution only achieves Ω   OPT misclas-
+                                                sification risk, matching the upper bound in (Frei et al., 2021b). On the other hand, we also show that if
+                                                we impose a radial-Lipschitzness condition in addition to well-behaved-ness on the distribution, logistic
+                                                                                                  e
+                                                regression on a ball of bounded radius reaches O(OPT)      misclassification risk. Our techniques also
+                                                                                                                                                    √ show
+                                                for any well-behaved distribution, regardless of radial Lipschitzness, we can overcome the Ω( OPT)
+                                                lower bound for logistic loss simply at the cost of one additional convex optimization step involving the
+                                                                         e
+                                                hinge loss and attain O(OPT)     misclassification risk. This two-step convex optimization algorithm is
+                                                simpler than previous methods obtaining this guarantee, all of which require solving O log(1/OPT)
+                                                minimization problems.
+
+
+                                         1      Introduction
+                                         In this paper, we consider the fundamental problem of agnostically learning homogeneous halfspaces. Specif-
+                                         ically, we assume there is an unknown distribution P over Rd × {−1, +1} to which we have access in the
+                                         form of independent and identically distributed samples drawn from P . Our goal is to compete with a
+                                         homogeneous linear classifier ū (i.e. one that predicts the label sign(hū, xi) for input x) that achieves the
+                                         optimal zero-one risk of OPT > 0 over P . Alternatively, we can think that the labels of the examples are
+                                         first generated by ū, and then an OPT fraction of the labels are adversarially corrupted.
+                                             There have been many algorithmic and hardness results on this topic, see Section 1.1 for a discussion.
+                                         A very natural heuristic for solving the problem is to use logistic regression. However, the analysis of
+                                         logistic regression for this problem is still largely incomplete, even though it is one of the most fundamental
+                                         algorithms in machine learning. One reason for this is that it can return extremely poor solutions in the
+                                         worst case: Ben-David et al. (2012) showed that the minimizer of the logistic risk may attain a zero-one risk
+                                         as bad as 1 − OPT on an adversarially-constructed distribution.
+                                             ∗ Part of this work was done when Ziwei Ji and Kwangjun Ahn were interns at Google.
+                                             † ziweiji2@illinois.edu
+                                             ‡ kjahn@mit.edu
+                                             § pranjalawasthi@google.com
+                                             ¶ satyenkale@google.com
+                                             ‖ stefanik@google.com
+
+
+
+
+                                                                                                     1
+   As a result, much attention has been devoted to certain “well-behaved” distributions, for which much
+better results can be obtained. However, even when the marginal distribution on the feature space, Px , is
+assumed to be isotropic log-concave, in recent work Diakonikolas et al. (2020d) proved an Ω     e OPT lower
+bound on the zero-one risk for any convex surrogate including logistic regression. On the positive side, in
+another recent work, Frei
+                       √ et al. (2021b) proved that vanilla gradient descent on the logistic risk can attain
+a zero-one risk of Oe OPT , as long as Px satisfies some specific well-behaved-ness conditions. (For the
+details of such conditions, see Sections 1.1 and 3.)
+   The above results still leave a big gap between the upper and the lower bounds, raising the question of
+identifying the fundamental limits of logistic regression for this problem. In this work we study this question
+and develop the following set of results.
+               √
+A matching OPT lower bound. In Section 2, we construct a distribution Q over R2 ×{−1, 1}, and prove
+a lower bound for logistic regression that matches the upper bound in (Frei et al., 2021b), thereby closing the
+gap in recent works (Diakonikolas et al., 2020d; Frei et al., 2021b). Specifically, the marginal distribution Qx
+is isotropic and bounded, and satisfies all the well-behaved-ness conditions
+                                                                     √       from the aforementioned papers,
+but the global minimizer of the logistic risk on Q only attains Ω OPT zero-one risk on Q.
+
+      e
+An O(OPT)      upper bound for radially Lipschitz densities. The lower bound mentioned above shows
+that one needs to make additional assumptions to prove better bounds. In Section 3, we show that by
+making a radial Lipschitzness assumption in addition to well-behaved-ness, it is indeed possible to achieve
+                   e
+the near-optimal O(OPT)     zero-one risk via logistic regression. In particular, our upper bound result holds
+if the projection of Px onto any two-dimensional subspace has√ Lipschitz      continuous densities. Moreover,
+our upper bound analysis is versatile: it can recover the O     e OPT guarantee for general well-behaved
+distributions shown by Frei et al. (2021b), and it also works for the hinge loss, which motivates a simple and
+efficient two-phase algorithm, as described next.
+
+     e
+An O(OPT)       upper bound for general well-behaved distributions with a two-phase algorithm.
+                                                                                                            
+Motivated by our analysis, in Section 4, we describe a simple two-phase algorithm that achieves O   e OPT
+error for general well-behaved distributions, without assuming radial Lipschitzness. Thus, we show that
+the cost of avoiding the radial Lipschitzness condition is simply an additional convex loss minimization.
+Our two-phase algorithm involves logistic regression followed by stochastic gradient descent with the hinge
+loss (i.e., the perceptron algorithm) with a restricted√ domain and warm start. For general well-behaved
+                                                               
+distributions, the first phase can only achieve an O e OPT guarantee, however we show that the second
+                                       e
+phase can boost the upper bound to O(OPT).
+    Previously, for any given ǫ > 0, Diakonikolas et al. (2020d) designed a nonconvex optimization algorithm
+that can achieve O(OPT + ǫ) risk using O(d/ǫ e   4
+                                                   ) samples. Their algorithm requires guessing OPT within
+a constant multiplicative factor via binary search and running a nonconvex SGD using each guess as an
+input. Similarly, prior algorithms achieving O(OPT + ǫ) error involve solving multiple rounds of convex loss
+minimization (Awasthi et al., 2014; Daniely, 2015). By contrast, our two-phase algorithm is a simple logistic
+regression followed by a perceptron algorithm, and the output is guaranteed to have O OPT · ln(1/OPT) + ǫ
+                          e
+zero-one risk using only O(d/ǫ  2
+                                  ) samples.
+
+1.1    Related work
+The problem of agnostic learning of halfspaces has a long and rich history Kearns et al. (1994). Here we
+survey the results most relevant to our work. It is well known that in the distribution independent setting,
+even weak agnostic learning is computationally hard (Feldman et al., 2006; Guruswami and Raghavendra,
+2009; Daniely, 2016). As a result most algorithmic results have been obtained under assumptions on the
+marginal distribution Px over the examples.
+     The work of Kalai et al. (2008) designed algorithms that achieve OPT + ǫ error for any ǫ > 0 in time
+  poly( 1ǫ )
+d            for isotropic log-concave densities and for the uniform distribution over the hypercube. There
+is also recent evidence that removing the exponential dependence on 1/ǫ, even for Gaussian marginals is
+computationally hard (Klivans and Kothari, 2014; Diakonikolas et al., 2020a; Goel et al., 2020).
+
+                                                       2
+    As a result, another line of work aims to design algorithms with polynomial running time and sample
+complexity (in d and 1ǫ ) and achieve an error of g(OPT) + ǫ, for g being a simple function. Along these
+                                                                                  e
+lines Klivans et al. (2009) designed a polynomial-time algorithm that attains O(OPT       1/3
+                                                                                              ) + ǫ zero-one risk
+for isotropic log-concave distributions. Awasthi et al. (2014) improved the upper bound to O(OPT) + ǫ,
+using a localization-based algorithm. Balcan and Zhang (2017) further extended the algorithm to more
+general s-concave distributions. The work of Daniely (2015) further provided a PTAS guarantee: an error
+of (1 + η)OPT + ǫ for any desired constant η > 0 via an improper learner.
+    In a recent work Diakonikolas et al. (2020d) studied the problem for distributions satisfying certain “well-
+behaved-ness” conditions which include isotropy and certain regularity conditions on the projection of Px on
+any 2-dimensional subspace (see Assumption 3.2 for a subset of these conditions). This class of distributions
+include any isotropic log-concave distribution such as the standard Gaussian. In addition to their nonconvex
+optimization method discussed above,   for any convex, nonincreasing, and nonconstant loss function,     they
+also showed an Ω OPT ln(1/OPT) lower bound for log-concave marginals and an Ω OPT1−1/s lower
+bound for s-heavy-tailed marginals.
+    In another recent work Frei et al. (2021b) assumed Px satisfies a “soft-margin” condition:         for anti-
+concentrated marginals such as isotropic log-concave marginals, this assumes Pr hū, xi ≤ γ = O(γ) for
+                                                                                      √       
+any γ > 0. For sub-exponential distributions with soft-margins, they proved an O   e OPT upper bound for
+                                                                      √      
+gradient descent on the logistic loss, which can be improved to O OPT for bounded distributions. Note
+that these upper bounds and the lower bounds in (Diakonikolas et al., 2020d) do not match: if Px is sub-
+                                                             e
+exponential, then Diakonikolas et al. (2020d) only gave an Ω(OPT)     lower bound, while if Px is s-heavy-tailed,
+then the upper bound in (Frei et al., 2021b) becomes worse.
+    Finally, some prior works on agnostic learning of halfspaces have considered various extensions of the prob-
+lem such as active agnostic learning (Awasthi et al., 2014; Yan and Zhang, 2017), agnostic learning of sparse
+halfspaces with sample complexity scaling logarithmically in the ambient dimensionality (Shen and Zhang,
+2021), and agnostic learning under weaker noise models such as the random classification noise (Blum et al.,
+1998; Dunagan and Vempala, 2008), Massart’s noise model (Awasthi et al., 2015, 2016; Zhang et al., 2020;
+Diakonikolas et al., 2019, 2020b, 2021; Chen et al., 2020) and the Tsybakov noise model (Diakonikolas et al.,
+2020c; Zhang and Li, 2021). We do not consider these extensions in our work.
+
+1.2    Notation
+                                                                       
+Let k · k denote the ℓ2 (Euclidean) norm. Given r > 0, let B(r) := x kxk ≤ r denote the Euclidean ball
+with radius r. Given two nonzero vectors u and v, let ϕ(u, v) ∈ [0, π] denote the angle between them.
+    Given a data distribution P over Rd × {−1, +1}, let Px denote the marginal distribution of P on the
+feature space Rd . We will frequently need the projection of the input features onto a two-dimensional
+subspace V ; in such cases, it will be convenient to use polar coordinates (r, θ) for the associated calculations,
+such as parameterizing the density with respect to the Lebesgue measure as pV (r, θ).
+    Given a nonincreasing loss function ℓ : R → R, we consider the population risk
+                                                                     
+                                         Rℓ (w) := E(x,y)∼P ℓ yhw, xi ,
+and the corresponding empirical risk
+                                                      Xn
+                                                                       
+                                         b ℓ (w) := 1
+                                         R                ℓ yi hw, xi i ,
+                                                    n i=1
+
+defined over n i.i.d. samples drawn from P . We will focus on the logistic loss ℓlog (z) := ln(1 + e−z ), and the
+hinge loss ℓh (z) := max{−z, 0}. Let Rlog :=                                         b              b
+                                           Rℓlog for simplicity, and also define Rlog , Rh and Rh similarly.
+Let R0−1 (w) := Pr(x,y)∼P y 6= sign hw, xi denote the population zero-one risk.
+
+                 √      
+2     An Ω           OPT lower bound for logistic loss
+In this section, we construct a distribution Q over R2 ×{−1, +1} which satisfies standard regularity conditions
+in (Diakonikolas et al., 2020d; Frei et al., 2021a), but the global minimizer w∗ of the population logistic risk
+
+                                                        3
+                                              √      
+Rlog on Q only achieves a zero-one risk of Ω OPT . Our focus on the global logistic optimizer is motivated
+by the lower bounds from (Diakonikolas et al., 2020d); in particular, this means that the large classification
+error is not caused by the sampling error.
+    The distribution Q has four parts Q1 , Q2 , Q3 , and Q4 , as
+described below. It can be verified that if OPT ≤ 1/16, the
+construction is valid.                                                                     Q2
+   1. The feature distribution                                           Q 1
+                           q of Q1 consists √ of√two squares:
+                              OPT             2    2
+      one has edge length      2 , center    2 ,− 2    and den-
+                                                        q
+      sity 1, with label −1; the other has edge length OPT  2 ,
+               √ √                                                                                    Q3
+      center − 22 , 22 , density 1, with label +1.                  Q3
+   2. The feature distribution of Q2 is supported on
+         h √        i         h √           i     
+            0, OPT × [0, 1] ∪ − OPT, 0 × [−1, 0]
+                                                                                                        Q1
+                                                                                     Q2
+      with density 1, and the label is given by sign(x1 ).
+                   √
+   3. Let q3 := 32 OPT(1 − OPT), then Q3 consists of two         Figure 1: An illustration of Q when OPT =
+                                     p
+      squares: one has edge length q23 , center (1, 0), density  1/16. Red areas denote positive examples,
+                                                    p
+      1 and label +1, and the other has edge length q23 , center while blue areas denote negative examples.
+      (−1, 0), density 1 and label −1.                           The parts Q1 , Q2 and Q3 are marked in the
+                                                                 figure, while Q4 is supported on the unit
+   4. The feature distribution ofQ4 is the uniform distribution
+                                                                 circle and marked by horizontal lines.
+      over the unit ball B(1) := x kxk ≤ 1 with density q4 :=
+             √
+      1−OPT−2 OPT−q3
+            π        , and the label is given by sign(x1 ).
+    Note that the correct label is given by sign(x1 ) on Q2 , Q3 and Q4 ; therefore ū := (1, 0) is our ground-truth
+solution that is only wrong on the noisy part Q1 .
+    Here is our lower bound result.
+Theorem 2.1. Suppose OPT ≤ 1/100, and let Qx denote the marginal distribution of Q on the feature
+space. It holds that Ex∼Qx [x] = 0, and Ex∼Qx [x1 x2 ] = 0, and Ex∼Qx [x21 − x22 ] = 0. Moreover, the population
+logistic risk Rlog has a global minimizer w∗ , and
+                                                                       √
+                                       ∗                      ∗
+                                                                         OPT
+                                R0−1 (w ) = Pr y 6= sign hw , xi ≥                .
+                                                                          60π
+   Note that we can further normalize Qx to unit variance and make it isotropic. Then it is easy to check
+that Qx satisfies the “well-behaved-ness” conditions in (Diakonikolas et al., 2020d), and the “soft-margin”
+and “sub-exponential” conditions in (Frei et al., 2021b). In particular, our lower bound matches the upper
+bound in (Frei et al., 2021b).
+
+2.1    Proof of Theorem 2.1
+Here is a proof sketch of Theorem 2.1; the full proof is given in Appendix B.
+    First, basic calculation shows that Q is isotropic up to a constant multiplicative factor, and that Q has
+bounded density and support. Specifically, Q1 , Q2 and Q4 are constructed to make the risk lower bound
+proof work, while Q3 is included to make Q isotropic. It turns out that Q3 does not change the risk lower
+bound proof too much, since it is highly aligned with the ground-truth solution ū := (1, 0).
+                                                                                     ∗
+    Next we√ consider
+                      the risk lower bound. We only need to show √     that ϕ(ū,
+                                                                                 w ), the angle between ū and
+  ∗                                              ∗
+w , is Ω OPT , since it then follows that w is wrong on an Ω OPT fraction of Q4 , which is enough
+since Q4 accounts for more than half of the distribution Q.
+    Note that the minimizer of the logistic risk on Q4 by itself is infinitely far in the direction of ū. However,
+this will incur a large risk on Q1. By balancing
+                                                   these two parts, we can show that by moving along the
+                                      1
+                                                                                     √      
+direction of ū by a distance of Θ √OPT    , we can achieve a logistic risk of O OPT .
+
+
+                                                         4
+                                                               3
+                                                                                      √
+Lemma 2.2. Suppose OPT ≤ 1/100, let w̄ := (r̄, 0) where r̄ = √OPT , then Rlog (w̄) ≤ 5 OPT.
+
+    Next we consider the global minimizer w∗ of Rlog , which exists since Rhlog has bounded
+                                                                                          i sub-level sets.
+                                                                                   √      √
+Let (r∗ , θ∗ ) denote the polar coordinates of w∗ . We will assume θ∗ ∈ − OPT     30 ,
+                                                                                        OPT
+                                                                                         30   , and derive a
+contradiction. In our construction, Q3 and Q4 are symmetric with respect to the horizontal axis, and they
+will induce the ground-truth
+                        h √ solution.
+                                i      However, Q1 and Q2 are skew, and they will pull w∗ above, meaning
+                            OPT
+                    ∗
+we actually have θ ∈ 0, 30 . The first observation is an upper bound on r∗ : if r∗ is too large, then the
+risk of w∗ over Q1 will already be larger than Rlog (w̄) for w̄ constructed in Lemma 2.2, a contradiction.
+                                               h √         i
+Lemma 2.3. Suppose OPT ≤ 1/100 and θ∗ ∈ 0, OPT        30
+                                                                          10
+                                                            , then r∗ ≤ √OPT  .
+
+   However, our next lemma shows that under the above conditions, the gradient of Rlog at w∗ does not
+vanish, which contradicts the definition of w∗ .
+                                                                                                        √
+                                                                      10                                 OPT
+Lemma 2.4. Suppose OPT ≤ 1/100, then for any w = (r, θ) with 0 ≤ r ≤ √OPT and 0 ≤ θ ≤                     30 , it
+holds that ∇Rlog (w) 6= 0.
+   To prove Lemma 2.4, let us consider an arbitrary w = (r, θ) under the conditions of Lemma 2.4. For
+simplicity, let us first look at the case θ = 0. In this case, yhw, xi ≤ 10 on Q2 , and it follows that Q2 induces
+                             C1
+a component of length √OPT        in the gradient ∇Rlog (w) along the direction of −e2 = (0, −1), where C1 is
+a universal constant. Moreover, Q1 also induces a component in the gradient along −e2 , while     √     Q3 and Q4
+induce a zero component along e2 . As a result, ∇Rlog (w), e2 < 0. Now if 0 ≤ θ ≤ C2 OPT for some
+small enough constant C2 (1/30 in our case), we can show that Q3 and Q4 cannot cancel the effect of Q2 ,
+and it still holds that ∇Rlog (w), e2 < 0.
+
+
+3          e
+      An O(OPT) upper bound for logistic loss with radial Lipschitz-
+      ness
+        √
+The Ω( OPT) lower bound construction in Section 2 shows that further assumptions on the distribution
+are necessary in order to improve the upper bound on the zero-one risk of the logistic regression solution.
+In particular, we note that the distribution Q constructed in Section 2 has a discontinuous density. In this
+section, we show that if we simply add a very mild Lipschitz continuity condition on the density, then we
+             e
+can achieve O(OPT)    zero-one risk using logistic regression.
+    First, we formally provide the standard assumptions from prior work. Because of the lower bound for
+                                                                            e
+s-heavy-tailed distributions from (Diakonikolas et al., 2020d), to get an O(OPT)     zero-one risk, we need to
+assume Px has a light tail. Following (Frei et al., 2021b), we will either consider a bounded distribution, or
+assume Px is sub-exponential as defined below (cf. (Vershynin, 2018, Proposition 2.7.1 and Section 3.4.4)).
+Definition 3.1. We say Px is (α1 , α2 ) sub-exponential for constants α1 , α2 > 0, if for any unit vector v and
+any t > 0,
+                                                                       
+                                Prx∼Px hv, xi ≥ t ≤ α1 exp −t/α2 .
+
+   We also need the next assumption, which is part of the “well-behaved-ness” conditions from (Diakonikolas et al.,
+2020d).
+Assumption 3.2. There exist constants U, R > 0 and a function σ : R+ → R+ , such that if we project Px
+onto an arbitrary two-dimensional subspace VR, the corresponding density
+                                                                  R∞     pV satisfies pV (r, θ) ≥ 1/U for all
+                                                ∞
+r ≤ R, and pV (r, θ) ≤ σ(r) for all r ≥ 0, and 0 σ(r) dr ≤ U , and 0 rσ(r) dr ≤ U .
+    Note that for a broad class of distributions including isotropic log-concave distributions, the sub-exponential
+condition and Assumption 3.2 hold with α1 , α2 , U, R all being universal constants.
+    Finally, as discussed earlier, the previous conditions are also satisfied by Q from Section 2, and thus to
+                    e
+get the improved O(OPT)      risk bound, we need the following radial Lipschitz continuity assumption.
+
+                                                        5
+Assumption 3.3. There exists a measurable function κ : R+ → R+ such that for any two-dimensional
+subspace V ,
+
+                                          pV (r, θ) − pV (r, θ′ ) ≤ κ(r)|θ − θ′ |.
+
+   We will see Assumption 3.3 is crucial for the upper bound analysis in Lemma 3.12. For some concrete
+examples, note that if pV is radially symmetric, then κ is 0, while if pV is λ-Lipschitz continuous in the usual
+sense (under ℓ2 ), then we can let κ(r) := λr.
+   Now we can state our main results. In the following, we denote the unit linear classifier with the optimal
+zero-one risk by ū, with R0−1 (ū) = OPT ∈ (0, 1/e). Our first result shows that, with Assumption 3.3,
+                                                    e
+minimizing the logistic risk yields a solution with O(OPT)    zero-one risk.
+Theorem 3.4. Under Assumptions 3.2 and 3.3, let w∗ denote the global minimizer of Rlog .
+
+  1. If kxk ≤ B almost surely, then
+                                                                            
+                                                 R0−1 (w∗ ) = O (1 + Cκ )OPT ,
+                    RB
+      where Cκ :=    0   κ(r) dr.
+  2. If Px is (α1 , α2 )-sub-exponential, then
+                                                                              
+                                       R0−1 (w∗ ) = O (1 + Cκ )OPT · ln(1/OPT) ,
+                    R 3α2 ln(1/OPT)
+      where Cκ :=    0                κ(r) dr.
+    Note that for bounded distributions, R0−1 (w∗ ) = O(OPT) as long as Cκ is a constant, which   is true if pV
+is Lipschitz continuous. Similarly, for sub-exponential distributions, Cκ is still O ln(1/OPT)2 for Lipschitz
+                                                  e
+continuous densities, in which case R0−1 (w∗ ) = O(OPT).
+    Next we give an algorithmic result. Given a√target error ǫ ∈ (0, 1), we consider projected gradient descent
+on the empirical risk with a norm bound of 1/ ǫ: let w0 := 0, and
+                                                      h                     i
+                                     wt+1 := ΠB(1/√ǫ) wt − η∇R   b log (wt ) .                                (1)
+
+                                                                  e
+Our next result shows that projected gradient descent can give an O(OPT) risk. Note that for the two cases
+discussed below (bounded or sub-exponential), we use the corresponding Cκ defined in Theorem 3.4.
+Theorem 3.5. Suppose Assumptions 3.2 and 3.3 hold.
+                                                                                          
+  1. If kxk ≤ B almost surely, then with η = 4/B 2 , and O ln(1/δ)
+                                                                 ǫ 4   samples and O   ǫ
+                                                                                          1
+                                                                                         5/2   iterations, with
+     probability 1 − δ, projected gradient descent outputs wt satisfying
+                                                                          
+                                       R0−1 (wt ) = O (1 + Cκ )(OPT + ǫ) .
+                                                                                                     3
+                                                                                                        
+                                                                           e
+  2. On the other hand, if Px is (α1 , α2 )-sub-exponential, then with η = Θ(1/d),        e d ln(1/δ)
+                                                                                    using O               samples
+                                                                                                ǫ4
+                    2
+                       
+         e d ln(1/δ)
+     and O               iterations, with probability 1 − δ, projected gradient descent outputs wt with
+               ǫ5/2
+
+                                                                               
+                                      R0−1 (wt ) = (1 + Cκ ) OPT · ln(1/OPT) + ǫ .
+
+   Theorems 3.4 and 3.5 rely on the following key lemma which provides a zero-one risk bound on near
+optimal solutions to the logistic regression problem:
+Lemma 3.6. Under Assumptions 3.2 and 3.3, suppose ŵ satisfies Rlog (ŵ) ≤ Rlog (kŵkū) + ǫℓ for some
+ǫℓ ∈ [0, 1).
+
+
+                                                             6
+  1. If kxk ≤ B almost surely, then
+                                                        q             
+                                                            ǫℓ     Cκ
+                                    R0−1 (ŵ) = O max OPT, kŵk , kŵk2    .
+
+
+  2. If Px is (α1 , α2 )-sub-exponential and kŵk = Ω(1), then
+                                                              q             
+                                                                  ǫℓ     Cκ
+                              R0−1 (ŵ) = O max OPT · ln(1/OPT), kŵk , kŵk2    .
+
+
+    Next we give proof outlines of our results; the full proofs are given in Appendix C. For simplicity, here
+we focus only on the bounded case, while the sub-exponential case will be handled in Appendix C. Although
+the proofs of the two cases share some similarity, we want to emphasize that the sub-exponential case does
+not follow by simply truncating the distribution to a certain
+                                                          √    radius and reduce it to the bounded case. The
+reason is that the truncation radius will be as large as d, while for the bounded case in Lemma 3.6, B is
+considered a constant independent of d and hidden in the O notation; therefore this truncation argument
+will introduce a poly(d) dependency in the final bound. By contrast, our zero-one risk upper bounds only
+depend on α1 , α2 , U and R, but do not depend on d.
+
+3.1    Proof of Theorems 3.4 and 3.5
+Here we prove Theorems 3.4 and 3.5; the details are given in Appendix C.1.                         
+                                                                                                1
+    We first prove Theorem 3.4. Note that by Lemma 3.6, it suffices to show that kw∗ k = Ω √OPT       (since
+ǫℓ = 0 in this case), which is true due to the next result.
+                                                                                                         
+                                                                            R4             ∗        √ 1
+Lemma 3.7. Under Assumption 3.2, if kxk ≤ B almost surely and OPT < 200U      3 B , then kw k = Ω
+                                                                                                      OPT
+                                                                                                            .
+
+   Next we prove Theorem 3.5. Recall that given the   √ target (zero-one) error ǫ ∈ (0, 1), we run projected
+gradient descent on a Euclidean ball with radius 1/ ǫ (cf. eq. (1)). Using a standard optimization and
+generalization analysis, we can prove the following guarantee on Rlog (wt ).
+Lemma 3.8. Let the target optimization error ǫℓ ∈ (0,1) and the failure
+                                                                        probability δ 
+                                                                                       ∈ (0,1/e) be given. If
+                                                                   2
+                                                                                             B2
+kxk ≤ B almost surely, then with η = 4/B 2 , using O (B+1)ǫǫ2ln(1/δ)         samples and O   ǫǫℓ   iterations, with
+                                                                 ℓ
+probability 1 − δ, projected gradient descent outputs wt satisfying
+
+                                      Rlog (wt ) ≤     min √ Rlog (ρū) + ǫℓ .                                 (2)
+                                                     0≤ρ≤1/ ǫ
+
+
+   We also need the following lower bounds on kwt k.
+Lemma 3.9. Under Assumption 3.2, suppose
+                                   (               )
+                                      R4    R4                                   √
+                          ǫ < min         ,                       and    ǫℓ ≤     ǫ,
+                                     36U 2 722 U 4
+                                                                                         n           o
+                                                             R4                             1 √ 1
+and that eq. (2) holds. If kxk ≤ B almost surely and OPT < 500U 3B , then kwt k = Ω   min   √
+                                                                                              ǫ
+                                                                                                , OPT
+                                                                                                         .
+
+   Now to prove Theorem 3.5, we simply need to combine Lemmas 3.6, 3.8 and 3.9 with ǫℓ = ǫ3/2 .
+
+3.2    Proof of Lemma 3.6
+Here we give a proof sketch of Lemma 3.6; the details are given in Appendix C.2. One remark is that some
+of the lemmas in the proof are also true for the hinge loss, and this fact will be crucial in the later discussion
+regarding our two-phase algorithm (cf. Section 4).
+
+
+
+                                                          7
+   Let w̄ := kŵkū, and consider ℓ ∈ {ℓlog , ℓh }. The first step is to express Rℓ (ŵ) − Rℓ (w̄) as the sum of
+three terms, and then bound them separately. The first term is given by
+                                       h                                             i
+                  Rℓ (ŵ) − Rℓ (w̄) − E ℓ sign hw̄, xi hŵ, xi − ℓ sign hw̄, xi hw̄, xi ,                    (3)
+
+the second term is given by
+                               h                                          i
+                              E ℓ sign hw̄, xi hŵ, xi − ℓ sign hŵ, xi hŵ, xi ,                             (4)
+
+and the third term is given by
+                             h                                         i
+                           E ℓ sign hŵ, xi hŵ, xi − ℓ sign hw̄, xi hw̄, xi ,                                (5)
+
+where the expectations are taken over Px .
+   We first bound term (3), which is the approximation error of replacing the true label y with the label
+given by ū. Since ℓ(−z) − ℓ(z) = z for the logistic loss and hinge loss, it follows that
+                                                                             
+                                 term (3) = E 1y6=sign(hw̄,xi) · yhw̄ − ŵ, xi .
+
+The approximation error can be bounded as below, using the tail bound on Px and the fact R0−1 (w̄) = OPT.
+
+Lemma 3.10. For ℓ ∈ {ℓlog , ℓh }, if kxk ≤ B almost surely,
+                                         term (3) ≤ Bkw̄ − ŵk · OPT.
+   Next we bound term (4).
+Lemma 3.11. Under Assumption 3.2, for ℓ ∈ {ℓlog , ℓh },
+                                                      4R3
+                                        term (4) ≥          kŵkϕ(ŵ, w̄)2 .
+                                                     3U π 2
+    Lastly, we consider term (5). Note that it is 0 for the hinge loss ℓh , because ℓh (z) = 0 when z ≥ 0. For the
+logistic loss, term (5) is also 0 if Px is radially symmetric; in general, we will bound it using Assumption 3.3.
+
+Lemma 3.12. For ℓ = ℓh , term (5) is 0. For ℓ = ℓlog , under Assumption 3.3, if kxk ≤ B almost surely,
+then
+                                        term (5) ≤ 12Cκ · ϕ(ŵ, w̄)/kŵk,
+              RB
+where Cκ :=   0    κ(r) dr.
+    Now we are ready to prove Lemma 3.6. For simplicity, here we let ϕ denote ϕ(ŵ, w̄). For bounded
+distributions, Lemmas 3.10 to 3.12 imply
+         C1 kŵkϕ2 ≤ ǫℓ + Bkw̄ − ŵk · OPT + C2 Cκ · ϕ/kŵk ≤ ǫℓ + Bkŵkϕ · OPT + C2 Cκ · ϕ/kŵk,
+where C1 = 4R3 /(3U π 2 ) and C2 = 12. It follows that at least one of the following three cases is true:
+                                             p         
+  1. C1 kŵkϕ2 ≤ 3ǫℓ , which implies ϕ = O     ǫℓ /kŵk ;
+  2. C1 kŵkϕ2 ≤ 3Bkŵkϕ · OPT, and it follows that ϕ = O(OPT);
+                                                                     
+  3. C1 kŵkϕ2 ≤ 3C2 Cκ · ϕ/kŵk, and it follows that ϕ = O Cκ /kŵk2 .
+This finishes the proof of Lemma 3.6 for ŵ, in light of (Diakonikolas et al., 2020d, Claim 3.4) which is stated
+below.
+Lemma 3.13. Under Assumption 3.2,
+                                                                         
+                    R0−1 (ŵ) − R0−1 (w̄) ≤ Pr sign hŵ, xi 6= sign hw̄, xi ≤ 2U ϕ(ŵ, w̄).
+
+
+                                                        8
+                                         √
+3.3    Recovering the general                OPT bound
+                                  √      
+Frei et al. (2021b) showed an Oe OPT upper bound under the “soft-margin” and “sub-exponential” con-
+ditions. Here we give an alternative proof of this result using our proof technique. The result in this section
+will later serve as a guarantee of the first phase of our two-phase algorithm (cf. Section 4) that achieves
+e
+O(OPT)    risk.
+    Recall that the only place we need Assumption 3.3 is in the proof of Lemma 3.12. However, even without
+Assumption 3.3, we can still prove the following general bound which only needs Assumption 3.2.
+Lemma 3.14. Under Assumption 3.2, for ℓ = ℓlog ,
+                                                                 12U
+                                               term (5) ≤             .
+                                                                 kŵk
+    Now with Lemma 3.14, we can prove a weaker but more general version of Lemma 3.6 (cf. Theorem C.14).
+Further invoking Lemmas√     3.8 and 3.9 (cf. Lemmas C.5 and C.6 for the corresponding sub-exponential
+results), and let ǫℓ = ǫ, we can show the next result. We present the bound in terms of the angle instead
+of zero-one risk for later application in Section 4.
+Lemma 3.15. Given the target error ǫ ∈ (0, 1) and the failure probability δ ∈ (0, 1/e), considerprojected
+                                                                                              2
+gradient descent eq. (1). If kxk ≤ B almost surely, then with η = 4/B 2 , using O (B+1)ǫ2ln(1/δ)        samples
+        2
+and O ǫB3/2 iterations, with probability 1 − δ, projected gradient descent outputs wt with
+                                                               √       
+                                          ϕ(wt , ū) = O        OPT + ǫ .
+                                                                                                     3
+                                                                                                        
+                                                                            e
+   On the other hand, if Px is (α1 , α2 )-sub-exponential, then with η = Θ(1/d),          e d ln(1/δ)
+                                                                                    using O        2      samples
+                                                                                                 ǫ
+               2
+                  
+    e d ln(1/δ)
+and O               iterations, with probability 1 − δ, projected gradient descent outputs wt with
+         ǫ3/2
+                                                    p                   
+                                   ϕ(wt , ū) = O    OPT · ln(1/OPT) + ǫ .
+
+    The proofs of the results above are given in Appendix C.3.
+
+
+4        e
+      An O(OPT) upper bound with hinge loss
+We now show how to avoid Assumption 3.3 and achieve an O(OPT)  e        zero-one risk bound using an extra step
+of hinge loss minimization. The key observation here is that the only place where Assumption 3.3 is used
+is in Lemma 3.12 for bounding term (5) for logistic loss. However, as noted in Lemma 3.12, for hinge loss,
+term (5) is conveniently 0. So a version of Lemma 3.6 holds for hinge loss, without using Assumption 3.3,
+and dropping the third term of kC                                           e
+                                    ŵk2 in the max. Thus, to get an O(OPT) upper bound, we need to
+                                      κ
+
+
+minimize the hinge loss to find a solution ŵ such that kŵk = Ω(1) and Rh (ŵ) ≤ Rh (kŵkū) + ǫℓ for some
+      e
+ǫℓ = O((OPT    + ǫ)2 ). Unfortunately the requirement kŵk = Ω(1) is non-convex. However, we can bypass
+the non-convexity by leveraging
+                         √       the solution of the logistic regression problem, which is guaranteed to make
+an angle of at most O( e OPT + ǫ) with ū, even without Assumption 3.3, by Lemma 3.15. This solution,
+represented by a unit vector v, gives us a “warm start” for hinge loss minimization. Specifically, suppose we
+optimize the hinge loss over the halfspace
+                                               n                    o
+                                          D := w ∈ Rd hw, vi ≥ 1 ,                                          (6)
+                                                                                                   √
+                                                                                                 e OPT + ǫ)
+then any solution we find must have norm at least 1. Furthermore, using the fact that ϕ(v, ū) ≤ O(
+and the positive homogeneity of the hinge loss, we can also conclude that the optimizer of the hinge loss
+satisfies Rh (ŵ) ≤ Rh (kŵkū) + ǫℓ , giving us the desired solution.
+                                                                                                     e
+    While the above analysis does yield a simple two-phase polynomial time algorithm for getting an O(OPT)
+                                                                                    e    4
+zero-one risk bound, closer analysis reveals a sample complexity requirement of O(1/ǫ ). We can improve
+
+                                                           9
+                                       e
+the sample complexity requirement to O(1/ǫ  2
+                                              ) by doing a custom analysis of SGD on the hinge loss (aka
+perceptron, (Novikoff, 1963)) inspired by the above considerations. Thus we get the following two-phase
+algorithm1 :
+   1. Run projected√ gradientdescent under the settings of Lemma
+                                                               p 3.15, and find a unit
+                                                                                     vector v such that
+      ϕ(v, ū) is O OPT + ǫ for bounded distributions, or O     OPT · ln(1/OPT) + ǫ for sub-exponential
+      distributions.
+   2. Run projected SGD over the domain D defined in eq. (6) starting from w0 := v: at step t, we sample
+      (xt , yt ) ∼ P , and let
+                                             h                           i
+                                  wt+1 := ΠD wt − ηℓ′h yt hwt , xt i yt xt .                         (7)
+
+      where we make the convention that ℓ′h (0) = −1.
+   We show the following result on the expectation; it can also be turned into a high-probability bound by
+probability amplification by repetition.
+Theorem 4.1. Given the target error ǫ ∈ (0, 1/e), suppose Assumption 3.2 holds.
+  1. First, for bounded distributions, with η = Θ(ǫ), for all T = Ω(1/ǫ2 ),
+                                                         
+                                       E min R0−1 (wt ) = O(OPT + ǫ).
+                                                      0≤t<T
+
+                                                                                                                             2
+                                                                                                                                  
+  2. On the other hand, for sub-exponential distributions, with η = Θ                        ǫ
+                                                                                        d ln(d/ǫ)2    , for all T = Ω d ln(d/ǫ)
+                                                                                                                          ǫ 2       ,
+                                                           
+                                      E       min R0−1 (wt ) = O(OPT · ln(1/OPT) + ǫ).
+                                              0≤t<T
+
+
+4.1      Proof of Theorem 4.1
+Here we give a proof sketch of Theorem 4.1, and we also focus on bounded distributions for simplicity. The
+full proof is given in Appendix D.
+    Let r̄ := 1/hv, ūi, and thus r̄ū ∈ D. At step t, we have
+                                              D                                 E                       2
+           kwt+1 − r̄ūk2 ≤ kwt − r̄ūk2 − 2η ℓ′h yt hwt , xt i yt xt , wt − r̄ū + η 2 ℓ′h yt hwt , xt i kxt k2 . (8)
+
+Define
+                                                   h            i
+                                   M(w) := E(x,y)∼P −ℓ′h yhw, xi = R0−1 (w).
+
+Taking expectation of eq. (8) w.r.t. (xt , yt ), and note that kxk ≤ B almost surely and (ℓ′h )2 = −ℓ′h , we have
+                  h              i
+                E kwt+1 − r̄ūk2 − kwt − r̄ ūk2 ≤ −2η ∇Rh (wt ), wt − r̄ū + η 2 B 2 M(wt )
+                                                                               
+                                                     ≤ −2η Rh (wt ) − Rh (r̄ū) + η 2 B 2 M(wt ).             (9)
+    To continue, we note the following lemma, which follows from Lemmas 3.10 to 3.12, and the homogeneity
+of the hinge loss ℓh .
+Lemma 4.2. Suppose Assumption 3.2 holds. Consider an arbitrary w ∈ D, and let ϕ denote ϕ(w, ū). If
+kxk ≤ B almost surely, then
+                                                                  
+                            Rh (r̄ū) ≤ Rh (kwkū) + O (OPT + ǫ)2
+and
+                                                               4R3
+                                Rh (w) − Rh (kwkū) ≥                kwkϕ2 − Bkwkϕ · OPT.
+                                                              3U π 2
+  1 Note that the parameters η, T , etc. in this section are all chosen for the second phase.
+
+
+
+
+                                                               10
+    The remaining steps of the proof proceed as follows. We will prove the following: for ϕt := ϕ(wt , ū),
+                                                  
+                                       E min ϕt = O(OPT + ǫ).                                             (10)
+                                             0≤t≤T
+
+First, note that if ϕt = O(OPT) for some t, then eq. (10) holds vacuously. Hence, we assume that ϕt ≥
+C · OPT for all t for a sufficiently large constant C > 0. Then Lemma 4.2 ensures that for some constant C1 ,
+
+                                 Rh (wt ) − Rh (kwt kū) ≥ C1 kwt kϕ2t ≥ C1 ϕ2t ,
+
+where we also use kwk ≥ 1 for all w ∈ D.
+    Next, note that M(wt ) = O(ϕt ), due to our assumption ϕt ≥ C · OPT and Lemma 3.13. If ϕt ≤ ǫ, then
+eq. (10) also holds, otherwise we can assume ǫ ≤ ϕt , and let η = C2 ǫ for some small enough constant C2 ,
+such that
+
+                                          ηB 2 M(wt ) ≤ C1 ǫϕt ≤ C1 ϕ2t .
+
+    Now eq. (9) implies
+                  h              i                                              
+                 E kwt+1 − r̄ūk2 − kwt − r̄ūk2 ≤ −2ηC1 ϕ2t − η · O (OPT + ǫ)2 + ηC1 ϕ2t
+                                                                              
+                                                 = −ηC1 ϕ2t − η · O (OPT + ǫ)2 .
+
+Taking the total expectation and telescoping the above inequality for all t, we have
+                                          
+                                 1 X           kw0 − r̄ūk2                  
+                             E        ϕ2t  ≤              + O (OPT + ǫ)2 .
+                                 T               ηC1 T
+                                    t<T
+
+Recall that
+                                                                  √             
+                                  kw0 − r̄ūk = kv − r̄ ūk = O       OPT + ǫ
+
+due to the first phase of the algorithm. Since η = C2 ǫ, we can further let T = Ω(1/ǫ2 ) and finish the proof.
+
+
+5     Open problems
+                                                                                                               
+Here are some open problems. First, as shown by Theorem 4.1, we can achieve O OPT · ln(1/OPT) + ǫ
+zero-one risk using the two-phase algorithm. However, previous algorithms can reach O(OPT+ǫ) (Awasthi et al.,
+2014; Diakonikolas et al., 2020d). Is it possible to develop an algorithm relying on a small constant number
+of convex optimization phases that achieves O(OPT + ǫ) risk?
+    It is also interesting to consider neural networks. Previously, Frei et al. (2021a)
+                                                                                  √      showed that stochastic
+                                                                                          
+gradient descent on a two-layer leaky ReLU network of any width achieves O      e OPT zero-one risk, where
+OPT still denotes the best zero-one risk of a linear classifier. On the other hand, Ji et al. (2021) showed that
+a wide two-layer ReLU network can even achieve the optimal Bayes risk, but their required width depends
+on a complexity measure that may be exponentially large in the worst case. Can a network with a reasonable
+width always reach a zero-one risk of O(OPT)?
+
+Acknowledgements
+Ziwei Ji thanks Matus Telgarsky for helpful discussions, and the NSF for support under grant IIS-1750051.
+
+
+References
+Pranjal Awasthi, Maria Florina Balcan, and Philip M Long. The power of localization for efficiently learning
+  linear separators with noise. In Proceedings of the forty-sixth annual ACM symposium on Theory of
+  computing, pages 449–458, 2014.
+
+                                                        11
+Pranjal Awasthi, Maria-Florina Balcan, Nika Haghtalab, and Ruth Urner. Efficient learning of linear sepa-
+  rators under bounded noise. In Conference on Learning Theory, pages 167–190. PMLR, 2015.
+Pranjal Awasthi, Maria-Florina Balcan, Nika Haghtalab, and Hongyang Zhang. Learning and 1-bit com-
+  pressed sensing under asymmetric noise. In Conference on Learning Theory, pages 152–192. PMLR, 2016.
+Maria-Florina Balcan and Hongyang Zhang. Sample and computationally efficient learning algorithms under
+ s-concave distributions. arXiv preprint arXiv:1703.07758, 2017.
+Shai Ben-David, David Loker, Nathan Srebro, and Karthik Sridharan. Minimizing the misclassification error
+  rate using a surrogate convex loss. arXiv preprint arXiv:1206.6442, 2012.
+Avrim Blum, Alan Frieze, Ravi Kannan, and Santosh Vempala. A polynomial-time algorithm for learning
+ noisy linear threshold functions. Algorithmica, 22(1):35–52, 1998.
+Sébastien Bubeck. Convex optimization: Algorithms and complexity. arXiv preprint arXiv:1405.4980, 2014.
+Sitan Chen, Frederic Koehler, Ankur Moitra, and Morris Yau. Classification under misspecification: Halfs-
+  paces, generalized linear models, and connections to evolvability. arXiv preprint arXiv:2006.04787, 2020.
+Amit Daniely. A ptas for agnostically learning halfspaces. In Conference on Learning Theory, pages 484–502.
+ PMLR, 2015.
+Amit Daniely. Complexity theoretic limitations on learning halfspaces. In Proceedings of the forty-eighth
+ annual ACM symposium on Theory of Computing, pages 105–117, 2016.
+Ilias Diakonikolas, Themis Gouleakis, and Christos Tzamos. Distribution-independent pac learning of half-
+   spaces with massart noise. arXiv preprint arXiv:1906.10075, 2019.
+Ilias Diakonikolas, Daniel M Kane, and Nikos Zarifis. Near-optimal sq lower bounds for agnostically learning
+   halfspaces and relus under gaussian marginals. arXiv preprint arXiv:2006.16200, 2020a.
+Ilias Diakonikolas, Vasilis Kontonis, Christos Tzamos, and Nikos Zarifis. Learning halfspaces with massart
+   noise under structured distributions. In Conference on Learning Theory, pages 1486–1513. PMLR, 2020b.
+Ilias Diakonikolas, Vasilis Kontonis, Christos Tzamos, and Nikos Zarifis. Learning halfspaces with tsybakov
+   noise. arXiv preprint arXiv:2006.06467, 2020c.
+Ilias Diakonikolas, Vasilis Kontonis, Christos Tzamos, and Nikos Zarifis. Non-convex sgd learns halfspaces
+   with adversarial label noise. arXiv preprint arXiv:2006.06742, 2020d.
+Ilias Diakonikolas, Daniel M Kane, Vasilis Kontonis, Christos Tzamos, and Nikos Zarifis. Threshold phe-
+   nomena in learning halfspaces with massart noise. arXiv preprint arXiv:2108.08767, 2021.
+John Dunagan and Santosh Vempala. A simple polynomial-time rescaling algorithm for solving linear pro-
+  grams. Mathematical Programming, 114(1):101–114, 2008.
+Vitaly Feldman, Parikshit Gopalan, Subhash Khot, and Ashok Kumar Ponnuswami. New results for learning
+  noisy parities and halfspaces. In 2006 47th Annual IEEE Symposium on Foundations of Computer Science
+  (FOCS’06), pages 563–574. IEEE, 2006.
+Spencer Frei, Yuan Cao, and Quanquan Gu. Provable generalization of sgd-trained neural networks of any
+  width in the presence of adversarial label noise. arXiv preprint arXiv:2101.01152, 2021a.
+Spencer Frei, Yuan Cao, and Quanquan Gu. Agnostic learning of halfspaces with gradient descent via soft
+  margins. In International Conference on Machine Learning, pages 3417–3426. PMLR, 2021b.
+Surbhi Goel, Aravind Gollakota, and Adam Klivans. Statistical-query lower bounds via functional gradients.
+  arXiv preprint arXiv:2006.15812, 2020.
+Venkatesan Guruswami and Prasad Raghavendra. Hardness of learning halfspaces with noise. SIAM Journal
+  on Computing, 39(2):742–765, 2009.
+
+                                                    12
+Ziwei Ji, Justin D Li, and Matus Telgarsky. Early-stopped neural networks are consistent. arXiv preprint
+  arXiv:2106.05932, 2021.
+Adam Tauman Kalai, Adam R Klivans, Yishay Mansour, and Rocco A Servedio. Agnostically learning
+ halfspaces. SIAM Journal on Computing, 37(6):1777–1805, 2008.
+Michael J Kearns, Robert E Schapire, and Linda M Sellie. Toward efficient agnostic learning. Machine
+ Learning, 17(2-3):115–141, 1994.
+Adam Klivans and Pravesh Kothari. Embedding hard learning problems into gaussian space. In Approxima-
+ tion, Randomization, and Combinatorial Optimization. Algorithms and Techniques (APPROX/RANDOM
+ 2014). Schloss Dagstuhl-Leibniz-Zentrum fuer Informatik, 2014.
+Adam R Klivans, Philip M Long, and Rocco A Servedio. Learning halfspaces with malicious noise. Journal
+ of Machine Learning Research, 10(12), 2009.
+Albert B Novikoff. On convergence proofs for perceptrons. Technical report, STANFORD RESEARCH
+  INST MENLO PARK CA, 1963.
+Shai Shalev-Shwartz and Shai Ben-David. Understanding Machine Learning: From Theory to Algorithms.
+  Cambridge University Press, 2014.
+Jie Shen and Chicheng Zhang. Attribute-efficient learning of halfspaces with malicious noise: Near-optimal
+  label complexity and noise tolerance. In Algorithmic Learning Theory, pages 1072–1113. PMLR, 2021.
+Roman Vershynin. High-dimensional probability: An introduction with applications in data science, vol-
+  ume 47. Cambridge university press, 2018.
+Songbai Yan and Chicheng Zhang. Revisiting perceptron: Efficient and label-optimal learning of halfspaces.
+  arXiv preprint arXiv:1702.05581, 2017.
+Chicheng Zhang and Yinan Li. Improved algorithms for efficient active learning halfspaces with massart and
+ tsybakov noise. arXiv preprint arXiv:2102.05312, 2021.
+Chicheng Zhang, Jie Shen, and Pranjal Awasthi. Efficient active learning of sparse halfspaces with arbitrary
+  bounded noise. arXiv preprint arXiv:2002.04840, 2020.
+
+
+
+
+                                                    13
+A      Technical lemmas
+Here are some technical results we will need in our analysis.
+Lemma A.1. Let r, ρ > 0 be given, then
+                                                        Z 2π                        √
+                                     2                                               8 2
+                                       (1 − e−rρ ) ≤           ℓlog rρ cos(θ) r dθ ≤     .
+                                     ρ                    0                           ρ
+Proof. First note that by symmetry,
+                           Z 2π                       Z π2
+                                                                           
+                                ℓlog rρ cos(θ) r dθ = 4      ℓlog rρ cos(θ) r dθ.
+                                 0                                     0
+                                                                                                          √
+On the upper bound, note that ℓlog rρ cos(θ) is increasing as θ goes from 0 to π2 , and moreover sin(θ) ≥ 22
+for θ ∈ π4 , π2 , therefore
+          Z π2                          Z π2                        √ Z π
+                                                                 8 2 2                 
+        4       ℓlog rρ cos(θ) r dθ ≤ 8      ℓlog rρ cos(θ) r dθ ≤        ℓlog rρ cos(θ) rρ sin(θ) dθ.
+            0                            π
+                                         4
+                                                                    ρ   π
+                                                                        4
+
+
+Also because ℓlog (z) ≤ exp(−z),
+                       Z 2π                                  √ Z π
+                                                              8 2 2                 
+                              ℓlog rρ cos(θ)           r dθ ≤         exp −rρ cos(θ) rρ sin(θ) dθ
+                        0                                      ρ    π
+                                                                   4               !
+                                                               √              √
+                                                              8 2              2rρ 
+                                                            =       1 − exp −
+                                                               ρ                2
+                                                               √
+                                                              8 2
+                                                            ≤     .
+                                                               ρ
+
+    On the lower bound, note that ℓlog (z) ≥ 21 exp(−z) for z ≥ 0, therefore
+         Z 2π                                 Z π2                             Z π2
+                                                                                                     
+                ℓlog rρ cos(θ)       r dθ = 4          ℓlog rρ cos(θ) r dθ ≥ 2          exp −rρ cos(θ) r dθ
+          0                                      0                                0
+                                                                               Z π
+                                                                             2 2                 
+                                                                           ≥       exp −rρ cos(θ) rρ sin(θ) dθ
+                                                                             ρ 0
+                                                                             2          
+                                                                           =    1 − e−rρ .
+                                                                             ρ
+
+                                                               
+Lemma A.2. Given w, w′ ∈ Rd , suppose Pr(x,y)∼P y 6= sign hw, xi = OPT. If kxk ≤ B almost surely,
+then
+                                                       
+                        E(x,y)∼P 1y6=sign(hw,xi) hw , xi ≤ Bkw′ k · OPT.
+                                                   ′
+
+
+
+If Px is (α1 , α2 )-sub-exponential, and OPT ≤ 1e , then
+                                                                                        
+                                                ′                      ′                1
+                     E(x,y)∼P 1y6=sign(hw,xi) hw , xi ≤ (1 + 2α1 )α2 kw k · OPT · ln         .
+                                                                                       OPT
+
+Proof. If kxk ≤ B almost surely, then
+                                                                           
+            E(x,y)∼P 1y6=sign(hw,xi) hw′ , xi ≤ Bkw′ kE(x,y)∼P 1y6=sign(hw,xi) = Bkw′ k · OPT.
+
+
+                                                                  14
+Below we assume Px is (α1 , α2 )-sub-exponential.
+   Let νx := hw′ , xi; we first give some tail bounds for νx . Since Px is (α1 , α2 )-sub-exponential, for any
+t > 0, we have
+                            
+             ′                                                                                   
+               w                                                             
+       Pr         , x  ≥  t  ≤ α1 exp − t , equivalently Pr |νx | ≥ t ≤ α1 exp − t                    .
+             kw′ k                         α2                                                α2 kw′ k
+                        
+Let µ(t) := Pr |νx | ≥ t . Given any threshold τ > 0, integration by parts gives
+      h             i Z ∞                           Z ∞                                                   
+                                                                         ′
+                                                                                                  τ
+    E 1|νx |≥τ |νx | =      t · − dµ(t) = τ µ(τ ) +     µ(t) dt ≤ α1 α2 kw k + τ exp −                         .   (11)
+                          τ                             τ                                       α2 kw′ k
+                                1
+                                   
+   Now let τ := α2 kw′ k ln OPT     . Note that
+                                                                                                                
+E(x,y)∼P 1y6=sign(hw,xi) hw′ , xi = E(x,y)∼P 1|νx |≤τ 1y6=sign(hw,xi) |νx | + E(x,y)∼P 1|νx |≥τ 1y6=sign(hw,xi) |νx | .
+
+We bound the two parts separately. When |νx | ≤ τ , we have
+                                                                                             
+                                                                              ′                1
+      E 1|νx |≤τ 1y6=sign(hw,xi) |νx | ≤ τ E 1y6=sign(hw,xi) = τ · OPT = α2 kw k · OPT · ln         .
+                                                                                              OPT
+
+On the other hand, when |νx | ≥ τ , eq. (11) gives
+                                                         h               i
+                E(x,y)∼P 1|νx |≥τ 1y6=sign(hw,xi) |νx | ≤ E 1|νx |≥τ |νx |
+                                                                                       !
+                                                                     ′               1
+                                                            ≤ α1 α2 kw k 1 + ln            OPT
+                                                                                   OPT
+                                                                                          
+                                                                       ′                1
+                                                            ≤ 2α1 α2 kw k · OPT · ln         ,
+                                                                                       OPT
+
+where we also use OPT ≤ 1e . To sum up,
+                                                                                      
+                                                                                      1
+                 E(x,y)∼P 1y6=sign(hw,xi) hw′ , xi ≤ (1 + 2α1 )α2 kw′ k · OPT · ln         .
+                                                                                     OPT
+
+
+
+
+B     Omitted proofs from Section 2
+In this section, we will prove Theorem 2.1. First, we bound the density and support of Qx .
+                       1                            1         1
+LemmaB.1. If OPT ≤ 100   , then it holds that q3 ≤ 15 , and 2π ≤ q4 ≤ π1 . As a result, Qx is supported on
+B(2) := x kxk ≤ 2 with its density bounded by 2.
+Proof. For q3 , we have
+                                      2√               2√      2 1    1
+                               q3 =     OPT(1 − OPT) ≤   OPT ≤      =    .
+                                      3                3       3 10   15
+For Q4 , its total measure can be bounded as below:
+                                         √                1   2   1  1
+                              1 − OPT − 2 OPT − q3 ≥ 1 −    −   −   ≥ ,
+                                                         100 10 15   2
+                1
+therefore q4 ≥ 2π . The upper bound q4 ≤ π1 is trivial.
+
+                                                            15
+   On the support of Qx , note that for Q1 , the largest ℓ2 norm is given by
+                                          √ r
+                                              2 OPT            1
+                                      1+                ≤1+      ≤ 2.
+                                            2       2         20
+For Q2 , the largest ℓ2 norm can be bounded by
+                                                     √                  1
+                                                1+       OPT ≤ 1 +        ≤ 2.
+                                                                       10
+For Q3 , the largest ℓ2 norm can be bounded by
+                                         √ r          r
+                                           2 q3      1 1
+                                      1+         ≤1+      ≤ 2.
+                                          2    2     2 15
+                                             1
+Finally, it is easy to verify that if OPT ≤ 100 , then Q1 , Q2 and Q3 do not overlap, therefore the density of
+                        1
+Q is bounded by 1 + π ≤ 2.
+   Next we verify that Qx is isotropic up to a multiplicative factor. We first note the following fact; its
+proof is straightforward and omitted.
+Lemma B.2. It holds that
+         Z a+ 2δ Z b+ δ2                                      Z a+ δ2 Z b+ δ2
+                         xy dy dx = abδ 2 ,          and                        (x2 − y 2 ) dy dx = (a2 − b2 )δ 2 .
+                a− 2δ   b− 2δ                                  a− 2δ   b− 2δ
+
+   Then we can prove the following result.
+                                                                                  
+Lemma B.3. It holds that Ex∼Qx [x] = 0, and Ex∼Qx [x1 x2 ] = 0, and Ex∼Qx x21 − x22 = 0.
+Proof. It follows from the symmetry of Q that Ex∼Qx [x] = 0.
+    To verify Ex∼Qx [x1 x2 ] = 0, note that the expectation of x1 x2 is 0 on Q3 and Q4 , and thus we only need
+to check Q1 and Q2 . First, due to Lemma B.2, we have
+                                                                         OPT
+                                                E(x,y)∼Q1 [x1 x2 ] = −       .
+                                                                          2
+Additionally,
+                                                         Z √OPT Z 1
+                                                                                            OPT
+                                E(x,y)∼Q2 [x1 x2 ] = 2                 x1 x2 dx2 dx1 =          .
+                                                          0        0                         2
+
+Therefore Ex∼Qx [x1 x2 ] = 0.
+   Finally, note that the expectation of x21 − x22 is 0 on Q1 due to Lemma B.2, and also 0 on Q4 due to
+symmetry; therefore we only need to consider Q2 and Q3 . We have
+                                   Z       √
+                    h         i                OPT Z 1           2           2√
+           E(x,y)∼Q2 x21 − x22 = 2             x21 − x22 dx2 dx1 = OPT3/2 −       OPT = −q3 .
+                                    0     0                       3           3
+                                                                         
+Since E(x,y)∼Q3 x21 − x22 = q3 by Lemma B.2, it follows that Ex∼Qx x21 − x22 = 0.
+    Next, we give a proof of the risk lower bound of Theorem 2.1. For simplicity,   in this section we will
+let R denote Rlog . For i = 1, 2, 3, 4, we also let Ri (w) := E(x,y)∼Qi ℓlog yhw, xi ; therefore R(w) :=
+P4                                                                                                     
+                                                                                                     1
+   i=1 Ri (w). We first prove Lemma  2.2, showing that there exists a solution w̄ with k w̄k = Θ   √
+                                                                                                    OPT
+                                                                                                          and
+             √      
+R(w̄) = O OPT .
+Proof of Lemma 2.2. We consider R1 , R2 , R3 and R4 respectively.
+
+
+
+                                                              16
+1. For Q1 , note that the minimum of yhw̄, xi is
+                                 √       r       !         √         √
+                                   2 1 OPT                3 2 1     3 2
+                              −     +              r̄ = −    √    −     .
+                                  2    2       2           2  OPT    4
+                                                     1
+   Because ℓlog (z) ≤ −z + 1 when z ≤ 0, and OPT ≤ 100 , we have
+                              √             √  !           √                                           √     !
+                             3 2 1         3 2            3 2√                                        3 2
+           R1 (w̄) ≤ ℓlog −     √       −        · OPT ≤        OPT +                                     + 1 OPT
+                              2   OPT       4              2                                           4
+                                                           √                                           √     !
+                                                          3 2√                                        3 2      1√
+                                                       ≤        OPT +                                     +1      OPT
+                                                           2                                           4       10
+                                                           √
+                                                          5 OPT
+                                                       ≤         .
+                                                             2
+
+2. For Q2 , we have
+                               Z √OPT Z 1                                       Z √OPT
+                 R2 (w̄) = 2                    ℓlog (x1 r̄) dx2 dx1 = 2                      ℓlog (x1 r̄) dx1
+                                   0        0                                    0
+                                                                                Z √     OPT
+                                                                         ≤2           exp(−x1 r̄) dx1
+                                                                              0         √          2
+                                                                           2
+                                                                         =      1 − exp −r̄ OPT       ≤ ,
+                                                                           r̄                          r̄
+   where we use ℓlog (z) ≤ exp(−z).
+3. For Q3 , the minimum of yhw̄, xi is
+                                                            r        !
+                                                        1       q3              2r̄
+                                                     1−                  r̄ ≥       ,
+                                                        2       2               3
+                      1
+   where we use q3 ≤ 15 by Lemma B.1. Further note that ℓlog (z) ≤ 1/z when z > 0, we have
+                                                   
+                                                   2r̄   1/15      1
+                                R3 (w̄) ≤ q3 ℓlog      ≤       ≤       .
+                                                   3     2r̄/3    10r̄
+
+4. For Q4 ,
+                          Z 1 Z 2π                                 Z Z                 
+                                                                    1 1 2π
+              R4 (w̄) =                ℓlog rr̄ cos(θ) q4 r dθ dr ≤        ℓlog rr̄ cos(θ) r dθ dr,
+                           0   0                                    π 0 0
+
+   where we use q4 ≤ π1 from Lemma B.1. Lemma A.1 then implies
+                                              Z  √          √
+                                             1 18 2       8 2
+                                   R4 (w̄) ≤         dr =      .
+                                             π 0 r̄        πr̄
+
+Putting everything together, we have
+
+                                   R(w̄) = R1 (w̄) + R2 (w̄) + R3 (w̄) + R4 (w̄)
+                                            √                        √
+                                           5 OPT 2            1     8 2
+                                         ≤           + +          +
+                                            √2         r̄    10r̄    πr̄
+                                           5 OPT 6            √
+                                         ≤           + ≤ 5 OPT.
+                                               2       r̄
+
+
+
+                                                           17
+   Next we prove Lemma 2.3, the upper bound on kw∗ k.
+Proof of Lemma 2.3. Let
+                      √       √ !                        √     r      √     r   !
+                         2     2                          2 1 OPT      2 1 OPT
+                u :=       ,−     ,         and v :=       −       ,−   −         .
+                        2     2                          2   2   2    2   2   2
+Let φ denote the angle between u and v, then
+                                          √ r       √
+                                            2 OPT    OPT   1    π
+                            φ ≤ tan(φ) =          =      ≤    ≤    ,
+                                           2   2      2    20   24
+and it follows that the angle between v and w∗ is bounded by
+                                            √
+                                   π    π    OPT      π    π π   π
+                                     + +            ≤   + +     = .
+                                  24 4        30      24 4   24  3
+Moreover, note that the maximum of yhw∗ , xi on Q1 is given by
+                                                               
+                                                   π             π    r∗
+                          −hw∗ , vi ≤ −r∗ kvk cos     ≤ −r∗ cos     =− .
+                                                   3             3    2
+Additionally because ℓlog (z) > −z, we have
+                                                        ∗
+                                                          r             r∗
+                               R(w∗ ) ≥ R1 (w∗ ) ≥ ℓlog −    · OPT >       · OPT.
+                                                          2             2
+           10
+                                 √
+If r∗ > √OPT    , then R(w∗ ) > 5 OPT, which contradicts the definition of w∗ in light of Lemma 2.2. Therefore
+        10
+r∗ ≤ √OPT     .
+
+   Next we prove Lemma 2.4.
+                                                                                       √
+                                                          10
+Proof of Lemma 2.4. Let w = (r, θ), where 0 ≤ r ≤ √OPT        and 0 ≤ θ ≤ OPT   30 . We will consider the
+projection of ∇R(w) onto the direction e2 := (0, 1), and show that this projection cannot be zero.
+  1. For Q1 , the gradient of this part has a negative inner product with e2 , due to the construction of Q1
+     and the fact ℓ′log < 0.
+  2. For Q2 , the inner product between e2 and the gradient of this part is given by
+                                     Z √OPT Z 1
+                                   2            ℓ′log (x1 w1 + x2 w2 )x2 dx2 dx1 .                       (12)
+                                        0        0
+
+     Note that x1 w1 ≤ rx1 , while
+                                                                            √
+                                                                10              OPT  1
+                                  x2 w2 = x2 r sin (θ) ≤ rθ ≤ √                     = ,
+                                                               OPT              30   3
+     and that ℓ′log is increasing, therefore
+                                                                                
+                                                                               1
+                                       ℓ′log (x1 w1 + x2 w2 ) ≤ ℓ′log    rx1 +     .
+                                                                               3
+     We can then upper bound eq. (12) as follows:
+                                         Z √OPT Z 1                  
+                                                          ′         1
+                            eq. (12) ≤ 2                 ℓlog rx1 +     x2 dx2 dx1
+                                           0          0             3
+                                           √
+                                       Z OPT                    
+                                                   ′           1
+                                     =            ℓlog rx1 +       dx1
+                                         0                     3
+                                                                        !
+                                       1            1      √               1
+                                     =       ℓlog      + r OPT − ℓlog           .
+                                       r            3                      3
+
+
+                                                        18
+                                      √
+     Now we consider two cases. If r OPT ≤ 2, then it follows from the convexity of ℓlog that
+                                                                              √
+                                 1      1     √    √                √             OPT
+                     eq. (12) ≤ ℓ′log     + r OPT r OPT ≤ ℓ′log (3) OPT ≤ −             .
+                                 r      3                                         30
+                            √
+     On the other hand, if r OPT ≥ 2, then
+                                            ! √                         !        √
+                         1         7          1      OPT          7           1            OPT
+             eq. (12) ≤     ℓlog      − ℓlog     ≤          ℓlog      − ℓlog        ≤−         .
+                         r         3          3      10           3           3            30
+                                                    √
+                                                     OPT
+     Therefore, it always holds that eq. (12) ≤ −     30 .
+
+  3. For
+       p qQ 3 , the gradient of this part can have a positive inner product with e2 . For simplicity, let ρ :=
+     1
+          2 To upper bound this inner product, it is enough to consider the region given by
+            .
+          3
+     2
+                                                                                    
+                                 [1 − ρ, 1 + ρ] × [−ρ, 0] ∪ [−1 − ρ, −1 + ρ] × [0, ρ] .
+                                                                       
+     Moreover, note that yhw, xi ≥ 0 on Q3 , therefore ℓ′log yhw, xi ≥ − 12 . Therefore the inner product
+     between e2 and the gradient of Q3 can be upper bounded by (note that x2 ≤ 0 in the integral)
+                        Z 1+ρ Z 0                           √       p                   √
+                                     1               3       q3       1/15 2 √           OPT
+                      2           − x2 dx2 dx1 = ρ = √ q3 ≤            √       OPT <         .
+                         1−ρ   −ρ    2                     16 2      16 2  3              60
+                           1
+                                                           √
+     where we use q3 ≤ 15    by Lemma B.1 and q3 ≤ 23 OPT by its definition.
+  4. For Q4 , we further consider two cases.
+      (a) Consider the part of Q4 with polar angles in (− π2 + 2θ, π2 ) ∪ ( π2 + 2θ, 3π
+                                                                                      2 ). By symmetry, the
+          gradient of this part is along the direction with polar angle π + θ, and it has a negative inner
+          product with e2 .
+      (b) Consider the part of Q4 with polar angles in (− π2 , − π2 + 2θ) ∪ ( π2 , π2 + 2θ). We can verify that
+          the gradient of this part has a positive inner product with e2 ; moreover, since −1 < ℓ′log < 0, this
+          inner product can be upper bounded by
+                     Z 1 Z 2θ                                                        √         √
+                               ′     ′     ′  ′   ′        1            4θ       4 OPT           OPT
+                   2          r cos(θ )q4 r dθ dr = 2q4 · · sin(2θ) ≤       ≤                <       ,
+                      0   0                                3           3π       3π     30        60
+
+           where we also use q4 ≤ π1 and sin(z) ≤ z for z ≥ 0.
+As a result, item 3 and item 4(b) cannot cancel item 2, and thus ∇R(w) cannot be 0.
+   Now we are ready to prove the risk lower bound of Theorem 2.1.
+Proof of Theorem 2.1 risk lower bound. It is clear that R has bounded sub-level sets, and therefore can be
+globally minimized.
+                  h Let the polar icoordinates of the global minimizer be given by (rh∗ , θ∗ ), where
+                                                                                                 i    |θ∗ | ≤ π.
+                     √      √                                                             √
+              ∗       OPT     OPT                                               ∗           OPT
+Assume that θ ∈ − 30 , 30 ; due to Q1 and Q2 , it actually follows that θ ∈ 0, 30 . Lemma 2.3
+                   10
+then implies r∗ ≤ √OPT , and then Lemma 2.4 implies ∇R(w∗ ) 6= 0, a contradiction.
+                                            ∗
+   It then follows that w∗ is wrong on a θπ portion of Q4 . Since the total measure of Q4 is more than half
+due to Lemma B.1, we have
+                                                            √
+                                                    1 θ∗      OPT
+                                       R0−1 (w∗ ) ≥      ≥          .
+                                                    2 π       60π
+
+
+
+
+                                                      19
+C      Omitted proofs from Section 3
+In this section, we provide omitted proofs from Section 3. First, we prove some general results that will be
+used later.
+
+Lemma C.1. Under Assumption 3.2, for any w ∈ Rd ,
+                                                 12U
+                                   E ℓlog hw, xi    ≤     .
+                                                      kwk
+
+Proof. Let v denote an arbitrary vector orthogonal to w, and let p denote the density of the projection of
+Px onto the space spanned by w and v. Then we have
+                                   Z ∞ Z 2π                     
+                     E ℓlog hw, xi      =          ℓlog rkwk cos(θ) p(r, θ)r dθ dr.
+                                                    0     0
+
+Invoking Assumption 3.2, we have
+                                                                                           !
+                                             Z ∞             Z 2π                  
+                      E ℓlog hw, xi         ≤           σ(r)           ℓlog rkwk cos(θ) r dθ dr.
+                                                0                 0
+
+
+Lemma A.1 then implies
+                                                   Z ∞       √
+                                                                8 2
+                                      E ℓlog hw, xi   ≤    σ(r)     dr.
+                                                        0       kwk
+
+Then it follows from Assumption 3.2 that
+                                               8√2U   12U
+                                  E ℓlog hw, xi   ≤     ≤     .
+                                                    kwk   kwk
+
+
+                                                                                                          √   
+                                                                                           e
+    Next, we note that following the direction of the ground-truth solution ū can achieve O               OPT logistic
+risk.
+Lemma C.2. Given ρ > 0, under Assumption 3.2, if kxk ≤ B almost surely, then
+
+                                   12U                                                    √
+                    Rlog (ρū) ≤       + ρB · OPT,             with    inf Rlog (ρū) ≤    50U B · OPT,
+                                    ρ                                  ρ>0
+
+
+while if Px is (α1 , α2 )-sub-exponential, then
+                                                                                             
+                                          12U                                           1
+                             Rlog (ρū) ≤     + (1 + 2α1 )α2 ρ · OPT · ln                         ,
+                                           ρ                                           OPT
+
+with
+                                                s                                            
+                                                                                           1
+                             inf Rlog (ρū) ≤       50(1 + 2α1 )α2 U · OPT · ln                 .
+                            ρ>0                                                           OPT
+
+Proof. Note that
+                                    h             i
+              Rlog (ρū) = E(x,y)∼P ℓlog yhρū, xi
+                                                                                       
+                                                                            
+                         = Ex∼Px ℓlog hρū, xi     + E(x,y)∼P ℓlog yhρū, xi − ℓlog hρū, xi    .
+
+
+
+                                                                20
+Since ℓlog (−z) − ℓlog (z) = z, and also invoking Lemma C.1, we have
+                                                                                           
+                 Rlog (ρū) = Ex∼Px ℓlog hρū, xi     + E(x,y)∼P 1y6=sign(hū,xi) · (−y)hρū, xi
+                                                                             
+                               12U
+                            ≤       + E(x,y)∼P 1y6=sign(hū,xi) · (−y)hρū, xi .
+                                 ρ
+   If kxk ≤ B almost surely, then Lemma A.2 further implies
+                                                           12U
+                                            Rlog (ρū) ≤       + ρB · OPT,
+                                                            ρ
+and thus
+                                                   √             √
+                                 inf Rlog (ρū) ≤ 2 12U B · OPT ≤ 50U B · OPT.
+                                ρ>0
+
+   If Px is (α1 , α2 )-sub-exponential, then Lemma A.2 further implies
+                                                                                          
+                                            12U                                       1
+                               Rlog (ρū) ≤     + (1 + 2α1 )α2 ρ · OPT · ln                    ,
+                                             ρ                                       OPT
+and therefore
+                           s                                               s                                    
+                                                                1                                               1
+      inf Rlog (ρū) ≤ 2    12(1 + 2α1 )α2 U · OPT · ln                  ≤   50(1 + 2α1 )α2 U · OPT · ln            .
+      ρ>0                                                      OPT                                             OPT
+
+
+   Next we prove a risk lower bound, that will later be used to prove lower bounds on kw∗ k and kwt k.
+Lemma C.3. Under Assumption 3.2, given w ∈ Rd , if Rkwk ≤ 2, then
+                                                                  R2
+                                                     Rlog (w) ≥      ,
+                                                                  2U
+while if Rkwk ≥ 2, then
+                                                                   R
+                                                  Rlog (w) ≥           .
+                                                                 U kwk
+                                       
+Proof. First, since ℓlog (z) ≥ ℓlog |z| ,
+                                              h                                
+                                                           i           
+                           Rlog (w) = E(x,y)∼P ℓlog yhw, xi ≥ Ex∼Px ℓlog hw, xi    .                                    (13)
+
+Let v denote an arbitrary vector that is orthogonal to w, and let p denote the density of the projection of Px
+onto the space spanned by w and v. Without loss of generality, we can assume w has polar angle 0. Then
+eq. (13) becomes
+                                       Z ∞ Z 2π                   
+                           Rlog (w) ≥           ℓlog rkwk cos(θ) p(r, θ)r dθ dr.
+                                            0    0
+
+Assumption 3.2 and Lemma A.1 then imply
+                                      Z Z                     
+                                    1 R 2π
+                         Rlog (w) ≥           ℓlog rkwk cos(θ) r dθ dr
+                                    U 0 0
+                                          Z R            
+                                    1 2
+                                  ≥            1 − e−rkwk dr
+                                    U kwk 0
+                                    2 1  −Rkwk                
+                                  =         e       − 1 + Rkwk   .
+                                    U kwk2
+
+
+                                                            21
+                                                 2
+If Rkwk ≤ 2, then because e−z − 1 + z ≥ z4 when 0 ≤ z ≤ 2, we have
+
+                                                        2 1 R2 kwk2   R2
+                                           Rlog (w) ≥         2
+                                                                    =    .
+                                                        U kwk   4     2U
+
+Otherwise if Rkwk ≥ 2, then because e−z − 1 + z ≥ z2 when z ≥ 2, we have
+
+                                                        2 1 Rkwk     R
+                                        Rlog (w) ≥               =       .
+                                                        U kwk2 2   U kwk
+
+
+
+C.1     Omitted proofs from Section 3.1
+In this section, we prove Theorems 3.4 and 3.5 using Lemma 3.6.
+    First, we prove the following norm lower bound on kw∗ k, which covers Lemma 3.7 and also the sub-
+exponential case.
+Lemma C.4 (Lemma 3.7, including the sub-exponential
+                                                         case). Under Assumption 3.2, if kxk ≤ B
+                                R4           ∗        1
+almost surely and OPT < 200U 3 B , then kw k = Ω   √
+                                                     OPT
+                                                          ; if Px is (α1 , α2 )-sub-exponential and OPT ·
+                                                          
+                   R4                  ∗           1
+ln(1/OPT) < 200(1+2α1 )α2 U 3 , then kw k = Ω √              .
+                                                            OPT·ln(1/OPT)
+
+                                                                      4
+                                                    R
+Proof. Suppose kxk ≤ B almost surely. Since OPT < 200U 3 B , Lemma C.2 implies
+
+                                                                              r
+                            ∗
+                                                  √                                          R4       R2
+                      Rlog (w ) ≤ inf Rlog (ρū) ≤ 50U B · OPT <               50U B ·              =    .
+                                  ρ>0                                                      200U 3 B   2U
+
+Therefore it follows from Lemma C.3 that Rkw∗ k ≥ 2, and
+
+                                   R                                  √
+                                     ∗
+                                       ≤ Rlog (w∗ ) ≤ inf Rlog (ρū) ≤ 50U B · OPT,
+                                U kw k                ρ>0
+
+
+which implies
+                                                           R        1
+                                              kw∗ k ≥    √      ·√     .
+                                                        U 50U B    OPT
+                                                                               1
+                                                                                               R 4
+   Now suppose Px is (α1 , α2 )-sub-exponential. Since OPT · ln               OPT       < 200(1+2α1 )α2 U
+                                                                                                          3 , Lemma C.2 implies
+
+
+                      s                                                 s
+                                                             1                                          R4             R2
+   inf Rlog (ρū) ≤    50(1 + 2α1 )α2 U · OPT · ln                    <   50(1 + 2α1 )α2 U ·                       3
+                                                                                                                     =    .
+  ρ>0                                                       OPT                                  200(1 + 2α1 )α2 U     2U
+
+Therefore it follows from Lemma C.3 that Rkw∗ k ≥ 2, and
+                                                       s                                 
+                    R             ∗                                                    1
+                         ≤ Rlog (w ) ≤ inf Rlog (ρū) ≤ 50(1 + 2α1 )α2 U · OPT · ln
+                 U kw∗ k               ρ>0                                            OPT
+
+which implies
+                                                  R                  1
+                                 kw∗ k ≥    p                p                .
+                                           U 50(1 + 2α1 )α2 U OPT · ln(1/OPT)
+
+
+
+   Now we can prove Theorem 3.4.
+
+
+                                                               22
+Proof of Theorem 3.4. If kxk ≤ B almost surely, Lemma 3.6 implies
+                                                                 
+                                       ∗                     Cκ
+                                R0−1 (w ) = O max OPT,                .
+                                                            kw∗ k2
+               4
+                                                                                                                 
+           R                                                                        ∗                      √ 1
+If OPT ≥ 200U 3 B , then Theorem 3.4 holds vacuously; otherwise Lemma C.4 ensures kw k = Ω
+                                                                                                            OPT
+                                                                                                                      ,
+and thus
+                                                                            
+                       R0−1 (w∗ ) = O max {OPT, Cκ · OPT} = O (1 + Cκ )OPT .
+
+   The proof of the sub-exponential case is similar.
+   Next, we analyze project gradient descent. First we restate Lemmas 3.8 and 3.9, and also handle sub-
+exponential distributions.
+Lemma C.5 (Lemma 3.8, including the sub-exponential case). Let the target optimization error
+ǫℓ ∈ (0, 1)
+          and 2the failure                      1/e) be given. If kxk ≤ B almost surely, then with η = 4/B 2 ,
+                           probability δ ∈(0,2 
+            (B+1) ln(1/δ)                   B
+using O          ǫǫ2ℓ
+                           samples and O ǫǫℓ iterations, with probability 1 − δ, projected gradient descent
+outputs wt satisfying
+
+                                      Rlog (wt ) ≤     min √ Rlog (ρū) + ǫℓ .                               (14)
+                                                     0≤ρ≤1/ ǫ
+
+                                                                                 3
+                                                                                                            2
+                                                                                                                
+                                                       e
+    If Px is (α1 , α2 )-sub-exponential, then with η = Θ(1/d),        e d ln(1/δ)
+                                                                using O                           e d ln(1/δ)
+                                                                                      samples and O
+                                                                            ǫǫ2ℓ                        ǫǫℓ
+iterations, with probability 1 − δ, projected gradient descent outputs wt satisfying eq. (14).
+Lemma C.6 (Lemma 3.9, including the sub-exponential case). Under Assumption 3.2, suppose
+                                 (             )
+                                    R4     R4              √
+                         ǫ < min       2
+                                         , 2 4   and ǫℓ ≤ ǫ,
+                                   36U 72 U
+                                                                                         n           o
+                                                              R4
+and that eq. (14) holds. If kxk ≤ B almost surely and OPT < 500U 3 B , then kwt k = Ω  min √1ǫ , √OPT
+                                                                                                   1
+                                                                                                        .
+                                                                                                4
+                                                                                         R
+   On the other hand, if Px is (α1 , α2 )-sub-exponential, and OPT · ln(1/OPT) < 500U 3 (1+2α1 )α2
+                                                                                                   , then it
+                       n                      o
+                          1           1
+holds that kwt k = Ω min √ǫ , √                   .
+                                   OPT·ln(1/OPT)
+
+   Next we prove Lemmas C.5 and C.6. We first consider bounded distributions, and then handle sub-
+                                                                                            b to denote Rlog
+exponential distributions. For simplicity, in the rest of this subsection we will use R and R
+    b
+and Rlog , respectively.
+
+Bounded distributions. First, here are some standard optimization and generalization results for pro-
+jected gradient descent.
+                                                b is B 2 -smooth. Moreover, if w0 := 0 and η ≤ 42 , then
+Lemma C.7. If kxi k ≤ B for all 1 ≤ i ≤ n, then R     4                                        B
+for all t ≥ 1,
+
+                                       b t) ≤                b    1
+                                       R(w           min√ R(w) +      .
+                                                   w∈B(1/ ǫ)     2ηǫt
+
+
+
+
+                                                         23
+                                             b is B 2 -smooth, note that given any w, w′ ∈ Rd ,
+Proof. Note that ℓlog is 14 -smooth. To show R     4
+
+                                      n 
+                                     X                                         
+                    b
+                   ∇R(w)    b ′) = 1
+                         − ∇R(w          ℓ′log yi hw, xi i − ℓ′log yi hw′ , xi i yi xi
+                                   n i=1
+                                               n
+                                            1X ′                                       
+                                        ≤         ℓlog yi hw, xi i − ℓ′log yi hw′ , xi i B
+                                            n i=1
+                                                 n
+                                            B X
+                                        ≤          yi hw, xi i − yi hw′ , xi i
+                                            4n i=1
+                                                 n
+                                            B X                 B2
+                                        ≤          kw − w′ kB =    kw − w′ k.
+                                            4n i=1              4
+
+   The following analysis basically comes from the proof of (Bubeck, 2014, Theorem 6.3); we include it for
+                                                                           b
+completeness, and also handle the last iterate. Let w∗ := arg minw∈B(1/√ǫ) R(w). Convexity gives
+                           D                   E D                    E D                     E
+         b t ) − R(w
+        R(w       b ∗ ) ≤ ∇R(w b t ), wt − w∗ = ∇R(w  b t ), wt − wt+1 + ∇R(w b t ), wt+1 − w∗ .
+
+Smoothness implies
+                      D                    E                        2
+                           b t ), wt − wt+1 ≤ R(w
+                          ∇R(w                         b t+1 ) + B /4 kwt − wt+1 k2
+                                               b t ) − R(w
+                                                                    2
+                                               b t ) − R(w        1
+                                                       b t+1 ) + kwt − wt+1 k2 .
+                                             ≤ R(w
+                                                                 2η
+On the other hand, the projection step ensures
+               D                    E
+                  b t ), wt+1 − w∗ ≤ 1 hwt − wt+1 , wt+1 − w∗ i
+                 ∇R(w
+                                        η
+                                         1                                             
+                                      =      kwt − w∗ k2 − kwt+1 − w∗ k2 − kwt − wt+1 k2 .
+                                        2η
+Therefore
+                                                                               
+                 b t ) − R(w
+                 R(w     b ∗ ) ≤ R(w     b t+1 ) + 1 kwt − w∗ k2 − kwt+1 − w∗ k2 ,
+                                 b t ) − R(w
+                                                   2η
+which implies
+                                                                          
+                            R(w       b ∗ ) ≤ 1 kwt − w∗ k2 − kwt+1 − w∗ k2 .
+                            b t+1 ) − R(w                                                            (15)
+                                              2η
+                     b t+1 ) ≤ R(w
+   Next we show that R(w       b t ). Smoothness implies
+                                      D                    E       2
+                    b t+1 ) − R(w
+                   R(w        b t ) ≤ ∇R(w b t ), wt+1 − wt + B /4 kwt+1 − wt k2
+                                                                   2
+                                                             2
+                                        1                 B    /4
+                                    ≤ − kwt − wt+1 k2 +           kwt+1 − wt k2
+                                        η                    2
+                                        1                  1
+                                    ≤ − kwt − wt+1 k2 + kwt+1 − wt k2
+                                        η                 2η
+                                         1
+                                    = − kwt+1 − wt k2 ,
+                                        2η
+where we also use the property of the projection step on the second line.
+                                    b t+1 ) ≤ R(w
+   It now follow from eq. (15) and R(w         b t ) that for t ≥ 1,
+                                                        ∗ 2
+                                b t ) ≤ R(w
+                                R(w                         b ∗) + 1 .
+                                        b ∗ ) + kw0 − w k ≤ R(w
+                                                    2ηt           2ηǫt
+
+
+
+                                                         24
+                                                                                                           
+                                                                                                      1
+Lemma C.8. If kxk ≤ B almost surely, then with probability 1 − δ, for all w ∈ B                       √
+                                                                                                        ǫ
+                                                                                                             ,
+
+                                                                            r
+                                      b      2B                       B           ln(4/δ)
+                               R(w) − R(w) ≤ √ +3                     √ +1                .
+                                              ǫn                       ǫ            2n
+
+Proof. Note that ℓlog (z) ≤ |z| + 1, therefore
+                                                                B
+                                     ℓlog yhw, xi ≤ kwkkxk + 1 ≤ √ + 1.
+                                                                  ǫ
+
+Since ℓlog is 1-Lipschitz continuous, (Shalev-Shwartz and Ben-David,
+                                                                   2014, Theorem 26.5, Lemma 26.9,
+                                                                         1
+Lemma 26.10) imply that with probability 1 − δ, for all w ∈ B            √
+                                                                          ǫ
+                                                                              ,
+
+                                                                            r
+                                      b      2B                       B           ln(2/δ)
+                               R(w) − R(w) ≤ √ +3                     √ +1                .
+                                              ǫn                       ǫ            2n
+
+                                                                               b
+Next we can just apply the same technique and get a uniform deviation bound on R(w) − R(w).
+   We can now prove Lemma C.5.
+Proof of Lemma C.5 for bounded distributions. Lemma C.7 implies that
+
+                                     b t) −                   1    B2
+                                     R(w                         =
+                                                      min √ R(ρū) ≤   .
+                                       0≤ρ≤1/ ǫ             2ηǫt   8ǫt
+                                                                   
+Moreover, Lemma C.8 ensures with probability 1 − δ, for all w ∈ B2 √1ǫ ,
+
+                                                            r                      r         !
+                 b             2B                     B           ln(4/δ)              ln(1/δ)
+                 R(w) − R(w) ≤ √ + 3                  √ +1                = O (B + 1)            .
+                                ǫn                     ǫ            2n                    ǫn
+
+Therefore, to ensure R(wt ) − min0≤ρ≤1/√ǫ R(ρū) ≤ ǫℓ , we only need
+                                     !                                             !
+                               B2                             (B + 1)2 ln(1/δ)
+                          O              steps,   and O                                samples.
+                               ǫǫℓ                                  ǫǫ2ℓ
+
+
+
+   Next we prove the norm lower bound on kwt k.
+Proof of Lemma C.6. First, we consider the case kxk ≤ B almost surely. It follows from Lemma C.2 that
+
+                                                         12U
+                                             R(ρū) ≤        + ρB · OPT.                                         (16)
+                                                          ρ
+            q
+             12U                                      1
+Let ρ̄ :=  B·OPT . We consider two cases below, ρ̄ ≤
+                                                     √
+                                                       ǫ
+                                                         or ρ̄ ≥ √1ǫ .
+                         1
+   First, we assume ρ̄ ≤ √ǫ . Then by the conditions of Lemma C.6 and eq. (16), we have
+                                                     √                  √
+                            R(wt ) ≤ R(ρ̄ū) + ǫℓ ≤ 2 12U B · OPT + ǫ
+                                                     r                     r
+                                                                 R4           R4
+                                                  < 2 12U B ·        3
+                                                                         +
+                                                               500U B        36U 2
+                                                       2     2      2
+                                                     R     R      R
+                                                  <2     +     =      .
+                                                     6U    6U     2U
+
+
+
+                                                             25
+It then follows from Lemma C.3 that Rkwt k ≥ 2, and
+
+                                R                               √             √
+                                     ≤ R(wt ) ≤ R(ρ̄ū) + ǫℓ ≤ 2 12U B · OPT + ǫ.
+                             U kwt k
+
+since ρ̄ ≤ √1ǫ ,
+                                                              r
+                                                   √  B · OPT
+                                                         1
+                                                       ǫ≤ =   .
+                                                         ρ̄
+                                                        12U
+                        √                                     
+               R                                          √ 1
+As a result, Ukw tk
+                    = O   OPT , which implies kwt k = Ω    OPT
+                                                                  .
+      Next, assume ρ̄ ≥ √1ǫ , which implies that
+
+                                       B · OPT
+                                               ≤ ǫ,        and B · OPT ≤ 12U ǫ.
+                                         12U
+Moreover, eq. (16) implies
+                            
+                         1      √    1              √    1            √
+                    R √ ū ≤ 12U ǫ + √ B · OPT ≤ 12U ǫ + √ 12U ǫ = 24U ǫ.
+                           ǫ          ǫ                   ǫ
+
+Then because
+                                                              r           r
+                                    1              √   √           R4          R4     R2
+                   R(wt ) ≤ R       √ ū + ǫℓ ≤ 24U ǫ + ǫ < 24U           +         =    ,
+                                     ǫ                            722 U 4     36U 2   2U
+
+it further follows from Lemma C.3 that Rkwt k ≥ 2, and
+                                                 
+                                   R           1           √   √
+                                        ≤ R √ ū + ǫℓ ≤ 24U ǫ + ǫ,
+                                U kwt k         ǫ
+                      
+therefore kwt k = Ω √1ǫ .
+      Now assume Px is (α1 , α2 )-sub-exponential. Lemma C.2 implies
+                                                                                          
+                                           12U                                        1
+                                R(ρū) ≤       + (1 + 2α1 )α2 ρ · OPT · ln                     .
+                                            ρ                                        OPT
+
+Let
+                                               s
+                                                                  12U
+                                       ρ̄ :=                                      ,
+                                                   (1 + 2α1 )α2 · OPT · ln(1/OPT)
+
+and similarly consider the two cases ρ̄ ≤ √1ǫ and ρ̄ ≥ √1ǫ , we can finish the proof.
+
+      Now we are ready to prove Theorem 3.5.
+Proof of Theorem 3.5 for bounded distributions. First, note that if ǫ or OPT does not satisfy the conditions
+of Lemma C.6, then Theorem 3.5 holds vacuously. Under the conditions of Lemmas C.5 and C.6, let
+ǫℓ := ǫ3/2 , we have that projected gradient descent can find wt satisfying
+                                                                                 3/2
+                                        Rlog (wt ) ≤      min √ Rlog (ρū) + ǫ         ,
+                                                        0≤ρ≤1/ ǫ
+
+and
+                                                                
+                                                         1     1
+                                          kwt k = Ω min √ , √        .
+                                                          ǫ   OPT
+
+
+                                                              26
+                                                                                                
+   Now we just need to invoke Lemma 3.6. If ǫ ≤ OPT, then kwt k = Ω                       √ 1        , and Lemma 3.6 implies
+                                                                                           OPT
+
+                                   R0−1 (wt )
+                                             (q                    )!
+                                                     √
+                                  = O max OPT, ǫ 3/2  OPT, Cκ · OPT
+                                                
+                             = O (1 + Cκ )OPT .
+                           
+If ǫ ≥ OPT, then kwt k = Ω √1ǫ , and similarly we can show
+
+                                          R0−1 (wt )
+                                                       q         
+                                                               √
+                                         = O max OPT, ǫ3/2 ǫ, Cκ ǫ
+                                                               
+                                         = O (1 + Cκ )(OPT + ǫ) .
+
+The sample and iteration complexity follow from Lemma C.5 and that ǫℓ = ǫ3/2 .
+
+Sub-exponential distributions. Next we handle (α1 , α2 )-sub-exponential distributions. We will prove
+Lemma C.5 for sub-exponential distributions; the rest of the proof is similar to the bounded case and thus
+omitted.
+   Let the target zero-one error ǫ, the target optimization error ǫℓ , and failure probability δ be given. Given
+r > 0, we overload the notation a little bit and let
+                                                                   !
+                                                               r
+                                         δ(r) := dα1 exp − √           .
+                                                             α2 d
+
+In particular, note that
+                                           d                              !
+                                          X          r                  r
+                   Prx∼Px   kxk ≥ r ≤     Pr |xj | ≥ √     ≤ dα1 exp − √      = δ(r).
+                                      j=1
+                                                       d                dα2
+
+   Let B > 1 be large enough such that
+                                                                                        
+                       100(B+1)2 ln(4/δ)/(ǫǫ2ℓ )                                     B        √
+               1 − δ(B)                           ≥ 1 − δ,      and α1 (α2 + B) exp −      ≤ ǫℓ ǫ.                       (17)
+                                                                                      α2
+
+We have the following bound on B.
+Lemma C.9. To satisfy eq. (17), it is enough to let
+                                                                           !
+                                                   √                 d
+                                               B=Ω  d ln                         .
+                                                                    ǫǫℓ δ
+                              √
+Proof. First, we let B ≥ α2 d ln(2dα1 ) to ensure δ(B) ≤ 1/2. Since for 0 ≤ z ≤ 1/2, we have e−z ≥ 1 − z ≥
+e−2z , to satisfy the first condition of eq. (17), it is enough to ensure
+
+                              2            2                                                 δǫǫ2ℓ
+              e−δ(B)·200(B+1) ln(4/δ)/(ǫǫℓ ) ≥ e−δ ,     equivalently        δ(B) ≤                       .
+                                                                                      200(B + 1)2 ln(4/δ)
+
+Invoking the definition of δ(B), we only need
+                                                                                     !
+                                         √             200(B + 1)2 dα1 ln(4/δ)
+                                   B ≥ α2 d ln                                            .
+                                                                δǫǫ2ℓ
+
+
+                                                           27
+                                                              
+                                         √               d
+In other words, it is enough if B = Ω        d ln       ǫǫℓ δ     .
+   Similarly, to satisfy the second condition of eq. (17), we only need
+                                                                 
+                                                      α1 (α2 + B)
+                                          B ≥ α2 ln         √       ,
+                                                          ǫℓ ǫ
+                                       
+                             √       d
+and it is enough if B = Ω      d ln ǫǫℓ δ .
+
+   Now we define a truncated logistic loss ℓ◦log as following:
+                                                         
+                                             
+                                                        B              B
+                                             
+                                             ℓlog − √ǫ        if z ≤ − √ ,
+                                                                         ǫ
+                                ℓ◦log (z) :=
+                                             
+                                                                       B
+                                             
+                                             ℓlog (z)         if z ≥ − √ .
+                                                                         ǫ
+                       b ◦ (w) denote the population and empirical risk with the truncated logistic loss. We
+We also let R◦ (w) and R
+have the next result.
+Lemma C.10. Suppose B > 1 is chosen according to eq. (17). Using a constant step size 4/B 2 , and
+                              100(B + 1)2 ln(4/δ)                               B2
+                                                  samples,              and          steps,
+                                     ǫǫ2ℓ                                       4ǫǫℓ
+with probability 1 − 2δ, projected gradient descent can ensure
+                                        R◦ (wt ) ≤           min √ R(ρū) + ǫℓ .
+                                                           0≤ρ≤1/ ǫ
+
+Proof. It follows from eq. (17) that with probability 1 − δ, it holds that kxi k ≤ B for all training examples.
+Therefore Lemma C.7 implies that
+
+                                        b t) ≤                    b           B2
+                                        R(w                 min √ R(ρū) +        .
+                                                        0≤ρ≤1/ ǫ              8ǫt
+                                       √
+Since kxi k ≤ B, and the domain is B(1/ ǫ), it follows that
+                                                                                 2
+                                      b ◦ (wt ) ≤
+                                      R                   min √ Rb ◦ (ρū) + B .
+                                                        0≤ρ≤1/ ǫ             8ǫt
+               2
+            B
+Letting t = 4ǫǫ ℓ
+                  , we get
+
+                                        b ◦ (wt ) ≤
+                                        R                  min √ Rb ◦ (ρū) + ǫℓ .                        (18)
+                                                         0≤ρ≤1/ ǫ             2
+   Note that by the construction of the truncated logistic loss, it holds that
+                                                                B
+                                                    ℓ◦log (z) ≤ √ + 1.
+                                                                 ǫ
+Then by invoking the standard Rademacher complexity results (Shalev-Shwartz and Ben-David, 2014, The-
+orem 26.5, Lemma 26.9, Lemma 26.10), and recall that we work under  √ the event kxi k ≤ B for all training
+examples, we can show with probability 1 − 2δ that for all w ∈ B(1/ ǫ),
+                                                            r
+                        ◦                  2B
+                               b (w) ≤ √ + 3 √ + 1
+                                ◦                    B           ln(4/δ)
+                       R (w) − R
+                                            ǫn         ǫ           2n
+                                                   r                     r
+                                          2(B + 1) ln(4/δ) 3(B + 1) ln(4/δ)
+                                       ≤     √                 +    √
+                                               ǫ         n           ǫ       2n
+                                                  r
+                                                     ln(4/δ)
+                                       ≤ 5(B + 1)            .
+                                                        ǫn
+
+
+                                                                  28
+                      2
+Letting n = 100(B+1)
+                  ǫǫ2
+                      ln(4/δ)
+                              , we have
+                      ℓ
+
+
+                                                        b ◦ (w) ≤   ǫℓ
+                                               R◦ (w) − R              .                              (19)
+                                                                    2
+   It then follows from eqs. (18) and (19) that with probability 1 − 2δ,
+
+                            R◦ (wt ) ≤     min √ R◦ (ρū) + ǫℓ ≤ min √ R(ρū) + ǫℓ ,
+                                         0≤ρ≤1/ ǫ               0≤ρ≤1/ ǫ
+
+where we use ℓ◦log ≤ ℓlog in the last inequality.
+   Finally, we show that R◦ (wt ) is close to R(wt ).
+                                  √
+Lemma C.11. For all w ∈ B(1/ ǫ), it holds that R◦ (w) ≥ R(w) − ǫℓ .
+                                                                     √                           √
+Proof. Note that if ℓlog yhw, xi 6= ℓ◦log yhw, xi , then yhw, xi ≤ −B/ ǫ, which implies hw, xi ≥ B/ ǫ.
+Moreover, in this case
+                                                               
+                     ℓlog yhw, xi − ℓ◦log yhw, xi ≤ ℓlog yhw, xi − ℓlog (0) ≤ hw, xi .
+
+Therefore
+                               h                                                        
+                                                           i
+          R(w) − R◦ (w) = Ex∼Px ℓlog yhw, xi − ℓ◦log yhw, xi ≤ Ex∼Px hw, xi 1|hw,xi|≥B/√ǫ .
+
+We can then invoke eq. (11) and get
+                                                                     
+                                                       B           B
+                           R(w) − R◦ (w) ≤ α1 α2 kwk + √ exp −       √ .                              (20)
+                                                        ǫ      α2 kwk ǫ
+                                                                                                √
+Note that the right hand side of eq. (20) is increasing with kwk, therefore we can let kwk be 1/ ǫ and get
+                                                                      
+                                                     α2 + B         B
+                              R(w) − R◦ (w) ≤ α1 √          exp −        ≤ ǫℓ ,
+                                                         ǫ          α2
+
+where we use eq. (17) in the last inequality.
+    Now putting everything together, under the conditions of Lemma C.10, with probability 1 − 2δ, pro-
+jected gradient descent ensures R(wt ) ≤ min0≤ρ≤1/√ǫ R(ρū) + 2ǫℓ . Moreover, by applying Lemma C.9
+                                                                         
+to Lemma C.10, we can see the sample complexity is O e d ln(1/δ)3 /(ǫǫ2 ) , and the iteration complexity is
+                                                                     ℓ
+Oe d ln(1/δ)2 /(ǫǫℓ ) .
+
+
+C.2     Omitted proofs from Section 3.2
+In this section, we prove Lemma 3.6. We first prove the following approximation bound after we replace the
+true label with the label given by the ground-truth solution, which covers Lemma 3.10 and sub-exponential
+distributions.
+Lemma C.12 (Lemma 3.10, including the sub-exponential case). For ℓ ∈ {ℓlog , ℓh }, if kxk ≤ B
+almost surely,
+
+                                            term (3) ≤ Bkw̄ − ŵk · OPT.
+
+If Px is (α1 , α2 )-sub-exponential, then
+
+                             term (3) ≤ (1 + 2α1 )α2 kw̄ − ŵk · OPT · ln(1/OPT).
+
+
+
+
+                                                        29
+Proof. Note that for both the logistic loss and the hinge loss, it holds that ℓ(−z) − ℓ(z) = z, therefore
+                                                                               
+                            term (3) = E(x,y)∼P 1y6=sign(hw̄,xi) · yhw̄ − ŵ, xi ,                        (21)
+
+It then follows from the triangle inequality that
+                                                                                    
+                                term (3) ≤ E(x,y)∼P 1y6=sign(hw̄,xi) hw̄ − ŵ, xi
+
+Now we can invoke Lemma A.2 with w = w̄ and w′ = w̄ − ŵ to prove Lemma C.12.
+   Next we prove the lower bound on term (4).
+Proof of Lemma 3.11. Note that in term (4), we only care about hŵ, xi and hw̄, xi, therefore we can focus
+on the two-dimensional space spanned by w̄ and ŵ. Let ϕ denote the angle between w̄ and ŵ. Without loss
+of generality, we can consider the following graph, where we put w̄ at angle 0, and ŵ at angle ϕ.
+
+
+
+
+                                                                          ŵ
+
+                                                                 ϕ
+                                                                               w̄
+
+
+
+
+We divide the graph into four parts given by different polar angles: (i) (− π2 , − π2 + ϕ), (ii) (− π2 + ϕ, π2 ), (iii)
+( π2 , π2 + ϕ), and (iv) ( π2 + ϕ, 3π
+                                    2 ). Note that term (4) is 0 on parts (ii) and (iv), therefore we only need to
+consider parts (i) and (iii):
+                                                                                           
+                                                                                      
+                     term (4) = E(i) and (iii) ℓ sign hw̄, xi hŵ, xi − ℓ sign hŵ, xi hŵ, xi
+                                                h                    i
+                                = E(i) and (iii) −sign hw̄, xi hŵ, xi .
+
+Here we use the fact that ℓ(−z) − ℓ(z) = z for both the logistic loss and the hinge loss.
+   For simplicity, let p denote the density of the projection of Px onto the space spanned by ŵ and w̄. Under
+Assumption 3.2, we have
+                              h                    i
+     term (4) = E(i) and (iii) −sign hw̄, xi hŵ, xi
+                 Z ∞ Z − π2 +ϕ                                    Z ∞ Z π2 +ϕ
+              =                 −rkŵk cos(ϕ − θ)p(r, θ)r dθ dr +             rkŵk cos(θ − ϕ)p(r, θ)r dθ dr
+                   0     −π
+                          2                                           0         π
+                                                                                2
+                       Z RZ ϕ
+                 2
+               ≥           rkŵk sin(θ)r dθ dr
+                 U 0 0
+                                     
+                 2R3 kŵk 1 − cos(ϕ)      4R3 kŵkϕ2
+               =                       ≥             ,
+                          3U                 3U π 2
+                                               2
+where we use the fact that 1 − cos(ϕ) ≥ 2ϕ
+                                         π 2 for all ϕ ∈ [0, π].
+
+
+                                                            30
+   Next, we prove the following upper bound on term (5), covering Lemma 3.12 and the sub-exponential
+case.
+Lemma C.13 (Lemma 3.12, including the sub-exponential case). For ℓ = ℓh , term (5) is 0. For
+ℓ = ℓlog , under Assumption 3.3, if kxk ≤ B almost surely, then
+
+                                                                                    ϕ(ŵ, w̄)
+                                                                term (5) ≤ 12Cκ ·             ,
+                                                                                     kŵk
+              RB
+where Cκ :=     0   κ(r) dr, while if Px is (α1 , α2 )-sub-exponential, then
+
+                                                                                              ϕ(ŵ, w̄)
+                                                term (5) ≤ 2α1 OPT2 + 12Cκ ·                            ,
+                                                                                               kŵk
+              R 3α2 ln(1/OPT)
+where Cκ :=     0
+                                       κ(r) dr.
+Proof. For the hinge loss, term (5) is 0 simply because ℓh (z) = 0 when z ≥ 0. Next we consider the logistic
+loss.
+    Note that term (5) only depends on hŵ, xi and hw̄, xi, therefore we can focus on the subspace spanned by
+ŵ and w̄. For simplicity, let p denote the density function of the projection of Px onto the space spanned by
+ŵ and w̄. Moreover, without loss of generality we can assume w̄ has polar angle 0 while ŵ has polar angle
+ϕ, where we let ϕ denote ϕ(ŵ, w̄) for simplicity. It then follows that
+                Z ∞ Z 2π                                                 Z ∞ Z 2π                 
+  term (5) =                        ℓlog rkŵk cos(θ − ϕ) p(r, θ)r dθ dr −          ℓlog rkŵk cos(θ) p(r, θ)r dθ dr
+                    0       0                                                             0       0
+                Z ∞ Z 2π                                                   
+            =                       ℓlog rkŵk cos(θ)   p(r, θ + ϕ) − p(r, θ) r dθ dr.
+                    0       0
+
+   First, if kxk ≤ B almost surely, then
+                                               Z B Z 2π                          
+                            term (5) ≤                           ℓlog rkŵk cos(θ) p(r, θ + ϕ) − p(r, θ) r dθ dr
+                                                0       0
+                                               Z B Z 2π               
+                                           ≤         ℓlog rkŵk cos(θ) · κ(r)ϕ · r dθ dr
+                                             0   0
+                                              Z B        Z 2π                        !
+                                                                              
+                                           =ϕ     κ(r)        ℓlog rkŵk cos(θ) r dθ dr.
+                                                    0                0
+
+
+Then Lemma A.1 implies
+                                                        Z B            √
+                                                                      8 2        √       ϕ             ϕ
+                                    term (5) ≤ ϕ                 κ(r)      dr = 8 2Cκ ·      ≤ 12Cκ ·      .
+                                                            0         kŵk              kŵk          kŵk
+
+    Next, assume Px is (α1 , α2 )-sub-exponential. For a 2-dimensional random vector x sampled according to
+pV , note that
+                                           √ !                   √ !                  √ !
+                                            2B                    2B                   2B
+               Pr kxk ≥ B ≤ Pr |x1 | ≥              + Pr |x2 | ≥         ≤ 2α1 exp −        .
+                                             2                     2                  2α2
+              √                                              
+Letting B := 2 2α2 ln                1
+                                    OPT    , we get Pr kxk ≥ B ≤ 2α1 OPT2 . Since ℓlog (z) ≤ 1 when z ≥ 0, we have
+
+ term (5) ≤ 2α1 OPT2
+              Z B Z 2π                                      Z B Z 2π                 
+            +          ℓlog rkŵk cos(θ − ϕ) p(r, θ)r dθ dr −          ℓlog rkŵk cos(θ) p(r, θ)r dθ dr.
+                        0       0                                                             0    0
+
+
+
+                                                                            31
+Invoking the previous bound for bounded distributions, we get
+                                            Z 2√2α2 ln( OPT
+                                                         1
+                                                            )
+                               2       ϕ                                                   ϕ
+           term (5) ≤ 2α1 OPT + 12 ·      ·                   κ(r) dr ≤ 2α1 OPT2 + 12Cκ ·      ,
+                                      kŵk 0                                              kŵk
+               R 3α2 ln( OPT
+                          1
+                             )
+where Cκ :=     0                κ(r) dr. Similarly, we can show
+                                                                                 ϕ
+                                          −term (5) ≤ 2α1 OPT2 + 12Cκ ·              .
+                                                                                kŵk
+
+
+   Next we prove Lemma 3.13, which is basically (Diakonikolas et al., 2020d, Claim 3.4).
+Proof of Lemma 3.13. Under Assumption 3.2, we have
+                                                            Z ∞
+                                              
+                Pr sign hŵ, xi 6= sign hw̄, xi ≤ 2ϕ(ŵ, w̄)     σ(r)r dr ≤ 2U ϕ(ŵ, w̄).
+                                                                           0
+
+
+
+   Lastly, we prove Lemma 3.6 for sub-exponential distributions.
+Proof of Lemma 3.6, sub-exponential distributions. For simplicity, let ϕ denotes ϕ(ŵ, w̄). Lemmas 3.11, C.12
+and C.13 imply
+                                                             
+                                                           1                              ϕ
+               C1 kŵkϕ2 ≤ ǫℓ + C2 kw̄ − ŵk · OPT · ln          + C3 OPT2 + C4 Cκ ·
+                                                          OPT                            kŵk
+                                                          
+                                                         1                             ϕ
+                         ≤ ǫℓ + C2 kŵkϕ · OPT · ln          + C3 OPT2 + C4 Cκ ·          ,
+                                                      OPT                            kŵk
+                    3
+              4R
+where C1 = 3Uπ   2 , and C2 = (1 + 2α1 )α2 , and C3 = 2α1 , and C4 = 12. It follows that at least one of the
+
+following four cases is true:
+                                              p          
+   1. C1 kŵkϕ2 ≤ 4ǫℓ , which implies ϕ = O      ǫℓ /kŵk .
+                                                                                
+                                         1                                     1
+   2. C1 kŵkϕ2 ≤ 4C2 kŵkϕ · OPT · ln OPT    , which implies ϕ = O OPT ln OPT       .
+
+  3. C1 kŵkϕ2 ≤ 4C3 OPT2 , which implies ϕ = O(OPT) since kŵk = Ω(1).
+  4. Lastly,
+                                                                                                    
+                                                         ϕ                                    Cκ
+                                 C1 kŵkϕ2 ≤ 4C2 Cκ ·        ,    which implies    ϕ=O                   .   (22)
+                                                        kŵk                                 kŵk2
+
+   Finally, we just need to invoke Lemma 3.13 to finish the proof.
+
+C.3    Omitted proofs from Section 3.3
+We first prove the upper bound of term (5) under Assumption 3.2, without assuming the radially Lipschitz
+condition.
+Proof of Lemma 3.14. Note that
+                                                                    12U
+                                               
+                 term (5) ≤ E ℓlog sign hŵ, xi hŵ, xi = E ℓlog hŵ, xi   ≤      ,
+                                                                             kŵk
+where we invoke Lemma C.1 at the end. Similarly, we can show
+                                                                  12U    12U
+                                                −term (5) ≤            =
+                                                                  kw̄k   kŵk
+
+
+
+                                                                 32
+   Next we prove a general result similar to Lemma 3.6.
+Theorem C.14. Under Assumption 3.2, suppose ŵ satisfies Rlog (ŵ) ≤ Rlog (kŵkū)+ ǫℓ for some ǫℓ ∈ [0, 1).
+If kxk ≤ B almost surely, then
+                                                (     r             )!
+                                                          ǫℓ     1
+                               ϕ(ŵ, ū) = O max OPT,         ,         .
+                                                         kŵk kŵk
+
+If Px is (α1 , α2 )-sub-exponential and kŵk = Ω(1), then
+                                               (                    r           )!
+                                                               1         ǫℓ   1
+                          ϕ(ŵ, ū) = O max OPT · ln                 ,      ,        .
+                                                              OPT       kŵk kŵk
+
+Proof. For simplicity, let ϕ denote ϕ(ŵ, ū). Consider the case kxk ≤ B almost surely. The condition
+Rlog (ŵ) ≤ Rlog (kŵkū) + ǫℓ , and Lemmas 3.11, 3.14 and C.12 imply
+
+                                                                             C2
+                                   C1 kŵkϕ2 ≤ ǫℓ + Bkw̄ − ŵk · OPT +
+                                                                            kŵk
+                                                                          C2
+                                                 ≤ ǫℓ + Bkŵkϕ · OPT +        ,
+                                                                         kŵk
+
+where C1 = 4R3 /(3U π 2 ) and C2 = 12U . Now at least one of the following three cases is true:
+                                           p         
+  1. C1 kŵkϕ2 ≤ 3ǫℓ , which implies ϕ = O   ǫℓ /kŵk ;
+  2. C1 kŵkϕ2 ≤ 3Bkŵkϕ · OPT, which implies ϕ = O(OPT);
+  3. C1 kŵkϕ2 ≤ 3C1 /kŵk, which implies ϕ = O(1/kŵk).
+   The proof of the sub-exponential case is similar.
+   Now we prove Lemma 3.15.
+Proof of Lemma 3.15. First, if ǫ or OPT does not satisfy the conditions of Lemma C.6, then Lemma√3.15
+holds vacuously; therefore in the following we consider the settings of Lemmas C.5 and C.6 with ǫℓ = ǫ.
+   First, if kxk ≤ B almost surely, eq. (14) and Theorem C.14 imply
+                                                   (       r              )!
+                                                               ǫℓ     1
+                               ϕ(wt , ū) = O max OPT,             ,         ,
+                                                              kwt k kwt k
+
+and moreover Lemma C.6 implies
+                                                                  
+                                                         1       1
+                                         kwt k = Ω min   √  , √        .
+                                                          ǫ     OPT
+                                       
+If ǫ ≤ OPT, then kwt k = Ω       √ 1     , and
+                                  OPT
+                                         q √         
+                                                   √
+                   ϕ(wt , ū) = O max OPT, ǫℓ OPT, OPT
+                                         q √          
+                                            √       √
+                              = O max OPT,   ǫ OPT, OPT
+                                    (     q               )
+                                            √    √    √          √   
+                              = O max OPT,    OPT OPT, OPT    = O OPT .
+
+
+
+
+                                                         33
+                                       
+                                  1
+If ǫ ≥ OPT, then kwt k = Ω        √
+                                    ǫ
+                                            , and
+                                                               q      
+                                                                   √ √
+                                        ϕ(wt , ū) = O max OPT, ǫℓ ǫ, ǫ
+                                                               q       
+                                                                  √ √ √
+                                                   = O max OPT,    ǫ ǫ, ǫ
+                                                       √      
+                                                   = O OPT + ǫ .
+
+    The proof for the sub-exponential case is similar.
+
+
+D      Omitted proofs from Section 4
+In this section, we prove Theorem 4.1. We first prove a bound on Rh (ū).
+Lemma D.1. If kxk ≤ B almost surely, then Rh (ū) ≤ B · OPT, while if Px is (α1 , α2 )-sub-exponential,
+then Rh (ū) ≤ (1 + 2α1 )α2 · OPT · ln(1/OPT).
+Proof. Note that
+                                        h                                              
+                                                    i
+                      Rh (ū) = E(x,y)∼P ℓh yhū, xi = E(x,y)∼P 1sign(hū,xi6=y) hū, xi .
+
+It then follows from Lemma A.2 that if kxk ≤ B almost surely, then
+
+                                                      Rh (ū) ≤ B · OPT,
+
+while if Px is (α1 , α2 )-sub-exponential, then
+                                                                                     
+                                                                                 1
+                                        Rh (ū) ≤ (1 + 2α1 )α2 · OPT · ln                 .
+                                                                                OPT
+
+
+
+    Next we prove the following result, which covers Lemma 4.2 but also handles sub-exponential distribu-
+tions.
+Lemma D.2 (Lemma 4.2, including the sub-exponential case). Suppose Assumption 3.2 holds. Con-
+sider an arbitrary w ∈ D, and let ϕ denote ϕ(w, ū). If kxk ≤ B almost surely, then
+                                                                        
+                                  Rh (r̄ū) ≤ Rh (kwkū) + O (OPT + ǫ)2
+
+and
+                                                            4R3
+                              Rh (w) − Rh (kwkū) ≥               kwkϕ2 − Bkwkϕ · OPT.
+                                                           3U π 2
+    If Px is (α1 , α2 )-sub-exponential, then
+                                                                                              2 
+                              Rh (r̄ ū) ≤ Rh (kwkū) + O          OPT · ln(1/OPT) + ǫ
+
+and
+                                                                 4R3
+                                    Rh (w) − Rh (kwkū) ≥              kwkϕ2
+                                                                3U π 2
+                                               − (1 + 2α1 )α2 kwkϕ · OPT · ln(1/OPT).
+
+
+
+
+                                                              34
+Proof. First assume kxk ≤ B almost surely. Note that ℓh is positive homogeneous, and thus for any positive
+constant c, we have Rh (cw) = cRh (w). Therefore, if r̄ ≤ kwk, then
+                                                    r̄
+                                     Rh (r̄ū) =       Rh (kwkū) ≤ Rh (kwkū).
+                                                   kwk
+If r̄ ≥ kwk, then
+                                                                    
+                    Rh (r̄ū) = Rh kwkū + Rh (ū) r̄ − kwk ≤ Rh kwkū + Rh (ū) (r̄ − 1) ,
+
+since kwk ≥ 1 for all w ∈ D. Recall that
+                                           1            1               1
+                                 r̄ :=           =             ≤                  ,
+                                         hv, ūi   cos ϕ(v, ū)   1 − ϕ(v, ū)2 /2
+
+and therefore the first-phase of algorithm ensures r̄ = 1 + O(OPT + ǫ) for bounded distributions, and r̄ =
+1+O OPT · ln(1/OPT) + ǫ for sub-exponential distributions. It then follows that for bounded distributions,
+                                                       
+                                Rh (r̄ ū) ≤ Rh kwt kū + Rh (ū) · O(OPT + ǫ)
+                                                       
+                                           ≤ Rh kwt kū + B · OPT · O(OPT + ǫ)
+                                                                        
+                                           = Rh kwt kū + O (OPT + ǫ)2 ,
+
+where we apply Lemma D.1 at the end. It also follows directly from Lemmas 3.11, C.12 and C.13 that
+                                                      4R3
+                          Rh (w) − Rh (kwkū) ≥             kwkϕ2 − B w − kwkū · OPT
+                                                     3U π 2
+                                                      4R3
+                                                   ≥        kwkϕ2 − Bkwkϕ · OPT.
+                                                     3U π 2
+   The proof for the sub-exponential case is similar.
+   Next we prove Theorem 4.1. We first consider the bounded case.
+Proof of Theorem 4.1, bounded distribution. Here we assume kxk ≤ B almost surely. We will show that
+under the conditions of Theorem 4.1, then
+                                    
+                          E min ϕt = O(OPT + ǫ), where ϕt := ϕ(wt , ū).                       (23)
+                                0≤t<T
+
+Further invoking Lemma 3.13 finishes the proof.
+   Recall that at step t, after taking the expectation with respect to (xt , yt ), we have
+                    h              i
+                  E kwt+1 − r̄ūk2 ≤ kwt − r̄ūk2 − 2η ∇Rh (wt ), wt − r̄ū + η 2 B 2 M(wt )
+                                                                             
+                                     ≤ kwt − r̄ūk2 − 2η Rh (wt ) − Rh (r̄ū) + η 2 B 2 M(wt ).         (24)
+
+   First, Lemma D.2 implies
+                                                                                       
+                     Rh (wt ) − Rh (r̄ ū) ≥ Rh (wt ) − Rh (kwt kū) − O (OPT + ǫ)2
+                                                                                       
+                                         ≥ 2C1 kwt kϕ2t − Bkwt kϕt · OPT − O (OPT + ǫ)2 ,
+
+where C1 := 2R3 /(3U π 2 ). Note that if ϕt ≤ B · OPT/C1 , then eq. (23) holds; therefore in the following we
+assume
+                                                           B
+                                                    ϕt ≥      · OPT,                                    (25)
+                                                           C1
+which implies
+                                                                                        
+                Rh (wt ) − Rh (r̄ū) ≥ C1 kwt kϕ2t − O (OPT + ǫ)2 ≥ C1 ϕ2t − O (OPT + ǫ)2 ,             (26)
+
+
+                                                           35
+since kwk ≥ 1 for all w ∈ D.
+    On the other hand, eq. (25) and Lemma 3.13 imply
+                                                                                               
+                                                                                      C1
+                             M(wt ) = R0−1 (wt ) ≤ OPT + 2U ϕt ≤                         + 2U       ϕt .
+                                                                                      B
+Let
+                                                                C1
+                                                C2 :=                       .
+                                                          C1
+                                                          B + 2U         B2
+
+Note that if ϕt ≤ ǫ, then eq. (23) is true; otherwise we can assume ǫ ≤ ϕt , and let η = C2 ǫ, we have
+                                                           
+                               2                2   C1
+                           ηB M(wt ) ≤ C2 ǫB           + 2U ϕt = C1 ǫϕt ≤ C1 ϕ2t .                         (27)
+                                                    B
+
+      Now eqs. (24), (26) and (27) imply
+                      h             i                                                       
+                    E kwt+1 − r̄ūk2 ≤ kwt − r̄ūk2 − 2ηC1 ϕ2t + ηC1 ϕ2t + η · O (OPT + ǫ)2
+                                                                                  
+                                      = kwt − r̄ūk2 − ηC1 ϕ2t + η · O (OPT + ǫ)2 .
+
+Taking the expectation and average, we have
+                                                                      
+                                1 X         kw0 − r̄ūk2   O (OPT + ǫ)2
+                            E         2
+                                      ϕt ≤               +                .
+                                T             ηC1 T            C1
+                                        t<T
+
+Note that
+                                                                         √       
+                                       kw0 − r̄ūk = tan(ϕ0 ) = O         OPT + ǫ ,
+
+and also recall η = C2 ǫ, we have
+                                                                    
+                                     1 X      O(OPT + ǫ) O (OPT + ǫ)2
+                                 E       2
+                                         ϕt ≤           +               .
+                                     T         C1 C2 ǫT      C1
+                                        t<T
+
+
+Letting T = Ω(1/ǫ2 ), we have
+                              
+                      1 X                                                  
+                 E        ϕ2t  ≤ O (OPT + ǫ)ǫ + O (OPT + ǫ)2 = O (OPT + ǫ)2 ,
+                      T
+                           t<T
+
+
+and thus eq. (23) holds.
+   Next we consider sub-exponential distributions. We first prove the following bound on the square of
+norm.
+Lemma D.3. Suppose Px is (α1 , α2 )-sub-exponential. Given any threshold τ > 0, it holds that
+                                                                               !
+                   h              i              √                       τ
+                        2                    2                2
+                 E kxk 1kxk≥τ ≤ dα1 τ + 2 dα2 τ + 2dα2 exp − √                    .
+                                                                           dα2
+
+Proof. First recall that
+                                         
+                                         d                             !
+                                        X        τ                  τ
+                      Pr kxk ≥ τ ≤     Pr |xj | ≥ √    ≤ dα1 exp − √      =: δ(τ ).
+                                   j=1             d                dα2
+
+
+                                                           36
+                       
+Let µ(τ ) := Pr kxk ≥ τ . Integration by parts gives
+           h           i Z ∞                              Z ∞                         Z ∞
+          E kxk2 1kxk≥τ =    r2 · (− dµ(r)) = τ 2 µ(τ ) +     2rµ(r) dr ≤ τ 2 δ(τ ) +     2rδ(r) dr.
+                                  τ                                 τ                                 τ
+
+Calculation gives
+                                                                                              !
+                           h              i                  √                     τ
+                                  2
+                         E kxk 1kxk≥τ ≤ dα1               2
+                                                         τ + 2 dα2 τ + 2dα22 exp − √              .
+                                                                                    dα2
+
+
+
+   Now we are ready to prove Theorem 4.1 for sub-exponential distributions.
+
+Proof of Theorem 4.1, sub-exponential distributions. At step t, we have
+                                           D                                  E                       2
+         kwt+1 − r̄ūk2 ≤ kwt − r̄ūk2 − 2η ℓ′h yt hwt , xt i yt xt , wt − r̄ū + η 2 ℓ′h yt hwt , xt i kxt k2
+                                           D                                  E                       
+                        = kwt − r̄ūk2 − 2η ℓ′h yt hwt , xt i yt xt , wt − r̄ū − η 2 ℓ′h yt hwt , xt i kxt k2 ,   (28)
+                                                                                          √
+where we use (ℓ′h )2 = −ℓ′h . Next we bound E(xt ,yt ) −ℓ′h yt hwt , xt i kxt k2 . Let τ := dα2 ln(d/ǫ). When
+kxt k ≤ τ , we have
+                      h                                i
+                    E −ℓ′h yt hwt , xt i kxt k2 1kxt k≤τ ≤ τ 2 M(wt ) ≤ dα22 M(wt ) · ln(d/ǫ)2 .
+
+On the other hand, when kxt k ≥ τ , Lemma D.3 implies
+     h                                i   h               i                    ǫ              
+   E −ℓ′h yt hwt , xt i kxt k2 1kxt k≥τ ≤ E kxt k2 1kxt k≥τ ≤ dα1 · O d ln(d/ǫ)2 · = O dǫ ln(d/ǫ)2 ,
+                                                                                  d
+where we also use ln(1/ǫ) > 1, since ǫ < 1/e. To sum up,
+                                                                        
+                       E(xt ,yt ) −ℓ′h yt hwt , xt i kxt k2 ≤ Cd M(wt ) + ǫ · ln(d/ǫ)2
+
+for some constant C.
+    Now taking the expectation with respect to (xt , yt ) on both sides of eq. (28), we have
+           h              i                                                              
+          E kwt+1 − r̄ūk2 ≤ kwt − r̄ūk2 − 2η Rh (wt ) − Rh (r̄ ū) + η 2 Cd M(wt ) + ǫ · ln(d/ǫ)2 .              (29)
+
+Similarly to the bounded case, we will show that
+                              
+                                                    
+                    E min ϕt = O OPT · ln(1/OPT) + ǫ ,                    where    ϕt := ϕ(wt , ū).               (30)
+                          0≤t<T
+
+   First, Lemma D.2 implies
+                                                                              2 
+      Rh (wt ) − Rh (r̄ū) ≥ Rh (wt ) − Rh (kwt kū) − O   OPT · ln(1/OPT) + ǫ
+                                                                                                2 
+                           ≥ 2C1 kwt kϕ2t − C2 kwt kϕt · OPT · ln(1/OPT) − O OPT · ln(1/OPT) + ǫ      ,
+
+where C1 := 2R3 /(3U π 2 ) and C2 = (1 + 2α1 )α2 . Note that if ϕt ≤ C2 · OPT · ln(1/OPT)/C1 , then eq. (30)
+holds; therefore in the following we assume
+                                                     C2
+                                              ϕt ≥      · OPT · ln(1/OPT),                                         (31)
+                                                     C1
+
+
+
+
+                                                              37
+which implies
+                                                                                          2 
+                                Rh (wt ) − Rh (r̄ ū) ≥ C1 kwt kϕ2t − O OPT · (1/OPT) + ǫ
+                                                                                      2 
+                                                      ≥ C1 ϕ2t − O OPT · ln(1/OPT) + ǫ      ,                     (32)
+
+since kwk ≥ 1 for all w ∈ D.
+    On the other hand, for OPT ≤ 1/e, eq. (31) and Lemma 3.13 imply
+                                                                      
+                                                                C1
+                          M(wt ) = R0−1 (wt ) ≤ OPT + 2U ϕt ≤      + 2U ϕt .
+                                                                C2
+Let
+                                                                       C1
+                                                        C2 :=                        .
+                                                                  C1
+                                                                  C2 + 2U          C
+                                                                                             C2 ǫ
+Note that if ϕt ≤ ǫ, then eq. (30) is true; otherwise we can assume ǫ ≤ ϕt , and let η = d ln(d/ǫ) 2 , we have
+
+
+                                                        C2 ǫ                             C2 ǫ
+             ηCd M(wt ) + ǫ ln(d/ǫ)2 =                          CdM(wt ) · ln(d/ǫ)2 +            Cdǫ · ln(d/ǫ)2
+                                                     d ln(d/ǫ)2                       d ln(d/ǫ)2
+                                                                    
+                                                              C1
+                                                   ≤ C2 ǫC       + 2U ϕt + C2 Cǫ2
+                                                              C2
+                                                                                       2 
+                                                   = C1 ǫϕt + O OPT · ln(1/OPT) + ǫ
+                                                                                      2 
+                                                   ≤ C1 ϕ2t + O OPT · ln(1/OPT) + ǫ         .                     (33)
+
+      Now eqs. (29), (32) and (33) imply
+              h              i                                                               2 
+            E kwt+1 − r̄ūk2 ≤ kwt − r̄ ūk2 − 2ηC1 ϕ2t + ηC1 ϕ2t + η · O OPT · ln(1/OPT) + ǫ
+                                                                                    2 
+                               = kwt − r̄ ūk2 − ηC1 ϕ2t + η · O OPT · ln(1/OPT) + ǫ      .
+
+Taking the expectation and average, we have
+                                                                            2 
+                          1 X          kw0 − r̄ūk 2   O   OPT · ln(1/OPT) + ǫ
+                      E       ϕ2t  ≤               +                              .
+                          T              ηC1 T                     C1
+                                        t<T
+
+Note that
+                                                                    p                   
+                                      kw0 − r̄ūk = tan(ϕ0 ) = O     OPT · ln(1/OPT) + ǫ ,
+                        C2 ǫ
+and also recall η = d ln(d/ǫ) 2 , we have
+
+                                                                                     2 
+                                                   
+               1 X         O OPT · ln(1/OPT)   + ǫ   d ln(d/ǫ)2   O OPT · ln(1/OPT) + ǫ
+            E     ϕ2t  ≤                                      +                            .
+               T                       C1 C2 ǫT                             C1
+                      t<T
+                                   
+                      d ln(d/ǫ)2
+Letting T = Ω             ǫ2         , we have
+                                     
+                          1 X                                                               2 
+                  E                ϕ2t  ≤ O OPT · ln(1/OPT) + ǫ · ǫ + O OPT · ln(1/OPT) + ǫ
+                          T
+                              t<T
+                                                                           2 
+                                          =O       OPT · ln(1/OPT) + ǫ             ,
+
+and thus eq. (30) holds.
+
+
+                                                                  38
+

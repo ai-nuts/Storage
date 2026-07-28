@@ -1,0 +1,3 @@
+# Title
+
+Vision transformers are powerful but data-hungry: they only beat convolutional networks when huge labeled datasets are available. This paper introduces PatchRot, a self-supervised technique crafted specifically for vision transformers. The key idea is simple. Rotate the whole image or its individual patches by multiples of ninety degrees, and train the transformer to predict every rotation angle. The class token predicts the image rotation, capturing global structure, while new per-patch heads predict each patch's rotation, capturing local detail. After this pretraining, PatchRot features consistently beat both supervised training from scratch and the RotNet baseline across CIFAR-10, CIFAR-100, FashionMNIST, and Tiny-ImageNet.

@@ -1,0 +1,7 @@
+# Method
+
+Core claim: CEConvs define color equivariance as equivariance to the group Hn of discrete 360/n-degree rotations about the [1,1,1] diagonal in RGB space, sharing parameters across hue-transformed copies of each filter and storing color in an extra feature-map dimension.
+
+Supporting detail: Building on Group Equivariant Convolutions, the input-layer filter is rotated by the hue matrix Hn(k) while hidden layers use cyclically permuted filter copies; hybrid networks apply CEConvs only in early ResNet stages and pool over the color dimension to introduce early color invariance and control the parameter cost.
+
+Narration: A hue shift in HSV space becomes, in RGB space, a rotation around the gray diagonal from black to white. The authors formalize this as the group H-n of n discrete rotations about that diagonal, a subgroup of all three-dimensional rotations. A Color Equivariant Convolution correlates the input with hue-rotated copies of each filter, producing feature maps that carry an extra dimension indexing the hue rotation. In hidden layers, filters are cyclically permuted across this dimension so equivariance is preserved throughout the network. Because the extra dimension multiplies the number of feature maps, the authors decompose filters into spatial and pointwise components and offer hybrid variants that use color equivariance only in the early, most color-selective stages, keeping parameter and compute cost in check.

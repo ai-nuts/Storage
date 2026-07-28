@@ -1,0 +1,7 @@
+# Method
+
+Core claim: At inference the model traverses the automaton in parallel with the LM, visiting a set of states each step. It follows pointers of matching-value entries to predict the next states cheaply; only when the number of valid transitions falls below a threshold τ does it launch a fresh kNN search and restart the traversal.
+
+Supporting detail: Transition weights are dynamic, computed from distances between the current LM hidden state and the entries in each state, then interpolated with the base LM. τ trades off accuracy (frequent restarts, more searches) against speed (rare searches). Clustering can use k-means or a cheaper greedy merge.
+
+Narration: RetoMaton stores each datastore entry as a triple of key, value, and pointer, where the pointer references the entry that followed it in the corpus. Entries with close keys are clustered into states, and a state inherits all the pointers of its members. At test time the model keeps a small set of active states and traverses the automaton alongside the language model. To move forward it just follows the pointers of entries whose value matches the generated token, which is essentially free. A full nearest-neighbor search is only triggered when the number of valid onward transitions drops below a threshold tau. The automaton's transition weights are computed dynamically from the distance between the current hidden state and the entries in each state, and the resulting distribution is interpolated with the base language model.

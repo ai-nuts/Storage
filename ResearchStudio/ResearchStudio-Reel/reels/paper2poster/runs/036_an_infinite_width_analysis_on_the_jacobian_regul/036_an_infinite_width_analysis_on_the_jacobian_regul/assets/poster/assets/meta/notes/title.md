@@ -1,0 +1,3 @@
+# Title
+
+Infinite-width theory, built on tools like the Neural Tangent Kernel, has transformed how we understand deep network initialisation and training, but it has only ever described a network's output. This paper extends that theory to the network's input-output Jacobian. The authors show that a multilayer perceptron and its Jacobian jointly converge to a Gaussian process as width grows, define a Jacobian Neural Tangent Kernel that governs training, and prove that training with a Jacobian regulariser, so-called robust training, behaves in the infinite-width limit like a simple kernel regression. Along the way they explain, for the first time from this angle, why Jacobian regularisation makes networks both accurate and robust.

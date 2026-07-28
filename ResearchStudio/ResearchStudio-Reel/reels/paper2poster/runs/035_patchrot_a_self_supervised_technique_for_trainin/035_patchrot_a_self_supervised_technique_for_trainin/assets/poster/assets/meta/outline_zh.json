@@ -1,0 +1,251 @@
+{
+  "title": "不止旋转整张图，还要旋转每个 patch：为 Vision Transformer 量身定制的自监督方法",
+  "subtitle": "PatchRot 让 ViT 同时预测整图与每个 patch 的旋转角度，在四个数据集上稳定超越从零监督训练。来自 Arizona State University 与 Georgia State University。",
+  "lang": "zh",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Vision Transformer（ViT，视觉 Transformer）已经成为图像识别的主流骨干网络，但它有一个众所周知的软肋：吃数据。ViT 把一张图切成一串 patch token，再由自注意力自己去决定这些 token 之间的关系，这带来了极大的灵活性，却几乎没有卷积网络（ConvNet）与生俱来的那套先验假设。ConvNet 天然内建了局部性和平移结构，ViT 却要从数据里把这一切重新学出来。于是在标注稀缺时，ViT 往往落后于 ConvNet，只有在超大规模有标注数据上训练时才能反超。"
+    },
+    {
+      "type": "paragraph",
+      "text": "这让自监督预训练，即在接触任何有标注任务之前先从无标注图像里学到有用特征，成为一个顺理成章的选择。麻烦在于，主流的自监督预训练任务（拼图、上色、图像旋转预测）都诞生于 ConvNet 时代。ConvNet 输出的是一张全局特征图，因此这些任务只对整张图问一个全局问题，从不利用让 Transformer 之所以是 Transformer 的那个结构特性：它为每一个 patch 都产生一个独立输出。"
+    },
+    {
+      "type": "paragraph",
+      "text": "PatchRot 正是从这个空白切入。它的想法一句话就能说清：把整张图旋转、也把它的每个 patch 独立旋转一个随机的 90 度倍数，再训练 ViT 去预测每一处的旋转角度。原本用来预测物体类别的 class token 负责预测整图的旋转，因此必须抓住全局结构；每个 patch token 上新增的 MLP head 负责预测该 patch 自己的旋转，因此必须抓住局部细节。全局与局部监督，来自同一个无需标注的任务，而且恰好贴合这套架构。"
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "图 1. PatchRot 的预训练任务。输入图像经过两条共享权重的前向通路：一条把整张图旋转一个随机的 90 度倍数，由 class token 预测这个角度；另一条把每个 patch 独立旋转，由每个 patch token 上新增的 MLP head 预测各自的角度。同一个无标注任务同时监督全局结构（经 class token）与局部细节（经 patch head）。",
+      "width_inches": 4.1
+    },
+    {
+      "type": "paragraph",
+      "text": "论文：https://arxiv.org/abs/2210.15722"
+    },
+    {
+      "type": "paragraph",
+      "text": "代码：https://github.com/s-chh/PatchRot"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "为什么 Transformer 需要一个属于自己的自监督任务"
+    },
+    {
+      "type": "paragraph",
+      "text": "PatchRot 承接的前作是 RotNet，它揭示了一个反直觉的现象：只要让一个 ConvNet 去预测图像被旋转了多少（0、90、180 或 270 度），它就能学到出人意料地丰富的特征，因为猜旋转角度会逼着网络去认识物体在正立状态下的样子。RotNet 对每张图只问一个问题，而 ViT 却能对每个 patch 各问一个问题。顺理成章的一步，就是把旋转预测下沉到 patch 级别，这种 patch 级别的信号，正是一个以 token 为单位的模型天生擅长消化的，然而此前还没有哪个自监督方法这样做过。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "PatchRot 是怎么工作的"
+    },
+    {
+      "type": "paragraph",
+      "text": "预训练阶段，PatchRot 同时进行两个任务。在图像旋转任务里，整张图被旋转一个随机的 90 度倍数，class token 以一个 4 类分类的形式预测这个唯一的角度。在 patch 旋转任务里，每个 patch 被独立旋转，挂在每个 patch token 上的专属 MLP head 预测该 patch 的角度，同样是 4 类分类。两个任务分别在各自的前向通路里进行，而不是一次全压上去，两条通路共享同一套 encoder 权重，于是 Transformer 无需从一团被打乱的输入里再去拆分信号，就能同时学到两种信息。"
+    },
+    {
+      "type": "paragraph",
+      "text": "这种分工正是关键所在。class token 会汇聚整张图的信息，因此让它去预测整图旋转，会把它推向全局结构；patch head 只看单个 token，因此让每个 head 去预测各自 patch 的旋转，会把模型推向局部细节。预训练结束后，额外的 patch head 直接被丢弃，只保留 class token 那一路的 head，并在真正的分类任务上做微调。"
+    },
+    {
+      "type": "paragraph",
+      "text": "这里有一个让 patch 旋转真正变难的细节。如果 patch 彼此紧贴着切开，模型就能作弊：它可以对齐相邻 patch 之间连续的边缘，不理解任何内容就直接读出旋转角度。PatchRot 用一个办法堵住这条捷径，从一个略大的网格里裁出 patch 并随机裁剪，在相邻 patch 之间留出一段随机的缓冲间隙（论文把缓冲设为 patch 尺寸的四分之一）。接缝被打断后，边缘连续性不再泄露答案，模型只能去学真正的局部结构。"
+    },
+    {
+      "type": "paragraph",
+      "text": "还有一个务实的细节：自监督训练在较低分辨率下进行以节省开销，下游微调再切回原始分辨率，并把位置编码插值到更多的 patch 数上。全程使用的骨干是一个紧凑的 ViT，带 6 个 Transformer encoder block，CIFAR 与 FashionMNIST 在 32×32 下评测，Tiny-ImageNet 在 64×64 下评测。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "有用吗？从任意深度微调看效果"
+    },
+    {
+      "type": "paragraph",
+      "text": "评判一个预训练特征提取器，最干净的方式是看你需要微调它多少。图 2 扫的正是这件事：横轴从几乎全部冻结（NF，以及只训练最后一层 head、也就是线性探测的 MLP）一路走到逐步解冻更深的层。每个子图对应一个数据集，三条曲线分别是 PatchRot、RotNet 和从零监督训练的基线。"
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "图 2. 在 CIFAR-10、CIFAR-100、FashionMNIST 和 Tiny-ImageNet 上，准确率随微调多少而变化（NF 与 MLP 冻结得最多，encoder block EB1-EB7 逐步解冻）。PatchRot 曲线几乎在每个深度都高于 RotNet 与监督基线。值得注意的是，即便只做线性探测（MLP）也逼近监督训练的水平，而只微调单个 encoder block 就已超过从零训练。",
+      "width_inches": 3.7
+    },
+    {
+      "type": "paragraph",
+      "text": "有两点特别突出。其一，PatchRot 曲线在四个数据集上处处高于 RotNet，并在有用的区间内高于从零监督训练那条线。其二，也更能说明问题的是，这些收益在大幅冻结下依然存在：仅做线性探测（在冻结的 PatchRot 特征之上只训练最后一层）就能逼近完全监督的数字，而只微调单个 encoder block 已经胜过从零训练的网络。这正是特征真正有用、而非微调假象的标志。"
+    },
+    {
+      "type": "paragraph",
+      "text": "在完全微调下取值的核心数字，把这个效应的量级说得很具体。"
+    },
+    {
+      "type": "table",
+      "caption": "表 1. PatchRot 预训练对比从零监督训练（完全微调下）。",
+      "headers": [
+        "数据集",
+        "指标",
+        "监督训练",
+        "PatchRot",
+        "提升"
+      ],
+      "rows": [
+        [
+          "CIFAR-10",
+          "Top-1",
+          "83.9",
+          "92.6",
+          "+8.7"
+        ],
+        [
+          "CIFAR-100",
+          "Top-1",
+          "50.2",
+          "70.6",
+          "+20.4"
+        ],
+        [
+          "CIFAR-100",
+          "Top-5",
+          "81.6",
+          "90.2",
+          "+8.6"
+        ],
+        [
+          "FashionMNIST",
+          "Top-1",
+          "89.8",
+          "94.1",
+          "+4.3"
+        ],
+        [
+          "Tiny-ImageNet",
+          "Top-5",
+          "66.4",
+          "73.4",
+          "+7.0"
+        ]
+      ]
+    },
+    {
+      "type": "paragraph",
+      "text": "任务越难、标注越稀薄的地方，提升越大：在 CIFAR-100 上，PatchRot 把 top-1 准确率从 50.2 提到 70.6，涨了超过 20 个百分点；而在更简单的 CIFAR-10 上也仍然加了 8.7 个百分点。每种情况下干活的都是同一个紧凑 ViT，唯一的区别只在于它是从零开始，还是从 PatchRot 学到的特征出发。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Transformer 到底学到了什么"
+    },
+    {
+      "type": "paragraph",
+      "text": "数字说明特征有帮助，注意力图则透露出原因。由于 PatchRot 在预训练时从未见过类别标签，它本没有明显的理由去关心物体，可它偏偏学会了。"
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "图 3. 一个用 PatchRot 在 Tiny-ImageNet 上预训练的 ViT 的注意力图（上排为输入图像，下排为模型的注意力）。在从未见过标签的情况下，模型把注意力集中到了每个场景中最显著的物体上，这说明旋转预测把它推向了以物体为中心的特征。",
+      "width_inches": 5.6
+    },
+    {
+      "type": "paragraph",
+      "text": "这些注意力图集中在每张图里最显著的物体上，瓶子、野猪、汽车、人与狗、水塔，而不是散落到背景中。这为特征之所以能很好迁移提供了一个合理解释：要判断一个 patch 被转到了哪个方向，模型就得知道这个 patch 里的东西是什么，而这种知识恰恰是下游分类器想要的。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "预训练越多，特征越好"
+    },
+    {
+      "type": "paragraph",
+      "text": "如果自监督信号是真实的，那么给得越多就应当持续见效。图 4 在 CIFAR-100 上改变 PatchRot 预训练的轮数，并在几个不同的微调深度上追踪下游准确率。"
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "图 4. CIFAR-100 上的下游准确率随 PatchRot 预训练量增加而变化（右图放大了后期的轮数）。在各个微调深度（NF、EB5、MLP）上，更多的自监督预训练都稳定提升准确率，而冻结特征的那几条曲线始终远高于 81.6 的监督基线。",
+      "width_inches": 5.6
+    },
+    {
+      "type": "paragraph",
+      "text": "准确率随预训练稳步上升然后趋于平缓，正是我们希望看到的边际递减曲线：收益不是某次幸运早停的假象，而是随着模型在预训练任务上花更多时间而累积起来的。即便网络大部分被冻结，PatchRot 的曲线也安稳地位于监督基线之上，再次印证价值在于学到的特征，而非微调本身。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "能迁移的特征，也能救活少标注场景"
+    },
+    {
+      "type": "paragraph",
+      "text": "一个好的预训练任务，还应当产出能搬到新数据集上的特征。作者用一种方式来检验：在一个数据集上用 PatchRot 预训练，再到另一个数据集上微调，并在 CIFAR-10 与 CIFAR-100 之间双向都做一遍。"
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "caption": "图 5. CIFAR-100 与 CIFAR-10 之间的双向迁移学习。在每一个微调深度上，用 PatchRot 在源数据集上预训练得到的特征（蓝色）都比在同一源数据集上做监督预训练（绿色）迁移得更好，说明学到的表示并未狭隘地绑死在某一套标签上。",
+      "width_inches": 5.0
+    },
+    {
+      "type": "paragraph",
+      "text": "两个迁移方向上，PatchRot 曲线在每个深度都高于监督预训练，可见这套表示并没有被某一套标签狭隘地限定。标注稀缺时同样的优势更为醒目：在 CIFAR-10 的半监督设置里，只用 4000 张有标注图像，PatchRot 达到 81.1 的准确率，而在同样这一小撮标注上做监督训练只有 53.7。当标注成为瓶颈时，无需标注的特征最为值钱。"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "哪些设计真正起作用"
+    },
+    {
+      "type": "paragraph",
+      "text": "PatchRot 有几个可拆解的部件，作者在 CIFAR-10 上逐一做了消融。去掉任意一半监督都会掉点：只预测 patch 旋转（丢掉整图信号）或只预测图像旋转（本质上是把 RotNet 搬到 ViT 上），都落在完整方法之下。其余设计选择，把图像旋转与 patch 旋转分成两条通路、在较低分辨率下预训练、以及为 patch 新增 head 而不是复用 class token 的 head，各自贡献一份更小但稳定的收益。"
+    },
+    {
+      "type": "table",
+      "caption": "表 2. CIFAR-10 上的消融实验（top-1 准确率）。PatchRot 的每个部件都有贡献。",
+      "headers": [
+        "变体",
+        "Top-1"
+      ],
+      "rows": [
+        [
+          "完整 PatchRot",
+          "92.6"
+        ],
+        [
+          "去掉图像旋转（仅 patch）",
+          "91.8"
+        ],
+        [
+          "去掉 patch 旋转（仅图像）",
+          "91.0"
+        ],
+        [
+          "图像与 patch 一起旋转",
+          "90.7"
+        ],
+        [
+          "在原始分辨率下预训练",
+          "92.1"
+        ],
+        [
+          "复用 class token 的 head 预测 patch",
+          "91.1"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "小结"
+    },
+    {
+      "type": "paragraph",
+      "text": "PatchRot 提醒我们，一个自监督任务只有贴合它所训练的架构时才最有效。预测整张图的旋转是个老想法，新意在于把每个 patch 的旋转也一并预测，这就把一个单一的全局问题变成了 Transformer 天生就该回答的、逐 token 的稠密信号。class token 学到全局结构，patch head 学到局部细节，由此得到的特征在四个数据集上都胜过从零监督训练与 RotNet，能在数据集之间干净地迁移，并在标注稀缺时收益最大，而这一切靠的是廉价、通用的部件（patch 之间的缓冲间隙与低分辨率预训练），而非笨重的机制。"
+    },
+    {
+      "type": "paragraph",
+      "text": "诚实的边界藏在前提里：PatchRot 依赖旋转本身是有信息量的，因此在方向意义不大的类别上它的优势最薄，这也是作者为什么要单独考察像 SVHN 和 MNIST 里的数字这类旋转不变物体。不过对于有清晰正立方向的自然图像这种常见情形，它是一个轻量而务实的配方，能在有标注数据紧缺时，用来预训练视觉 Transformer 这类模型。"
+    }
+  ]
+}

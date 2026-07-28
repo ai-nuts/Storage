@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: PatchRot pretraining consistently beats both supervised-from-scratch and the RotNet baseline on every dataset. On CIFAR-10 (full fine-tuning) it reaches 92.6% top-1 versus 83.9% supervised; on CIFAR-100 it reaches 70.6% top-1 (90.2% top-5) versus 50.2% supervised; on FashionMNIST 94.1% versus 89.8%.
+
+Supporting detail: Even linear probing (freezing the whole network, MLP head only) approaches supervised accuracy, and fine-tuning just one encoder block plus the head already surpasses supervised-from-scratch. PatchRot features also transfer better than supervised pretraining and give large gains in the low-label semi-supervised regime.
+
+Narration: The headline result is that PatchRot pretraining consistently outperforms both supervised training from scratch and the RotNet rotation baseline, on every dataset tested. On CIFAR-10 with full fine-tuning, PatchRot reaches ninety-two point six percent top-one accuracy, compared to eighty-three point nine percent for supervised training from scratch. On CIFAR-100 the gap is even larger: seventy point six percent top-one versus fifty point two percent supervised, and ninety point two percent top-five. On FashionMNIST it improves ninety-four point one versus eighty-nine point eight. Remarkably, even linear probing, where the entire network is frozen and only the final layer is trained, gets close to supervised performance, and fine-tuning just a single encoder block already beats training from scratch.

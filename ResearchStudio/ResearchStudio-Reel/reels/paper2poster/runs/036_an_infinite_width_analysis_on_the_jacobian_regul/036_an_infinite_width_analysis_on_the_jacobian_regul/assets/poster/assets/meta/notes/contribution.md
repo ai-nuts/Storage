@@ -1,0 +1,7 @@
+# Contribution
+
+Core claim: The paper (1) proves an MLP and its Jacobian jointly converge to a zero-mean Gaussian process at initialisation and characterises its kernel (the Jacobian NNGP kernel); (2) defines the Jacobian NTK (JNTK), proving it becomes deterministic at init and stays constant during robust training in the infinite-width limit; (3) derives the linear first-order ODE governing robust training and its analytic kernel-regression solution; (4) validates the theory and analyses the accuracy/robustness of the solution.
+
+Supporting detail: Proofs use the Tensor-Program framework and its Master theorem; analogous results are shown to hold for gradient descent, not just gradient flow.
+
+Narration: The paper makes four moves. First, it proves that at initialisation a multilayer perceptron and its Jacobian jointly converge to a zero-mean Gaussian process, and it writes down that limiting kernel, the Jacobian NNGP kernel, inductively over depth. Second, it defines a Jacobian Neural Tangent Kernel, the JNTK, and proves it becomes deterministic at initialisation and then stays constant throughout robust training as width grows. Third, because the kernel is constant, the training dynamics collapse to a linear first-order differential equation whose infinite-time solution is a plain kernel regressor. And fourth, it validates all of this empirically and uses the solution to study when accuracy and robustness go together.
