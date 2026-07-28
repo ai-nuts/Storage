@@ -1,0 +1,3 @@
+# Title
+
+Reinforcement learning now drives safety-critical systems like autonomous vehicles, but adversarial perturbations to a policy's input states can quietly steer it toward disaster. Many defenses improve robustness empirically, yet almost none can certify it with guarantees. This paper introduces CROP, the first unified framework to certify robust policies for reinforcement learning through functional smoothing. CROP certifies robustness at two levels: the stability of the action taken at each state, and a provable lower bound on the cumulative reward across a whole trajectory. Using it, the authors benchmark nine existing robust RL algorithms across four environments and show that their certificates are often tight.

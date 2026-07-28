@@ -1,0 +1,1 @@
+The takeaway: the pretraining paradigm that reshaped vision and language can also work for the brain. Treating spikes as autoregressive multimodal generation, one self-supervised transformer recovers a circuit's directed connectivity and decodes behavior from few examples, pointing toward scalable neuroscience foundation models.

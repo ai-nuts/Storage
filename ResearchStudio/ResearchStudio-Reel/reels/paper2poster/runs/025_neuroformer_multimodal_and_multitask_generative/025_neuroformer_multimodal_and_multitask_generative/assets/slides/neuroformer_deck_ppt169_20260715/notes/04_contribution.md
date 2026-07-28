@@ -1,0 +1,1 @@
+Neuroformer makes four contributions. It reframes spike analysis as self-supervised autoregressive generation, needing no labels. Its cross-attention scales linearly with feature size and fuses many modalities. On simulated data, its attention maps recover directed connectivity, including hub neurons correlation misses. Pretrained, it decodes behavior with few-shot fine-tuning.

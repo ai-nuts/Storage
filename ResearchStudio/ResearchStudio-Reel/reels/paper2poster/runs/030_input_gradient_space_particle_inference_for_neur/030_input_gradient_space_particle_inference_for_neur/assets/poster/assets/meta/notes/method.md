@@ -1,0 +1,7 @@
+# Method
+
+Core claim: FoRDE uses Wasserstein gradient descent where each particle update combines a driving force toward the posterior with a repulsion force from a kernel that compares members' normalized true-label input gradients, using an RBF base kernel on the unit sphere with PCA-derived lengthscales.
+
+Supporting detail: The kernel compares only the gradient of the true-label logit (not the full Jacobian) for linear-cost training; a global bandwidth and PCA lengthscales control how strongly each input dimension is repelled.
+
+Narration: FoRDE is built on Wasserstein gradient descent, a particle-based variational inference method. Each network in the ensemble is a particle, and its update has two terms. The driving force pulls the particle toward high-density regions of the Bayesian posterior, just like ordinary training. The repulsion force, weighted by a kernel, pushes particles apart. The crucial design choice is the kernel. Instead of comparing weights or outputs, FoRDE compares the input gradients of the true label, normalized to the unit sphere, using a radial basis function kernel. The gradients are normalized because their magnitude shrinks as training converges, and comparing directions teaches members to rely on complementary features. Finally, the lengthscales of the kernel are chosen from the principal components of the data, so repulsion is strongest along the most informative input directions.

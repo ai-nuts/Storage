@@ -1,0 +1,3 @@
+# Title
+
+RNA-protein interactions drive gene regulation, yet measuring them in the lab is slow and costly, and existing predictors lean on small, protein-specific datasets. This work introduces RNAInterAct, a large curated dataset of non-coding RNA-protein interactions, and RPIembeddor, a transformer model that classifies whether any RNA and protein interact using only their sequences. By feeding embeddings from two foundation models, RNA-FM for RNA and ESM-2 for proteins, into an attention-based network, RPIembeddor outperforms prior state-of-the-art methods and generalizes to unseen RNA families and data distributions.

@@ -1,0 +1,59 @@
+---
+title: Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+authors: Shijie Lian¹, Ziyi Zhang², Hua Li¹³, Wenjie Li¹, Laurence Tianruo Yang¹⁴⁵, Sam Kwong⁶, Runmin Cong⁷⁸
+institutes: ¹Hainan University; ²The Hong Kong University of Science and Technology (Guangzhou); ³Key Laboratory of New Generation Artificial Intelligence Technology, Southeast University; ⁴Huazhong University of Science and Technology; ⁵St. Francis Xavier University; ⁶Lingnan University; ⁷Shandong University; ⁸Key Laboratory of Machine Intelligence and System Control, Ministry of Education
+venue: ICML 2024
+paper_url: https://arxiv.org/abs/2406.06039
+code_url: https://github.com/LiamLian0727/USIS10K
+title_audio_script: This paper, presented at ICML 2024, dives into underwater salient instance segmentation. The authors build USIS10K, the first large-scale underwater dataset with over ten thousand pixel-level annotated images, and propose USIS-SAM, a Segment Anything Model tailored to the underwater domain. By injecting underwater visual prompts into the encoder and automatically generating salient prompts, USIS-SAM sets a new state of the art for segmenting the objects that matter most beneath the surface.
+---
+
+## Problem
+**Necessary:** Underwater salient instance segmentation suffers from low accuracy because complex underwater conditions distort images and no large-scale pixel-level salient dataset exists to train modern models.
+**Additional:** Segment Anything Model (SAM) generalizes poorly underwater and needs explicit point or box prompts, which are unavailable in an automatic salient-segmentation setting.
+**Audio script:** Underwater salient instance segmentation asks a model to find and separate the visually most important objects in a scene, a foundational step for tasks like marine exploration and underwater robotics. But it is hard. Underwater images are degraded by light scattering, color distortion, and marine snow, so even state-of-the-art segmentation methods lose accuracy. Worse, the field has lacked any large-scale dataset with pixel-level salient instance annotations, which has stalled progress. Powerful foundation models like SAM exist, but they were trained on natural images and struggle to adapt to the underwater world on their own.
+
+## Motivation
+**Necessary:** Foundation models like SAM show strong segmentation potential, but without underwater-specific adaptation and salient data they underperform on the domain, so both a dataset and an adapted architecture are needed.
+**Additional:** Prior salient instance datasets are small and class-agnostic, limiting both training and the study of multi-class underwater saliency.
+**Audio script:** With the breakthrough of large models, SAM and its extensions have been applied across computer vision. But directly using SAM underwater falls short: its features do not adapt to the murky, low-contrast marine environment, and it requires manual foreground prompts that defeat the purpose of automatic salient segmentation. The authors argue that unlocking SAM for this domain requires two things at once, a large-scale dataset that captures the diversity of underwater saliency, and an architecture that teaches SAM to see underwater and to prompt itself. This paper delivers both.
+
+## Contribution
+**Necessary:** The paper introduces USIS10K, the first large-scale underwater salient instance segmentation dataset (10,632 images, pixel-level annotations, 7 categories), and USIS-SAM, a SAM-based architecture with an Underwater Adaptive ViT encoder and an automatic Salient Feature Prompt Generator.
+**Additional:** USIS-SAM achieves state-of-the-art results on both class-agnostic and multi-class underwater salient instance segmentation, and datasets and code are publicly released.
+**Audio script:** The paper makes three contributions. First, it constructs USIS10K, the first large-scale underwater salient instance segmentation dataset, with 10,632 images carrying pixel-level annotations across seven categories from diverse underwater scenes. Second, it proposes USIS-SAM, an architecture built on SAM specifically for the underwater domain, featuring an Underwater Adaptive Visual Transformer encoder and an out-of-the-box Salient Feature Prompt Generator that removes the need for manual prompts. Third, comprehensive experiments show USIS-SAM outperforms state-of-the-art methods, and the datasets and code are released on GitHub.
+
+## Method
+**Necessary:** USIS-SAM freezes SAM and adds an Underwater Adaptive ViT (UA-ViT) encoder that injects underwater visual prompts through channel and multi-scale-convolution adapters, plus a Salient Feature Prompt Generator (SFPG) that fuses multi-layer features to automatically produce salient prompt embeddings fed to SAM's mask decoder for end-to-end segmentation.
+**Additional:** The UA-ViT uses a channel adapter and multi-scale convolutions (3×3, 5×5, 7×7) balanced by average residuals; the SFPG's Salient Feature Fusion Module aggregates UA-ViT features so the decoder can focus attention on salient regions.
+**Key equation:** `$F_i^m = \sum_{s \in \{3,5,7\}} \mathrm{Conv}_{s \times s}(\mathrm{CA}(F_i))$` ; `$F_i^a = \lambda F_i^m + (1-\lambda)\,\mathrm{Avg}(F_i^m)$` ; `$P = \mathrm{MLP}_{out}(\sigma(\mathrm{MLP}_{prompt}(F)))$` ; `$L = L_{rpn} + \sum_i (L_{cls}^i + L_{reg}^i + L_{seg}^i)$`
+**Audio script:** USIS-SAM keeps SAM's powerful pretrained backbone frozen and adds two lightweight but targeted modules. The Underwater Adaptive ViT encoder injects underwater domain knowledge into the frozen transformer through adapters: a channel adapter recalibrates features, and multi-scale convolutions of size three, five, and seven capture structures at different scales, which are balanced with average residuals to dampen noise. On top of this, the Salient Feature Prompt Generator replaces SAM's manual point and box prompts. Its Salient Feature Fusion Module aggregates features from each UA-ViT block and generates salient prompt embeddings automatically, which are passed to SAM's mask decoder. The whole network is trained end-to-end with a combined loss covering region proposal, classification, box regression, and mask segmentation.
+
+## Dataset / Benchmark
+**Necessary:** USIS10K contains 10,632 underwater images with pixel-level salient instance annotations across 7 categories, making it the first and largest underwater salient instance segmentation dataset.
+**Additional:** Images span diverse underwater scenes; the paper analyzes per-category instance counts, instances-per-image distribution, and global/local color contrast versus the prior SIS10K, and reports an average salient instance size of 34,336 pixels.
+**Audio script:** To break the data bottleneck, the authors built USIS10K, the first large-scale underwater salient instance segmentation dataset. It contains 10,632 underwater images, each with pixel-level salient instance annotations, spanning seven categories collected from a wide variety of underwater scenes. The dataset is carefully analyzed: the authors report the number of salient instances per category, the distribution of instances per image, and comparisons of global and local color contrast against the prior SIS10K benchmark, showing that underwater imagery poses distinct low-contrast challenges. Beyond training USIS-SAM, USIS10K provides a foundation for the whole community to develop underwater salient segmentation methods.
+
+## Key Result
+**Necessary:** On USIS10K, USIS-SAM reaches 59.7 mAP class-agnostic and 43.1 mAP multi-class, surpassing every prior method, including a 1.5 mAP gain over the SAM-based RSPrompter and a 0.7 mAP gain over the underwater method WaterMask on the class-agnostic task.
+**Additional:** In the multi-class setting USIS-SAM leads WaterMask and RSPrompter by 4.4 and 5.1 mAP respectively and beats the SIS baseline OQTR by 3.1 mAP class-agnostic; it also generalizes, improving over prior methods when retrained on the land SIS10K dataset.
+**Audio script:** Across both evaluation settings, USIS-SAM sets a new state of the art on USIS10K. In the class-agnostic task, where the model must localize and precisely mask salient objects regardless of category, USIS-SAM reaches 59.7 mAP, beating the best salient method OQTR by 3.1 points, the underwater method WaterMask by 0.7 points, and the SAM-based RSPrompter by 1.5 points. In the harder multi-class task, USIS-SAM scores 43.1 mAP, extending its lead to 4.4 points over WaterMask and 5.1 points over RSPrompter. The model also generalizes: when retrained on the land-based SIS10K dataset, it continues to outperform prior approaches, showing the design is not narrowly overfit to underwater imagery.
+
+## Ablation Study
+**Necessary:** Removing the Underwater Adaptive ViT encoder drops multi-class performance by 1.6 mAP (43.1 to 41.5), and replacing the Salient Feature Prompt Generator with a Multi-scale Feature Enhancer drops it by 0.9 mAP (43.1 to 42.2), confirming both modules contribute.
+**Additional:** Further ablations show freezing the image encoder costs about 1.4 mAP, and simplifying the multi-scale convolution reduces performance, validating the specific adapter design choices.
+**Audio script:** Ablations isolate the value of each component. Starting from the full model at 43.1 mAP on the multi-class task, reverting the Underwater Adaptive ViT block back to the original ViT block drops performance by 1.6 mAP, confirming that injecting underwater visual information through adapters materially helps the frozen backbone handle complex marine scenes. Replacing the Salient Feature Prompt Generator with a generic Multi-scale Feature Enhancer costs 0.9 mAP, showing the SFPG does more than fuse features, it also focuses the network's attention on salient regions. Additional ablations on encoder freezing and the multi-scale convolution design confirm that each choice contributes to the final accuracy.
+
+## Headline Numbers
+**Necessary:**
+- 10,632 underwater images with pixel-level annotations across 7 categories (USIS10K)
+- 59.7 mAP class-agnostic salient instance segmentation (state of the art)
+- 43.1 mAP multi-class salient instance segmentation (state of the art)
+- +1.6 mAP from the Underwater Adaptive ViT encoder; +0.9 mAP from the SFPG
+**Additional:** Trained 24 epochs on 6 NVIDIA 3090 GPUs with a ViT-H backbone; class-agnostic scores 81.6 AP50 and 67.7 AP75.
+**Audio script:** The headline numbers tell the story. USIS10K brings 10,632 pixel-level annotated underwater images across seven categories. On class-agnostic segmentation, USIS-SAM reaches 59.7 mAP, with 81.6 AP at the fifty percent threshold and 67.7 AP at the seventy-five percent threshold. On multi-class segmentation it reaches 43.1 mAP. Ablations attribute 1.6 mAP to the Underwater Adaptive ViT encoder and 0.9 mAP to the Salient Feature Prompt Generator. The model was trained for 24 epochs on six NVIDIA 3090 GPUs using a ViT-H backbone.
+
+## Takeaway
+**Necessary:** By pairing the first large-scale underwater salient dataset (USIS10K) with a SAM adapted through underwater visual prompts and automatic salient prompting, USIS-SAM sets a new state of the art for segmenting salient objects underwater.
+**Additional:** Both the dataset and code are publicly released, giving the community a foundation for future underwater vision research.
+**Audio script:** The takeaway is simple. Adapting a powerful foundation model to a hard new domain works best when you also give it the right data and let it prompt itself. By building USIS10K, the first large-scale underwater salient instance segmentation dataset, and by teaching SAM to see underwater through adapters while generating its own salient prompts, USIS-SAM sets a new state of the art. With both dataset and code released, this work lays a practical foundation for the next wave of underwater vision research.

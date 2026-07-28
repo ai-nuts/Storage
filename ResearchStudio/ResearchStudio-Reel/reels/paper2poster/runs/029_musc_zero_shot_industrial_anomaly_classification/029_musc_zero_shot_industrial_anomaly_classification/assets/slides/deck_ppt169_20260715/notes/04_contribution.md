@@ -1,0 +1,1 @@
+MuSc is a training-free, prompt-free pipeline with three pieces. First, local neighborhood aggregation at multiple degrees, representing each patch at several scales to capture tiny and large defects. Second, mutual scoring, where every test image scores every other. Third, re-scoring with a constrained image-level neighborhood that cleans the final decision.

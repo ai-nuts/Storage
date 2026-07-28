@@ -1,0 +1,1 @@
+Ablations confirm each choice. Combining three aggregation degrees works best: small neighborhoods catch tiny VisA defects, large ones catch big MVTec defects. Averaging the smallest thirty percent interval beats the max or range, lifting AUROC to ninety-seven point eight percent. Re-scoring raises VisA image AUROC from ninety to ninety-two point eight.

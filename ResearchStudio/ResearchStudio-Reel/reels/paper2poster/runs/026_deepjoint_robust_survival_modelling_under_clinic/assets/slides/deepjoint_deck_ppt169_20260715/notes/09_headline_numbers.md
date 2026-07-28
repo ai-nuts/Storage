@@ -1,0 +1,1 @@
+The headline numbers: a concordance index of 0.878 at the one-day horizon, on a cohort of 30,834 MIMIC-III patients. DeepJoint jointly captures three dimensions of clinical presence — longitudinal, timing, and missingness — alongside survival, across horizons of one, seven, and fourteen days.

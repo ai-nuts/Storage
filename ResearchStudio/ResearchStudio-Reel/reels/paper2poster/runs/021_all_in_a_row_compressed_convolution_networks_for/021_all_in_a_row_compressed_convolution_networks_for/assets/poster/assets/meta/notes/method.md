@@ -1,0 +1,7 @@
+# Method
+
+Core claim: CoCN has four modules: input, permutation generation, convolution, and output. Permutation generation regresses node positions and converts them into a relaxed, differentiable permutation matrix; diagonal convolution then slides a kernel along the diagonal of the permuted node-feature and edge-feature matrices, while compressed pooling shrinks the structure matrix from the anti-diagonal direction and transposed convolution up-samples for node classification.
+
+Supporting detail: Positions are computed with an MLP smoothed by the graph Laplacian so that similar or nearby nodes land in adjacent positions; multiple permutation heads generate diverse arrangements, and the learnable permutation reduces permutation modeling from O(n!) to O(n²), enabling mini-batch training on large graphs.
+
+Narration: Here is how CoCN works. First, permutation generation regresses an absolute position for each node with an MLP on Laplacian-smoothed features, so similar nodes land nearby. These form a relaxed permutation matrix, controlled by a factor tau that provably converges to a true permutation. With nodes in a row, CoCN slides a kernel along the diagonal of the permuted edge and node matrices, extracting node features and their structure together. Compressed pooling builds a hierarchy, and transposed convolution up-samples for predictions. Crucially, this cuts permutation modeling from n factorial to n squared, letting it scale to large graphs.

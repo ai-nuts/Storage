@@ -1,0 +1,41 @@
+# MuSc Speaker Notes
+
+## 01_title
+
+MuSc is a zero-shot method for industrial anomaly detection and segmentation, with no training, no prompts, and no normal reference images. Its insight: unlabeled test images hold enough cues to score one another. Published at ICLR 2024, it tops MVTec AD and VisA.
+
+## 02_problem
+
+Detecting defects is a core vision task, but existing methods are demanding. One-class approaches need a bank of normal images per product; CLIP-based zero-shot methods rely on hand-written prompts. Many factories have neither. The goal: segment anomalies with no training, prompts, or references.
+
+## 03_motivation
+
+The authors make a simple observation. In a batch of unlabeled test images of one product, a normal patch finds many similar patches across the others, because normal appearance repeats. An abnormal patch finds only a few, since defects are rare. That asymmetry is a signal already inside the test set.
+
+## 04_contribution
+
+MuSc is a training-free, prompt-free pipeline with three pieces. First, local neighborhood aggregation at multiple degrees, representing each patch at several scales to capture tiny and large defects. Second, mutual scoring, where every test image scores every other. Third, re-scoring with a constrained image-level neighborhood that cleans the final decision.
+
+## 05_method
+
+The backbone is a frozen vision transformer. Patch tokens from several stages are aggregated at multiple neighborhood degrees to represent defect sizes. In mutual scoring, each patch is scored by its nearest match in every other image, and only the smallest score interval is averaged, sharpening the gap. The image score is refined with a constrained neighborhood graph on class tokens.
+
+## 06_dataset-benchmark
+
+MuSc is evaluated on the two most-used industrial benchmarks. MVTec AD spans fifteen categories, ten objects and five textures. VisA covers twelve object categories across three domains. Both mix normal and defective images. Classification uses AUROC and F1-max; segmentation adds pixel-level metrics and per-region overlap.
+
+## 07_key-result
+
+Results are striking for a label-free method. On MVTec AD, MuSc reaches ninety-seven point eight percent image AUROC and lifts per-region overlap segmentation by over twenty-one points versus the best prior zero-shot method. On VisA it gains over ten points. It even beats most four-shot methods and rivals full-shot approaches.
+
+## 08_ablation-study
+
+Ablations confirm each choice. Combining three aggregation degrees works best: small neighborhoods catch tiny VisA defects, large ones catch big MVTec defects. Averaging the smallest thirty percent interval beats the max or range, lifting AUROC to ninety-seven point eight percent. Re-scoring raises VisA image AUROC from ninety to ninety-two point eight.
+
+## 09_headline-numbers
+
+In headline terms, MuSc reaches ninety-seven point eight percent image AUROC on MVTec AD and ninety-two point eight on VisA, with pixel AUROC of ninety-seven point three and ninety-eight point eight. It adds over twenty-one points on MVTec segmentation, all with no training, prompts, or references.
+
+## 10_takeaway
+
+The lasting idea: a set of unlabeled test images can supervise itself. By letting images score one another, repeating normal structure is separated from rare defects, with no training or prompts, giving state-of-the-art zero-shot detection that rivals full-shot methods.

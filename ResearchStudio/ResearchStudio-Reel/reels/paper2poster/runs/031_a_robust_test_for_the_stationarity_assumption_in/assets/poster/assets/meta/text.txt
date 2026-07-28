@@ -1,0 +1,1861 @@
+ A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+
+                                        Jitao Wang 1 Chengchun Shi 2 Zhenke Wu 1
+
+
+                         Abstract                                      inapplicable to real-world domains such as autonomous
+     Reinforcement learning (RL) is a powerful tech-                   driving (Shalev-Shwartz et al., 2016; Kiran et al., 2021) and
+     nique that allows an autonomous agent to learn                    precision medicine (Murphy, 2003; Qian & Murphy, 2011;
+     an optimal policy to maximize the expected re-                    Zhu et al., 2017; Raghu et al., 2017; Wang et al., 2018;
+     turn. The optimality of various RL algorithms                     Kosorok & Laber, 2019; Qi et al., 2020; Liu et al., 2020;
+     relies on the stationarity assumption, which re-                  Cai et al., 2021; Nie et al., 2021; Li et al., 2022), where
+     quires time-invariant state transition and reward                 online data collection can be costly and risky. To address
+     functions. However, deviations from stationarity                  this challenge, offline RL algorithms have emerged in recent
+     over extended periods often occur in real-world                   years. These algorithms allow an offline RL agent to learn
+     applications like robotics control, health care and               from a static dataset containing transition data collected by
+     digital marketing, resulting in suboptimal poli-                  a behavior policy without additional online interactions with
+     cies learned under stationary assumptions. In this                the environment (Fujimoto et al., 2019; Kumar et al., 2019;
+     paper, we propose a model-based doubly robust                     Levine et al., 2020; Jin et al., 2021; Uehara & Sun, 2021;
+     procedure for testing the stationarity assumption                 Xie et al., 2021; Shi et al., 2022c; Bai et al., 2022; Rezaeifar
+     and detecting change points in offline RL settings                et al., 2022; Liao et al., 2022; Zhou et al., 2022; 2023).
+     with certain degree of homogeneity. Our proposed                  Motivations Most of the state-of-art RL algorithms rely on
+     testing procedure is robust to model misspecifi-                  the assumption that the underlying Markov Decision Pro-
+     cations and can effectively control type-I error                  cess (MDP) is stationary, requiring the system dynamics
+     while achieving high statistical power, especially                to be temporally invariant. However, this assumption can
+     in high-dimensional settings. Extensive compar-                   be highly restrictive in many real-world problems, such as
+     ative simulations and a real-world interventional                 traffic signal control (Padakandla et al., 2020; Alegre et al.,
+     mobile health example illustrate the advantages                   2021) and mobile health (Liao et al., 2020; Li et al., 2022).
+     of our method in detecting change points and op-                  In traffic control, for example, traffic flow rates in different
+     timizing long-term rewards in high-dimensional,                   lanes can be distinctive between peak and off-peak hours,
+     non-stationary environments.                                      and queue lengths can vary significantly depending on dif-
+                                                                       ferent traffic patterns. Since traffic flow patterns change
+                                                                       dynamically over time, the stationarity assumption is likely
+1. Introduction                                                        to be violated. Directly applying an RL algorithm derived
+Reinforcement learning (RL, Sutton & Barto, 2018) has                  under stationarity assumptions may result in a suboptimal
+become increasingly popular in various fields, including               policy, potentially causing longer waiting time and traffic
+video games (Mnih et al., 2015; Shao et al., 2019), robotics           congestion.
+(Kober et al., 2013; Kilinc & Montana, 2022), mobile health            Another motivating example is the Intern Health Study (IHS,
+(Liao et al., 2020; Luckett et al., 2020; Shi et al., 2022b) and       Sen et al., 2010; NeCamp et al., 2020), a one-year mo-
+ridesharing (Xu et al., 2018; Shi et al., 2022a). However, the         bile health-based mirco-randomized trial targeting first-year
+fundamental online learning paradigm of RL, which requires             training physician in the United States. One goal of this
+the agent to iteratively and extensively collect experience by         study is to investigate the effectiveness of just-in-time push
+interacting with the environments, makes these algorithms              notifications, including tips and life insights, on improv-
+   1                                                                   ing interns’ physical activity, sleep duration and mental
+     Department of Biostatistics, University of Michigan, Ann
+Arbor 2 Department of Statistics, London School of Economics           health, while minimizing user burden and expense. The
+and Political Science. Correspondence to: Chengchun Shi                study collected data on interns’ daily step count and sleep
+<c.shi7@lse.ac.uk>.                                                    duration through wearable devices (i.e., Fitbit or Apple
+                                                                       Watch) and self-reported mood score through daily survey.
+Proceedings of the 40 th International Conference on Machine           Non-stationarity is a serious issue in this study, due to the
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright
+2023 by the author(s).                                                 waning intervention effect (i.e., the effect of intervention de-
+
+                                                                   1
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+creases or change direction over time). Such phenomena are             some episodes and horizons), as each policy is learned per
+commonly seen in interventional mobile health applications             time without borrowing information from other time points.
+(Hamari et al., 2014; Shcherbina et al., 2019; Klasnja et al.,         Moreover, their methods may encounter difficulties in cer-
+2019; NeCamp et al., 2020). Ignoring the non-stationary                tain studies with small number of episodes and long horizons
+nature of the interventional effects may lead to learning              (Marling & Bunescu, 2020) due to the limited sample size
+ineffective or even harmful policies that send inopportune             available per time.
+prompts, overburdening users and leading to increased user
+                                                                       Another related line of research focus on change point de-
+attrition.
+                                                                       tection algorithms as a means to address non-stationarity.
+There are two additional technical challenges in dealing               The central idea of these detection-based methods involves
+with modern sequential decision making problems. First,                first detecting environmental changes by testing the station-
+with the fast development of new information technology,               arity assumption and subsequently applying policy learning
+the state vector is typically high-dimensional (Mnih et al.,           algorithms to the stationary segments of the data. There-
+2015; Arulkumaran et al., 2017; Plaat et al., 2020; Kiran              fore, these algorithms typically require a certain degree of
+et al., 2021), which poses a challenge to classical nonpara-           homogeneity in terms of MDP models across episodes and
+metric methods due to the curse of dimensionality. Second,             horizons (e.g., piecewise stationary MDP). Several methods
+the real-world data can be very complex when the underly-              have been proposed to test the stationarity assumption of
+ing state transition and reward function is highly complex             an MDP. Among those available, Hadoux et al. (2014) pro-
+(Mnih et al., 2015; Silver et al., 2018; Mahmood et al.,               posed to use a CUmulative SUM (CUSUM) sequential statis-
+2018). Although linear function approximation often has                tical test (Basseville et al., 1993) for change point detection
+sound theoretical guarantees, it has limited approximation             in MDPs. However, this approach requires prior knowledge
+capacity in handling nonlinear and complicated environ-                of the true MDP models, making it inapplicable in many
+ments. On the contrary, modern machine learning methods                RL problems where the system dynamics are unknown;
+have achieved significant empirical success in dealing with            Padakandla et al. (2020) developed a Context Q-learning
+nonlinearity and high-dimensionality by striking a balance             (Context QL) built upon the online Dirichlet change point
+between regularization bias and overfitting. However, the              (ODCP) algorithm (KJ et al., 2021). This approach applies
+resulting estimator’s asymptotic distribution is often diffi-          the Dirichlet likelihood test to the state-reward-next-state
+cult to establish, hampering tractable statistical inference.          triplet to test the stationarity assumption. Li et al. (2022)
+To address these challenges, in this paper, we develop a               proposed a CUSUM-type test statistic to test the stationarity
+novel offline procedure for testing the stationarity in the            of the optimal Q-function instead of directly tackling the
+MDP framework, bridging the gap between modern ML/RL                   potential changes in the state transition or reward function.
+methods and valid statistical inference.                               Our method is closely related to their method, although
+                                                                       there are a few key distinctions. First, their approach is
+Related work Non-stationary RL has been studied exten-
+                                                                       model-free in the sense that they focused on the Q-function
+sively in recent year (Da Silva et al., 2006; Auer et al., 2008;
+                                                                       whereas our method is model-based, which directly tests
+Gajane et al., 2018; Cheung et al., 2020; Igl et al., 2020;
+                                                                       the underlying components of the MDP model. Second,
+Padakandla et al., 2020; Fei et al., 2020; Mao et al., 2021;
+                                                                       their method requires linear function approximation, which
+Chen et al., 2021; 2022; Wei et al., 2022; Chen & Luo, 2022;
+                                                                       can be less favorable in high-dimensional complex environ-
+Feng et al., 2022). Several approaches have been proposed
+                                                                       ments. On the contrary, our method harnesses the power of
+to address non-stationarity in RL. For example, Gajane et al.
+                                                                       modern ML algorithms to handle high-dimensionality.
+(2018) and Cheung et al. (2020) proposed model-based so-
+lutions using slide windows to estimate the MDP models                 Our contributions Methodologically, we propose a novel
+to handle non-stationarity. Auer et al. (2008), Ortner et al.          offline procedure to test the stationarity of MDPs in high-
+(2020) and Mao et al. (2021) incorporated a “forgetting”               dimensional settings. The proposed test is doubly robust in
+strategy by periodically restarting the learning algorithm             the sense that it controls the type-I error as long as either the
+with estimators built on newly collected data. However,                transition function or the marginal state-action distribution
+these methods typically assume a discrete state and action             function is correctly specified – a key property that allows us
+space, limiting their applicability in real-world applications         to utilize modern ML methods for hypothesis testing. Our
+involving continuous states and actions. Jin et al. (2018)             proposal shares similar spirits with the double ML (DML)
+and Jin et al. (2021) considered the episodic MDP setting              method for causal inference (Chernozhukov et al., 2018),
+and tackle non-stationarity by learning a separate policy              the double RL (DRL) method for policy evaluation (Kallus
+for each time point. However, their single-time-based ap-              & Uehara, 2022), and the double generative adversarial net-
+proaches may suffer from low sample efficiency when en-                works algorithm for conditional independence testing (Shi
+countering MDPs with a certain degree of homogeneity (i.e.,            et al., 2021b). These methods are developed via the classi-
+transition and reward functions are homogeneous across                 cal semiparametric theory in the statistics literature (Tsiatis,
+
+                                                                   2
+                           A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+2006). Nonetheless, it is highly nontrivial to derive a doubly            To simplify the notation, for any quantity f , let fb denote the
+robust test procedure for the stationarity assumption, due                estimator of f and f ∗ denote the oracle version of f .
+to the existence of absolute value operator in the CUSUM
+statistic which makes the target parameter non-pathwise                   2.2. A Naive Plug-in Estimator
+differentiable (Kennedy, 2022). Therefore, existing techni-
+cal tools are not directly applicable to constructing the test            The following quantity forms the basis of the proposed test
+statistic. Theoretically, we proved the size (i.e., type-I error          procedure,
+control) and double robustness property of the proposed test               Z Z PT −1
+under a general bidirectional asymptotic framework which                               j=t   h(s′ )pj (s′ |a, s)
+                                                                                                                   ds′
+allows either the number of trajectories or the length of hori-                               T −t
+zon to diverge to infinity. Empirically, we demonstrate the                         Z Pt−1       ′      ′
+                                                                                          j=0 h(s )pj (s |a, s)
+efficacy of our test in terms of change point detection and                     −                                    ds′ g(a, s)λ(da, ds), (1)
+                                                                                                    t
+policy learning in non-stationary environments through four
+numerical studies and a real-world health example.                        where g is some reference density function and λ is the
+                                                                          Lebesgue or counting measure, depending on whether the
+2. Preliminaries                                                          state-action pair is continuous or not. The function h in
+                                                                          Equation 1 is a test function from a rich function class.
+2.1. Data and Problem Formulation                                         There are a variety of choices for h. For example, if
+Consider a Markov Decision Process M ≡ (S, A, P, R, γ),                   h(s′ ) = r, we are comparing the difference in expected
+where S is the state space, A is the action space, P :                    reward before and after time point t. Alternatively, h can
+S ×A×S → R≥0 is the transition function, R : S ×A → R                     be chosen to depend on the next state as well. We rewrite
+is the reward function and γ ∈ [0, 1) is the discount factor.             Equation 1 as follows,
+The objective of RL is to learn a policy π : S × A → R≥0 ,                Z
+which maximizes P   the expected discounted cumulative re-                    E[t,T ] [h(S ′ )|a, s] − E[0,t] [h(S ′ )|a, s] g(a, s)λ(da, ds),
+                      ∞
+ward: J (π) = E ( t=0 γ t r(st , at )), where s0 is sampled                                                                                  (2)
+from an initial state distribution ρ0 : S 7→ R≥0 (Sutton &
+Barto, 2018).                                                             where E[t1 ,t2 ] [h(S ′ )|a, s] = h(s′ )p[t1 ,t2 ] (s′ |a, s)ds′ for
+                                                                                                           R
+
+We consider testing stationarity of MDPs in an of-                        0 ≤ t1 < t2 ≤ T and p[t1 ,t2 ] is the pooled transition
+fline setting, where the dataset is fixed and collected                   function (or a mixture of transition functions) from time t1
+by some behavior policies, without further interaction                    to t2 − 1,
+with the environment. The dataset can be summa-                                                                     2 −1
+                                                                                                                   tX
+rized as {(Si,j , Ai,j , Ri,j , Si,j+1 )1≤i≤N,0≤j≤T −1 } where                                 ′              1
+                                                                                    p[t1 ,t2 ] (S |s, a) =               pj (S ′ |s, a).
+(Si,j , Ai,j , Ri,j , Si,j+1 ) is the experience tuple from sub-                                           t2 − t1 j=t
+                                                                                                                         1
+ject i at time point j, N is the number of subjects and
+T is the number of time points. A change point tcpt ∈                     Notice that when t1 ≪ t2 , it is much easier to accurately
+[1, 2, · · · , T − 1] is defined as the location at which the state       estimate the pooled function p[t1 ,t2 ] than to accurately esti-
+transition or reward function changes. We assume all data                 mate each individual pj , due to that we have a larger amount
+trajectories are i.i.d. so that the change points (if exist) are          of data in the interval [t1 , t2 ].
+homogeneous across all subjects in terms of their locations.
+                                                                          Under H0 , we have p[t1 ,t2 ] = p∗ for any 0 ≤ t1 < t2 ≤ T ,
+In other words, all the subjects have the same number and
+                                                                          where p∗ denotes the oracle transition function. Therefore,
+locations of the change points.
+                                                                          Equation 2 equals 0 for any function h. Under Ha , there
+Next, we formally formulate the hypothesis testing prob-                  exists certain test function h and t such that Equation 2 is
+lem of interest. Without loss of generality, we include the               strictly positive. It can thus be used to detect non-stationarity.
+reward R into the set of the next state S ′ , as both tran-               This motivates us to consider the following plug-in estimator
+sition and reward function depend on state S and action                   for Equation 2,
+A. Let pt (s′ |s, a) denote the “new” transition function at              Z
+time t that combines the transition and reward function de-                   Eb [t,T ] [h(S ′ )|a, s] − E
+                                                                                                         b [0,t] [h(S ′ )|a, s] g(a, s)λ(da, ds),
+fined earlier. In this paper, we focus on testing the null
+hypothesis H0 : {pt (s′ |a, s)}t are homogeneous over time                                                                                   (3)
+where t < T , that is, pt (s′ |a, s) is a constant function
+of time index t. The alternative hypothesis is given by                   where E     b [t :t ] denotes certain estimator for E[t ,t ] by replac-
+                                                                                          1 2                                    1 2
+
+Ha : {pt (s′ |a, s)}t has at least one change point.                      ing p[t1 ,t2 ] with an estimated transition function, denoted as
+                                                                          pb[t1 ,t2 ] .
+
+                                                                      3
+                             A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Modern ML algorithms (e.g., lasso, neural networks) are                     any h ∈ H and t ∈ (0, T − 1), we have
+particularly well-suited to estimate p[t1 ,t2 ] even in high-
+dimensional scenarios. These methods perform well through                                         Eψi∗ = 0, i = 1, . . . , N,                        (4)
+regularization for variance reduction and balancing regular-
+                                                                            where ψi∗ denotes a version of ψi with the oracle transition
+ization bias and overfitting. However, naively plugging these
+                                                                            and marginal state-action distribution functions. More-
+ML estimators into Equation 2 will cause a heavy plug-in
+                                                                            over, the above equation is doubly robust, i.e., for any
+bias, which invalids the subsequent testing procedure. On
+                                                                            p[t,T ] , p[0,t] , ω[t,T ] and ω[0,t] , the following holds as long
+the other hand, kernel smoothers or local polynomial re-
+                                                                            as either p[t,T ] = p∗[t,T ] = p∗ , p[0,t] = p∗[0,t] = p∗ or
+gression with properly chosen bandwidth parameter have                                     ∗                  ∗
+                                                                            ω[t,T ] = ω[t,T     ] , ω[0,t] = ω[0,t] ,
+small plug-in biases. However, these methods suffer from
+the curse of dimensionality, which makes them less suitable
+                                                                                                   Eψi = 0, i = 1, . . . , N.                        (5)
+in high-dimensional settings.
+In the next section, we propose a doubly robust estimator                   Theorem 3.1 show that Eψi = 0 under the null, as long as
+for Equation 2 to alleviate the plug-in bias. Specifically, we              either the transition or the marginal state-action distribution
+proposed a sample augmented version of the naive estimator                  function is correct specified. An empirical estimator for
+Equation 3 which offers additional protection against po-                   Eψi can thus be constructed to detect the deviation from the
+tential misspecification of the transition model. The doubly                null. Specifically, a large value of the estimator suggests
+robust property entitles us to enjoy the superior approxima-                that the alternative hypothesis is likely to hold. To construct
+tion capacity of modern ML methods, as well as to conduct                   this estimator, we propose to use some flexible modern ML
+valid statistical inference (e.g., able to control type-I and               methods (e.g., random forest and neural network) to esti-
+type-II errors).                                                            mate (p[t,T ] , p[0,t] ) and (ω[t,T ] , ω[0,t] ), and use (b
+                                                                                                                                       p[t,T ] , pb[0,t] )
+                                                                            and (bω[t,T ] , ω
+                                                                                            b[0,t] ) to denote the corresponding estimators.
+                                                                            Consider the following sample estimator,
+3. Method
+                                                                                                                 N
+3.1. A Doubly Robust Estimator                                                                              1 Xb
+                                                                                                                  ψi .                               (6)
+                                                                                                            N i=1
+To begin with, we introduce some notations. Define the
+following random variable                                                   We make a few remarks. First, compared to the naive plug-
+          ϕ[t1 ,t2 ] (S, A, S ′ ; h) = sgn (∆(A, S; h, t))                  in estimator Equation 3, Equation 6 is doubly robust due to
+                                           
+                                                 g(A, S)                    the inclusion of the extra data augmentation term, making it
+      × h(S ′ ) − E[t1 ,t2 ] [h(S ′ )|A, S]                     ,           less sensitive to the impact of the biases of ML estimators.
+                                              ω[t1 ,t2 ] (A, S)
+                                                                            Specifically, as we show in the proof of Theorem 3.1, the
+where ∆(a, s; h, t) = E[t,T ] [h(S ′ )|a, s] − E[0,t] [h(S ′ )|a, s],       bias of Equation 6 will decay at a faster rate than that of
+sgn(·) denotes the sign function and ω[t1 ,t2 ] is the pooled               the ML estimator. To the contrary, the bias of Equation 3 is
+marginal state-action distribution from time t1 to t2 − 1.                  likely to be of the same order of magnitude as that of the
+Moreover, define                                                            ML estimator, which can lead to invalid inference. Second,
+       Z                                                                    as commented earlier, the presence of an absolute value
+                                                                            function in Equation 2 brings additional challenges in de-
+ ψi =     ∆(t, h; a, s) g(a, s)λ(da, ds)
+                                                                            riving the doubly robust estimator, leading to the violation
+               T −1                                                         of the pathwise differentiability. It essentially prevents us
+           1 X
+     +              ϕ[t,T ] (Si,j , Ai,j , Si,j+1 ; h)                      from construct the doubly robust estimator based on the
+         T − t j=t                                                          efficient influence function (EIF, see e.g., Kennedy, 2022) in
+             t                                                              the classical semiparametric theory. We remark that many
+         1X
+     −         ϕ[0,t] (Si,j , Ai,j , Si,j+1 ; h), i = 1, . . . , N.         of the existing doubly robust estimators (e.g., DML, DRL)
+         t j=0                                                              are obtained based on the EIF. Nonetheless, our approach
+                                                                            is inspired by these estimators which typically involve an
+The first line on the right-hand-side corresponds to Equa-                  outcome regression-type model and a propensity score-type
+tion 2. The last two lines form an augmentation term which                  model. Third, the proposed test statistic is based on a modi-
+is of mean zero when the transition model is correctly speci-               fied version of Equation 6 that involve both sample splitting
+fied. When the transition model is misspecified, however, it                and cross fitting. These techniques enable us to derive the
+offers additional protection to reduce the bias of ψi resulting             limiting distribution of the estimator under minimal condi-
+from the misspecification. More specifically, we present the                tions. We formally introduce our test statistic in the next
+double robustness property in the following theorem.                        section. A pseudocode summarizing our proposal is given
+Theorem 3.1 (Double robustness). Suppose H0 holds. For                      in Algorithm 1.
+
+                                                                        4
+                               A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+3.2. Test Statistic                                                             3.3. Bootstrap for the p-value
+Suppose we have at least two subjects, i.e., N ≥ 2. We                          In this section, we propose a Gaussian multiplier bootstrap
+begin by randomly and evenly dividing the subject indices                       method to approximate the limiting distribution of Γ  b and
+{1, ..., N } into two disjoint sets I1 and I2 , that is, |I1 | =                compute the resulting p-value. First, define a bootstrapped
+⌈N/2⌉ and I2 = {1, ..., N } − I1 . Let (b     p[t,T ] , pb[0,t] ) and           version of S(t,
+                                                                                             b h) which approximates S(t,b h) in distribu-
+(b
+ ω[t,T ] , ω
+           b[0,t] ) denote the corresponding modern ML estima-                                     q
+                                                                                tion, denoted as S (t, h),
+                                                                                                  b
+tors trained on the subjects in I1 . For t ∈ (0, T − 1), h ∈ H,
+define                                                                                              N     T −1
+                                                                                          1      XX
+                                                                                                      ei,j ϕb[t,T ] (Si,j , Ai,j , Si,j+1 ; h)
+                                        1 X b                                       |I2 |(T − t)
+                  S(t,
+                   b h) = σ  b(t, h)−1         ψi ,                (7)                            j=t
+                                                                                                   i∈I2
+                                       |I2 |                                                               t
+                                                i∈I2
+                                                                                               1 XX
+                                                                                         −              ei,j ϕb[0,t] (Si,j , Ai,j , Si,j+1 ; h),
+                                  b2 (t, h) has the form
+where sampling variance estimator σ                                                          |I2 |t j=0
+                                                                                                   i∈I2
+                   t−1 
+                X X                                                 2
+       1                                                                        where {ei,j }i∈I2 ,0≤j≤T −1 are i.i.d. standard normal ran-
+                               ϕb[0,t] (Si,j , Ai,j , Si,j+1 ; h) − µ
+  |I2 |T − 1
+                                                                    b
+               i∈|I2 |   j=0                                                    dom variables. q is the bootstrap sample index that takes
+                    T −1
+                                                                                values from {1, ..., Q}, where Q is the total number of boot-
+                                                                   2 
+                    X                                                           strap samples. The bootstrapped test statistic is given by
+                +           ϕb[t,T ] (Si,j , Ai,j , Si,j+1 ; h) − µ
+                                                                  b     ,
+                    j=t                                                                                         p
+                                                                                  bq =
+                                                                                  Γ         max          max       t(T − t)/T 2 Sbq (t, h) (9)
+                             Pt−1                                                      ϵT ≤t≤(1−ϵ)T b∈{1,...,B}
+      b = |I21|T i∈|I2 |
+                  P
+where µ                            j=0 ϕ[0,t] (Si,j , Ai,j , Si,j+1 ; h)
+                                        b
+   PT −1 b
++    j=t ϕ[t,T ] (Si,j , Ai,j , Si,j+1 ; h) .    The purpose of                 We use these empirical bootstrap values to approximate the
+                                                                                distribution of Γ
+                                                                                                b under H0 . The resulting p-value can be
+          b2 (t, h) in Equation 7 is to normalize S(t,
+including σ                                                b h) for                                 PQ       b≥Γ  b q )/Q. We reject the null
+                                                                                calculated by pb = q=1 I(Γ
+each different t and h, in order to make them comparable.
+                                                                                when pb is smaller than a given significance level α.
+Our test statistic is given by
+                                      p                                         Algorithm 1 Proposed testing procedure
+  Γ
+  b=         max             max       t(T − t)/T 2 S(t,
+                                                    b hb ). (8)
+        ϵT ≤t≤(1−ϵ)T b∈{1,...,B}                                                 1: Input: B, ϵ, α, Q and N observed data with horizon T .
+                                                                                 2: Output: p-value pb
+We make a few explanations here. First, the proposed test
+                                                                                 3: Randomly generate B random testing functions {hb ∈
+statistic is an adaption to the CUSUM statistic, which is
+                                                                                    H}1≤b≤B
+popular in the field of change point detection (Csörgö et al.,
+                                                                                 4: Randomly divide index set {1, ..., N } into I1 and I2 ,
+1997). Second, {hb }b=1,..,B are a set of test functions from
+                                                                                    where |I1 | = ⌈N/2⌉ and I2 = {1, ..., N } − I1 .
+H. The number of test functions B is allowed to diverge
+                                                                                 5: Estimate nuisance functions pb[0,t] , pb[t,T ] and ω
+                                                                                                                                       b[0,t] ,
+with the number of subjects N and the horizon T . In par-
+                                                                                    ωb[t,T ] for each ϵT ≤ t ≤ (1 − ϵ)T on I1 .
+ticular, the proposed test controls the type-I error as long
+as B = O (N T )c1 for any constant c1 > 0. Nonetheless,                          6: Compute S(t,  b hb ) according to Equation 7 for each
+considering a number of test functions instead of a single                          b = 1, ..., B and ϵT ≤ t ≤ (1 − ϵ)T using samples in
+one greatly increases the power of the resulting test. In order                     I2 . Compute Γ   b according to Equation 8.
+to make the function class to be rich and flexible, we set                       7: Using Gaussian multiplier bootstrap to calculate Γb q for
+H to be the class of neural networks (NNs). Specifically,                           eachP   q = 1, ..., Q according to Equation 9. Calculate
+                                                                                              Q     b≥Γ   b q )/Q.
+we consider NNs with one hidden layer, a finite number                              pb = q=1 I(Γ
+of hidden nodes, and sigmoid activation function.The pa-
+rameters of the NNs are initialized by the standard normal
+distribution. In general, the NNs with multiple layers can                      3.4. Theoretical Analysis
+be adopted in our approach, however, we opt to use a single
+hidden layer since they produced similar performance in our                     In this section, we establish the size property of our test
+numerical studies. Third, ϵ ∈ (0, 0.5) denotes some user-                       (e.g., valid type-I error control) under the framework of
+defined boundary removal parameter. The purpose of using                        bidirectional asymptotics, which allows either N → ∞ or
+ϵ is to ensure that there is sufficient data at the boundary of                 T → ∞. We begin by introducing the following conditions.
+the trajectory so that the estimators
+                             p          can be trained well (Yu                 Condition 3.2. The reference density function g is fully
+& Chen, 2017). Fourth, t(T − t)/T 2 is the weighting                            supported on the intersection of the support sets of ω[0,t]
+factor commonly used in CUSUM statistic, which is used                          and ω[t,T ] , that is, for all (a, s) ∈ A × S where g(a, s) > 0,
+to adjust the scales for different t.                                           we have ω[0,t] (a, s) > 0 and ω[t,T ] (a, s) > 0.
+
+                                                                            5
+                              A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Condition 3.3. Under H0 , {S0,t }t≥0 is a strictly stationary                     Besides, the condition for nonparametric convergence rates
+Markov chain.                                                                     can often be attainable for various modern ML methods
+Condition 3.4. Under H0 , the Markov chain {S0,t }t≥0 is                          in high-dimensional settings, which is commonly used in
+geometrically ergodic when T → ∞.                                                 classical semiparametric literature (Biau, 2012; Hestness
+                                                                                  et al., 2017; Kallus & Uehara, 2022; Chernozhukov et al.,
+Condition 3.5. Suppose there exists some κ1 , κ2 , κ3 , κ4 ∈
+                                                                                  2018; Farrell et al., 2021). This rate assumption can be
+(0, 1/2) such that
+                                                                                  further relaxed by introducing high-order influence func-
+                              1/2                                           tion (Mukherjee et al., 2017; Robins et al., 2017; Shi et al.,
+                          ∗
+          2
+                                        = O (N T )−κ1 ,
+                                                     
+       E dT V pb[t,T ] , p[t,T ]                                                  2021a). The boundedness assumption in condition (C3.5)
+                                  1/2                                          is reasonable since g is user-specified. In practice, we can
+                                                                                  set g = 1t ωb[0,t] + T 1−t ω
+             
+                                                                                                             b[t,T ] to automatically satisfy this
+        E d2T V pb[0,t] , p∗[0,t]        = O (N T )−κ2 ,
+                                                      
+                                                                                  condition.
+                                 1/2
+                                                                                  Before presenting the theorem of the test consistency, we
+           
+                          ∗
+      E d2T V ω                         = O (N T )−κ3 ,
+                                                     
+               b[t,T ] , ω[t,T ]                                                  define
+                               1/2                                                                                                                
+                                                                                  ϕ̃[t ,t ] (S0,j , A0,j , S0,j+1 ; h) = sgn ∆(A
+                                                                                            1   2
+                                                                                                                                b 0,j , S0,j ; h, t)
+                         ∗
+          2
+                                      = O (N T )−κ4 ,
+                                                   
+       E dT V ωb[0,t] , ω[0,t]
+                                                                                                                                            g(A0,j , S0,j )
+                                                                                      h(S0,j+1 ) − E∗[t1 ,t2 ] [h(S ′ )|A0,j , S0,j ]
+                                                                                                                                    
+                                                                                                                                          ∗                        .
+                                                                                                                                         ω[t1 ,t2 ] (A0,j , S0,j )
+where {κi }i=1,...,4 satisfy κ1 + κ3 > 1/2, κ2 + κ4 > 1/2.
+                        g            g
+In addition, suppose ωb[t,T   and ωb[0,t] are uniformly bounded.                  Theorem 3.6 (Size). Assume (C3.2) - (C3.5) hold. Sup-
+                            ]
+                                                                                  pose B = O((N T )c1 ) for any c1 > 0 and t = O(T )
+                                                                                  for any t ∈ [ϵT, (1 − ϵ)T ]. In addition, suppose there
+Condition (C3.2) requires careful selection of the reference                      exists some ζ > 0 such that for any i ∈ I2 , j ∈
+density g. The support of g should be a subset of the inter-                      [0, T − 1], the variance of ϕ̃[0,t] (S0,j , A0,j , S0,j+1 ; h) and
+section of the support of ω[0,t] and ω[t,T ] . This ensures that                  ϕ̃[t,T ] (S0,j , A0,j , S0,j+1 ; h) are both greater than ζ for
+              g          g
+the ratios ω[0,t] and ω[t,T ]
+                              are bounded. Condition (C3.3)                       any h, t, then as either N → ∞ or T → ∞, we have
+is imposed to simplify the presentation. The proposed test                        P(b p ≤ α|H0 ) = α + o(1).
+remains valid if condition (C3.3) violates (e.g., the behavior
+policy is allowed to change). Similar assumptions are com-                        Theorem 3.6 implies that the size of the proposed test can be
+monly imposed in the literature (see e.g., Kallus & Uehara,                       controlled at the nominal level as either N → ∞ or T → ∞.
+2022). Condition (C3.4) is mild and strictly weaker than                          The proof of this theorem relies on the high-dimensional
+the uniform ergodicity condition required for the existing                        martingale central limit theorem (Belloni & Oliveira, 2018),
+RL algorithms (Bhandari et al., 2018; Zou et al., 2019), al-                      which allows the use of Gaussian multiplier bootstrap to
+lowing us to establish the asymptotic distribution of our test                    acquire valid p-value.
+statistic when T → ∞. We also remark that most existing
+theoretical analysis in the RL literature require the transition                  4. Numerical Experiments
+tuples to be independent over time. Our framework is more
+general in that it allows temporal dependence.                                    In this section, we conduct four numerical experiments
+                                                                                  to assess the finite-sample performance of the proposed
+Condition (C3.5) requires that the total variation distance                       testing procedure. A toy example (Section 4.2) illustrates
+between the oracle distribution and the estimated distribu-                       the double robustness property of the proposed test statis-
+tion satisfies certain nonparametric convergence rate (e.g.,                      tic against model misspecification. Synthetic data (Sec-
+slower than (N T )−1/2 ). Under this condition, the bias of                       tion 4.3) demonstrates that the proposed testing proce-
+the proposed test statistic decays at a rate of O((N T )−1/2 ),                   dure is superior to two existing offline stationarity tests
+much faster than those in Condition (C3.5). This is made                          in high-dimensional RL setting. A grid-world example
+possible due to the double robustness property (Theorem                           (Section 4.4) demonstrates the usefulness of the proposed
+3.1), which ensures a zero bias if either one of two nui-                         test in the task of learning optimal policy. Semi-synthetic
+sance function estimators (b  p[0,t] , pb[t,T ] ) or (b
+                                                      ω[0,t] , ω
+                                                               b[t,T ] ) is       data (Section 4.5) illustrates the usefulness of the pro-
+replaced with its oracle value. Together with the Neyman or-                      posed test in the real world setting. Code is available at
+thogonality property (Chernozhukov et al., 2018) of the esti-                     https://github.com/jtwang95/Double CUSUM RL.
+mating equation Equation 6, the bias term can be represented
+as a product of the difference between two nuisance function
+                                                                                  4.1. Implementation Details
+estimators and corresponding oracle values. Consequently,
+as long as κ1 + κ2 > 1/2 holds, the test statistic converges                      To implement the proposed test, the boundary removal pa-
+at a parametric rate, asymptotically controls the type-I error.                   rameter ϵ is set to 0.1. 5000 bootstrap samples are gen-
+
+                                                                              6
+                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+erated to compute p-values. We set the reference density                      M1 or M2 is correctly specified. Additionally, the proposed
+g = T 1−t ω
+          b[t,T ] + 1t ω
+                       b[0,t] . To achieve a trade-off between the            test achieves the highest power when both M1 and M2 are
+computational complexity and accuracy, we do not test all                     correctly specified.
+the t ∈ [ϵT, (1 − ϵ)T ] in practice. Instead, we recommend
+selecting a subset as the candidate change points.                                                                0.8
+                                                                                                                        a.              Size
+                                                                                                                                                                 0.8
+                                                                                                                                                                       b.             Power
+
+
+                                                                                                                  0.7                                            0.7
+When dealing with discrete-state-space MDP, we consider
+
+
+
+
+                                                                                Empirical rejection probability
+                                                                                                                  0.6                                            0.6
+
+the class of testing function H to be the cross table of states                                                   0.5                                            0.5                                            misspecified
+                                                                                                                                                                                                                     M1, M2
+
+and actions, where the function value of each state-action                                                        0.4                                            0.4                                                 M2
+                                                                                                                                                                                                                     M1
+                                                                                                                  0.3                                            0.3                                                 None
+pair is sampled from standard normal distribution. The                                                            0.2                                            0.2
+
+transition functions p[0,t] , p[t,T ] and the marginal distribu-                                                  0.1                                            0.1
+
+
+tions ω[0,t] and ω[t,T ] are estimated through frequency tables.                                                  0.0
+                                                                                                                        0.1   0.3        0.5         0.7   0.9
+                                                                                                                                                                 0.0
+                                                                                                                                                                       0.1   0.3        0.5         0.7   0.9
+                                                                                                                                Misspecification level                         Misspecification level
+In the context of continuous state-space MDP with binary
+actions, H is set to be the class of feed-forward neural net-
+                                                                              Figure 1. Empirical rejection probability of the proposed test under
+works that contain a single hidden layer with 32 neurons and                  stationary and non-stationary environments with different misspec-
+the sigmoid function as the activation function. We use the                   ification settings for M1 and M2 (see Section 4.2 for details).
+neural network to estimate the transition functions p[0,t] and                Results are aggregated over 500 replications.
+p[t,T ] . To be more specific, we assume each transition func-
+tion is a multivariate normal distribution with mean µ(s, a)
+and diagonal covariance matrix with diagonal elements be-                     4.3. Synthetic Data: Superiority under Higher
+ing σ 2 (s, a), where µ(s, a = 0), µ(s, a = 1), σ 2 (s, a = 0)                     Dimensions
+and σ 2 (s, a = 1) are four separate neural networks. The                     In this simulation, we compare the proposed test with two
+loss function is set to be the Gaussian negative log likeli-                  existing stationarity tests in offline reinforcement learning,
+hood. ω[0,t] and ω[t,T ] are learned through a combination                    which is ODCP (Padakandla et al., 2020) and CUSUM-RL
+of Gaussian mixture model (GMM) and logistic regression                       (Li et al., 2022). We consider two non-stationary scenar-
+(LR), where the GMM is used to learn the marginal dis-                        ios in this simulation: (i) the non-stationarity occurs in
+tribution of state S and the LR is to learn the conditional                   the state transition function; (ii) the non-stationarity occurs
+distribution of action A given S. The number of mixture                       in the reward function. For each scenario, we consider
+components (n = 1, ..., 4) and the covariance type (full,                     four settings where the dimension of the state variables dS
+tied, diagonal, spherical) for GMM are selected with the                      can take values from {1, 10, 20, 30}. In all scenarios, we
+lowest Bayesian information criterion (BIC). Monte Carlo                      fix N = 100, T = 50, α = 0.05 and true change point
+integration with M = 100 Monte Carlo samples is used to                       tcpt = 25. In this simulation, we set B = 100 and use a
+approximate values of the integrals and expectations.                         multi-split version of the test with 10 random binary splits
+                                                                              and set γ = 0.15 to combine the p-values (see details in
+4.2. A Toy Example                                                            Appendix A). Besides, we sequentially apply the proposed
+First, we consider a toy example with one-dimensional dis-                    test on time interval [T − κ, T ], where κ takes values from
+crete state and binary action to illustrate the doubly ro-                    sequence 10, 15, 20, 25, 30, 35, 40. This strategy together
+bust property. Specifically, we aim to demonstrate the                        with the stationarity test can be used to detect the location
+size and the power of the proposed test when either M1 =                      of the single change point. According to the data generating
+(p[0,t] , p[t,T ] ) or M2 = (ω[0,t] , ω[t,T ] ) is corrected specified.       mechanism, the null hypothesis, where the MDP is station-
+We consider the following four scenarios: (i) both M1 and                     ary, is true when κ ≤ 25 and the alternative hypothesis is
+M2 are correct; (ii) only M1 is misspecified; (iii) only M2 is                true when κ > 25. See Appendix B.2 for more details about
+misspecified; (iv) M1 and M2 are both misspecified. To mis-                   the simulation settings.
+specify M1 and M2 , we inject some noise into the correct                     Figure 2 shows the empirical rejection probability profiles of
+models with noise level λ ∈ {0.1, 0.3, 0.5, 0.7, 0.9}, where                  the proposed test, ODCP and CUSUM-RL over different κ.
+higher values correspond to higher noise. See Appendix                        Note that two different test statistics are used for CUSUM-
+B.1 for more details about data generating mechanism and                      RL, which are integral (int) and normalized (nor) version.
+model misspecification.                                                       It can be seen that the proposed test and two CUSUM-
+Figure 1 shows the empirical rejection probabilities of the                   RL tests can properly control the type I error in all cases,
+proposed test under a) stationary and b) non-stationary en-                   while the ODCP test fails to control the type I error in high-
+vironments with different misspecification settings for M1                    dimensional settings. Power-wise, the proposed test and
+and M2 . It can be seen that the proposed test can control                    CUSUM-RL can correctly identify the true change point
+the type I error rate at the nominal level as long as either                  when dS = 1, while only the proposed test can identify the
+                                                                              true change point when dS ≥ 10.
+
+                                                                          7
+                                                                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+
+
+
+                                                                                                                Change in State Transition
+                                                   state dimension=1                           state dimension=10                              state dimension=20                          state dimension=30
+                                  1.00                                            1.00                                         1.00                                           1.00
+Empirical rejection probability
+
+
+
+
+                                  0.80                                            0.80                                         0.80                                           0.80
+
+
+                                  0.60                                            0.60                                         0.60                                           0.60
+
+
+                                  0.40                                            0.40                                         0.40                                           0.40
+
+
+                                  0.20                                            0.20                                         0.20                                           0.20
+
+                                  0.05                                            0.05                                         0.05                                           0.05
+                                  0.00                                            0.00                                         0.00                                           0.00
+                                         10   15     20     25    30   35    40          10   15   20     25    30   35   40          10   15     20     25    30   35   40          10   15   20     25    30   35   40
+                                                          kappa                                         kappa                                          kappa                                        kappa
+
+
+
+
+Figure 2. Empirical rejection probabilities (y-axis) over different κ (x-axis) under different simulation scenarios for state dimension
+dS = 1, 10, 20, 30. The results are aggregated over 100 replications. See details in Section 4.3.
+
+
+4.4. Grid World Example                                                                                                                          in batch online RL updates its policy only at pre-determined
+                                                                                                                                                 time points, which has many real world applications. For in-
+In this section, we apply the proposed test to a grid world
+                                                                                                                                                 stance, in the context of mobile health, the sensor data is col-
+example to illustrate the usefulness of the test for policy
+                                                                                                                                                 lected from different wearable/mobile devices, which may
+learning. The grid size is set to be 4 ∗ 4 and the action space
+                                                                                                                                                 need regular human-in-the-loop data quality checks, linkage
+is set to {right, up, left, down}. We manually introduce non-
+                                                                                                                                                 and integration, making batch updating a practical and safer
+stationarity to the environment and set the true change point
+                                                                                                                                                 choice in healthcare settings. We consider the presence of
+tcpt = 25, where N = 100 and T = 50. The environment
+                                                                                                                                                 change points in this setup, which violates the stationarity
+setting is detailed in Appendix B.3. To implement the test,
+                                                                                                                                                 assumption. The data generation process involves collecting
+we set B = 100 and adapt a multi-split version of the test
+                                                                                                                                                 an initial offline dataset with a random policy, updating the
+(see details in Appendix A) with 10 random splits.
+                                                                                                                                                 policy using a chosen policy update strategy, and using the
+Empirical rejection probabilities over different κ are shown                                                                                     updated policy equipped with ϵ-greedy algorithm to collect
+in Appendix Figure B.1. It can be seen that the proposed test                                                                                    new data. This process is repeated periodically, aiming to
+can capture the true change point 25 correctly. Furthermore,                                                                                     maximize the cumulative reward obtained. The simulated
+we evaluate the value of two policies: the first one is learned                                                                                  semi-synthetic dataset has a similar structure to the real
+based on the data points after the detected change point                                                                                         world dataset in Section 5. In this simulation, we consider
+([tcpt , T ]); the second one is based on the whole dataset                                                                                      two scenarios: (i) three change points , (ii) no change point.
+([0, T ]), which ignores the non-stationarity. To perform pol-                                                                                   See more details on simulation setup in Appendix B.4.
+icy evaluation, we first use Q-learning to learn the ”optimal”
+                                                                                                                                                We compare the average reward obtained using four differ-
+policy; we then simulate 100 trajectories with a length of
+                                                                                                                                                ent policy update strategies: (i) proposed, where the policy
+horizon 50 using the learned policies to calculate the av-
+                                                                                                                                                is learned using the data after the most recent change point
+erage discounted (0.9) reward as the value. According to
+                                                                                                                                                identified by the proposed test; (ii) random, which uses an
+Appendix Figure B.1, it can be seen that the learned policy
+                                                                                                                                                unchanged random policy throughout the simulation; (iii)
+based on the data after the change point achieves a higher
+                                                                                                                                                slide, the policy that is updated using the most recent data
+value.
+                                                                                                                                                that falls into a slide window; (iv) stationary, where the
+                                                                                                                                                policy is only updated once using the initial offline dataset;
+4.5. Semi-synthetic Data                                                                                                                        (v) oracle, where the policy is learned using data after true
+In this simulation, we explore a batch online RL scenario                                                                                       change points. According to Figure 3, it can be seen that
+where the policy is periodically updated during data collec-                                                                                    the average reward received using the proposed strategy is
+tion and updated policy is subsequently used to collect new                                                                                     similar to oracle, slide and stationary when the environ-
+data. Unlike traditional online RL, the online learning agent                                                                                   ment is stationary, indicating that the proposed test brings
+                                                                                                                                                no harm to policy learning when dealing with stationary
+
+                                                                                                                                           8
+                                                                A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+                                                                                                                                                                             Internal Medicine                                  Family Practice
+RL problems. However, in the non-stationary environment,                                                                                                   1.00                                              1.00
+
+only proposed yield average rewards close to oracle, while
+                                                                                                                                                           0.80                                              0.80
+the other three strategies exhibit significantly lower average
+rewards. This indicates that (i) policy learning is neces-                                                                                                 0.60                                              0.60
+
+
+
+
+                                                                                                                                                 P-value
+sary for RL problem (random v.s. oracle); (ii) ignoring                                                                                                    0.40                                              0.40
+
+the non-stationarity can lead to poor performance of the
+                                                                                                                                                           0.20                                              0.20
+learned policy (stationary v.s. oracle); (iii) failure to detect
+                                                                                                                                                           0.05                                              0.05
+the change points can lead to poor performance of learned                                                                                                  0.00
+
+                                                                                                                                                                  3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+                                                                                                                                                                                                             0.00
+
+                                                                                                                                                                                                                    3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
+policy (slide v.s. oracle).                                                                                                                                                     kappa                                             kappa
+
+
+
+
+                                         No change point                                                Three change points
+                                                                                                                                                 Figure 4. P-values of applying the proposed test to the IHS data
+                      200                                                            1500                                                        over different κ for two specialities. See details in Section 5.
+                                                                                     1250
+                      150
+
+                                                                                                                                                 6. Discussion
+Difference in Value
+
+
+
+
+                                                                                     1000
+
+                      100
+                                                                                      750
+                                                                             value
+
+
+
+
+                       50                                                             500
+                                                                                                                                                 In this paper, we present a novel doubly robust testing proce-
+                                                                                      250
+                        0                                                                                                                        dure to test the stationarity assumption in high dimensional
+                                                                                        0
+                      −50
+                                                                                     −250
+                                                                                                                                                 offline reinforcement learning. Our proposed test combines
+                            detected-   detected-   detected-   detected-                   detected-   detected-   detected-   detected-
+                                                                                                                                                 the approximation capability of modern machine learning
+                             oracle      random       slide     stationary                   oracle      random       slide     stationary
+                                                                                                                                                 methods with semiparametric techniques in statistical infer-
+                                                                                                                                                 ence, resulting in a test with sound statistical property under
+Figure 3. Boxplot of the difference in value between the proposed                                                                                the bidirectional asymptotics. We demonstrate that the pro-
+and four other policy update strategies. See details in Section 4.5.                                                                             posed test has proper control of type I error and achieves
+                                                                                                                                                 higher empirical power through both theoretical analysis
+                                                                                                                                                 and extensive numerical studies.
+5. Real Data Application
+                                                                                                                                                 However, policy learning based on our approach is applica-
+In this section, we apply the proposed testing procedure to                                                                                      ble only in the presence of some degree of homogeneity in
+a real-world mobile health dataset collected from a micro-                                                                                       the dataset. Specifically, we require that 1) some episodes
+randomized trial (MRT) aiming at improving the health                                                                                            share the locations of change points and 2) the MDPs are
+outcomes of the medical interns in the United States by                                                                                          piecewise constant. In contrast, single-time-based policy
+sending the push notifications through mobile app to induce                                                                                      learning approaches, such as those proposed by Jin et al.
+and maintain healthy behaviors related to physical activity,                                                                                     (2018) and Jin et al. (2021), can handle completely hetero-
+sleep and mood (NeCamp et al., 2020). For each week, each                                                                                        geneous setting where the MDP models for each time and
+intern has probability 0.75 to be randomized into the notifi-                                                                                    each episode are different. However, these methods may
+cation arm, and the intern in this arm has probability 0.5 to                                                                                    be inferior to detection-based approaches in the presence
+receive daily push notifications. Conversely, interns in the                                                                                     of homogeneity. In summary, both single-time based meth-
+no-notification arm receive no push notifications through                                                                                        ods and detection-based methods have their own merits.
+the week. The trial lasted for 21 weeks, during which wear-                                                                                      While single-time based methods are capable of handling
+able devices recorded daily measurements of step count,                                                                                          more general settings, detection-based methods demonstrate
+sleep duration, and mood score. We model the data using                                                                                          greater sample efficiency when homogeneity is present. The-
+MDP, where St is the averaged step count, sleep duration                                                                                         oretical work on investigating the performance guarantee
+and mood score at week t and Rt is the average step count                                                                                        of policy learning following detection-based methods and
+at week t + 1. At = 1 if the intern is randomized into the                                                                                       the robustness under deviations from homogeneity warrant
+notification arm at week t. We apply the proposed test to                                                                                        future research.
+assess the stationarity assumption for this dataset.
+                                                                                                                                                 Acknowledgements
+To implement the proposed method, we set ϵ = 0.1 and
+search for change points between week 3 to 18. We set B =                                                                                        We would like to thank the anonymous (meta-)reviewers of
+1000, M = 100. See implementation details in Appendix                                                                                            ICML 2023 for helpful comments. This work was partially
+B.5. The p-values of the stationarity test for different κ                                                                                       supported by grants from the National Institutes of Health
+are shown in Figure 4. It can be seen that there exists a                                                                                        (R01 MH101459 to ZW; R01 NR013658 to JW & ZW), an
+change point for the interns in specialty Internal Medicine                                                                                      EPSRC grant EP/W014971/1 (to CS) and an investigator
+at week 16 (= T − (κ∗ − 1) = 21 − (6 − 1); κ∗ is the first                                                                                       grant from Precision Health Initiative at the University of
+κ with p-value < 0.05), while no change point is detected                                                                                        Michigan to ZW. We thank Dr. Srijan Sen for generous
+for interns in specialty Family Practice.                                                                                                        support in the IHS data access.
+
+                                                                                                                                             9
+                        A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+References                                                           Chen, X. and Christensen, T. M. Optimal uniform conver-
+                                                                       gence rates and asymptotic normality for series estimators
+Alegre, L. N., Bazzan, A. L., and da Silva, B. C. Quantifying
+                                                                       under weak dependence and weak conditions. Journal of
+  the impact of non-stationarity in reinforcement learning-
+                                                                       Econometrics, 188(2):447–465, 2015.
+  based traffic signal control. PeerJ Computer Science, 7:
+  e575, 2021.                                                        Chen, X., Zhu, X., Zheng, Y., Zhang, P., Zhao, L., Cheng,
+                                                                       W., Cheng, P., Xiong, Y., Qin, T., Chen, J., et al.
+Arulkumaran, K., Deisenroth, M. P., Brundage, M., and
+                                                                       An adaptive deep rl method for non-stationary environ-
+  Bharath, A. A. Deep reinforcement learning: A brief
+                                                                       ments with piecewise stable context. arXiv preprint
+  survey. IEEE Signal Processing Magazine, 34(6):26–38,
+                                                                       arXiv:2212.12735, 2022.
+  2017.
+                                                                     Chernozhukov, V., Chetverikov, D., and Kato, K. Gaussian
+Auer, P., Jaksch, T., and Ortner, R. Near-optimal regret
+                                                                       approximations and multiplier bootstrap for maxima of
+  bounds for reinforcement learning. Advances in neural
+                                                                       sums of high-dimensional random vectors. The Annals of
+  information processing systems, 21, 2008.
+                                                                       Statistics, 41(6), December 2013. ISSN 0090-5364. doi:
+Bai, C., Wang, L., Yang, Z., Deng, Z., Garg, A., Liu, P., and          10.1214/13-AOS1161.
+  Wang, Z. Pessimistic bootstrapping for uncertainty-driven
+                                                                     Chernozhukov, V., Chetverikov, D., and Kato, K. De-
+  offline reinforcement learning, 2022.
+                                                                       tailed proof of nazarov’s inequality. arXiv preprint
+Basseville, M., Nikiforov, I. V., et al. Detection of abrupt           arXiv:1711.10696, 2017.
+  changes: theory and application, volume 104. prentice
+                                                                     Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E.,
+  Hall Englewood Cliffs, 1993.
+                                                                       Hansen, C., Newey, W., and Robins, J. Double/debiased
+Belloni, A. and Oliveira, R. I. A high dimensional central             machine learning for treatment and structural parame-
+  limit theorem for martingales, with applications to context          ters. The Econometrics Journal, 21(1):C1–C68, 01 2018.
+  tree models. arXiv preprint arXiv:1809.02741, 2018.                  ISSN 1368-4221. doi: 10.1111/ectj.12097.
+Bercu, B. and Touati, A. Exponential inequalities for self-          Cheung, W. C., Simchi-Levi, D., and Zhu, R. Reinforcement
+  normalized martingales with applications. The Annals                 learning for non-stationary markov decision processes:
+  of Applied Probability, 18(5):1848 – 1869, 2008. doi:                The blessing of (more) optimism. In International Con-
+  10.1214/07-AAP506.                                                   ference on Machine Learning, pp. 1843–1854. PMLR,
+                                                                       2020.
+Bhandari, J., Russo, D., and Singal, R. A finite time anal-
+  ysis of temporal difference learning with linear function          Csörgö, M., Csörgö, M., Horváth, L., et al. Limit theorems
+  approximation. In Conference on learning theory, pp.                 in change-point analysis. John Wiley & Sons, 1997.
+ 1691–1692. PMLR, 2018.
+                                                                     Da Silva, B. C., Basso, E. W., Bazzan, A. L., and Engel,
+Biau, G. Analysis of a random forests model. The Journal               P. M. Dealing with non-stationary environments using
+  of Machine Learning Research, 13(1):1063–1095, 2012.                 context detection. In Proceedings of the 23rd interna-
+                                                                       tional conference on Machine learning, pp. 217–224,
+Bradley, R. C. Basic Properties of Strong Mixing Con-                  2006.
+  ditions. A Survey and Some Open Questions. Proba-
+  bility Surveys, 2(none):107 – 144, 2005. doi: 10.1214/             Farrell, M. H., Liang, T., and Misra, S. Deep neural net-
+  154957805100000104.                                                  works for estimation and inference. Econometrica, 89(1):
+                                                                       181–213, 2021.
+Cai, H., Shi, C., Song, R., and Lu, W. Deep jump learning
+  for off-policy evaluation in continuous treatment settings.        Fei, Y., Yang, Z., Wang, Z., and Xie, Q. Dynamic regret
+  Advances in Neural Information Processing Systems, 34:               of policy optimization in non-stationary environments.
+  15285–15300, 2021.                                                   Advances in Neural Information Processing Systems, 33:
+                                                                       6743–6754, 2020.
+Chen, B., Liu, Z., Zhu, J., Xu, M., Ding, W., Li, L., and
+  Zhao, D. Context-aware safe reinforcement learning                 Feng, F., Huang, B., Zhang, K., and Magliacane, S. Fac-
+  for non-stationary environments. In 2021 IEEE Interna-               tored adaptation for non-stationary reinforcement learn-
+  tional Conference on Robotics and Automation (ICRA),                 ing. arXiv preprint arXiv:2203.16582, 2022.
+  pp. 10689–10695. IEEE, 2021.
+                                                                     Fujimoto, S., Meger, D., and Precup, D. Off-policy deep
+Chen, L. and Luo, H. Near-optimal goal-oriented reinforce-             reinforcement learning without exploration. In Interna-
+  ment learning in non-stationary environments. arXiv                  tional conference on machine learning, pp. 2052–2062.
+  preprint arXiv:2205.13044, 2022.                                     PMLR, 2019.
+
+                                                                10
+                        A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Gajane, P., Ortner, R., and Auer, P. A sliding-window                 micro-randomized optimization trial of heartsteps. Annals
+  algorithm for markov decision processes with arbitrar-              of Behavioral Medicine, 53(6):573–582, 2019.
+  ily changing rewards and transitions. arXiv preprint
+  arXiv:1805.10066, 2018.                                           Kober, J., Bagnell, J. A., and Peters, J. Reinforcement
+                                                                      learning in robotics: A survey. The International Journal
+Hadoux, E., Beynier, A., and Weng, P. Sequential decision-            of Robotics Research, 32(11):1238–1274, 2013.
+  making under non-stationary environments via sequential
+                                                                    Kosorok, M. R. and Laber, E. B. Precision medicine. Annual
+  change-point detection. In Learning over multiple con-
+                                                                      review of statistics and its application, 6:263–286, 2019.
+  texts (LMCE), 2014.
+                                                                    Kumar, A., Fu, J., Soh, M., Tucker, G., and Levine, S.
+Hamari, J., Koivisto, J., and Sarsa, H. Does gamification
+                                                                      Stabilizing off-policy q-learning via bootstrapping error
+  work?–a literature review of empirical studies on gamifi-
+                                                                      reduction. Advances in Neural Information Processing
+  cation. In 2014 47th Hawaii international conference on
+                                                                     Systems, 32, 2019.
+  system sciences, pp. 3025–3034. Ieee, 2014.
+                                                                    Levine, S., Kumar, A., Tucker, G., and Fu, J. Offline rein-
+Hestness, J., Narang, S., Ardalani, N., Diamos, G., Jun, H.,          forcement learning: Tutorial, review, and perspectives on
+  Kianinejad, H., Patwary, M., Ali, M., Yang, Y., and Zhou,           open problems. arXiv preprint arXiv:2005.01643, 2020.
+ Y. Deep learning scaling is predictable, empirically. arXiv
+  preprint arXiv:1712.00409, 2017.                                  Li, M., Shi, C., Wu, Z., and Fryzlewicz, P. Testing stationar-
+                                                                       ity and change point detection in reinforcement learning.
+Igl, M., Farquhar, G., Luketina, J., Boehmer, W., and                  arXiv preprint arXiv:2203.01707, 2022.
+  Whiteson, S. Transient non-stationarity and generali-
+   sation in deep reinforcement learning. arXiv preprint            Liao, P., Greenewald, K., Klasnja, P., and Murphy, S. Per-
+   arXiv:2006.05826, 2020.                                            sonalized heartsteps: A reinforcement learning algorithm
+                                                                      for optimizing physical activity. Proceedings of the ACM
+Jin, C., Allen-Zhu, Z., Bubeck, S., and Jordan, M. I. Is              on Interactive, Mobile, Wearable and Ubiquitous Tech-
+   q-learning provably efficient? Advances in neural infor-           nologies, 4(1):1–22, 2020.
+   mation processing systems, 31, 2018.
+                                                                    Liao, P., Qi, Z., Wan, R., Klasnja, P., and Murphy, S. A.
+Jin, Y., Yang, Z., and Wang, Z. Is pessimism provably                 Batch policy learning in average reward markov decision
+   efficient for offline rl? In International Conference on           processes. The Annals of Statistics, 50(6):3364–3387,
+   Machine Learning, pp. 5084–5096. PMLR, 2021.                       2022.
+Kallus, N. and Uehara, M. Efficiently breaking the curse            Liu, S., See, K. C., Ngiam, K. Y., Celi, L. A., Sun, X., and
+  of horizon in off-policy evaluation with double reinforce-          Feng, M. Reinforcement learning for clinical decision
+  ment learning. Operations Research, 2022.                           support in critical care: comprehensive review. Journal
+                                                                      of medical Internet research, 22(7):e18477, 2020.
+Kennedy, E. H. Semiparametric doubly robust targeted
+  double machine learning: a review. arXiv preprint                 Luckett, D. J., Laber, E. B., Kahkoska, A. R., Maahs,
+  arXiv:2203.06469, 2022.                                             D. M., Mayer-Davis, E., and Kosorok, M. R. Estimat-
+                                                                      ing dynamic treatment regimes in mobile health using
+Kilinc, O. and Montana, G. Reinforcement learning for                 v-learning. Journal of the American Statistical Associa-
+  robotic manipulation using simulated locomotion demon-              tion, 115(530):692–706, 2020.
+  strations. Machine Learning, pp. 1–22, 2022.
+                                                                    Mahmood, A. R., Korenkevych, D., Vasan, G., Ma, W.,
+Kiran, B. R., Sobh, I., Talpaert, V., Mannion, P., Al Sal-           and Bergstra, J. Benchmarking reinforcement learning
+  lab, A. A., Yogamani, S., and Pérez, P. Deep reinforce-           algorithms on real-world robots. In Conference on robot
+  ment learning for autonomous driving: A survey. IEEE               learning, pp. 561–591. PMLR, 2018.
+  Transactions on Intelligent Transportation Systems, 23
+  (6):4909–4926, 2021.                                              Mao, W., Zhang, K., Zhu, R., Simchi-Levi, D., and Basar, T.
+                                                                     Near-optimal model-free reinforcement learning in non-
+KJ, P., Singh, N., Dayama, P., Agarwal, A., and Pandit, V.           stationary episodic mdps. In International Conference on
+  Change point detection for compositional multivariate              Machine Learning, pp. 7447–7458. PMLR, 2021.
+  data. Applied Intelligence, pp. 1–26, 2021.
+                                                                    Marling, C. and Bunescu, R. The ohiot1dm dataset for
+Klasnja, P., Smith, S., Seewald, N. J., Lee, A., Hall, K.,           blood glucose level prediction: Update 2020. In CEUR
+  Luers, B., Hekler, E. B., and Murphy, S. A. Efficacy of            workshop proceedings, volume 2675, pp. 71. NIH Public
+  contextually tailored suggestions for physical activity: a         Access, 2020.
+
+                                                               11
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Meinshausen, N., Meier, L., and Bühlmann, P. P-values for            Robins, J. M., Li, L., Mukherjee, R., Tchetgen, E. T., and
+ high-dimensional regression. Journal of the American                   van der Vaart, A. Minimax estimation of a functional
+ Statistical Association, 104(488):1671–1681, 2009.                     on a structured high-dimensional model. The Annals
+                                                                        of Statistics, 45(5):1951 – 1987, 2017. doi: 10.1214/
+Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A. A., Veness,            16-AOS1515. URL https://doi.org/10.1214/
+ J., Bellemare, M. G., Graves, A., Riedmiller, M., Fidje-               16-AOS1515.
+ land, A. K., Ostrovski, G., et al. Human-level control
+ through deep reinforcement learning. nature, 518(7540):              Sen, S., Kranzler, H. R., Krystal, J. H., Speller, H., Chan, G.,
+ 529–533, 2015.                                                         Gelernter, J., and Guille, C. A prospective cohort study
+Mukherjee, R., Newey, W. K., and Robins, J. M. Semipara-                investigating factors associated with depression during
+ metric efficient empirical higher order influence function             medical internship. Archives of general psychiatry, 67(6):
+ estimators. arXiv preprint arXiv:1705.07577, 2017.                     557–565, 2010.
+
+Murphy, S. A. Optimal dynamic treatment regimes. Jour-                Shalev-Shwartz, S., Shammah, S., and Shashua, A. Safe,
+ nal of the Royal Statistical Society: Series B (Statistical            multi-agent, reinforcement learning for autonomous driv-
+ Methodology), 65(2):331–355, 2003.                                     ing. arXiv preprint arXiv:1610.03295, 2016.
+NeCamp, T., Sen, S., Frank, E., Walton, M. A., Ionides,               Shao, K., Tang, Z., Zhu, Y., Li, N., and Zhao, D. A survey
+  E. L., Fang, Y., Tewari, A., Wu, Z., et al. Assessing real-           of deep reinforcement learning in video games. arXiv
+  time moderation for developing adaptive mobile health                 preprint arXiv:1912.10944, 2019.
+  interventions for medical interns: micro-randomized trial.
+ Journal of medical Internet research, 22(3):e15033, 2020.            Shcherbina, A., Hershman, S. G., Lazzeroni, L., King, A. C.,
+Nie, X., Brunskill, E., and Wager, S. Learning when-to-treat            O’Sullivan, J. W., Hekler, E., Moayedi, Y., Pavlovic, A.,
+  policies. Journal of the American Statistical Association,            Waggott, D., Sharma, A., et al. The effect of digital
+  116(533):392–409, 2021.                                               physical activity interventions on daily step count: a ran-
+                                                                        domised controlled crossover substudy of the myheart
+Ortner, R., Gajane, P., and Auer, P. Variational regret bounds          counts cardiovascular health study. The Lancet Digital
+  for reinforcement learning. In Uncertainty in Artificial              Health, 1(7):e344–e352, 2019.
+  Intelligence, pp. 81–90. PMLR, 2020.
+                                                                      Shi, C., Wan, R., Chernozhukov, V., and Song, R. Deeply-
+Padakandla, S., KJ, P., and Bhatnagar, S. Reinforcement                 debiased off-policy interval estimation. In Interna-
+  learning algorithm for non-stationary environments. Ap-               tional Conference on Machine Learning, pp. 9580–9591.
+  plied Intelligence, 50:3590–3606, 2020.                               PMLR, 2021a.
+Plaat, A., Kosters, W., and Preuss, M. Deep model-based
+  reinforcement learning for high-dimensional problems, a             Shi, C., Xu, T., Bergsma, W., and Li, L. Double Genera-
+  survey. arXiv preprint arXiv:2008.05598, 2020.                        tive Adversarial Networks for Conditional Independence
+                                                                        Testing. Journal of Machine Learning Research, 22(285):
+Qi, Z., Liu, D., Fu, H., and Liu, Y. Multi-armed angle-                 1–32, 2021b. ISSN 1533-7928.
+  based direct learning for estimating optimal individual-
+  ized treatment rules with various outcomes. Journal of              Shi, C., Wang, X., Luo, S., Zhu, H., Ye, J., and Song,
+  the American Statistical Association, 115(530):678–691,               R. Dynamic Causal Effects Evaluation in A/B Testing
+  2020.                                                                 with a Reinforcement Learning Framework. Journal of
+                                                                        the American Statistical Association, 0(0):1–13, January
+Qian, M. and Murphy, S. A. Performance guarantees for                   2022a. ISSN 0162-1459. doi: 10.1080/01621459.2022.
+  individualized treatment rules. Annals of statistics, 39(2):          2027776.
+  1180, 2011.
+Raghu, A., Komorowski, M., Ahmed, I., Celi, L., Szolovits,            Shi, C., Zhang, S., Lu, W., and Song, R. Statistical inference
+  P., and Ghassemi, M. Deep reinforcement learning for                  of the value function for reinforcement learning in infinite-
+  sepsis treatment. arXiv preprint arXiv:1711.09602, 2017.              horizon settings. Journal of the Royal Statistical Society
+                                                                        Series B, 84(3):765–793, 2022b.
+Rezaeifar, S., Dadashi, R., Vieillard, N., Hussenot, L.,
+  Bachem, O., Pietquin, O., and Geist, M. Offline rein-               Shi, L., Li, G., Wei, Y., Chen, Y., and Chi, Y. Pessimistic
+  forcement learning as anti-exploration. In Proceedings                q-learning for offline reinforcement learning: Towards
+  of the AAAI Conference on Artificial Intelligence, vol-               optimal sample complexity. In International Conference
+  ume 36, pp. 8106–8114, 2022.                                          on Machine Learning, pp. 19967–20025. PMLR, 2022c.
+
+                                                                 12
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Silver, D., Hubert, T., Schrittwieser, J., Antonoglou, I., Lai,        Zou, S., Xu, T., and Liang, Y. Finite-sample analysis for
+   M., Guez, A., Lanctot, M., Sifre, L., Kumaran, D., Grae-              sarsa with linear function approximation. Advances in
+   pel, T., et al. A general reinforcement learning algorithm            neural information processing systems, 32, 2019.
+   that masters chess, shogi, and go through self-play. Sci-
+   ence, 362(6419):1140–1144, 2018.
+Sutton, R. S. and Barto, A. G. Reinforcement learning: An
+  introduction. MIT press, 2018.
+Tsiatis, A. A. Semiparametric theory and missing data.
+  Springer, 2006.
+Uehara, M. and Sun, W. Pessimistic model-based offline
+  reinforcement learning under partial coverage. arXiv
+  preprint arXiv:2107.06226, 2021.
+Van Hasselt, H., Guez, A., and Silver, D. Deep reinforce-
+  ment learning with double q-learning. In Proceedings of
+  the AAAI conference on artificial intelligence, volume 30,
+  2016.
+Wang, L., Zhou, Y., Song, R., and Sherwood, B. Quantile-
+ optimal treatment regimes. Journal of the American Sta-
+ tistical Association, 113(523):1243–1254, 2018.
+Wei, C.-Y., Dann, C., and Zimmert, J. A model selection
+ approach for corruption robust reinforcement learning.
+ In International Conference on Algorithmic Learning
+ Theory, pp. 1043–1096. PMLR, 2022.
+Xie, T., Cheng, C.-A., Jiang, N., Mineiro, P., and Agarwal,
+  A. Bellman-consistent pessimism for offline reinforce-
+  ment learning. Advances in neural information process-
+  ing systems, 34:6683–6694, 2021.
+Xu, Z., Li, Z., Guan, Q., Zhang, D., Li, Q., Nan, J., Liu,
+  C., Bian, W., and Ye, J. Large-scale order dispatch in on-
+  demand ride-hailing platforms: A learning and planning
+  approach. In Proceedings of the 24th ACM SIGKDD
+ International Conference on Knowledge Discovery &
+ Data Mining, pp. 905–913, 2018.
+Yu, M. and Chen, X. Finite sample change point infer-
+  ence and identification for high-dimensional mean vec-
+  tors. arXiv preprint arXiv:1711.08747, 2017.
+Zhou, W., Zhu, R., and Qu, A. Estimating optimal infi-
+  nite horizon dynamic treatment regimes via pt-learning.
+  Journal of the American Statistical Association, accepted,
+  2022.
+Zhou, Y., Qi, Z., Shi, C., and Li, L. Optimizing pessimism
+  in dynamic treatment regimes: A bayesian learning ap-
+  proach. In International Conference on Artificial Intelli-
+  gence and Statistics, pp. 6704–6721. PMLR, 2023.
+Zhu, R., Zhao, Y.-Q., Chen, G., Ma, S., and Zhao, H. Greedy
+  outcome weighted tree learning of optimal personalized
+  treatment rules. Biometrics, 73(2):391–400, 2017.
+
+                                                                  13
+                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+A. A Multi-split Version of the Test
+To mitigate the randomness introduced by a single binary split of the dataset, we propose a multi-split version of our test. The
+multi-split version can have not only better reproducibility and asymptotic family-wise error control, but also helps improve
+the power when the sample size is limited (Meinshausen et al., 2009). The main idea is to repeat the proposed single split
+method multiple times with different split, and calculate a combined p-value from all the single p-values. To be more specific,
+                                                                                       (1)  (1)        (L)   (L)
+suppose we carry out the binary split on the samples {1, ..., N } for L times. Let {(I1 , I2 ), ..., (I1 , I2 )} denote each
+                                                           (l)   (l)
+binary split. We then apply Algorithm 1 on each split (I1 , I2 ) for l = 1, ..., L and acquire p-values {b  p(l) }l=1,...,L . Then
+the combined p-value can be calculated following the idea of Meinshausen et al. (2009),
+                                                                                     
+                                       combined                      (l)
+                                     pb         = min 1, qγ {b     p /γ; l = 1, ..., L} .
+
+where qγ is the empirical γ-quantile function. We can reject H0 if pbcombined is less than the pre-defined significance level α.
+
+B. More on the numerical study
+B.1. Simulation Setting for Toy Example
+B.1.1. G ENERAL S ETTINGS
+We consider two settings, which are stationary environment and non-stationary environment with one change point, in this
+toy example. In both settings, we fix time T = 10 and sample size N = 30. The significance level α is set to 0.05. The
+candidate pool of change points is set to be {3, 4, 5, 6, 7, 8}. We set the state space S = {0, 1}, action space A = {0, 1} and
+reward space R = {0, 1}. The action is randomly sampled from a Bernoulli distribution with probability 0.5. To misspecify
+M1 and M2 , we inject noise to the corresponding true model with a specified noise level λ ∈ {0.1, 0.3, 0.5, 0.7, 0.9}. The
+misspecified model can be written as Mmis = λMnoise + (1 − λ)Mtrue where higher values of λ refer to more noise. We
+apply the proposed test procedure to 500 randomly simulated data to calculate the empirical rejection probability in each
+setting. Of note, under this toy example, we are able to derive the exact form of M1 and M2 theoretically. We plug in the
+true models to the test statistic, without estimating them, so that we can directly assess the influence of misspecification on
+the size and power by eliminating estimation error.
+
+B.1.2. S ETTING FOR S TATIONARY E NVIRONMENT
+We initiate the state variable from an independent Bernoulli distribution with support {0, 1} and satisfies that P(S0 =
+0) = P(S0 = 1) = 0.5. The action is randomly sampled from Bernoulli distribution with binary support and satisfies that
+P(At = 1) = P(At = 1) = 0.5 for all t ∈ [0, T ). We define the transition function P(St+1 = St |St , At ) = 0.8I(At =
+1) + 0.2I(At = 0) and reward function P(Rt = 1|St , At ) = 0.8I(St = 1) + 0.2I(St = 0).
+Recall that M1 = (p[0,t] , p[t,T ] ) and M2 = (ω[0,t] , ω[t,T ] ). The noise for M1 is shown in Table 1 and 2. The noise for M2 is
+shown in Table 3.
+
+                     Rt                                   Rt                                    Rt                                   Rt
+               0            1                        0           1                         0          1                         0          1
+          0   0.45        0.05                0    0.45        0.05                 0    0.45        0.05                0    0.25        0.25
+ St+1                                 St+1                                 St+1                                 St+1
+          1   0.45        0.05                1    0.45        0.05                 1    0.45        0.05                1    0.25        0.25
+   (a) St = 0, At = 0                   (b) St = 0, At = 1                   (c) St = 1, At = 0                   (d) St = 1, At = 1
+
+              Table 1. Injected noise for transition function p[0,t] under stationary situation depicted in Appendix B.1.2.
+
+
+B.1.3. S ETTING FOR N ON - STATIONARY S ITUATION
+We consider piece-wise stationary situation. Denote the true location of the change point as tcpt ∈ (0, T ). The initial state
+S0 is sampled from Bernoulli distribution with P(S0 = 1) = 0.5. The transition function is defined as:
+                                                
+                                                  0.8I(At = 1) + 0.2I(At = 0) if t ∈ [0, tcpt )
+                      P(St+1 = St |St , At ) =                                                     ,
+                                                  0.7I(At = 1) + 0.3I(At = 0) if t ∈ [tcpt , T ]
+
+                                                                      14
+                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+                     Rt                                          Rt                                   Rt                              Rt
+               0            1                               0           1                        0          1                    0          1
+          0   0.01        0.49                     0      0.05        0.45                 0   0.05        0.45           0    0.05        0.15
+ St+1                                   St+1                                      St+1                            St+1
+          1   0.05        0.45                     1      0.05        0.45                 1   0.05        0.45           1    0.05        0.75
+   (a) St = 0, At = 0                      (b) St = 0, At = 1                      (c) St = 1, At = 0              (d) St = 1, At = 1
+
+              Table 2. Injected noise for transition function p[t,T ] under stationary situation depicted in Appendix B.1.2.
+
+                                                          St                                          St
+                                                     0          1                                0          1
+                                             0      0.2        0.3                         0    0.4        0.2
+                                      At                                            At
+                                             1      0.3        0.2                         1    0.2        0.2
+                                           (a) t < ⌈T /2⌉                                (b) t ≥ ⌈T /2⌉
+
+                  Table 3. Injected noise for ω[0,t] and ω[t,T ] under stationary situation depicted in Appendix B.1.2.
+
+
+and the reward function is defined as:
+                                                           
+                                                               0.8I(St = 1) + 0.2I(St = 0) if t ∈ [0, tcpt )
+                                 P(Rt = 1|St , At ) =
+                                                               0.7I(St = 1) + 0.3I(St = 0) if t ∈ [tcpt , T ]
+
+The noise model for M1 is shown in Table 4 and the noise model for M2 is shown in Table 5.
+
+                     Rt                                          Rt                                   Rt                              Rt
+               0            1                               0           1                        0          1                    0          1
+          0   0.45        0.05                     0      0.45        0.05                 0   0.45        0.05           0    0.25        0.25
+ St+1                                   St+1                                      St+1                            St+1
+          1   0.45        0.05                     1      0.45        0.05                 1   0.45        0.05           1    0.25        0.25
+   (a) St = 0, At = 0                      (b) St = 0, At = 1                      (c) St = 1, At = 0              (d) St = 1, At = 1
+
+      Table 4. Injected noise for transition functions p[0,t] and p[t,T ] under non-stationary situation depicted in Appendix B.1.3.
+
+
+B.2. Simulation Setting for Synthetic Data
+B.2.1. G ENERAL S ETTINGS
+The date generating mechanism is described as follows. Denote dS as the dimension of the states. We set the state space
+S = RdS , action space A = {0, 1} and reward space R = R. Before collecting data, we take burn-in step by discarding
+first 1000 samples. During burn-in, the actions are generated from i.i.d. Bernoulli random variables with probability
+P(A = 1) = 0.5. The data starts to be collected after burn-in step. The settings for two change point types are detailed in
+Appendix B.2.2 and B.2.3. We also introduce the behavior policy change in the data generating mechanism, that is, the
+action for time t < 0.7T is i.i.d. random variables sampled from Bernoulli distribution with P(A = 1) = 0.5 and the action
+for time t ≥ 0.7T is generated from Bernoulli distribution with P(A = 1) = 0.8.
+We set the neural network that used to learn (p[0,t] , p[t,T ] ) to have two hidden layers with 128 nodes in each layer along with
+ReLU activation function. The corresponding learning rate is set to 0.001. The number of test functions B is set to 100. We
+also clip the density ratios g/ω[0,t] and g/ω[t,T ] with maximum value being 100.
+
+B.2.2. S CENARIO I: C HANGE IN R EWARD F UNCTION
+Transition function
+
+                                                 P(St+1 |St , At ) = N (0.5At 1dS ◦ St , IdS ).
+
+Reward function before change point t∗
+
+                                                           rt (St , At ) = −1.51TdS St .
+
+                                                                             15
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+                                                                          St
+                                                                     0          1
+                                                               0    0.2        0.3
+                                                        At
+                                                               1    0.3        0.2
+
+               Table 5. Injected noise for ω[0,t] and ω[t,T ] under non-stationary situation depicted in Appendix B.1.3.
+
+
+Reward function after change point t∗
+
+                                                       rt (St , At ) = 1TdS St .
+
+B.2.3. S CENARIO II: C HANGE IN S TATE T RANSITION
+Transition function before change point t∗
+
+                                         P(St+1 |St , At ) = N (−0.5At 1dS ◦ St , IdS ).
+
+Transition function after change point t∗
+
+                              P(St+1 |St , At ) = N (0.5 ∗ [log10 (dS ) + 0.5] ∗ At 1dS ◦ St , IdS ).
+
+Reward function
+
+                                                rt (St , At ) = −0.25At S̄t2 + 4S̄t ,
+
+where S̄ is the average value over all dimensions.
+
+B.3. Simulation Setting for Grid World Example
+In this example, the grid size is to be 4 ∗ 4 and hence the number of states is 16 (S = {0, 1, ..., 15}). The agent is initialized
+at location (0, 0) (s0 = 0). At each time point, the agent has four actions to take with equal probability, which are right, up,
+left and down. The agent will not move if it chooses an action that causes itself to potentially step across the boundary. The
+immediate rewards the agent receives are shown in Figure B.1(a). Next, we introduce the mechanism of non-stationarity
+into the simulation. We set the length of horizon of collected trajectories to be T = 50, and the true change point is set
+at time point tcpt = 25. Before tcpt , the agent has 0.8 probability to take a wrong move, which is the opposite direction
+as instructed. For example, if the agent choose action right, it will move left with 0.8 probability and move right with 0.2
+probability. On the contrary, the agent has 0.1 probability to take a wrong move after tcpt .
+
+B.4. Simulation Setting for Semi-synthetic Data
+The motivation for this simulation study is as follows. Consider an unknown environment, and the researcher wants to an
+optimal policy so that the sum of future reward is maximized. The researcher may start to collect data by making interactions
+with the unknown environment using a random policy (e.g., equal probability to perform action 0 or 1 if binary actions)
+and then learn the optimal policy from this offline dataset. This is the usual setting for RL that assumes the environment
+does not change, while the underlying model dynamics of the environment can change at some certain time points under
+non-stationarity. To mimic this problem of interest, we consider the following simulation scheme.
+First, we simulate an offline dataset with N subjects and T0 time points. The offline dataset serves as the initial experience
+the researcher interacts with the environment, from which some policies can be learned. Note that there may exist some
+change points in the offline dataset, therefore simply applying stationarity-assumed RL algorithm on the whole offline
+dataset can lead to useless policy. Second, we update the policy based on the offline dataset based on different strategies.
+For example, we can apply the proposed test to find the change points in the offline dataset and use the data points after the
+most recent change points to learn the optimal policy. Or we can ignore the presence of change points and learn the policy
+using whole offline dataset. Third, we combine the learned policy with ϵ-greedy algorithm for action selection to simulate
+the next ∆T data points. We repeat this procedure until some stopping criteria. Then we can calculate the average reward,
+which can serve as a performance metric for different policy update strategies.
+
+                                                                   16
+                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+
+
+
+                                                                            1.00
+                0       0      0      0
+                0       1      1      1                                     0.80
+
+
+
+
+                                             Empirical Reject Probability
+                0       1      2      2                                     0.60
+                0       1      2      3
+                                                                            0.40
+                Method          Value
+                                                                            0.20
+                Overall          1.53
+                                                                            0.05
+               Proposed          2.03                                       0.00
+                                                                                   10   15    20     25    30   35   40
+                                                                                                   kappa
+
+Figure B.1. a) The table shows the immediate reward the agent receives for each state. b) The table shows the values obtained by different
+policy learning strategies through 100 simulated trajectories. c) Empirical rejection probabilities (y-axis) over different κ (x-axis) for the
+grid world example. The results are aggregated over 100 simulations. See details in Section 4.4.
+
+
+
+
+The setting of the simulation is described as follows. To mimic the characteristics of real-world data, we first use the data
+from IHS study to learn an MDP generating model. The state St is defined as the concatenation of the cubic root of average
+daily step count at week t, thus the dimension is 7. The reward Rt is defined as the cubic root of average weekly step count
+at week t + 1. The action At is a binary variable, which indicates whether the subjects receive the intervention (i.e., push
+notification in IHS study) at week t + 1. We assume the transition function p(St+1 , Rt |St , At ) follows a multivariate normal
+distribution with mean µ(St , At ) and diagonal covariance matrix Σ. We use a neural network with [32, 64, 32] structure
+to approximate µ(St , At ) and the diagonal elements of Σ are estimated using the sampling variance of the residuals of
+each component. The number of subjects N is set to 200 and the length of offline dataset T0 is set to 20. The number of
+newly collected time points ∆T is set to 20. The locations of the change points are pre-selected prior to each simulation
+and we assume the length of the gap between two change points follows a Poisson distribution with parameter λ = 30.
+Three types of change point are considered: (i) change in the mean (µ(St , At )) of the transition function; (ii) change in the
+variance (Σ) of the transition function; (iii) change in the reward function. Each type of change point is selected with fixed
+probability. We consider two scenarios in this numerical study: (i) there are 3 change points in the dataset; (ii) there is no
+change point in the dataset. The structure of the neural network used to learn (p[0,t] , p[t,T ] ) is set to be two hidden layers
+with 128 nodes in each layer along with ReLU activation function. We use double deep Q network (double DQN) (Mnih
+et al., 2015; Van Hasselt et al., 2016) as the policy learning algorithm. The neural net with structure [32, 64, 128, 64, 32]
+serves as the backbone of the Q network and the discount factor is set to 0.9.
+
+B.5. Real World Example
+To implement the test, we adapt a multi-split version of the test (see details in Appendix A) with 10 random splits. The
+structure of the neural network used to learn the transition functions p[0,t] and p[t,T ] are set to [64, 64], where the number of
+training epochs is set to 500.
+
+C. Notes on Non-pathwise Differentiability of (1)
+One common way to construct the doubly robust statistic is to use the Gateaux derivative. Here we try to use this way to
+derive the DR statistic w.r.t. Equation 1 and show that Equation 1 is not pathwise differentiable.
+
+                                                                                         17
+                          A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+The Gateaux derivative is defined as
+                                        ∂
+                                           ψ{(1 − ϵ)dP(z) + ϵδz′ }      = ϕ(z ′ ; P).
+                                        ∂ϵ                          ϵ=0
+The equation holds due to the definition of the influence function.
+The functional we used:
+                                                   T −1 Z
+                                                1 X
+                        ψ(P) = Eg(A,S)                     h(sp , r)dPj (Sp = sp , R = r|S = s, A = a)
+                                              T − t j=t
+                                                   t−1 Z                                              
+                                                  1X
+                                              −            h(sp , r)dPj (Sp = sp , R = r|S = s, A = a) .
+                                                  t j=0
+
+For the submodel Pϵ (Z = z) = (1 − ϵ)P(Z = z) + ϵ1(δz′ ), we have
+                                                       Pϵ (Z = z)             (1 − ϵ)P(Z = z) + ϵ1(z = z ′ )
+       Pϵ (Sp = sp , R = r|S = s, A = a) =                           =                                               .
+                                                   Pϵ (S = s, A = a)   (1 − ϵ)P(S = s, A = a) + ϵ1(s = s′ , a = a′ )
+Therefore, the Gateaux derivative is
+                                                              T −1
+                                                     "
+               d                               d X        1 XX
+                  ψ{(1 − ϵ)P(z) + ϵδz′ }     =                           h(sp , r)Pj,ϵ (Z = z|S = s, A = a)
+               dϵ                        ϵ=0   dϵ a,s T − t j=t s ,r
+                                                                    p
+
+                                                        t−1
+                                                                                                      #
+                                                      1 XX
+                                                    −            h(sp , r)Pj,ϵ (Z = z|S = s, A = a)
+                                                      t j=0 s ,r                                        ϵ=0
+                                                                       p
+
+                                                                     X dsgn(∆(t, h, ϵ; s, a, P))
+                                                                 =                                 ∆(t, h; s, a, P, ϵ)
+                                                                       a,s
+                                                                                    dϵ
+                                                                                             d∆(t, h, ϵ; s, a, P)
+                                                                 +sgn(∆(t, h; s, a, P, ϵ))                            .
+                                                                                                    dϵ            ϵ=0
+
+Here sgn(∆(t, h, ϵ; s, a, P)) is non-differentiable under H0 .
+
+D. Proof for Theorem 3.1
+Theorem 3.1 involves two parts: first, Eψi∗ = 0 if the transition functions p[0,t] , p[t,T ] and marginal state-action distributions
+ω[0,t] , ω[t,T ] are both correctly specified; second, Eψi = 0 if one out of the transition functions p[0,t] , p[t,T ] and marginal
+state-action distributions ω[0,t] , ω[t,T ] is correctly specified. First part is the direct consequence of the second part, therefore,
+we focus on the second part in this proof.
+
+Proof. When p[t,T ] = p[0,t] = p∗ , for any t, h we have ∆(a, s; h, t) ≡ 0, thus Equation 5 holds since sgn(0) = 0. When
+           ∗                  ∗
+ω[t,T ] = ω[t,T ] , ω[0,t] = ω[0,t] ,
+
+                T −1
+         n  1 X                                                                                        g(A0,j , S0,j ) o
+                     sgn (∆(A0,j , S0,j ; h, t)) h(S0,j+1 , R0,j ) − E[t,T ] [h(S ′ , R)|A0,j , S0,j ] ∗
+                                                
+        E
+          T − t j=t                                                                                    ω[t,T ] (A0,j , S0,j )
+          Z
+         = sgn (∆(A, S; h, t)) E∗ [h(S ′ , R)|A, S] − E[t,T ] [h(S ′ , R)|A, S] g(A, S)λ(A, S).
+                                                                                
+
+
+Similarly, we have
+               t−1
+            n1 X                                                                                    g(A0,j , S0,j ) o
+                   sgn (∆(A0,j , S0,j ; h, t)) h(S0,j+1 , R0,j ) − E[0,t] [h(S ′ , R)|A0,j , S0,j ] ∗
+                                              
+           E
+             t j=0                                                                                  ω[0,t] (A0,j , S0,j )
+             Z
+           = sgn (∆(A, S; h, t)) E∗ [h(S ′ , R)|A, S] − E[0,t] [h(S ′ , R)|A, S] g(A, S)λ(A, S).
+                                                                                    
+
+
+Combined two equations together, we show that Equation 5 holds. The doubly-robustness property thus follows.
+
+                                                                  18
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+E. Proof for Theorem 3.6
+Proof. Step 1. We begin by showing that any testing function h ∈ H is upper bounded by log(N T ). Recall that we set H to
+be the class of neural network with one hidden layer, finitely many hidden nodes and sigmoid activation function. Suppose
+h1 (·) is random sample from H, we can have
+
+
+                                                            K
+                                                               (1)             (2)
+                                                            X
+                                                 h1 (x) =     θ1,k sigmoid(xT θ1,k ).
+                                                            k=1
+
+
+
+                                                                                                              (1)
+Since sigmoid function is bounded, therefore h1 (·) is uniformly bounded by K maxk=1,..,K (|θ1,k |). Since we sam-
+ple B random samples from H, which denotes {hb }b=1,...,B , therefore, these functions are uniformly bounded by
+                          (1)
+K maxk=1,..,K;b=1,..,B (|θb,k |). Recall that the parameters in the neural network are initialized by standard normal distribu-
+                                                                                       √
+tion. For a standard normal random variable Y , we have P(Y ≥ t) ≤ exp(−t2 /2)/ 2π for any t > 1. Therefore we can
+                                                                          (1)
+conclude that with probability approaching 1, maxk=1,..,K;b=1,..,B (|θb,k |) is upper bounded by log B. Since we assume
+               c1
+B = O((N T ) ), therefore we have the function h ∈ H is absolutely bounded by log(N T ).
+Step 2. Note that the test statistic is calculated on the one binary split of the dataset I2 where |I2 | = ⌊N/2⌋. To simplify the
+notation, we assume the total sample size is 2N , then |I2 | = N . Define ∆i,j,b,t = ∆(Ai,j , Si,j ; hb , t). Define
+
+                                                                         p
+                                       Γ∗ =       max         max         t(T − t)/T 2 S ∗ (t, hb ),
+                                              ϵT ≤t≤(1−ϵ)T b∈{1,...,B}
+
+
+
+
+where
+
+
+                                            N T −1
+     ∗            ∗      −1           1     X   X                h
+                                                         b i,j,b,t h(Si,j+1 ) − E∗ [h(S ′ )|Ai,j , Si,j ]
+                                                                                                          i g(A , S )
+                                                                                                                    i,j     i,j
+   S (t, hb ) = σ (t, h)                            sgn ∆                        [t,T ]                     ∗
+                                  N (T − t) i=1 j=t                                                        ω[t,T ] (A   i,j Si,j )
+                                                                                                                           ,
+                  N   t                                                       i g(A , S ) 
+             1 XX                   h
+                                                    ∗         ′                        i,j   i,j
+           −             sgn ∆i,j,b,t h(Si,j+1 ) − E[0,t] [h(S )|Ai,j , Si,j ] ∗
+                              b                                                                      .
+             N t i=1 j=0                                                       ω[0,t] (Ai,j , Si,j )
+
+
+
+We want to prove Γ  b = Γ∗ + op ((N T )−1/2 log−1/2 (N T )). Note that in this proof we omit the normalization factor σ 2 (t, hb )
+for simplicity. The reason is that we can define an intermediate test statistic Sb∗ (t, hb ) which replaces the σ ∗ (t, hb ) in
+S ∗ (t, hb ) with σ
+                  b(t, hb ) and then use the similar steps described below to show that Sb∗ (t, hb ) is close to S ∗ (t, hb ) and
+S(t, hb ) is close to S ∗ (t, hb ).
+b
+
+In the next step, we show that
+
+
+                                                            b hb ) − S ∗ (t, hb )| = op ((N T )−1/2 log−1/2 (N T )).
+                                          p
+                   max            max         t(T − t)/T 2 |S(t,
+               ϵT ≤t≤(1−ϵ)T b∈{1,...,B}
+
+
+
+
+With some calculations, we can show that for any t ∈ [ϵT, (1 − ϵ)T ] and b,
+
+
+                                        b hb ) = S ∗ (t, hb ) + R1 + R2 + R3 + R4 + R5 ,
+                                        S(t,                                                                                     (10)
+
+                                                                  19
+                            A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+where the reminder terms Ri , i = 1, ..., 5 are given by
+
+                Z
+R1 (t, hb ) =       ∆(a,
+                    b    s; hb , t) g(a, s)λ(da, ds)
+                           N T −1
+                    1     X   X                  h
+                                      b i,j,b,t ) E∗ [hb (S ′ )|Ai,j , Si,j ] − E
+                                                                                b [t,T ] [hb (S ′ )|Ai,j , Si,j ]
+                                                                                                                 i g(A , S )
+                                                                                                                           i,j      i,j
+            +                     sgn(∆            [t,T ]                                                          ∗
+                N (T − t) i=1 j=t                                                                                 ω[t,T ] (A   i,j , Si,j )
+                     N t−1
+                1 XX                       h
+                                b i,j,b,t ) E∗ [hb (S ′ )|Ai,j , Si,j ] − E
+                                                                          b [0,t] [hb (S ′ )|Ai,j , Si,j ]
+                                                                                                          i g(A , S )
+                                                                                                                  i,j    i,j
+            −               sgn(∆            [0,t]                                                          ∗ (A , S ) ,
+                N t i=1 j=0                                                                                ω[0,t]    i,j    i,j
+
+                             N T   −1
+                    1       X    X                   h
+                                          b i,j,b,t ) hb (Si,j+1 ) − E∗ [hb (S ′ )|Ai,j , Si,j ]
+                                                                                                 i
+R2 (t, hb ) =                         sgn(∆                           [t,T ]
+              N (T − t) i=1 j=t
+              "                                               #
+                  g(Ai,j , Si,j )         g(Ai,j , Si,j )
+            ×                         − ∗                       ,
+                ω
+                b[t,T ] (Ai,j , Si,j ) ω[t,T ] (Ai,j , Si,j )
+                             N T   −1
+                    1       X     X                     h
+                                             b i,j,b,t ) E∗ [hb (S ′ )|Ai,j , Si,j ] − E
+                                                                                       b [t,T ] [hb (S ′ )|Ai,j , Si,j ]
+                                                                                                                        i
+R3 (t, hb ) =                         sgn(∆                 [t,T ]
+              N (T − t) i=1 j=t
+              "                                                   #
+                  g(Ai,j , Si,j )            g(Ai,j , Si,j )
+            ×                         − ∗                           ,
+                ω
+                b[t,T ] (Ai,j , Si,j ) ω[t,T     ] (Ai,j , Si,j )
+                        N t−1
+                                                                                                 "                                             #
+                  1 XX                            h
+                                                                      ∗       ′
+                                                                                              i      g(A   i,j , Si,j )     g(A  i,j , Si,j )
+R4 (t, hb ) = −                  sgn(∆b i,j,b,t ) hb (Si,j+1 ) − E [hb (S )|Ai,j , Si,j ]
+                                                                      [0,t]                                               − ∗                    ,
+                N t i=1 j=0                                                                        ω
+                                                                                                   b[0,t] (Ai,j , Si,j ) ω[0,t] (Ai,j , Si,j )
+                        N t−1
+                  1 XX                           h
+                                     b i,j,b,t ) E∗ [hb (S ′ )|Ai,j , Si,j ] − E
+                                                                               b [0,t] [hb (S ′ )|Ai,j , Si,j ]
+                                                                                                               i
+R5 (t, hb ) = −                 sgn(∆              [0,t]
+                N t i=1 j=0
+              "                                                #
+                  g(Ai,j , Si,j )          g(Ai,j , Si,j )
+            ×                        − ∗                         .
+                ω
+                b[0,t] (Ai,j , Si,j ) ω[0,t]    (Ai,j , Si,j )
+
+
+It suffices to show
+
+                                                t(T − t)/T 2 |Rm (t, b)| = op ((N T )−1/2 log−1/2 (N T ))
+                                               p
+                                   max                                                                                                                         (11)
+                              T ϵ≤t≤T (1−ϵ)
+                                b∈{1,...,B}
+
+
+
+for m = 1, ..., 5. In the following, we show that 11 holds with m = 1, 2, 3. Using similar arguments, one can show that 11
+holds with m = 4, 5.
+Proof of Equation 11 with m = 1:
+Under C3.3 and C3.4, it follows from Theorem 3.7 of Bradley (2005) that {S0,j }j≥0 is exponentially β-mixing. Denote
+the resulting β-mixing coefficients by β0 (q) that satisfies β0 (q) = O(ρq ) for some ρ < 1 and any q ≥ 0. Since
+{S1,j }j≥0 , {S2,j }j≥0 , ..., {SN −1,j }j≥0 are i.i.d samples as {S0,j }j≥0 , therefore, the β-mixing coefficient of
+
+                             {S0,0 , S0,1 , ..., S0,T , S1,0 , S1,1 , ..., S1,T , ..., SN −1,0 , SN −1,1 , ..., SN −1,T }
+
+satisfies β(q) = O(ρq ) for any q ≥ 0. Define
+
+                                                     h
+                                          b i,j,b,t ) E∗               ′                                   ′
+                                                                                                                           i        g(Ai,j , Si,j )
+    ϕe[t1 ,t2 ] (Si,j , Ai,j ; hb ) = sgn(∆            [t1 ,t2 ] [hb (S )|Ai,j , Si,j ] − E[t1 ,t2 ] [hb (S )|Ai,j , Si,j ]                                .
+                                                                                          b
+                                                                                                                               ω[t∗ 1 ,t2 ] (Ai,j , Si,j )
+
+
+                                                                           20
+                             A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+To prove Equation 11 with m = 1, it suffices to show
+                                             N T −1
+                                   1         X X
+             max            p                         ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb ) = op (log−1/2 (N T )),   (12)
+         T ϵ≤t≤T (1−ϵ)          N (T − t) i=1 j=t
+           b∈{1,...,B}
+                                            N t−1
+                                      1 XX e
+                           max       √             ϕ[0,t] (Si,j , Ai,j ; hb ) − Eϕe[0,t] (Si,j , Ai,j ; hb ) = op (log−1/2 (N T )),         (13)
+                       T ϵ≤t≤T (1−ϵ)   N t i=1 j=0
+                        b∈{1,...,B}
+
+
+since max |a + b| ≤ max |a| + max |b|. For brevity, we only show Equation 12 holds. Proof of Equation 13 is similar and
+thus omitted.
+Under the boundedness assumption, we have ϕe[t,T ] (Si,j , Ai,j ; hb )                   ≤ M for some positive value M and hence
+ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb ) ≤ 2M . Similarly, for any t ≤ j ≤ T we have
+                   h                                                            i2      h                             i
+              max E ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb ) ≤ max E ϕe[t,T ] (Si,j , Ai,j ; hb )2 ≡ Λ.
+               i,j,b                                                                    i,j,b
+
+Note that Λ is a random variable that depends on {hb }1≤b≤B and {Ai,j , Si,j }i∈{1,...,N },0≤j≤T −1 . Under the boundedness
+condition, we have
+                   h                           i                                                            
+                                             2       2        2              ′             ∗        ′
+            max E ϕ[t,T ] (Si,j , Ai,j ; hb ) ≤ O(log N T )E dT V pb[t,T ] (S , R|S, A), p[t,T ] ((S , R|S, A) .
+                     e                                                                                                 (14)
+            i,j,b
+
+
+Given the boundedness conditions and β-mixing property, it follows from Theorem 4.2 of Chen & Christensen (2015) that,
+for any integers τ ≥ 0 and 1 < d < N T /2, we have
+                         X  N T   −1                                                                     
+                                  X                                                                             N (T − t)
+                      P                  ϕ[t,T ] (Si,j , Ai,j ; hb ) − Eϕ[t,T ] (Si,j , Ai,j ; hb ) ≥ 6τ Λ ≤
+                                         e                               e                                                 β(d)
+                            i=1 j=t
+                                                                                                                      d
+                                                                                                               τ 2 /2
+           X                                                                                                            
+    +P          ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb ) ≥ τ Λ + 4 exp −                                   ,            (15)
+                                                                                                       N (T − t)dΛ + 4dτ /3
+          (i,j)∈Ir
+
+
+where Ir = {d⌊N (T − t)/d⌋ + 1, ..., N (T − t)}-th elements of
+
+          {(0, t), (0, t + 1), ..., (0, T ), (1, t), (1, t + 1), ..., (1, T ), ..., (N − 1, t), (N − 1, t + 1), ..., (N − 1, T )}
+
+when d⌊N T /d⌋ < N (T − t) and Ir = ∅ when d⌊N (T − t)/d⌋ = N (T − t). Suppose τ ≥ 2M d, note that |Ir | ≤ d, it
+follows that
+                       X                                                                     
+                    P           ϕ[t,T ] (Si,j , Ai,j ; hb ) − Eϕ[t,T ] (Si,j , Ai,j ; hb ) ≥ τ Λ = 0.
+                                 e                             e
+                                  (i,j)∈Ir
+
+
+Under the exponentially β mixing, we have β(d) = O(ρd ) for some positive constant ρ. Set d = −(c∗ +
+           )/ log ρ, we obtain N (T − t)β(d)/d = O(B −1 N −2 T −2 ) since B = O((N T )c1 ) and T − t = O(T ). Set
+3) log(N T p
+τ = max{ 8N (T − t)dΛ log(N T B), 32d log(N T B)/3} and hence
+
+                             τ2                               τ2
+                                ≥ 2N (T − t)dΛ log(N T B) and    ≥ 8dτ log(N T B)/3 and τ ≥ 2M d
+                             4                                4
+as either N → ∞ or T → ∞. Therefore we have τ 2 /(2N (T − t)dΛ + 4dτ /3) ≥ 2 log(N T B) and hence
+                            N T
+                           X X −1                                                                 
+            max           P         ϕ[t,T ] (Si,j , Ai,j ; hb ) − Eϕ[t,T ] (Si,j , Ai,j ; hb ) ≥ 6τ Λ = O(B −1 N −1 T −2 ).
+                                    e                              e
+       T ϵ≤t≤T (1−ϵ)
+         b∈{1,...,B}           i=1 j=t
+
+
+
+                                                                        21
+                              A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+By Bonferroni’s equality, we have
+                                 N T
+                                  X X −1                                                                                  
+              P       max                       ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb )       ≥ 6τ Λ       = O(N −1 T −1 ).
+                   T ϵ≤t≤T (1−ϵ)
+                     b∈{1,...,B} i=1 j=t
+
+Thus it follows from Equation 15 that we have
+                     N T −1
+                     X X                                                                             √
+        max                      ϕe[t,T ] (Si,j , Ai,j ; hb ) − Eϕe[t,T ] (Si,j , Ai,j ; hb ) = O(max{ N T Λ log(N T B), log2 N T B})
+     T ϵ≤t≤T (1−ϵ)
+       b∈{1,...,B} i=1 j=t
+                                                                                                                                                   (16)
+
+with probability 1 − O(N −1 T −1 ). Given T − t = O(T ) and B = O((N T )c∗ ), combining with Equation 14, we have
+Equation 12.
+Proof of (11) with m = 2: We want to show that
+
+                                               N (T − t)|R2 | = op (log−1/2 (N T )).
+                                            p
+                                    max                                                                                                            (17)
+                                               T ϵ≤t≤T (1−ϵ)
+                                                 b∈{1,...,B}
+
+Define the list
+
+           {(1, t), (1, t + 1), ..., (1, T − 1), (2, t), (2, t + 1), ..., (2, T − 1), ..., (N, t), (N, t + 1), ..., (N, T − 1)}.
+
+For any 1 ≤ g ≤ N (T − t), denote by (ng , Tg ) the g-th element in the list. Let F (0) = {S1,t−1 , A1,t−1 } ∪
+                                                          (1)
+{Sj,t′ , Aj,t′ , Sj,t′ +1 : t ≤ t′ ≤ T − 1, j ∈ I1 } ∪ {θb,k : b = 1, ..., B, k = 1, ..., K}. Then we recursively define
+F (g) as
+                                              F (g−1) ∪ {Sng ,Tg , Ang ,Tg }
+                                      
+                                  (g)                                               if ng = ng−1
+                                F =       (g−1)
+                                        F       ∪ {Sng −1,T , Sng ,t−1 , Ang ,t−1 }   otherwise
+
+Let
+                                                           h                                                   i
+                                χg,b,t =sgn(∆b n ,T ,b,t ) hb (Sn ,T +1 ) − E∗ [hb (S ′ )|An ,T , Sn ,T ]
+                                                g    g             g   g       [t,T ]              g   g   g g
+                                           "                                                           #
+                                               g(Ang ,Tg , Sng ,Tg )        g(Ang ,Tg , Sng ,Tg )
+                                         ×                               − ∗                             .
+                                             ω
+                                             b[t,T ] (Ang ,Tg , Sng ,Tg ) ω[t,T ] (Ang ,Tg , Sng ,Tg )
+
+                                                      PN (T −t)
+Under MA, R2 can be written as N (T1−t)                   g=1       χg,b,t and forms a sum of martingale difference sequence with respect
+                          (g)
+to the filtration {σ(F          ) : g ≥ 0}.
+Under the boundedness conditions and Markov assumption, we have
+                                             n                                                             2 o
+                   E χ2g+1,b,t |σ(F (g) ) ≤ E hb (Sng ,Tg +1 ) − E∗[t,T ] [hb (S ′ )|Ang ,Tg , Sng ,Tg ]
+                                         
+
+                                             h g(A
+                                                       ng ,Tg , Sng ,Tg )        g(Ang ,Tg , Sng ,Tg ) i2
+                                            ∗                               − ∗
+                                              ω
+                                              b[t,T ] (Ang ,Tg , Sng ,Tg ) ω[t,T ] (Ang ,Tg , Sng ,Tg )
+                                              h                                                               i2
+                                                                                ∗
+                              ≤ 4Q log2 (N T ) ωb[t,T ] (Ang ,Tg , Sng ,Tg ) − ω[t,T ] (A n g ,Tg
+                                                                                                  , Sn g ,Tg
+                                                                                                             )
+
+                        g(A,S)
+where maxA,S ωb[t,T ] (A,S)ω ∗
+                                  [t,T ]
+                                           (A,S) ≤ Q under boundedness conditions. It follows from Theorem 2.1 of Bercu & Touati
+(2008) that for any y, τ
+       (T −t)
+     NX                      N (T −t)                                                                              2          2
+                                 X
+                                                  2                                       ∗                                         τ
+P               χg,b,t ≥ τ,                4Q log (N T ) ωb[t,T ] (Ang ,Tg , Sng ,Tg ) − ω[t,T ] (Ang ,Tg , Sng ,Tg ) ≤ y ≤ 2 exp −    .
+        g=1                      g=1
+                                                                                                                                    2y
+
+                                                                              22
+                             A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+By Bonferroni’s inequality, for any y, τ we have
+                            N (T −t)                                   N (T −t)                                                              2
+                               X                                          X
+                                                                                                                   ∗
+        P        max                    χg,b,t ≥ τ,          max                   b[t,T ] (Ang ,Tg , Sng ,Tg ) − ω[t,T
+                                                                                   ω                                    ] (A ng ,Tg , Sng ,Tg )
+             T ϵ≤t≤T (1−ϵ)                             T ϵ≤t≤T (1−ϵ)
+               b∈{1,...,B}     g=1                                         g=1
+                                                                                                                                            
+                                                                                                                                   y
+                                                                                                                           ≤
+                                                                                                                             4Q log2 (N T )
+                                                                                                                                     2
+                                                                                                                                        τ
+                                                                                                                          ≤ 2BT exp −         .
+                                                                                                                                        2y
+Set y = 4Q log2 (N T )(N T )−2κ3 +1 log4 (N T B), by Equation 21, we obtain
+                               N (T −t)
+                                                                                           τ2
+                                X                                                                                               
+         P         max                    χg,b,t ≥ τ         ≤ 2BT exp −                                                               + o(1).        (18)
+               T ϵ≤t≤T (1−ϵ)
+                                 g=1
+                                                                         8Q log2 (N T )(N T )−2κ3 +1 log4 (N T B)
+                 b∈{1,...,B}
+
+Set τ = 4 Q(N T )−2κ3 +1 log(N T ) log5/2 (N T B), the RHS of Equation 18 is O(N −1 T −1 ). Under Theorem 3.5, we
+          p
+
+obtain Equation 17.
+Proof of (11) with m = 3:
+Define
+                                        ψi,j,b = E∗[t,T ] [hb (S ′ )|Ai,j , Si,j ] − E
+                                                                                     b [t,T ] [hb (S ′ )|Ai,j , Si,j ].
+
+Under similar arguments to Equation 16, we have
+                                        N T −1
+                                        X X                               √
+                           max                  2
+                                              (ψi,j,b     2
+                                                      − Eψi,j,b ) = O(max{ N T Ξ log(N T B), log2 N T B})                                             (19)
+                     T ϵ≤t≤T (1−ϵ)
+                       b∈{1,...,B} i=1 j=t
+
+where
+                                                                                                                                               
+                                                                                                                ′            ∗         ′
+           2
+    max E[ψi,j,b     2
+                 − Eψi,j,b ]2 ≤ max Eψi,j,b
+                                      4
+                                            ≡ Ξ ≤ 16 log4 (N T )E                           d4T V    pb[t,T ] (S , R|S, A), p[t,T ] ((S , R|S, A) .
+    i,j,b                       i,j,b
+
+By triangular inequality, Theorem 3.5 and boundedness condition, we have
+               XN TX−1                                                                       2
+      max                  ∗
+                         E[t,T ] [hb (S , R)|Ai,j , Si,j ] − E[t,T ] [hb (S , R)|Ai,j , Si,j ] = O((N T )−2κ1 +1 log2 (N T )). (20)
+                                       ′                     b             ′
+ T ϵ≤t≤T (1−ϵ)
+   b∈{1,...,B} i=1 j=t
+
+Similar to Equation 20, we have
+                                N T
+                                X X −1                                                          2
+                                                ∗
+                     max                       ω[t,T ] (Ai,j , Si,j ) − ω
+                                                                        b[t,T ] (Ai,j , Si,j )         = O((N T )−2κ3 +1 log2 (N T )).
+                 T ϵ≤t≤T (1−ϵ)
+                   b∈{1,...,B} i=1 j=t
+
+Together with Equation 20 and Equation 21, by Cauchy-Schwarz inequality,
+
+                            N (T − t)|R3 (t, b)| = O((N T )−κ1 −κ3 +1/2 log2 (N T )) = O(log−1/2 (N T )).
+                          p
+                 max                                                                                                                                  (21)
+                 T ϵ≤t≤T (1−ϵ)
+                   b∈{1,...,B}
+
+
+Step 3
+In this step, we show the limiting distribution of Γ∗ . We begin by defining vectors λ∗i,j,t ∈ RB , where the b-th element is
+                        I(j ≥ t)                 h
+                                         b i,j,b,t hb (Si,j+1 ) − E∗ [hb (S ′ )|Ai,j , Si,j ]
+                                                                                             i g(A , S )
+                                                                                                         i,j      i,j
+                       p           sgn ∆                            [t,T ]                       ∗
+                         N (T − t)                                                             ω [t,T ] (A   i,j Si,j )
+                                                                                                                 ,
+                        I(j < t)               h                                          i g(A , S ) 
+                                       b i,j,b,t hb (Si,j+1 ) − E∗ [hb (S ′ )|Ai,j , Si,j ]         i,j       i,j
+                       − √       sgn ∆                            [0,t]                       ∗ (A , S ) .                                            (22)
+                            Nt                                                               ω[0,t]     i,j      i,j
+
+
+
+                                                                             23
+                          A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+Define τ = {⌈ϵT ⌉, ⌈ϵT ⌉ + 1, ..., ⌊(1 − ϵ)T ⌋}, which is all the values t can take.                                               Define λ∗i,j    =
+(λ∗i,j,⌈ϵT ⌉ , λ∗i,j,⌈ϵT ⌉+1 , ..., λ∗i,j,⌊(1−ϵ)T ⌋ ) as a vector with B|τ | dimensions. Define the list
+
+               {(1, 0), (1, 1), ..., (l1 , T − 1), (2, 0), (2, 1), ..., (l2 , T − 1), ..., (N, 0), (N, 1), ..., (N, T − 1)}.
+
+For any 1 ≤ g ≤ N T , denote by (ng , Tg ) the g-th element in the list. Let F (0) = {S1,0 , A1,0 } ∪ {Sj,t′ , Aj,t′ , Sj,t′ +1 : t ≤
+                         (1)
+t′ ≤ T − 1, j ∈ I1 } ∪ {θb,k : b = 1, ..., B, k = 1, ..., K}. Then we recursively define F (g) as
+
+                                                     F (g−1) ∪ {Sng ,Tg , Ang ,Tg }
+                                               
+                                     (g)                                                         if ng = ng−1
+                                 F         =         (g−1)
+                                                   F     ∪ {Sng −1,T , Sng ,0 , Ang ,0 }           otherwise
+                                                     PN T p
+Under MA, the high-dimensional vector                   (T − tg )tg /T 2 λ∗ng ,tg forms a sum of martingale difference sequence
+                                                       g=1
+                                                                          PN T p
+with respect to the filtration {σ(F (g) ) : g ≥ 0}. Note that Γ∗ = ∥ g=1 (T − tg )tg /T 2 λ∗ng ,tg ∥∞ . For each g, define
+                                                              PN T
+Σg = E(((T − tg )tg /T )λ∗ng ,tg λ∗T
+                                  ng ,tg |σ(F
+                                              (g−1)
+                                                    )), V ∗ = g=1 Σg and V0 = EV ∗ . Similar to the proof of Equation 19,
+we can show that ∥V ∗ − V0 ∥∞,∞ is absolutely bounded by O((N T )−1/2 log3 (N T )) with probability 1 − O(N −1 T −1 ).
+By Theorem 3.1 of Belloni & Oliveira (2018), we have for any Borel set R, any δ > 0 and some constant C > 0
+
+              P(Γ∗ ∈ R) ≤ P(∥N (0, V0 )∥∞ ∈ RCδ )
+                                                                                     N (T −1)
+                                     log3 (N T ) log(B|τ |) log3 (B|τ |) log2 (B|τ |) X
+                                                                                                     
+                              1                                                                     3
+                        +C        +           √            +   √        +                     E∥ηg ∥∞                                             (23)
+                             NT            δ2 N T            δ3 N T           δ3       g=1
+
+               1/2
+where ηg = Σg Ng , 1 ≤ g ≤ N T and {Ng }g=1,...,N (T −1) are i.i.d. standard B|τ |-dimensional Gaussian random vectors
+defined in the same probability as λ∗ng ,tg . By the boundedness conditions, we have each element in Σg is bounded by
+                                                                           PN T
+4log 2 (N T )(N T )−1 and E∥Ng ∥3∞ = O(log 3/2 (B|τ |)). Therefore, we have g=1 E∥ηg ∥3∞ = O((N T )−1/2 log9/2 (N T )).
+Combined all the arguments together, we have
+                                                      1   log 4 (N T ) log3 (N T ) log13/2 (N T ) 
+           P(Γ∗ ∈ R) ≤ P(∥N (0, V0 )∥∞ ∈ RCδ ) + O(1)    +     √       +   √       +     √           .                                            (24)
+                                                      NT    δ2 N T       δ3 N T       δ3 N T
+
+Let R = (z, ∞) and δ = ϵ log−1/2 (N T )/C, then
+
+                                P(Γ∗ ≤ z) ≥ P(∥N (0, V0 )∥∞ ≤ z − ϵ log−1/2 (N T )) − o(1).                                                       (25)
+
+Let R = (−∞, z] and δ = ϵ log−1/2 (N T )/C, then
+
+                                P(Γ∗ ≤ z) ≥ P(∥N (0, V0 )∥∞ ≤ z + ϵ log−1/2 (N T )) + o(1).                                                       (26)
+
+              b = Γ∗ + op ((N T )−1/2 log−1/2 (N T )) from step 2, we have for any constant ϵ > 0,
+Together with Γ
+
+                                  b ≤ z) ≥ P(∥N (0, V0 )∥∞ ≤ z − 2ϵ log−1/2 (N T )) − o(1),
+                                P(Γ
+                                  b ≤ z) ≥ P(∥N (0, V0 )∥∞ ≤ z + 2ϵ log−1/2 (N T )) + o(1).
+                                P(Γ                                                                                                               (27)
+
+Step 4
+In this step, we show that ∥Vb −V0 ∥∞,∞ is uniformly bounded by O((N T )−c2 ) with some positive constant c2 > 0, where Vb
+is the estimated version of V0 by replacing p∗[t1 ,t2 ] , ω[t∗ 1 ,t2 ] with estimated ones. By Cauchy-Schwarz inequality, ∥Vb −V0 ∥∞,∞
+≤ ∥Vb − V ∗ ∥∞,∞ + ∥V ∗ − V0 ∥∞,∞ . Since we have shown that ∥V ∗ − V0 ∥∞,∞ is bounded by O((N T )−1/2 log3 (N T ))
+with probability 1 − O(N −1 T −1 ), we will show that ∥Vb − V ∗ ∥∞,∞ = Op ((N T )−c3 ) for some constant c3 > 0.
+                                                                    N T
+                                                                    X X −1
+                      ∥Vb − V ∗ ∥∞,∞ =                max       |            λ
+                                                                             bi,j,t ,b λ
+                                                                                   1 1 i,j,t2 ,b2
+                                                                                       b          − λ∗i,j,t1 ,b1 λ∗i,j,t2 ,b2 |.                  (28)
+                                                    t1 ,t2 ∈τ
+                                               b1 ,b2 ∈{1,...,B} i=1 j=0
+
+
+                                                                        24
+                         A Robust Test for the Stationarity Assumption in Sequential Decision Making
+
+       abb − a∗ b∗ = 12 b
+                        a(bb − b∗ ) + a∗ (bb − b∗ ) + bb(b
+                                                         a − a∗ ) + b∗ (b
+                                                                        a − a∗ ) , following the similar steps in step 1, we can show
+                                                                               
+Since b
+that ∥Vb − V ∗ ∥∞,∞ is bounded by O((N T )−c3 ) with probability 1 − O(N −1 T −1 ).
+Step 5
+In this step, we finish the proof by showing that |P(Γ
+                                                     b ≤ z) − P(∥N (0, Vb )∥∞ ≤ z|Vb )| = o(1).
+
+Since ∥Vb − V ∗ ∥∞,∞ , using the similar steps in step 3, we can show that for any ϵ > 0,
+
+                                 b ≤ z) ≥ P(∥N (0, Vb )∥∞ ≤ z − 2ϵ log−1/2 (N T )|Vb ) − o(1),
+                               P(Γ
+                                 b ≤ z) ≥ P(∥N (0, Vb )∥∞ ≤ z + 2ϵ log−1/2 (N T )|Vb ) + o(1).
+                               P(Γ                                                                                              (29)
+
+By the condition from Theorem 3.6 that the diagonal element of V0 is uniformly bounded below by some ζ > 0 and
+∥Vb − V0 ∥∞,∞ = Op ((N T )−c2 ), by the Theorem 1 of Chernozhukov et al. (2017), we can show that
+
+                P(∥N (0, Vb )∥∞ ≤ z + 2ϵ log−1/2 (N T )|Vb ) − P(∥N (0, Vb )∥∞ ≤ z − 2ϵ log−1/2 (N T )|Vb )
+                                                                           ≤ O(1)ϵ log1/2 (B|τ |) log−1/2 (N T ).               (30)
+
+Together with Equation 29, we have
+
+                                        |P(Γ
+                                           b ≤ z) ≥ P(∥N (0, Vb )∥∞ ≤ z|Vb )| = o(1),
+
+since ϵ > 0 can be arbitrary small. Replacing z with b
+                                                     cα , which is α percentile generated by Gaussian multiplier bootstrap
+(Chernozhukov et al., 2013), we finish the proof.
+
+
+
+
+                                                                 25
+

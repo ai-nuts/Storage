@@ -1,0 +1,1 @@
+Neuroformer is a multimodal, multitask generative pretrained transformer for brain data, built at UC Santa Barbara. It reframes cellular-resolution spike analysis as autoregressive spatiotemporal generation, borrowing the recipe behind large language and vision models. Trained self-supervised, it recovers circuit connectivity and decodes mouse behavior.

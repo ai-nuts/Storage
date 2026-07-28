@@ -1,0 +1,1 @@
+Observational medical data arise from the interaction between patients and the healthcare system. A test's timing and its existence carry information about the patient. Most models ignore this, assuming sampling is non-informative — which yields sub-optimal, non-transportable models.

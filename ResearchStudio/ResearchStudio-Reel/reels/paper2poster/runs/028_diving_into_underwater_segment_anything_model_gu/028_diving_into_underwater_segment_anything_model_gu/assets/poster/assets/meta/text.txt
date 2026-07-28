@@ -1,0 +1,1006 @@
+                                         Diving into Underwater: Segment Anything Model Guided Underwater Salient
+                                                       Instance Segmentation and A Large-scale Dataset
+
+
+                                                  Shijie Lian * 1 Ziyi Zhang * 2 Hua Li † 1 3 Wenjie Li 1 Laurence Tianruo Yang 1 4 5 Sam Kwong 6
+                                                                                             Runmin Cong 7 8
+
+
+                                                                  Abstract                                                       Ours: USIS-SAM
+                                                                                                                                                                                     Extra Prediction
+arXiv:2406.06039v1 [cs.CV] 10 Jun 2024
+
+
+
+
+                                                                                                                     AP(%)       RSPrompter (TGARS’24)
+                                                                                                                60               WaterMask (ICCV’23)
+                                              With the breakthrough of large models, Segment                                     SAM (ICCV’23)
+                                                                                                                                 URank+ RDPNet (TIP’21)
+                                              Anything Model (SAM) and its extensions have                                       URank+ OQTR (TMM’23)                                               Localization Fault
+
+                                              been attempted to apply in diverse tasks of com-                  50
+                                                                                                                                                       Low
+                                                                                                                                                     Precision
+                                                                                                                                                                    GT                       WaterMask
+                                              puter vision. Underwater salient instance segmen-
+                                              tation is a foundational and vital step for vari-                 40
+
+                                              ous underwater vision tasks, which often suffer                                                                             Instance
+                                                                                                                                                                         Confusion
+
+                                              from low segmentation accuracy due to the com-
+                                                                                                                     AP50       AP75             mAP                                              Ours
+                                              plex underwater circumstances and the adaptive                                                                     URank+RDPNet
+
+                                              ability of models. Moreover, the lack of large-
+                                                                                                                Figure 1. A simple comparison of USIS-SAM and other state-of-
+                                              scale datasets with pixel-level salient instance an-
+                                                                                                                the-art methods trained on the USIS10K dataset. Different colors
+                                              notations has impeded the development of ma-                      represent different salient instances. URank represents the un-
+                                              chine learning techniques in this field. To ad-                   derwater image enhancement method in UnderwaterRanker (Guo
+                                              dress these issues, we construct the first large-                 et al., 2023).
+                                              scale underwater salient instance segmentation
+                                              dataset (USIS10K), which contains 10,632 un-                             that our USIS-SAM method can achieve superior
+                                              derwater images with pixel-level annotations in 7                        performance on USIS10K datasets compared to
+                                              categories from various underwater scenes. Then,                         the state-of-the-art methods. Datasets and codes
+                                              we propose an Underwater Salient Instance Seg-                           are released on Github.
+                                              mentation architecture based on Segment Any-
+                                              thing Model (USIS-SAM) specifically for the
+                                              underwater domain. We devise an Underwater                        1. Introduction
+                                              Adaptive Visual Transformer (UA-ViT) encoder
+                                              to incorporate underwater domain visual prompts                   In recent years, fundamental models such as Generative
+                                              into the segmentation network. We further de-                     Pre-Trained Transformer (GPT)-4 (Achiam et al., 2023),
+                                              sign an out-of-the-box underwater Salient Feature                 Language Learning with Adaptive Multi-task Architecture
+                                              Prompter Generator (SFPG) to automatically gen-                   (LLaMA) (Touvron et al., 2023), and Segment Anything
+                                              erate salient prompters instead of explicitly pro-                Model (SAM) (Kirillov et al., 2023) have made significant
+                                              viding foreground points or boxes as prompts in                   progress and greatly contributed to the advancement of the
+                                              SAM. Comprehensive experimental results show                      society. Among them, SAM has recently performed well
+                                            *
+                                                                                                                in many segmentation tasks due to its excellent encoder-
+                                              Equal contribution 1 Hainan University 2 The Hong Kong Uni-       decoder transformation framework and large training dataset
+                                         versity of Science and Technology (Guangzhou) 3 Key Laboratory
+                                         of New Generation Artificial Intelligence Technology & Its In-         SA-1B. After being fine-tuned or modified appropriately, it
+                                         terdisciplinary Applications (Southeast University), Ministry of       has strong potential for segmentation applications in medical
+                                         Education, China 4 Huazhong University of Science and Technol-         images (Wu et al., 2023; Huang et al., 2024), remote sensing
+                                         ogy 5 St. Francis Xavier University 6 LIngnan University, School       images (Chen et al., 2024), and other fields.
+                                         of data science, Hong Kong 7 Shandong University, School of
+                                         Control Science and Engineering 8 Key Laboratory of Machine            To meet the growing demands for underwater exploration,
+                                         Intelligence and System Control, Ministry of Education, Jinan,         the deep learning vision community is increasingly focusing
+                                         China. † Correspondence to: Hua Li <lihua@hainanu.edu.cn>.             on the development and application of underwater vision
+                                         Proceedings of the 41 st International Conference on Machine           tasks. Salient Instance Segmentation (SIS), an emerging
+                                         Learning, Vienna, Austria. PMLR 235, 2024. Copyright 2024 by           and promising visual task, aims to segment out visually
+                                         the author(s).                                                         salient objects in a scene and distinguish individual salient
+
+                                                                                                            1
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+
+
+
+Figure 2. Examples of annotations for various salient instances in USIS10K. The image on the left is the original image and the right is
+the annotation mask, different colors represent different salient instances. More dataset showings can be found in Appendix A.4.
+
+instances (Tian et al., 2022b), which is beneficial for vision         task and designing an underwater effective architecture is
+tasks requiring fine-grained scene understanding. Underwa-             necessary.
+ter salient instance segmentation (USIS), may benefit for
+                                                                       To address these issues, we propose the first large-scale
+subsequent underwater vision tasks like marine ruins discov-
+                                                                       Underwater Image Salient Instance Segmentation dataset
+ery, marine resources exploration, underwater human-robot
+                                                                       (USIS10K) to explore the application of the SIS field in
+interaction, and underwater image understanding. How-
+                                                                       underwater scenes. USIS10K contains 10,632 images and
+ever, underwater salient instance segmentation is still a chal-
+                                                                       manually labeled pixel-level masks for salient instances in
+lenging task due to the absence of a large-scale underwater
+                                                                       the images. While previous SIS datasets were usually not
+salient instance segmentation dataset for deep learning based
+                                                                       labeled with category labels for salient instances, research in
+methods to effectively train their models. Moreover, under-
+                                                                       the field of weakly supervised salient instance segmentation
+water images often suffer from unavoidable quality degrada-
+                                                                       (Tian et al., 2022a) has demonstrated that category labeling
+tion due to wavelength attenuation and scattering. Sea snow
+                                                                       helps the network to detect semantically dominant regions,
+formed by plankton in the ocean also introduces noise to
+                                                                       offering supplementary information for SIS task training.
+the image, which impairs the imaging quality (Akkaynak
+                                                                       Therefore, we labeled each salient instance with a distinct
+et al., 2017). In addition, the specific marine species, water
+                                                                       category, including fish, coral reefs, underwater plants, hu-
+patterns, and large number of optical artifacts in underwa-
+                                                                       man divers, robots, underwater ruins, and seafloor reefs.
+ter scenes make the visual content of underwater images
+                                                                       Some samples of this dataset are shown in Figure 2. More-
+quite different from that of land-based images (Akkaynak &
+                                                                       over, we propose an Underwater Salient Instance Segmenta-
+Treibitz, 2018).
+                                                                       tion model based on SAM, called USIS-SAM. Since it has
+Directly transferring conventional SIS methods for land im-            been proven that SAM has limited performance in certain
+ages to underwater scenes may struggle to achieve ideal                tasks due to the lack of domain-specific knowledge (Chen
+performance attribute to the domain gap of intrinsic char-             et al., 2023; 2024; Wu et al., 2023), inspired by prompt learn-
+acteristics and extrinsic circumstances between land and               ing, we devise an Underwater Adaptive Visual Transformer
+underwater living. They may lose model performance due                 (UA-ViT) encoder in the proposed USIS-SAM to adjust im-
+to low-quality underwater imagery and unique underwater                age features as soft prompts, aiming to facilitate the model
+semantic features. As a result, even state-of-the-art SIS              adapt to the complex underwater scenes. In addition, SAM
+models trained on large-scale land-based datasets are not              relies on user-supplied point or bounding box coordinates
+directly applicable to underwater imagery. For example                 to guide network segmentation. Therefore, we also design
+in Figure 1, the performance of state-of-the-art methods               an underwater Salient Feature Prompter Generator (SFPG)
+OQTR (Pei et al., 2023) and RDPNet (Wu et al., 2021) are               that can directly generate saliency prompts in an image as
+degraded on mAP, AP50 , and AP75 when applied in under-                input to SAM mask decoder for end-to-end segmentation of
+water. Moreover, we try to combine the SIS method with                 salient instances in underwater images.
+enhancement pre-processing. Nevertheless, this approach
+                                                                       We have performed extensive experiments to evaluate the
+does not seem to work well since it is hard to jointly train
+                                                                       effectiveness of our method. First, we compared USIS-
+multiple tasks to achieve optimal performance. However,
+                                                                       SAM with mainstream salient instance segmentation meth-
+as shown in Figure 1 and Table 2, the performance of such
+                                                                       ods (Fan et al., 2019; Wu et al., 2021; Pei et al., 2023) and
+approach is not even able to exceed that of WaterMask (Lian
+                                                                       instance segmentation methods (Kirillov et al., 2023; Lian
+et al., 2023), an underwater instance segmentation method
+                                                                       et al., 2023; Chen et al., 2024) on the USIS10K to vali-
+that is not specifically designed for saliency but trained
+                                                                       date the effectiveness of USIS-SAM. As the simple case
+end-to-end. Establishing a large-scale dataset for the USIS
+
+                                                                   2
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+shown in Figure 1 our USIS-SAM can segment more accu-                   Table 1. Comparison with existing SIS datasets. Where Label
+rate masks and achieve the best quantitative performance.               indicates whether each instance has a separate category label, Max
+In addition, we also performed comparisons on the largest               indicates the maximum number of instances in a single image.
+extant land salient instance segmentation dataset, SIS10K                    Dataset      Year    Task     Label    Number      Max
+(Pei et al., 2023), to validate the generalization ability of our             ILSO        2017     SIS      ×        2,000       8
+model. The main contributions are concluded as follows:                       SOC         2018     SIS      ✓        3,000       8
+                                                                             SIS10K       2023     SIS      ×       10,300       9
+   • We construct the first large-scale dataset, USIS10K,                   USIS10K       2024    USIS      ✓       10,632       9
+     for the underwater salient instance segmentation task,
+     which contains 10,632 images and pixel-level anno-
+     tations of 7 categories. As far as we know, this is                sand images. S4Net (Fan et al., 2019) migrated the Mask
+     the largest salient instance segmentation dataset, and             R-CNN architecture (He et al., 2017) in instance segmenta-
+     includes Class-Agnostic and Multi-Class labels simul-              tion to the SIS task, employing the ROIMasking module to
+     taneously.                                                         exploit the inherent features of the bounding box. Similarly,
+                                                                        RDPNet (Wu et al., 2021) augments all feature layers in the
+   • We first attempt to apply SAM to underwater salient in-            feature pyramid to perform multilevel RoIAlign for better
+     stance segmentation and propose USIS-SAM, aiming                   mask prediction. The SOC dataset (Fan et al., 2018a) at-
+     to improve the segmentation accuracy in complex un-                tempts to eliminate the data bias of the saliency dataset,
+     derwater scenes. We design Underwater Adaptive ViT                 which contains 3,000 images with saliency instances and
+     Encoder to incorporate underwater visual prompts into              3,000 images without it. OQTR (Pei et al., 2023) introduces
+     the network via adapters, and Salient Feature Prompter             the transformer structure to the SIS domain, which locates
+     Generator to automatically generate salient prompters,             salient instances by query instead of hand-designed anchors.
+     guiding an end-to-end segmentation network.                        Moreover, they provide a new dataset, SIS10K, containing
+                                                                        10,300 terrestrial images to train various networks.
+   • Extensive public evaluation criteria and large num-
+     bers of experiments verify the effectiveness of our
+     USIS10K dataset and USIS-SAM.                                      3. USIS10K Dataset
+                                                                        3.1. Dataset Collection and Annotation
+2. Related Work
+                                                                        We have carefully selected 16,000 underwater images from
+2.1. Segment Anything Model (SAM)                                       many different natural underwater environments from the In-
+                                                                        ternet and open source underwater datasets (Li et al., 2020;
+SAM (Kirillov et al., 2023) is a promptable model trained
+                                                                        Berman et al., 2021; Lian et al., 2023; Hong et al., 2023;
+on a large dataset, resulting in a powerful zero-shot general-
+                                                                        Islam et al., 2020). These images cover underwater vision
+ization. Currently, extension work based on SAM explores
+                                                                        tasks such as ocean exploration, human-robot intelligent
+its capability boundaries, for example, image inpainting (Yu
+                                                                        cooperation and underwater autopilot. Then, the salient
+et al., 2023), medical image analysis (Ma et al., 2024; Zhang
+                                                                        instances in these images are labeled pixel by pixel and
+& Jiao, 2022), few-shot learning (Zhang et al., 2023; Shi
+                                                                        assigned category labels. To ensure the accuracy and objec-
+et al., 2023), remote sensing segmentation (Zhang et al.,
+                                                                        tivity of the labeling as much as possible, each image will
+2024; Chen et al., 2024), image editing (Xie et al., 2023)
+                                                                        be labeled by at least 3 volunteers, and then the final label-
+and style transfer (Liu et al., 2023). In normal scenes, SAM
+                                                                        ing results will come out through voting. After removing
+has excellent generalization capabilities. However, some re-
+                                                                        images that did not have a consensus in the voting or were
+search results show that SAM already has some limitations
+                                                                        unclear the instance category, we ended up with a total of
+in special scenarios (e.g., low-contrast) and specific tasks
+                                                                        10,632 images for the USIS10K dataset. For more in-depth
+(e.g., camouflage instance segmentation) (Chen et al., 2023).
+                                                                        information regarding the collection and annotation of the
+Similarly, the complex background interference in marine
+                                                                        dataset, please refer to Appendix A.
+environments and the widespread quality degradation of
+underwater images also present significant challenges to the
+segmentation capabilities of SAM.                                       3.2. Dataset Characteristics and Statistics
+                                                                        In this subsection, we illustrate the basic information, char-
+2.2. Salient Instance Segmentation (SIS)                                acteristics, and challenges of the USIS10K dataset. Some
+                                                                        statistical information can also be seen in Figure 3.
+SIS is to separate salient objects while distinguishing dif-
+ferent salient instances. Most of the existing SIS methods              Number and Category of Dataset. A large number of
+and datasets are designed for land scenes. ILOS dataset (Li             underwater images of different scenes, containing various
+et al., 2017) is the first SIS dataset, which contains two thou-        categories, is essential to improve the generalization of the
+
+                                                                    3
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+                               9663
+                                                                                     (a)                       104   6863 6550                              USIS10K
+                                                                                                                                                                                            (b)                                                                            (c)
+                                                                                                                                                                                                               0.14
+                         104
+                                        5483                                                                                              2720               SIS10K
+                                                                                                                                   2039
+                                                                                                                                                 1032 910                                                      0.12
+  Numbers of Instances
+
+
+
+                                                                                                               103
+
+
+
+
+                                                                                           Numbers of Images
+                                                                                                                                                            377                  321
+                                                         1080   1209                                                                                                                                           0.10
+                                                                                                                                                                                                                             USIS10K (global)
+
+
+
+
+                                                                                                                                                                                                  Proportion
+                         103                     623                                                                                                                100
+                                                                               518                             102                                                                                             0.08          SIS10K (global)
+                                                                       297                                                                                                                 28                                USIS10K (local)
+                                                                                                                                                                                                               0.06          SIS10K (local)
+                                                                                                               101
+                         102                                                                                                                                                                                   0.04
+
+                                                                                                                                                                                                               0.02
+                                                                                                               100
+                                                                                                                                                                                                               0.00
+                               fish     reefs   plants   ruins human robot seafloor                                     1              2           3-4        5-6                     >6                          0.0         0.2        0.4       0.6        0.8
+                                      Labels for Salient Instance Categories                                                       Number of Instances per Images                                                       Global/Local Color Contrast of Salient Instance
+
+Figure 3. Essential characteristics of the USIS10K dataset. (a) The number of salient instances per category in the USIS10K dataset. (b)
+Distribution of the number of salient instances per image in the USIS10K dataset. (c) Comparison of USIS10K and SIS10K in global
+color contrast and local color contrast.
+
+                                                                                                                            8000
+                                                                                                                                                                                                                                                         R Channel
+                                                                                                                                                                                                                                                         G Channel
+                                                                                                                            6000                                               0.08                                                                      B Channel
+
+
+
+
+                                                                                                                                                                  Proportion
+                                                                                                                            4000                                               0.06
+
+
+                                                                                                                            2000
+                                                                                                                                                                               0.04
+
+                                                                                                                            0
+
+                                      (a) SIS10K                          (b) USIS10K                                                                                          0.02
+
+Figure 4. A set of salient maps from our dataset and SIS10K.
+                                                                                                                                                                               0.00
+                                                                                                                                                                                      0                 50                 100          150          200             250
+network in complex marine environments and to avoid over-                                                                                                                                                             Average Channel Intensity
+fitting. For this purpose, we collected 10,632 images from 7                                                                                             Figure 5. Average channel intensity in USIS10K with proportion.
+categories and divided the dataset into training, validation,
+and test sets in the ratio of 7:1.5:1.5. As can be seen from
+                                                                                                                                                         instances larger than 30% of the image area, (9.1% of the
+Table 1, USIS10K is the first salient instance segmentation
+                                                                                                                                                         total), which further enhances the challenge of USIS10K.
+dataset for underwater scenes. In addition, in order to make
+the USIS10K dataset applicable to more downstream tasks,                                                                                                 Color Contrast of Salient Instance. Saliency is often
+all the annotations are divided into three parts: category                                                                                               related to the global contrast between foreground and back-
+labels, salient instance masks, and bounding boxes. This                                                                                                 ground, and it is critical to check whether salient instances
+provides the possibility of using the USIS10K dataset for                                                                                                are easy to detect (Li et al., 2014). We calculated the Bhat-
+weakly supervised salient instance segmentation (Tian et al.,                                                                                            tacharyya distance (Choi & Lee, 2003) between the RGB
+2022a), salient semantic segmentation (Fan et al., 2018b),                                                                                               histogram of each salient instance and the background RGB
+and other downstream tasks in underwater scenes.                                                                                                         histogram in USIS10K and SIS10K dataset to measure their
+                                                                                                                                                         global contrast. It can be seen that the global contrast of
+Number and Size of Salient Instances. In USIS10K, mul-
+                                                                                                                                                         USIS10K is slightly higher than SIS10K. In addition, similar
+tiple salient instances may exist in a single image. There
+                                                                                                                                                         to the global contrast, we also computed the local contrast
+are 1731 images with more than 3 salient instances in our
+                                                                                                                                                         in a 5×5 patch on the salient instance boundary. It can be
+dataset, accounting for 16.3% of the total. In SIS10K (Pei
+                                                                                                                                                         seen that USIS10K has less local contrast than SIS10K due
+et al., 2023), there are only 1038 images with more than
+                                                                                                                                                         to characteristics like instance clustering in underwater envi-
+3 salient instances, accounting for 10.1% of the total. In
+                                                                                                                                                         ronments (Lian et al., 2023; Hong et al., 2023). This poses
+the underwater salient detection dataset, USOD10K (Hong
+                                                                                                                                                         a greater challenge for accurate segmentation of salient in-
+et al., 2023), there are only 722 images with more than 3
+                                                                                                                                                         stance masks in the boundary portion of the network.
+salient objects, accounting for 7.1% of the total. This not
+only means that our USIS10K is challenging even for state-                                                                                               Location of Salient Objects. The central bias has been
+of-the-art methods, but also allows it to be used in fields like                                                                                         identified as one of the most significant biases in salience
+underwater co-salient instance segmentation (Cong et al.,                                                                                                datasets (Fan et al., 2018a; Hong et al., 2023) due to the
+2022; Zhang et al., 2020; Yu et al., 2018). Furthermore,                                                                                                 fact that humans have a natural tendency to perceive salient
+predicting instances that are too small or too large is a very                                                                                           objects by focusing their attention on the center of the ob-
+common but challenging problem. In the USIS10K dataset,                                                                                                  served scene. Figure 4 illustrates a set of salient instance
+the average size of the salient instances is 34,336 pixels (ap-                                                                                          heat maps. It can be seen that while USIS10K has a smaller
+proximately 185×185 pixels), which averaged 10.3% of the                                                                                                 central deviation compared to SIS10K. Specifically, in the
+image size. There are 3053 salient instances smaller than 1%                                                                                             SIS10k dataset, approximately 13.5% of the locations have
+of the image area, (16.0% of the total), while there are 1733                                                                                            fewer than 1,000 instances and 32% have fewer than 2,000
+
+                                                                                                                                                  4
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+
+                                                                                                                                Cls Head              Cls Loss     Learnable         Frozen
+                            3 × 3 Conv                        3 × 3 Conv
+                                                                                                                                                                 Adapter
+ Prompt Generator
+  Salient Feature
+
+
+
+                                                                                                                                Reg Head             Reg Loss
+
+
+
+
+                                                                                                      RPN Head
+                                                                                                                                                                      MLP
+                    Scale        Scale               Scale         Scale
+                                                                             …               Anchor
+                                                                                                                                                                 连仕杰10.151.192.173        MLP
+                                 Mean                              Mean
+                                                                                                                                                                      GELU
+                                                                                                                                                     Mask Loss
+                                                                                                                 Anchor                                               MLP              Layer Norm
+                    Multi-Scale Conv                 Multi-Scale Conv                       Feature
+                                                                            SFFM
+
+                                                                                                                                                                 CA
+                                                                                                                                                                  1 × 1 Conv             Adapter
+
+
+
+
+                                                                                                                                 Mask Decode
+                                         Embedding
+
+
+                                                     UA-ViT
+
+
+
+
+                                                                                                                  UA-ViT
+                                                                             UA-ViT
+                                                                                                      …                                                               GELU             Multi-head
+
+
+
+
+                                                                                        ViT
+                                                                  ViT   连仕杰10.151.192.173
+                                                                                                                                                                 连仕杰10.151.192.173
+                                                                                                                                                                                       Attention
+                                                                                                                                                                  1 × 1 Conv
+                                                                                                                                                                                       Layer Norm
+                                                                                                                                                                      Pool
+            3 × 𝐻𝐻 × 𝑊𝑊                                                     Underwater Adaptive ViT Encoder                                        Output Mask
+
+                                                                        (a) USIS-SAM framework                                                                               (b) UA-ViT Block
+Figure 6. (a) USIS-SAM framework. The USIS-SAM framework modifies the SAM by adding the Underwater Adaptive ViT Encoder
+(in Section 4.1) and the Salient Feature Prompt Generator (in Section 4.2). (b) The structure of UA-ViT. In the figure, SFFM stands for
+Salient Feature Fusion Module, CA stands for Channel Adapter.
+
+instances, while in our dataset, only 2.75% of the locations                                                               domain due to the domain bias between the SA-1B dataset
+have fewer than 1,000 instances and 22.5% have fewer than                                                                  and the complex marine environment. Consequently, the
+2,000 instances.                                                                                                           SAM image encoder is unable to fully extract features from
+                                                                                                                           underwater images, and its direct application to underwater
+Channel Intensity of Underwater Images. Optical images
+                                                                                                                           scenes does not yield satisfactory results. To address this
+inevitably suffer from color attenuation due to the selective
+                                                                                                                           issue, we propose the Underwater Adaptive ViT (UA-ViT)
+absorption of water at different wavelengths. In particular,
+                                                                                                                           inspired by the Parameter-Efficient Fine-Tuning (PEFT)
+the attenuation of the red channel is an order of magnitude
+                                                                                                                           technique (Ben Zaken et al., 2022). By incorporating a set
+greater than that of the blue and green channels (Mobley,
+                                                                                                                           of adapters into ViT block (as depicted in Figure 6 (b)), the
+2001). As a result, in most cases, underwater images are
+                                                                                                                           UA-ViT enables a more effective utilization of the SAM
+bluish or greenish. To quantify this attenuation property of
+                                                                                                                           image encoder in underwater scenarios.
+the USIS10K, we compute the average channel intensities
+and probability densities of R, G, and B for each image in                                                                 UA-ViT learns the expertise of the underwater visual
+Figure 5. It can be seen that R channel has the lowest inten-                                                              prompts via adapters and injects it into the subsequent net-
+sity, but also follows the same trend as G and B channels.                                                                 work. Essentially, the adapter can be regarded as a soft
+                                                                                                                           prompt to embed the network, which takes advantage of the
+4. USIS-SAM                                                                                                                fact that the ViT has been trained on large-scale datasets,
+                                                                                                                           selectively mask or leverage the original network structure
+In this section, we introduce our proposed USIS-SAM, a                                                                     and weights by adjusting the inflow features, and enhances
+prompt learning method based on SAM. The framework of                                                                      the model’s ability to generalize to downstream tasks with
+it is illustrated in Figure 6 (a). In USIS-SAM, we design the                                                              only a small amount of training. Therefore, we added two
+Underwater Adaptive ViT (UA-ViT) to integrate underwater                                                                   adapters for each ViT block. Specifically, we place the
+visual prompts into the network via adapter and channel                                                                    first adapter immediately after multi-head attention layer
+adapter. A Salient Feature Prompt Generator (SFPG) was                                                                     to adjust for color distortion due to selective absorption of
+also designed to aggregate the UA-ViT output features and                                                                  water at different wavelengths. The second adapter on the
+generate salient prompts to guide end-to-end segmentation.                                                                 residual path of the frozen MLP layer, and utilizes parallel
+                                                                                                                           branches to aggregate the updated context by summation
+4.1. Underwater Adaptive ViT Encoder                                                                                       while maintaining the original MLP features. Where the
+                                                                                                                           adapter can be represented as:
+Due to being trained on the SA-1B dataset (Kirillov et al.,
+2023), the largest existing natural image segmentation                                                                                         P = M LPout (σ(M LPprompt (F ))),                    (1)
+dataset, the SAM image encoder possesses strong capabili-                                                                  where M LPprompt is the linear layer used to generate the
+ties in extracting image features. This makes it a valuable                                                                underwater task prompts for each adapter, and M LPout is
+tool for underwater image salient segmentation. However,                                                                   the projection layer used to resize the adaptive features.
+underwater images often suffer from color distortion, and                                                                  F is the input feature, and P is the output prompt for each
+the SAM image encoder lacks expertise in the underwater                                                                    adapter layer. σ is the activation function.
+
+                                                                                                                 5
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+We further propose a channel adapter (CA) module to ad-
+dress the frequency distribution bias due to the selective ab-
+sorption of wavelengths by the water, which utilizes global
+attention-aware features to adaptively adjust the importance
+of each channel, thus significantly improving the represen-
+tation capability of the network. The channel adapter can
+be represented as:
+      C = F ∗ Convup (σ(Convdown (P ool(F )))),           (2)
+where C is the output feature after channel adapter, Conv is
+                                                                         Original          GT           w/o SFPG          SFPG
+a 1×1 convolutional layer, and P ool is an average pooling
+                                                                     Figure 7. Visualize features generated by the SFPG. The SFPG can
+layer. It can be seen that the channel adapter has a very
+                                                                     aggregate features on salient instances.
+similar structure to the adapter, only the MLP is replaced
+by the convolution. In fact, they share a similar function,
+and the channel adapter focuses more on the adjustment of            where Avg is the global average pooling, λ is a hyperparam-
+frequency domain information to help the network adapt to            eter that controls the noise suppression effect, which in this
+the underwater environment.                                          paper is 0.8. In addition, the ith Fia will also be fused with
+                                                                     the previous feature, which can be denoted as:
+In order to minimize the number of parameters, we replace
+only some of the ViT blocks in the SAM encoder with UA-                             Fia∗ = Fia + Conv3∗3 (Fi−1
+                                                                                                           a∗
+                                                                                                               ).                 (5)
+ViT blocks. Specifically, when we use ViT-H (Dosovitskiy
+et al., 2021) as the backbone of SAM encoder, we replace             Finally, since the saliency of the instance varies with the
+one layer every two layers starting from the eighth layer.           image scale, we use multi-scale deconvolution to 2× and
+                                                                     4× upsampling of the final output Fna∗ of the SFFM, which
+4.2. Salient Feature Prompt Generator (SFPG)                         is used in the subsequent RPN header (Ren et al., 2015).
+
+The USIS task needs the model to automatically recognize             As a visual illustration in Figure 7, we can clearly observe a
+and segment each salient object in underwater images. How-           significant change in the distribution of salient features with
+ever, SAM requires the user to explicitly provide foreground         application SFPG module. This is due to the ability pro-
+points, boxes, or texts as prompts to guide the model seg-           vided by the SFPG module to aggregate different receptive
+mentation. Simply adding the object detection network to             field features, where large receptive field features help the
+identify the location of significant objects and feeding the         model to locate salient regions while filtering out noise, and
+bounding boxes as prompts into the SAM’s prompt encoder              small receptive field features contribute to supplementing
+would significantly increase the complexity of the model             the image details with fine-grained semantic granularity.
+and severely limit the model optimization. Therefore, we de-         Loss Function. The loss function of the USIS-SAM frame-
+sign the Salient Feature Prompt Generator to directly predict        work is similar to the Mask RCNN (He et al., 2017) and
+prompts embedding of salient instances.                              consists of several components i.e., localization loss, classi-
+The SFPG first designs a Salient Feature Fusion Module               fication loss, regression loss and segmentation loss. There-
+(SFFM) to fuse the features output from each UA-ViT block            fore, the cumulative loss can be expressed as:
+and align them with the prompts required by the SAM
+                                                                                                1(i) · (Licls + Lireg + Liseg )
+                                                                             PN i          PN
+                                                                               i Lrpn
+decoder. We first aggregate multi-scale features through               L=               + i                                     , (6)
+                                                                                                           i 1(i)
+                                                                                                        PN
+multi-scale convolutions, suppress irrelevant features, and                      N
+reasonably capture significant information in images. The
+multi-scale features of the ith-layer UA-ViT Fim can be              where N is the total number of anchor boxes predicted by
+obtained by:                                                         the RPN head and 1(·) is the indicator function, which
+                     X                                               outputs 1 when the anchor box is salient and otherwise
+            Fim =          Convs∗s (CA(Fi )),            (3)         outputs 0. Lirpn denotes the region proposal loss, with
+                    s∈3,5,7                                          the same configuration as Mask RCNN (He et al., 2017).
+where Fi is the features from the ith-layer UA-ViT, Convs∗s          Licls denotes the cross-entropy loss, computed between the
+are the multi-scale convolutions (3×3, 5×5, and 7×7), and            predicted categories and the ground truth categories. Lireg
+CA means channel adapter. We then balance the multi-scale            is the Smooth L1 loss (Girshick, 2015), computed based on
+features using the average residuals to dampen the noise in          the bounding box coordinate offset between the prediction
+the features, which can be formulated as:                            and the ground truth. Liseg is the binary cross-entropy loss
+                                                                     between the USIS-SAM output salient mask and the ground
+             Fia = λFim + (1 − λ)Avg(Fim ),               (4)        truth mask.
+
+                                                                 6
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+Table 2. Quantitative comparisons with state-of-the-arts on the USIS10K datasets. URank stands for the underwater image enhancement
+method in UnderwaterRanker (Guo et al., 2023). SAM+BBox uses inference results from Faster RCNN (Ren et al., 2015) as prompts for
+prediction, SAM+Mask stands for Mask RCNN networks (He et al., 2017) use SAM as the backbone. The RSPrompter in the table is the
+RSPrompter-anchor framework.
+
+                                                                                 Class-Agnostic                   Multi-Class
+                   Method                       Epoch       Backbone
+                                                                              mAP AP50 AP75                mAP      AP50 AP75
+        S4Net (Fan et al., 2019)                   60      ResNet-50          32.8    64.1    27.3         23.9     43.5      24.4
+       RDPNet (Wu et al., 2021)                    50      ResNet-50          53.8    77.8    61.9         37.9     55.3      42.7
+       RDPNet (Wu et al., 2021)                    50      ResNet-101         54.7    78.3    63.0         39.3     55.9      45.4
+        OQTR (Pei et al., 2023)                   120      ResNet-50          56.6    79.3    62.6         19.7     30.6      21.9
+    URank+RDPNet (Wu et al., 2021)                 50      ResNet-101         52.0    80.7    62.0         35.9     52.5      41.4
+     URank+OQTR (Pei et al., 2023)                120      ResNet-50          49.3    74.3    56.2         20.8     32.1      23.3
+      WaterMask (Lian et al., 2023)                36      ResNet-50          58.3    80.2    66.5         37.7     54.0      42.5
+      WaterMask (Lian et al., 2023)                36      ResNet-101         59.0    80.6    67.2         38.7     54.9      43.2
+    SAM+BBox (Kirillov et al., 2023)               24        ViT-H            45.9    65.9    52.1         26.4     38.9      29.0
+    SAM+Mask (Kirillov et al., 2023)               24        ViT-H            55.1    80.2    62.8         38.5     56.3      44.0
+     RSPrompter (Chen et al., 2024)                24        ViT-H            58.2    79.9    65.9         40.2     55.3      44.8
+  URank+RSPrompter (Chen et al., 2024)             24        ViT-H            50.6    74.4    56.6         38.7     55.4      43.6
+             USIS-SAM                              24        ViT-H            59.7    81.6    67.7         43.1     59.0      48.5
+
+5. Experiments                                                        cropping. During training, the original parameters of SAM
+                                                                      module were frozen for our USIS-SAM and other compared
+We evaluated our USIS-SAM compared with other state-                  methods.
+of-the-art methods on USIS10K. First, since previous SIS
+datasets are usually class-agnostic, the experiments only re-
+                                                                      5.2. Experimental Results
+quire the network to segment each salient instance in the im-
+age without predicting their classes. We followed previous            In this subsection, we will test class-agnostic salient instance
+conventions in the SIS field and performed class-agnostic             segmentation and multi-class salient instance segmentation
+salient instance segmentation. Then, we also require the              for USIS-SAM and other state-of-the-art methods. The
+network to perform multi-class salient instance segmenta-             relevant results of the quantitative analysis and qualitative
+tion, i.e., predicting instance labels while segmenting salient       comparison can be found in Table 2 and Figure 8. More
+instances, in order to evaluate the overall capability of the         experiments can be found in Appendix B.
+network. We follow OQTR (Pei et al., 2023) and adopt the
+                                                                      Class-Agnostic Salient Instance Segmentation. Class-
+standard mask AP metrics (Lin et al., 2014) as evaluation
+                                                                      agnostic salient instance segmentation can be essentially
+Criteria, including mAP, AP50 and AP75 .
+                                                                      understood as foreground instance segmentation focused
+                                                                      on salient parts in images. Thus, the model needs a robust
+5.1. Implementation Details
+                                                                      capability to localize salient regions, and the segmented
+In this paper, all backbones and hyperparameters of the               salient instance masks must strictly align with the ground
+methods and comparison algorithms are the same as origi-              truth to achieve good experimental results in this task. It can
+nal paper, except for our newly designed parts. We imple-             be seen that USIS-SAM outperforms the best-performing
+mented USIS-SAM with PyTorch and MMDetection (Chen                    SIS method, OQTR, by 3.1, 2.3, and 5.1 AP in mAP, AP50 ,
+et al., 2019), and trained it over 24 epochs on 6 NVIDIA              and AP75 . This indicates that the AP advantage of USIS-
+3090 GPUs, using the AdamW optimizer with a starting                  SAM is due to the ability to segment higher precision masks
+learning rate of 1e-4 and weight decay of 1e-3. We also               in the underwater environment. In contrast, USIS-SAM has
+used the MindSpore Lite tool1 to implement our network.               an advantage of 0.7, 1.0, and 0.5 AP in mAP, AP50 , and
+Unless otherwise stated, the hyperparameters of all ablation          AP75 compared to the underwater instance segmentation
+experiments were consistent with the comparison experi-               method WaterMask. At this point, the AP advantage of
+ments with multi-class salient instance segmentation. For             USIS-SAM is based on the accurate identification of salient
+data enhancement, both our and the comparison algorithms              areas. Regarding the RSPrompter, also built based on SAM,
+use random horizontal flipping, random scaling, and random            USIS-SAM outperforms it by 1.5, 1.7, and 1.8 AP on mAP,
+   1
+                                                                      AP50 , and AP75 . This improvement is attributed to better
+       https://www.mindspore.cn/                                      learning of the underwater visual prompt with the assistance
+
+                                                                  7
+  Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+Class-Agnostic
+Multi-Class
+
+
+
+
+                 GT          RDPNet          OQTR         SAM + BBox       SAM + Mask       RSPrompter      WaterMask          Ours
+ Figure 8. Qualitative comparison on the USIS10K dataset. Each salient instance is represented by a unique color, and the segmented mask
+ is superimposed on the image. More quantitative comparisons can be found in Figure 10 in the Appendix.
+
+                                                                           instance segmentation dataset, SIS10K (Pei et al., 2023),
+ Table 3. Effectiveness of each component in USIS-SAM, replacing
+                                                                           to validate the generalization ability of our model. More
+ SFPG means to use Multi-scale Feature Enhancer Module (Chen
+ et al., 2024) instead of SFPG.                                            detailed ablation experiments are in Appendix B.2.
+                                                                           Effectiveness of Underwater Adaptive ViT Encoder. We
+              Methods        mAP           AP50          AP75
+                                                                           validate the performance of the Underwater Adaptive ViT
+             Full Model       43.1          59.0          48.5
+                                                                           Encoder by reverting the UA-ViT Block added in USIS-
+             w/o UA-ViT    41.5 (-1.6)   57.4 (-1.6)   47.0 (-1.5)         SAM back to the original ViT Block. In other words, at this
+            replace SFPG   42.2 (-0.9)   58.3 (-0.7)   47.5 (-1.0)         stage, USIS-SAM will utilize the pre-trained ViT-H as the
+                                                                           image encoder. It can be observed that the model achieves a
+                                                                           1.6 AP improvement after incorporating the UA-ViT Block.
+  of the Underwater Adaptive ViT Encoder in USIS-SAM,                      This demonstrates that the UA-ViT Block introduces un-
+  enhancing the network’s accuracy in segmentation.                        derwater visual information to the Underwater Adaptive
+                                                                           ViT Encoder through adapters, enabling the network to ef-
+ Multi-Class Salient Instance Segmentation. Multi-class
+                                                                           fectively handle complex marine scenes such as marine
+ salient instance segmentation can be considered as a fusion
+                                                                           snow, light scattering, optical artifacts, etc. Consequently,
+ of tasks from Class-Agnostic Salient Instance Segmenta-
+                                                                           it enhances the network’s capability to extract features and
+ tion and Salient Instance Class Prediction. From Table 2
+                                                                           facilitates network inference.
+ in the Multi-class case, USIS-SAM continues to gain an
+ AP advantage due to better mask accuracy. For OQTR,                       Effectiveness of Salient Feature Prompt Generator. We
+ S4Net, the single-stage network coupling classification and               evaluate the effect of the Salient Feature Prompt Generator
+ segmentation, USIS-SAM lead them by 22.4 AP and 19.5                      by replacing it. After replacing, the network will utilize
+ AP. Furthermore, USIS-SAM also gains a 4.1, 3.3, and 4.0                  the Multi-scale Feature Enhancer (Chen et al., 2024) to
+ AP lead over two-stage network RDPNet for mAP, AP50 ,                     aggregate multi-layer features. After the replacement, the
+ and AP75 . Moreover, USIS-SAM achieved a 4.4 and 5.1 AP                   network’s mAP, AP50 , and AP75 are reduced by 0.9, 0.7,
+ lead in mAP over WaterMask and RSPrompter, which were                     and 1.0 AP, respectively. What makes this possible is that
+ originally designed for multi-class instance segmentation                 SFPG do not simply fuse backbone features, it also enables
+ tasks. USIS-SAM leads them by 5.1 and 6.2 AP on AP50 ,                    the network to filter attention from non-significant regions
+ respectively. This is benefit from the extra labels that help             and direct segmentation gravity to salient locations.
+ the network localize semantically dominant regions.
+                                                                           Generalization Ability of USIS-SAM. Since there is no
+                                                                           other underwater instance segmentation dataset and it is
+  5.3. Ablation Studies
+                                                                           also a thought-provoking idea whether USIS-SAM can be
+ In this subsection, we perform ablation experiments on Un-                directly applied to land imagery, we retrained USIS-SAM on
+ derwater Adaptive ViT Encoder and Salient Feature Prompt                  saliency instance segmentation dataset SIS10K to validate
+ Generator, and the relevant data can be found in Table 3.                 the generalization ability of our model. In Table 4, we can
+ We also performed comparisons on the largest land salient                 see that, contributing to the excellent segmentation ability of
+
+                                                                       8
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+                                                                        of Hainan Province under Grant No.YSPTZX202410; in
+Table 4. Quantitative comparisons with state-of-the-arts methods
+                                                                        part by the Research Start-up Fund of Hainan University
+on the SIS10K (Pei et al., 2023). The hyperparameters and other
+settings for the methods in the table are the same as in Table 2.       (No. KYQD(ZR)-22015); in part by the Taishan Scholar
+                                                                        Project of Shandong Province under Grant tsqn202306079,
+        Methods                   mAP        AP50       AP75            in part by Xiaomi Young Talents Program, in part by the
+   OQTR (Pei et al., 2023)        67.2       88.1       81.7            Hong Kong GRF-RGC General Research Fund under Grant
+       USIS-SAM                   70.1       89.0       78.2            11209819 and Grant 11203820.
+
+                                                                        Impact Statement
+SAM and the saliency region localization ability of SFPG,
+USIS-SAM still achieves good results compared to OQTR,                  This paper presents work whose goal is to advance the field
+and gains on AP50, but is slightly weaker on AP75. This                 of Machine Learning. There are many potential societal
+may be due to domain knowledge learned in UA-ViT is the                 consequences of our work, none which we feel must be
+same as SAM encoder learned on SA-1B dataset, and the                   specifically highlighted here.
+guiding effect of UA-ViT on the network is weakened. This
+shows that USIS-SAM did not overfit our dataset.                        References
+                                                                        Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I., Aleman,
+6. Discussion                                                             F. L., Almeida, D., Altenschmidt, J., Altman, S., Anadkat, S.,
+                                                                          et al. Gpt-4 technical report. arXiv preprint arXiv:2303.08774,
+USIS-SAM proposed in this work is devised as the baseline                 2023.
+of USIS10K dataset for underwater scenes, its prompt learn-             Akkaynak, D. and Treibitz, T. A revised underwater image for-
+ing architecture may be feasible when transferred to other                mation model. In Proceedings of the IEEE Conference on
+domains. For example, dark light and hazing/raining scenes                Computer Vision and Pattern Recognition, June 2018.
+share the similar atmospheric scattering model (Akkaynak
+                                                                        Akkaynak, D. and Treibitz, T. Sea-thru: A method for removing
+& Treibitz, 2019; Zhao et al., 2021) with underwater scenes.              water from underwater images. In Proceedings of the IEEE/CVF
+Hence, UA-ViT’s adapter architecture may be conducive                     conference on computer vision and pattern recognition, pp.
+to them automatically map color distortion features to cor-               1682–1691, 2019.
+responding enhancement features. Meanwhile, the Salient                 Akkaynak, D., Treibitz, T., Shlesinger, T., Loya, Y., Tamir, R.,
+Feature Prompt Generator merges multi-layer and multi-                    and Iluz, D. What is the space of attenuation coefficients in
+scale features to provide salient prompts, can serve as an                underwater computer vision? In Proceedings of the IEEE
+out-of-the-box module to facilitate other SIS methods to                  Conference on Computer Vision and Pattern Recognition, July
+further explore and utilize SAM.                                          2017.
+                                                                        Ben Zaken, E., Goldberg, Y., and Ravfogel, S. BitFit: Simple
+7. Conclusions                                                            parameter-efficient fine-tuning for transformer-based masked
+                                                                          language-models. In Muresan, S., Nakov, P., and Villavicencio,
+In this paper, we construct the first large-scale salient                 A. (eds.), Proceedings of the Annual Meeting of the Associa-
+                                                                          tion for Computational Linguistics, pp. 1–9. Association for
+instance segmentation dataset for underwater images,                      Computational Linguistics, 2022.
+USIS10K, with pixel-level annotations, which enables us
+to explore the application of salient instance segmentation             Berman, D., Levy, D., Avidan, S., and Treibitz, T. Underwa-
+techniques in underwater environments. In addition, we also               ter single image color restoration using haze-lines and a new
+                                                                          quantitative dataset. IEEE Transactions on Pattern Analy-
+propose USIS-SAM for underwater salient instance segmen-                  sis and Machine Intelligence, 43(8):2822–2837, 2021. doi:
+tation based on SAM. Extensive experiments demonstrate                    10.1109/TPAMI.2020.2977624.
+the effectiveness of the USIS10K dataset and validate the
+                                                                        Chen, K., Wang, J., Pang, J., Cao, Y., Xiong, Y., Li, X., Sun, S.,
+performance of USIS-SAM.
+                                                                          Feng, W., Liu, Z., Xu, J., Zhang, Z., Cheng, D., Zhu, C., Cheng,
+                                                                          T., Zhao, Q., Li, B., Lu, X., Zhu, R., Wu, Y., Dai, J., Wang, J.,
+Acknowledgements                                                          Shi, J., Ouyang, W., Loy, C. C., and Lin, D. MMDetection:
+                                                                          Open mmlab detection toolbox and benchmark. arXiv preprint
+This work was supported in part by the National Key R&D                   arXiv:1906.07155, 2019.
+Program of China 2022ZD0118300; in part by the Na-                      Chen, K., Liu, C., Chen, H., Zhang, H., Li, W., Zou, Z., and
+tional Natural Science Foundation of China under Grant                    Shi, Z. Rsprompter: Learning to prompt for remote sensing
+62201179; in part by the Innovation Platform for “New                     instance segmentation based on visual foundation model. IEEE
+Star of South China Sea” of Hainan Province under Grant                   Transactions on Geoscience and Remote Sensing, 2024.
+No. NHXXRCXM202306; in part by the specific re-                         Chen, T., Zhu, L., Deng, C., Cao, R., Wang, Y., Zhang, S., Li, Z.,
+search fund of The Innovation Platform for Academicians                   Sun, L., Zang, Y., and Mao, P. Sam-adapter: Adapting segment
+
+                                                                    9
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+  anything in underperformed scenes. In Proceedings of the IEEE            Islam, M. J., Luo, P., and Sattar, J. Simultaneous enhancement and
+  International Conference on Computer Vision, pp. 3367–3375,                 super-resolution of underwater imagery for improved visual per-
+  2023.                                                                       ception. In Proceedings of the Robotics: Science and Systems,
+                                                                              2020.
+Cheng, B., Misra, I., Schwing, A. G., Kirillov, A., and Girdhar, R.
+  Masked-attention mask transformer for universal image segmen-            Kirillov, A., Wu, Y., He, K., and Girshick, R. Pointrend: Im-
+  tation. In Proceedings of the IEEE Conference on Computer                  age segmentation as rendering. In Proceedings of the IEEE
+  Vision and Pattern Recognition, pp. 1290–1299, June 2022.                  Conference on Computer Vision and Pattern Recognition, pp.
+                                                                             9799–9808, 2020.
+Choi, E. and Lee, C. Feature extraction based on the bhattacharyya
+  distance. Pattern Recognition, 36(8):1703–1709, 2003. ISSN               Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson,
+  0031-3203. doi: https://doi.org/10.1016/S0031-3203(03)                     L., Xiao, T., Whitehead, S., Berg, A. C., Lo, W.-Y., Dollar, P.,
+  00035-9.                                                                   and Girshick, R. Segment anything. In Proceedings of the IEEE
+Cong, R., Yang, N., Li, C., Fu, H., Zhao, Y., Huang, Q., and                 International Conference on Computer Vision, pp. 4015–4026,
+  Kwong, S. Global-and-local collaborative learning for co-salient           October 2023.
+  object detection. IEEE Transactions on Cybernetics, 53(3):               Li, C., Guo, C., Ren, W., Cong, R., Hou, J., Kwong, S., and Tao,
+  1920–1931, 2022.                                                            D. An underwater image enhancement benchmark dataset and
+Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai,            beyond. IEEE Transactions on Image Processing, 29:4376–
+  X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G.,               4389, 2020. doi: 10.1109/TIP.2019.2955241.
+  Gelly, S., Uszkoreit, J., and Houlsby, N. An image is worth
+  16x16 words: Transformers for image recognition at scale. In             Li, G., Xie, Y., Lin, L., and Yu, Y. Instance-level salient object seg-
+  Proceedings of the International Conference on Learning Rep-                mentation. In Proceedings of the IEEE Conference on Computer
+  resentations, 2021.                                                         Vision and Pattern Recognition, July 2017.
+
+ETI BioInformatics. Marine Species Identification Portal, 2009.            Li, Y., Hou, X., Koch, C., Rehg, J. M., and Yuille, A. L. The
+  Accessed: 10-9-2023.                                                        secrets of salient object segmentation. In Proceedings of the
+                                                                              IEEE Conference on Computer Vision and Pattern Recognition,
+Fan, D.-P., Cheng, M.-M., Liu, J.-J., Gao, S.-H., Hou, Q., and                pp. 280–287, 2014.
+  Borji, A. Salient objects in clutter: Bringing salient object
+  detection to the foreground. In Proceedings of the European              Lian, S., Li, H., Cong, R., Li, S., Zhang, W., and Kwong, S.
+  Conference on Computer Vision, September 2018a.                            Watermask: Instance segmentation for underwater imagery. In
+                                                                             Proceedings of the IEEE International Conference on Computer
+Fan, R., Hou, Q., Cheng, M.-M., Yu, G., Martin, R. R., and Hu,               Vision, pp. 1305–1315, October 2023.
+  S.-M. Associating inter-image salient instances for weakly
+  supervised semantic segmentation. In Proceedings of the Euro-            Lin, T.-Y., Maire, M., Belongie, S., Hays, J., Perona, P., Ramanan,
+  pean Conference on Computer Vision, pp. 367–383, 2018b.                    D., Dollár, P., and Zitnick, C. L. Microsoft coco: Common
+                                                                             objects in context. In Proceedings of the European Conference
+Fan, R., Cheng, M.-M., Hou, Q., Mu, T.-J., Wang, J., and Hu,                 on Computer Vision, pp. 740–755. Springer, 2014.
+  S.-M. S4net: Single stage salient-instance segmentation. In
+  Proceedings of the IEEE Conference on Computer Vision and                Liu, S., Ye, J., and Wang, X. Any-to-any style transfer: Making
+  Pattern Recognition, June 2019.                                            picasso and da vinci collaborate. arXiv e-prints, pp. arXiv–2304,
+                                                                             2023.
+Fang, Y., Yang, S., Wang, X., Li, Y., Fang, C., Shan, Y., Feng, B.,
+  and Liu, W. Instances as queries. In Proceedings of the IEEE             Ma, J., He, Y., Li, F., Han, L., You, C., and Wang, B. Segment
+  International Conference on Computer Vision, pp. 6910–6919,               anything in medical images. Nature Communications, 15(1):
+  October 2021.                                                             654, 2024.
+Girshick, R. Fast r-cnn. In Proceedings of the IEEE international          Mobley, C. D. Radiative transfer in the ocean. Encyclopedia of
+  conference on computer vision, pp. 1440–1448, 2015.                       ocean sciences, 4:2321–2330, 2001.
+Guo, C., Wu, R., Jin, X., Han, L., Zhang, W., Chai, Z., and Li, C.
+  Underwater ranker: Learn which is better and how to be better.           Oceana Inc. The Ocean Animal Encyclopedia, 2001. Accessed:
+  Proceedings of the AAAI Conference on Artificial Intelligence,             10-10-2023.
+  37(1):702–709, Jun. 2023.                                                Pei, J., Cheng, T., Tang, H., and Chen, C. Transformer-based
+He, K., Gkioxari, G., Dollar, P., and Girshick, R. Mask r-cnn. In            efficient salient instance segmentation networks with orientative
+  Proceedings of the IEEE Conference on Computer Vision and                  query. IEEE Transactions on Multimedia, 25:1964–1978, 2023.
+  Pattern Recognition, Oct 2017.                                             doi: 10.1109/TMM.2022.3141891.
+
+Hong, L., Wang, X., Zhang, G., and Zhao, M. Usod10k: A                     Ren, S., He, K., Girshick, R., and Sun, J. Faster r-cnn: Towards
+  new benchmark dataset for underwater salient object detection.             real-time object detection with region proposal networks. Ad-
+  IEEE Transactions on Image Processing, pp. 1–1, 2023. doi:                 vances in Neural Information Processing Systems, 28, 2015.
+  10.1109/TIP.2023.3266163.
+                                                                           Shi, P., Qiu, J., Abaxi, S. M. D., Wei, H., Lo, F. P.-W., and Yuan,
+Huang, Y., Yang, X., Liu, L., Zhou, H., Chang, A., Zhou, X., Chen,           W. Generalist vision foundation models for medical imaging:
+  R., Yu, J., Chen, J., Chen, C., et al. Segment anything model for          A case study of segment anything model on zero-shot medical
+  medical images? Medical Image Analysis, 92:103061, 2024.                   segmentation. Diagnostics, 13(11):1947, 2023.
+
+                                                                      10
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+Tian, X., Xu, K., Yang, X., Yin, B., and Lau, R. W. Learning
+   to detect instance-level salient objects using complementary
+   image labels. International Journal of Computer Vision, 130(3):
+  729–746, 2022a.
+
+Tian, X., Xu, K., Yang, X., Yin, B., and Lau, R. W. H. Learning
+   to detect Instance-Level salient objects using complementary
+   image labels. International Journal of Computer Vision, 130(3):
+  729–746, March 2022b.
+
+Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux, M.-A.,
+  Lacroix, T., Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al.
+  Llama: Open and efficient foundation language models. arXiv
+  preprint arXiv:2302.13971, 2023.
+Wu, J., Fu, R., Fang, H., Liu, Y., Wang, Z., Xu, Y., Jin, Y., and
+ Arbel, T. Medical sam adapter: Adapting segment anything
+ model for medical image segmentation. arXiv e-prints, pp.
+ arXiv–2304, 2023.
+
+Wu, Y.-H., Liu, Y., Zhang, L., Gao, W., and Cheng, M.-M. Regu-
+ larized densely-connected pyramid network for salient instance
+ segmentation. IEEE Transactions on Image Processing, 30:
+ 3897–3907, 2021. doi: 10.1109/TIP.2021.3065822.
+
+Xie, D., Wang, R., Ma, J., Chen, C., Lu, H., Yang, D., Shi, F., and
+  Lin, X. Edit everything: A text-guided generative system for
+  images editing. arXiv preprint arXiv:2304.14006, 2023.
+
+Yu, H., Zheng, K., Fang, J., Guo, H., Feng, W., and Wang, S.
+  Co-saliency detection within a single image. In Proceedings
+  of the AAAI Conference on Artificial Intelligence, volume 32,
+  2018.
+Yu, T., Feng, R., Feng, R., Liu, J., Jin, X., Zeng, W., and Chen,
+  Z. Inpaint anything: Segment anything meets image inpainting.
+  arXiv preprint arXiv:2304.06790, 2023.
+Zhang, Q., Cong, R., Hou, J., Li, C., and Zhao, Y. Coadnet: Col-
+  laborative aggregation-and-distribution networks for co-salient
+  object detection. Advances in Neural Information Processing
+  Systems, 33:6959–6970, 2020.
+
+Zhang, R., Jiang, Z., Guo, Z., Yan, S., Pan, J., Dong, H., Qiao, Y.,
+  Gao, P., and Li, H. Personalize segment anything model with
+  one shot. In The Twelfth International Conference on Learning
+  Representations, 2023.
+
+Zhang, X., Liu, Y., Lin, Y., Liao, Q., and Li, Y. Uv-sam: Adapting
+  segment anything model for urban village identification. In
+  Proceedings of the AAAI Conference on Artificial Intelligence,
+  volume 38, pp. 22520–22528, 2024.
+Zhang, Y. and Jiao, R. How segment anything model (sam) boost
+  medical image segmentation: A survey. Available at SSRN
+  4495221, 2022.
+
+Zhao, S., Zhang, L., Shen, Y., and Zhou, Y. Refinednet: A weakly
+  supervised refinement framework for single image dehazing.
+  IEEE Transactions on Image Processing, 30:3391–3404, 2021.
+
+
+
+
+                                                                        11
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+A. More Details and Samples about USIS10K
+A.1. Dataset Collection.
+We collected about 30,000 images from the Internet and open source underwater datasets from various different domains,
+such as underwater image enhancement (Li et al., 2020; Berman et al., 2021), underwater instance segmentation (Lian et al.,
+2023), and underwater salience detection (Hong et al., 2023; Islam et al., 2020). These images come from many different
+natural underwater environments, covering underwater vision tasks such as ocean exploration, human-computer intelligence
+cooperation, and underwater autopilot. After that, we allowed two volunteers to filter the alternative images for duplicates,
+corruptions, and images without salient objects. Finally, we carefully annotated the remaining 16,000 images.
+
+A.2. Dataset Annotation.
+We assembled 17 volunteers to annotate the dataset. Before annotation, these volunteers were trained in the following three
+parts: 1) the categories of various common organisms in underwater scenes. 2) the process of previous dataset construction
+in the field of SIS and the basic methods for image annotation. 3) the general knowledge of visible salience. We use sparse
+annotation polygons to annotate each instance in the dataset. Annotated data will be stored in the mainstream COCO-style
+format (Lin et al., 2014) for ease of use by most common frameworks and models. Each image will be annotated by at
+least 3 volunteers. For those images collected from the Underwater Instance Segmentation dataset, 3 volunteers will vote
+on the saliency of each instance, and all instances with more than 2 votes will be retained. For images collected from the
+underwater salient detection dataset, two volunteers will re-label the salient object bounding box at the instance level, and
+a third volunteer will select the best annotation and refine it. For the other images, three volunteers will annotate salient
+objects in the image at the instance level, and a fourth volunteer will select, refine, and merge their annotations. To ensure
+the precision of the labeled categories, we follow the guidance of the literature (Oceana Inc., 2001; ETI BioInformatics,
+2009) to categorize potentially confusing objects. In addition, we also filtered out the images for which we could not reach a
+consensus on instance category or salience. Finally, we are left with 10,632 images that constitute the USIS10K dataset
+
+A.3. Category labels contained in USIS10K
+Table 5 lists all the category labels contained in the USIS10K dataset along with their detailed category definitions. As can
+be seen, the USIS10K dataset contains object categories such as fish, coral reefs, aquatic plants, and wrecks/ruins. These
+categories constitute the primary research components for marine ruins discovery, marine resources exploration, and marine
+ecological preservation. Moreover, the dataset contains pixel annotations for human divers, robots, and seafloor, serving as
+crucial research targets for human-robot-object collaboration.
+
+                              Table 5. The category labels in USIS10K dataset with their definitions.
+                                    Category                     Descriptions
+                                       Fish          Underwater vertebrates, e.g., fish, turtles
+                                      Reefs          Underwater invertebrates and coral reefs
+                                   Aquatic plants          Aquatic plants and flora
+                                   Wrecks/ruins       Wrecks, ruins and damaged artifacts
+                                   Human divers        Human divers and their equipment
+                                      Robots           Underwater robots like AUV, ROV
+                                     Sea-floor          Rocks and reefs on the seafloor
+
+
+A.4. More Samples about USIS10K
+More visual samples from the USIS10K dataset are presented in Figure 9. It is evident that the images in the USIS10K dataset
+contain a wide variety of underwater scenes with many different saturations, chromatic aberration, and quality degradations.
+This diversity is very effective for training salient instance segmentation networks suitable for general underwater scenes.
+Furthermore, the USIS10K dataset also includes a large number of challenging images meticulously crafted to comprehen-
+sively evaluate the model’s performance. As in Figure 9, the surface reflection in the first row’s, first, and second columns
+has the potential to disturb the model’s saliency localization. The intricate boundaries of aquatic plants in the third column
+of the third row and reefs in the second column of the fourth row present a more significant challenge to the segmentation
+
+                                                                12
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+
+
+
+Figure 9. More visual samples of annotated images with pixel-level salient instance segmentation in USIS10K. The image on the left
+is the original image and the right is the annotation mask, different colors represent different salient instances.
+
+
+
+accuracy of the network. Additionally, the overlapping fish in the second column of the third row necessitates that the
+network accurately distinguishes each salient instance.
+
+B. More Qualitative Comparison and ablation Experiments
+B.1. More Qualitative Comparison
+We also show more visual comparisons on USIS10K dataset in Figure 10 to demonstrate the effectiveness of our model. It
+can be seen that compared to salient instance segmentation networks such as RDPNet (Wu et al., 2021) and OQTR (Pei et al.,
+2023), benefiting from our Underwater Adaptive ViT Encoder, USIS-SAM can better adapt to underwater environments and
+segment the accurate instance boundaries (as shown in Figure 10, rows 1 and 3). And compared with instance segmentation
+methods such as WaterMask (Lian et al., 2023), RSPrompter (Chen et al., 2024), Salient Feature Prompt Generator brings
+USIS-SAM a more powerful salient region localization capability, which can better identify the instance’s saliency (as
+shown in Figure 10, row 6).
+
+B.2. More Ablation Experiments
+In this subsection, we perform more detailed ablation experiments on each component in the Underwater Adaptive ViT
+Encoder and Salient Feature Prompt Generator.
+Number of parameters for USIS-SAM. In order to minimize the training consumption, we do not tune all the parameters
+in the original SAM architecture, but freeze the pre-trained SAM weights and insert some simple but effective modules at
+specific locations in the SAN to modify the SAM for underwater salience instance segmentation. We show the number of
+parameters for each component in USIS-SAM in Table 6. It can be seen that the trainable parameters of USIS-SAM constitute
+
+                                                               13
+Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+only 9.3% of the total. This means that instead of retraining or fine-tuning SAM, we can quickly apply USIS-SAM to
+underwater tasks by simply freezing SAM and specifically training our additional introduced components.
+
+             Table 6. Number of parameters for each component of USIS-SAM, where ∗ stands for trainable parameters.
+
+                                 Modules     Segment Anything Model          UA-ViT∗      SPFG∗
+                                 Params             641.0 M                   30.5 M      29.5 M
+
+Underwater Adaptive ViT Encoder. We show the results of the following ablation experiments about the Underwater
+Adaptive ViT Encoder in Table 7. First, we assess the effect of the Adapter by removing it from the UA-ViT. The results
+indicate that the absence of the Adapter prevents the network from learning underwater-specific visual prompts due to the
+freezing of the image encoder, resulting in performance degradation of 1.4, 1.7, and 1.2 AP on the mAP, AP50 , and AP75 ,
+respectively. Additionally, we also removed the Channel Adapter to demonstrate its effectiveness. It can be seen that after
+removing it, the network performance decreases by 1.1, 1.3 AP, and 1.4 AP on mAP, AP50 , and AP75 . This decline is
+attributed to the network’s inability to accurately identify the importance of each channel at this time.
+
+Table 7. Effectiveness of each component in Underwater Adaptive ViT Encoder, w/o Adapter and w/o CA denote the removal of Adapters
+and Channel Adapter.
+
+                                     Methods           mAP             AP50          AP75
+                                    Full Model          43.1            59.0          48.5
+                                    w/o Adapter      41.7 (-1.4)     57.3 (-1.7)   47.3 (-1.2)
+                                      w/o CA         42.0 (-1.1)     57.7 (-1.3)   47.1 (-1.4)
+
+Salient Feature Prompt Generator. Table 8 shows the results of ablation experiments concerning the Salient Feature
+Prompt Generator. First, we evaluate the effectiveness of the Salient Feature Fusion Module by removing it. The results
+demonstrate that upon removing it, the model is unable to effectively aggregate the multilayer features of ViT, which affects
+its ability to accurately localize the salient regions in the image, resulting in a decrease in the AP values of mAP, AP50 and
+AP75 by 0.8, 0.5 and 1.3, respectively. In addition, we explored the effect of replacing multi-scale convolution with simple
+3 × 3 convolution after upsampling in the Salient Feature Prompt Generator. After replacement, the segmentation accuracy
+of the model decreased due to the reduced receptive field, decreasing by 0.6, 0.4, and 0.8 AP in mAP, AP50 , and AP75 ,
+respectively.
+
+Table 8. Effectiveness of each component in Salient Feature Prompt Generator, w/o SFFM and w/o Multi-Conv denote the removal of the
+salient feature fusion module and multi-up sampling module.
+
+                                      Methods           mAP            AP50          AP75
+                                     Full Model          43.1           59.0          48.5
+                                     w/o SFFM         42.3 (-0.8)    58.5 (-0.5)   47.2 (-1.3)
+                                    w/o Multi-Up      42.5 (-0.6)    58.6 (-0.4)   47.7 (-0.8)
+
+
+Generalization Ability in similar tasks. We also conducted experiments on the underwater instance segmentation task,
+which is similar to the underwater salient instance segmentation task, to validate the generalization ability of our model. To
+do so, we retrain our model on the underwater instance segmentation dataset UIIS (Lian et al., 2023), and compare it to
+other state-of-the-arts underwater instance segmentation algorithms in Table 9. It can be seen that compared to WaterMask
+(Lian et al., 2023), which is designed for underwater instance segmentation tasks, USIS-SAM obtains a lead of 2.2 AP, 1.3
+AP and 3.0 AP on mAP, AP50 and AP75, respectively. This is attributed to the underwater vision knowledge that UA-ViT
+introduces to the network and the strong segmentation capability of SAM, which helps USIS-SAM to achieve favorable
+capabilities in similar tasks.
+
+
+
+
+                                                                14
+  Diving into Underwater: Segment Anything Model Guided Underwater Salient Instance Segmentation and A Large-scale Dataset
+
+
+
+
+ Table 9. Quantitative comparisons with state-of-the-arts methods on underwater instance segmentation dataset UIIS (Lian et al., 2023).
+ The hyperparameters and other settings for USIS-SAM in the table are the same as in Table 2.
+
+                                         Methods                       Epoch     mAP      AP50       AP75
+                               Mask RCNN (He et al., 2017)              36       23.4     40.9       25.3
+                              Point Rend (Kirillov et al., 2020)        36       25.9     43.4       27.6
+                                QueryInst (Fang et al., 2021)           36       26.0     42.8       27.3
+                              Mask2Former (Cheng et al., 2022)          36       25.7     38.0       27.7
+                                 RDPNet (Wu et al., 2021)               50       20.6     38.7       19.4
+                               WaterMask (Lian et al., 2023)            36       27.2     43.7       29.3
+                                        USIS-SAM                        24       29.4     45.0       32.3
+Class-Agnostic
+Multi-Class
+
+
+
+
+                 GT     RDPNet           OQTR          SAM + BBox      SAM + Mask       RSPrompter       WaterMask          Ours
+
+ Figure 10. More qualitative comparison on USIS10K dataset. Each salient instance is represented by a unique color, and the segmented
+ mask is superimposed on the image. SAM+BBox uses inference results from Faster RCNN(Ren et al., 2015) as prompts for prediction,
+ SAM+Mask stands for Mask RCNN networks (He et al., 2017) use SAM as the backbone. The RSPrompter in the table is the RSPrompter-
+ anchor framework.
+
+
+
+
+                                                                  15
+

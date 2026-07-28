@@ -1,0 +1,1801 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-15T09:40:56Z",
+  "title": "Matrix Compression via Randomized Low Rank and Low Precision Factorization",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Matrices are the workhorse data structure of science and machine learning, but modern ones can hold billions of entries. Simply storing them, moving them across memory, and multiplying them strains both memory and compute. What rescues us is a fact that is easy to overlook: many real-world matrices are approximately low rank. They carry far less information than their raw dimensions suggest."
+            },
+            {
+              "type": "paragraph",
+              "text": "There are two well-worn ways to exploit that redundancy. One is low-rank approximation, which writes a matrix as the product of a tall factor and a wide factor, collapsing the number of entries. The other is low-precision quantization, which stores each number in a handful of bits instead of a 32-bit float. Both are mature on their own. Yet folding them into a single factorization, with a provable error guarantee, has remained an open problem."
+            },
+            {
+              "type": "paragraph",
+              "text": "At NeurIPS 2023, a team from Stanford proposes LPLR (Low-Precision Low-Rank factorization): a single randomized routine that produces two factors that are simultaneously low rank and low precision, so that A ≈ LR, and that comes with upper bounds on the approximation error as a function of the target rank and the bit budget. Across a deliberately varied set of matrices — from medical test images to embedding vectors to the weight matrices of LlaMa-7b — LPLR compresses down to roughly one bit per entry while matching, and in some settings exceeding, the accuracy of conventional compression."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11028　　Code: https://github.com/pilancilab/matrix-compressor"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why combining the two is hard"
+            },
+            {
+              "type": "paragraph",
+              "text": "The intuition is simple enough. If a matrix is low rank, we can write it as a tall factor times a wide factor, which slashes the entry count. If we then store those factors in low precision, we save even more. It looks like a matter of stacking the two steps. In practice, two obstacles get in the way."
+            },
+            {
+              "type": "paragraph",
+              "text": "The first is accuracy. Combining low-rank factorization and quantization crudely — especially at aggressive bit budgets — lets error accumulate quickly, and quality collapses. The second is cost. The most accurate route to low-rank factors is the singular value decomposition (SVD), but its O(nd²) cost is prohibitive for the largest matrices on today's GPU hardware. The paper asks whether there is a fast, analyzable, randomized path that yields low-rank and low-precision factors in one shot while keeping the approximation error under firm control."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How LPLR works"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR runs in a few steps. It first draws a Gaussian random matrix S and forms the sketch AS — a randomized rangefinder that approximates the column space of A. It quantizes this basis to obtain Q(AS), which becomes the first factor, L."
+            },
+            {
+              "type": "paragraph",
+              "text": "Next it projects the columns of A onto the quantized basis by solving the least-squares problem W* = argmin_W ‖Q(AS)·W − A‖²_F, which has a closed form and can also be solved iteratively with conjugate gradients. Finally it quantizes W* with a second quantizer, returning the two factors L = Q(AS) and R = Q'(W*). The whole procedure costs O(ndm) with sketch size m — far less than the O(nd²) of a direct SVD."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper backs this with an error bound: E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε, where A_k is the best rank-k approximation of A, k is the target rank, and ε is set by the quantization budget. The bound cleanly separates the truncation error from choosing a low rank and the precision error from quantization, giving practitioners an explicit knob to trade compression ratio against accuracy."
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "Why one bit still holds up"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR stays stable at such aggressive budgets because of a property of the Gaussian sketch. A Gaussian matrix is a Johnson-Lindenstrauss (JL) embedding, and it brings an equalization effect: the quantization error of the reconstruction x̂ = SᵀQ(Sx) stays O(1) rather than growing to O(d) with the dimension, as entrywise quantization would. That is precisely what keeps LPLR accurate even when each coordinate is stored with a single sign bit. It also explains a counterintuitive observation in the paper — spending bits on thinner factors often pays off more than piling bits onto the original matrix."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Evidence 1: downstream classification of embeddings"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first experiment asks whether the compressed matrix is still usable. The authors generate CIFAR-10 and CIFAR-100 image embeddings with MobileNetV3 and IMDB and Emotion text embeddings with BERT, compress the embedding matrices, and then measure downstream accuracy and weighted F1 with a k-nearest-neighbor classifier. Every method is compared at parity — the same total bit budget — where Bnq denotes the bits per entry used by the naive-quantization baseline."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Embedding classification accuracy (%) at a baseline budget of Bnq = 1 bit, with B = B′ = 8 bits for the LPLR-family methods. Naive quantization all but collapses at one bit, whereas LPLR and LSVD match or exceed the unquantized baseline (kNN benefits from the denoising).",
+              "headers": [
+                "Dataset",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "Naive Quant.",
+                "Unquantized"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The contrast is stark. At the extreme setting Bnq = 1, naive quantization falls to 11% accuracy on CIFAR-10 and to roughly 1% on CIFAR-100 — essentially random guessing — while LPLR holds 92% and 79%, on par with or above the unquantized 91% and 76%. In other words, LPLR compresses the embeddings to about one bit per entry with almost no loss in task performance."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Evidence 2: compressing LlaMa-7b weights"
+            },
+            {
+              "type": "paragraph",
+              "text": "Large language models make the point more forcefully. The authors compress the weight matrices of LlaMa-7b layer by layer and measure reconstruction quality with the relative Frobenius norm error — the lower the error, the closer the compressed weights are to the originals. The figure below plots the per-layer error for LPLR, LPLR-SVD, and naive quantization in the original layer order."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "Figure 2. Relative Frobenius norm error on the LlaMa-7b weight matrices for LPLR (blue), LPLR-SVD (green), and naive quantization (orange), ordered by the original sequence of layers. Naive quantization is high and volatile across most layers, spiking above 1.5 repeatedly, while LPLR and LPLR-SVD stay consistently lower and far steadier.",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The orange naive-quantization curve swings wildly, spiking above 1.5 and even past 3.0 on many layers, while the blue LPLR and green LPLR-SVD traces hug a lower, flatter band. Aggregated into numbers, the same advantage holds."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Mean relative Frobenius norm error on the LlaMa-7b weight matrices (lower is better). Under both bit budgets, LPLR-SVD sits well below naive quantization, with far smaller layer-to-layer variance.",
+              "headers": [
+                "Bit budget",
+                "LPLR",
+                "LPLR-SVD",
+                "Naive Quant."
+              ],
+              "rows": [
+                [
+                  "B = B′ = 8, Bnq = 4",
+                  "0.672",
+                  "0.537",
+                  "0.836"
+                ],
+                [
+                  "B = B′ = Bnq = 4",
+                  "0.548",
+                  "0.540",
+                  "0.836"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "At B = B′ = 8 and Bnq = 4, LPLR-SVD reaches a mean relative error of 0.537 against 0.836 for naive quantization. Not only is the mean lower; the standard deviation is much smaller too (0.079 versus 0.470), meaning its behavior across layers is more stable and more predictable."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Teasing apart low rank and low precision"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does LPLR's gain come from the low-rank structure or from the quantization precision? The paper separates the two with an ablation. Holding the compression ratio fixed, the authors sweep the bit-budget triplet (B, B′, Bnq), and find that shifting budget away from the low-rank factors (B) toward the non-quantized reference (raising Bnq) systematically lowers the Frobenius error for LPLR and its SVD variant. Across the embedding experiments, raising Bnq from 1 to 4 bits moves LPLR from decisively beating naive and Direct-SVD quantization at the aggressive end toward parity with them at the relaxed end. The reading is clear: the more aggressive the compression, the larger LPLR's edge."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "The message of this work is that low rank and low precision are complementary, and exploiting them jointly is what pushes compression to the extreme. With one Gaussian random projection and two rounds of quantization, LPLR compresses a matrix to roughly one bit per entry while preserving accuracy on images, embeddings, and LLM weights — and it carries provable upper bounds on the approximation error. Because it sidesteps the expensive SVD and runs in O(ndm) time, it is especially practical for the very largest matrices where exact methods simply do not fit."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being precise about the boundary. LPLR's guarantee rests on the matrix being approximately low rank; for matrices that are genuinely high rank, with slowly decaying singular values, low-rank factorization has little to save in the first place. The paper also observes that as Bnq relaxes toward 4 bits, LPLR's advantage over naive quantization narrows to a near tie — its brightest regime is exactly the aggressive end where competing methods break down first."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "矩阵是科学计算和机器学习里最基础的数据结构，但现代矩阵动辄包含数十亿个元素，光是把它存下来、搬运和参与计算，就会给显存和算力带来沉重压力。好在一个常被忽视的事实是：许多真实世界的矩阵都近似低秩，它们携带的有效信息远比自身的尺寸暗示的要少。"
+            },
+            {
+              "type": "paragraph",
+              "text": "面对这种冗余，业界通常从两个方向压缩。一是低秩近似（low-rank approximation），把矩阵写成一个「高瘦」因子和一个「矮胖」因子的乘积，元素总数随之骤降；二是低精度量化（low-precision quantization），把每个数值从 32 比特浮点压到区区几个比特。两条路各自都已相当成熟，但要把它们拧进同一次分解、并且还能给出可证明的误差保证，一直是一块空白。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 NeurIPS 2023 上，来自斯坦福大学的这篇论文提出了 LPLR（Low-Precision Low-Rank，低精度低秩分解）：用一次随机化的分解，同时得到低秩且低精度的两个因子，使得 A ≈ LR，并为它的近似误差推导出与目标秩、比特预算相关的上界。在从医学图像、嵌入向量到 LlaMa-7b 权重矩阵的一系列任务上，LPLR 能把矩阵压到平均每个元素约 1 比特，同时精度媲美、在部分设置下甚至反超传统方法。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2310.11028　　代码：https://github.com/pilancilab/matrix-compressor"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "为什么「两条路一起走」这么难"
+            },
+            {
+              "type": "paragraph",
+              "text": "直觉上，如果一个矩阵是低秩的，就可以把它写成一个瘦因子和一个胖因子的乘积，元素数量大幅减少；如果再把这些因子的元素用低精度存储，就能省得更多。看起来只要把两步简单叠加即可，但真正做起来有两个障碍。"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一个障碍是精度。把低秩分解和量化粗暴地拼在一起，尤其是在极低比特预算下，误差会迅速累积、精度崩塌。第二个障碍是计算成本。得到低秩因子最精确的途径是奇异值分解（SVD），但它的计算量高达 O(nd²)，对于当今 GPU 上最大的那些矩阵而言几乎不可行。论文要回答的正是：能否用一条又快又可分析的随机化路径，一次性拿到低秩且低精度的因子，同时把近似误差牢牢控制住。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "LPLR 是怎么做的"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的流程可以拆成几步。首先，它抽取一个高斯随机矩阵 S，构造草图（sketch）AS——这是一个随机化的「值域探测器」（rangefinder），用来近似 A 的列空间。然后它把这个基底量化，得到 Q(AS)，这就是第一个因子 L。"
+            },
+            {
+              "type": "paragraph",
+              "text": "接下来，它把 A 的列向量投影到这个量化后的基底上，求解最小二乘问题 W* = argmin_W ‖Q(AS)·W − A‖²_F，这个问题有闭式解，也可以用共轭梯度迭代求解。最后，它用第二个量化器把 W* 量化为 R = Q'(W*)，并返回两个因子 L = Q(AS) 与 R = Q'(W*)。整个过程只需 O(ndm) 的计算量（m 为草图尺寸），远低于直接 SVD 的 O(nd²)。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文进一步给出近似误差的上界：E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε，其中 A_k 是 A 的最优 k 秩近似，k 为目标秩，ε 由量化比特预算决定。这个式子把「低秩带来的截断误差」和「量化带来的精度误差」清晰地分成了两项，让实践者可以在压缩率与精度之间明确地权衡。"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "为什么压到 1 比特还扛得住"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 能在如此激进的比特预算下依然稳定，关键来自高斯草图的一个性质。高斯矩阵是一种 Johnson-Lindenstrauss（JL）嵌入，它带来一种「均衡化」（equalization）效应：重建量 x̂ = SᵀQ(Sx) 的量化误差保持在 O(1)，而不会像逐元素量化那样随维度 d 线性增长到 O(d)。正是这个性质，让 LPLR 即便在每个坐标只用 1 比特（符号量化）时，误差也不会失控。这也解释了本文一个反直觉的现象：把因子分解得更「瘦」、给每个元素更多比特，往往比在原矩阵上直接堆比特更划算。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据一：嵌入向量的下游分类"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一组实验检验的是「压缩后还能不能用」。作者用 MobileNetV3 生成 CIFAR-10 / CIFAR-100 的图像嵌入、用 BERT 生成 IMDB / Emotion 的文本嵌入，压缩这些嵌入矩阵后，再用 k 近邻分类器测量下游的准确率与加权 F1。所有方法都在相同的总比特预算（parity）下比较，其中 Bnq 表示朴素量化基线所用的每元素比特数。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 嵌入分类准确率（%），比较基线量化预算 Bnq = 1 比特，LPLR 系方法取 B = B′ = 8 比特。朴素量化在 1 比特下几乎完全失效，而 LPLR 与 LSVD 保持甚至反超未量化基线（k 近邻在去噪后表现更好）。",
+              "headers": [
+                "数据集",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "朴素量化",
+                "未量化"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "对比非常鲜明：在每比特预算 Bnq = 1 的极端设置下，朴素量化在 CIFAR-10 上准确率跌到 11%、在 CIFAR-100 上更是跌到约 1%，基本等同于瞎猜；而 LPLR 分别保持 92% 与 79%，与未量化的 91%、76% 持平甚至更高。换句话说，LPLR 在把嵌入压到约 1 比特的同时，几乎没有牺牲任务性能。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据二：压缩 LlaMa-7b 的权重"
+            },
+            {
+              "type": "paragraph",
+              "text": "更能说明问题的是大语言模型。作者逐层压缩 LlaMa-7b 的权重矩阵，用相对 Frobenius 范数误差衡量重建质量——误差越低，压缩后的权重越接近原始权重。下图按层的原始顺序，把 LPLR、LPLR-SVD 和朴素量化的逐层误差画在一起。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "图2 在 LlaMa-7b 各层权重矩阵上，LPLR（蓝）、LPLR-SVD（绿）与朴素量化（橙）的相对 Frobenius 范数误差，按层的原始顺序排列。朴素量化在多数层误差高且抖动剧烈（不时冲到 1.5 以上），而 LPLR 与 LPLR-SVD 的误差始终更低、更平稳。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图中橙色的朴素量化曲线剧烈抖动，在不少层冲到 1.5 甚至 3.0 以上；而蓝色的 LPLR 与绿色的 LPLR-SVD 则贴着一条更低、更平的水平带走。汇总成数字后，这个优势同样清晰。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 LlaMa-7b 权重矩阵上的平均相对 Frobenius 范数误差（越低越好）。在两种比特预算下，LPLR-SVD 的误差都明显低于朴素量化，且层间方差更小。",
+              "headers": [
+                "比特预算",
+                "LPLR",
+                "LPLR-SVD",
+                "朴素量化"
+              ],
+              "rows": [
+                [
+                  "B = B′ = 8, Bnq = 4",
+                  "0.672",
+                  "0.537",
+                  "0.836"
+                ],
+                [
+                  "B = B′ = Bnq = 4",
+                  "0.548",
+                  "0.540",
+                  "0.836"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在 B = B′ = 8、Bnq = 4 的设置下，LPLR-SVD 的平均相对误差为 0.537，而朴素量化为 0.836；不仅均值更低，标准差（0.079 对 0.470）也小得多，意味着它在不同层上的表现更稳定、更可预测。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "拆解：低秩与低精度各自的贡献"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的收益到底来自「低秩结构」还是「量化精度」？论文通过一组消融实验把两者分开。作者在固定压缩率的前提下扫描比特三元组 (B, B′, Bnq)，结果显示：当把预算从低秩因子（B）挪向非量化参照（提高 Bnq）时，LPLR 及其 SVD 变体的 Frobenius 误差会系统性地下降。在各个嵌入实验里，把 Bnq 从 1 比特提到 4 比特，会让 LPLR 从「在激进端大幅领先朴素量化与 Direct-SVD」逐渐走向「在宽松端与它们打平」。这恰恰说明：压缩越激进，LPLR 的优势越大。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇工作传达的核心信息是：低秩与低精度是互补的，把它们放在一起利用才能把压缩推到极致。通过一次高斯随机投影加两次量化，LPLR 把矩阵压到平均每个元素约 1 比特，同时保持在图像、嵌入向量与大模型权重上的精度，并且带有可证明的误差上界。它绕开了昂贵的 SVD，只需 O(ndm) 的计算量，因而对那些连精确方法都塞不下的超大矩阵格外实用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要说明的是，LPLR 的误差保证建立在矩阵近似低秩这一前提上；对于本身秩就很高、奇异值衰减缓慢的矩阵，低秩分解本身能省下的空间有限。论文也观察到，随着 Bnq 放宽到 4 比特，LPLR 相对朴素量化的优势会收窄到基本持平——它最闪光的区间，正是压缩最激进、别的方法最先崩溃的那一端。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 291.96,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 291.96,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 24.27,
+          "relative_start": 0.5,
+          "relative_end": 24.27,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 24.27,
+          "global_end": 46.51,
+          "relative_start": 24.27,
+          "relative_end": 46.51,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 46.51,
+          "global_end": 70.09,
+          "relative_start": 46.51,
+          "relative_end": 70.09,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 70.09,
+          "global_end": 100.61,
+          "relative_start": 70.09,
+          "relative_end": 100.61,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 100.61,
+          "global_end": 140.03,
+          "relative_start": 100.61,
+          "relative_end": 140.03,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 140.03,
+          "global_end": 171.03,
+          "relative_start": 140.03,
+          "relative_end": 171.03,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 171.03,
+          "global_end": 206.18,
+          "relative_start": 171.03,
+          "relative_end": 206.18,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 206.18,
+          "global_end": 235.06,
+          "relative_start": 206.18,
+          "relative_end": 235.06,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 235.06,
+          "global_end": 265.91,
+          "relative_start": 235.06,
+          "relative_end": 265.91,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 265.91,
+          "global_end": 291.87,
+          "relative_start": 265.91,
+          "relative_end": 291.87,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Matrices are the workhorse data structure of science and machine learning, but modern ones can hold billions of entries. Simply storing them, moving them across memory, and multiplying them strains both memory and compute. What rescues us is a fact that is easy to overlook: many real-world matrices are approximately low rank. They carry far less information than their raw dimensions suggest."
+            },
+            {
+              "type": "paragraph",
+              "text": "There are two well-worn ways to exploit that redundancy. One is low-rank approximation, which writes a matrix as the product of a tall factor and a wide factor, collapsing the number of entries. The other is low-precision quantization, which stores each number in a handful of bits instead of a 32-bit float. Both are mature on their own. Yet folding them into a single factorization, with a provable error guarantee, has remained an open problem."
+            },
+            {
+              "type": "paragraph",
+              "text": "At NeurIPS 2023, a team from Stanford proposes LPLR (Low-Precision Low-Rank factorization): a single randomized routine that produces two factors that are simultaneously low rank and low precision, so that A ≈ LR, and that comes with upper bounds on the approximation error as a function of the target rank and the bit budget. Across a deliberately varied set of matrices — from medical test images to embedding vectors to the weight matrices of LlaMa-7b — LPLR compresses down to roughly one bit per entry while matching, and in some settings exceeding, the accuracy of conventional compression."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11028　　Code: https://github.com/pilancilab/matrix-compressor"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "图2 在 LlaMa-7b 各层权重矩阵上，LPLR（蓝）、LPLR-SVD（绿）与朴素量化（橙）的相对 Frobenius 范数误差，按层的原始顺序排列。朴素量化在多数层误差高且抖动剧烈（不时冲到 1.5 以上），而 LPLR 与 LPLR-SVD 的误差始终更低、更平稳。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "LPLR 是怎么做的"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的流程可以拆成几步。首先，它抽取一个高斯随机矩阵 S，构造草图（sketch）AS——这是一个随机化的「值域探测器」（rangefinder），用来近似 A 的列空间。然后它把这个基底量化，得到 Q(AS)，这就是第一个因子 L。"
+            },
+            {
+              "type": "paragraph",
+              "text": "接下来，它把 A 的列向量投影到这个量化后的基底上，求解最小二乘问题 W* = argmin_W ‖Q(AS)·W − A‖²_F，这个问题有闭式解，也可以用共轭梯度迭代求解。最后，它用第二个量化器把 W* 量化为 R = Q'(W*)，并返回两个因子 L = Q(AS) 与 R = Q'(W*)。整个过程只需 O(ndm) 的计算量（m 为草图尺寸），远低于直接 SVD 的 O(nd²)。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文进一步给出近似误差的上界：E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε，其中 A_k 是 A 的最优 k 秩近似，k 为目标秩，ε 由量化比特预算决定。这个式子把「低秩带来的截断误差」和「量化带来的精度误差」清晰地分成了两项，让实践者可以在压缩率与精度之间明确地权衡。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 24.27,
+        "end": 46.51,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 22.24,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 23.14,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 24.27,
+          "global_end": 46.51,
+          "relative_start": 0.0,
+          "relative_end": 22.24,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why combining the two is hard"
+            },
+            {
+              "type": "paragraph",
+              "text": "The intuition is simple enough. If a matrix is low rank, we can write it as a tall factor times a wide factor, which slashes the entry count. If we then store those factors in low precision, we save even more. It looks like a matter of stacking the two steps. In practice, two obstacles get in the way."
+            },
+            {
+              "type": "paragraph",
+              "text": "The first is accuracy. Combining low-rank factorization and quantization crudely — especially at aggressive bit budgets — lets error accumulate quickly, and quality collapses. The second is cost. The most accurate route to low-rank factors is the singular value decomposition (SVD), but its O(nd²) cost is prohibitive for the largest matrices on today's GPU hardware. The paper asks whether there is a fast, analyzable, randomized path that yields low-rank and low-precision factors in one shot while keeping the approximation error under firm control."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据二：压缩 LlaMa-7b 的权重"
+            },
+            {
+              "type": "paragraph",
+              "text": "更能说明问题的是大语言模型。作者逐层压缩 LlaMa-7b 的权重矩阵，用相对 Frobenius 范数误差衡量重建质量——误差越低，压缩后的权重越接近原始权重。下图按层的原始顺序，把 LPLR、LPLR-SVD 和朴素量化的逐层误差画在一起。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "图2 在 LlaMa-7b 各层权重矩阵上，LPLR（蓝）、LPLR-SVD（绿）与朴素量化（橙）的相对 Frobenius 范数误差，按层的原始顺序排列。朴素量化在多数层误差高且抖动剧烈（不时冲到 1.5 以上），而 LPLR 与 LPLR-SVD 的误差始终更低、更平稳。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图中橙色的朴素量化曲线剧烈抖动，在不少层冲到 1.5 甚至 3.0 以上；而蓝色的 LPLR 与绿色的 LPLR-SVD 则贴着一条更低、更平的水平带走。汇总成数字后，这个优势同样清晰。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 LlaMa-7b 权重矩阵上的平均相对 Frobenius 范数误差（越低越好）。在两种比特预算下，LPLR-SVD 的误差都明显低于朴素量化，且层间方差更小。",
+              "headers": [
+                "比特预算",
+                "LPLR",
+                "LPLR-SVD",
+                "朴素量化"
+              ],
+              "rows": [
+                [
+                  "B = B′ = 8, Bnq = 4",
+                  "0.672",
+                  "0.537",
+                  "0.836"
+                ],
+                [
+                  "B = B′ = Bnq = 4",
+                  "0.548",
+                  "0.540",
+                  "0.836"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在 B = B′ = 8、Bnq = 4 的设置下，LPLR-SVD 的平均相对误差为 0.537，而朴素量化为 0.836；不仅均值更低，标准差（0.079 对 0.470）也小得多，意味着它在不同层上的表现更稳定、更可预测。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 46.51,
+        "end": 70.09,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 23.58,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 24.48,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 46.51,
+          "global_end": 70.09,
+          "relative_start": 0.0,
+          "relative_end": 23.58,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How LPLR works"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR runs in a few steps. It first draws a Gaussian random matrix S and forms the sketch AS — a randomized rangefinder that approximates the column space of A. It quantizes this basis to obtain Q(AS), which becomes the first factor, L."
+            },
+            {
+              "type": "paragraph",
+              "text": "Next it projects the columns of A onto the quantized basis by solving the least-squares problem W* = argmin_W ‖Q(AS)·W − A‖²_F, which has a closed form and can also be solved iteratively with conjugate gradients. Finally it quantizes W* with a second quantizer, returning the two factors L = Q(AS) and R = Q'(W*). The whole procedure costs O(ndm) with sketch size m — far less than the O(nd²) of a direct SVD."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper backs this with an error bound: E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε, where A_k is the best rank-k approximation of A, k is the target rank, and ε is set by the quantization budget. The bound cleanly separates the truncation error from choosing a low rank and the precision error from quantization, giving practitioners an explicit knob to trade compression ratio against accuracy."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "拆解：低秩与低精度各自的贡献"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的收益到底来自「低秩结构」还是「量化精度」？论文通过一组消融实验把两者分开。作者在固定压缩率的前提下扫描比特三元组 (B, B′, Bnq)，结果显示：当把预算从低秩因子（B）挪向非量化参照（提高 Bnq）时，LPLR 及其 SVD 变体的 Frobenius 误差会系统性地下降。在各个嵌入实验里，把 Bnq 从 1 比特提到 4 比特，会让 LPLR 从「在激进端大幅领先朴素量化与 Direct-SVD」逐渐走向「在宽松端与它们打平」。这恰恰说明：压缩越激进，LPLR 的优势越大。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 70.09,
+        "end": 100.61,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 30.52,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.42,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 70.09,
+          "global_end": 100.61,
+          "relative_start": 0.0,
+          "relative_end": 30.52,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Evidence 1: downstream classification of embeddings"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first experiment asks whether the compressed matrix is still usable. The authors generate CIFAR-10 and CIFAR-100 image embeddings with MobileNetV3 and IMDB and Emotion text embeddings with BERT, compress the embedding matrices, and then measure downstream accuracy and weighted F1 with a k-nearest-neighbor classifier. Every method is compared at parity — the same total bit budget — where Bnq denotes the bits per entry used by the naive-quantization baseline."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Embedding classification accuracy (%) at a baseline budget of Bnq = 1 bit, with B = B′ = 8 bits for the LPLR-family methods. Naive quantization all but collapses at one bit, whereas LPLR and LSVD match or exceed the unquantized baseline (kNN benefits from the denoising).",
+              "headers": [
+                "Dataset",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "Naive Quant.",
+                "Unquantized"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The contrast is stark. At the extreme setting Bnq = 1, naive quantization falls to 11% accuracy on CIFAR-10 and to roughly 1% on CIFAR-100 — essentially random guessing — while LPLR holds 92% and 79%, on par with or above the unquantized 91% and 76%. In other words, LPLR compresses the embeddings to about one bit per entry with almost no loss in task performance."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "The message of this work is that low rank and low precision are complementary, and exploiting them jointly is what pushes compression to the extreme. With one Gaussian random projection and two rounds of quantization, LPLR compresses a matrix to roughly one bit per entry while preserving accuracy on images, embeddings, and LLM weights — and it carries provable upper bounds on the approximation error. Because it sidesteps the expensive SVD and runs in O(ndm) time, it is especially practical for the very largest matrices where exact methods simply do not fit."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being precise about the boundary. LPLR's guarantee rests on the matrix being approximately low rank; for matrices that are genuinely high rank, with slowly decaying singular values, low-rank factorization has little to save in the first place. The paper also observes that as Bnq relaxes toward 4 bits, LPLR's advantage over naive quantization narrows to a near tie — its brightest regime is exactly the aggressive end where competing methods break down first."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "矩阵是科学计算和机器学习里最基础的数据结构，但现代矩阵动辄包含数十亿个元素，光是把它存下来、搬运和参与计算，就会给显存和算力带来沉重压力。好在一个常被忽视的事实是：许多真实世界的矩阵都近似低秩，它们携带的有效信息远比自身的尺寸暗示的要少。"
+            },
+            {
+              "type": "paragraph",
+              "text": "面对这种冗余，业界通常从两个方向压缩。一是低秩近似（low-rank approximation），把矩阵写成一个「高瘦」因子和一个「矮胖」因子的乘积，元素总数随之骤降；二是低精度量化（low-precision quantization），把每个数值从 32 比特浮点压到区区几个比特。两条路各自都已相当成熟，但要把它们拧进同一次分解、并且还能给出可证明的误差保证，一直是一块空白。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在 NeurIPS 2023 上，来自斯坦福大学的这篇论文提出了 LPLR（Low-Precision Low-Rank，低精度低秩分解）：用一次随机化的分解，同时得到低秩且低精度的两个因子，使得 A ≈ LR，并为它的近似误差推导出与目标秩、比特预算相关的上界。在从医学图像、嵌入向量到 LlaMa-7b 权重矩阵的一系列任务上，LPLR 能把矩阵压到平均每个元素约 1 比特，同时精度媲美、在部分设置下甚至反超传统方法。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2310.11028　　代码：https://github.com/pilancilab/matrix-compressor"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据一：嵌入向量的下游分类"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一组实验检验的是「压缩后还能不能用」。作者用 MobileNetV3 生成 CIFAR-10 / CIFAR-100 的图像嵌入、用 BERT 生成 IMDB / Emotion 的文本嵌入，压缩这些嵌入矩阵后，再用 k 近邻分类器测量下游的准确率与加权 F1。所有方法都在相同的总比特预算（parity）下比较，其中 Bnq 表示朴素量化基线所用的每元素比特数。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 嵌入分类准确率（%），比较基线量化预算 Bnq = 1 比特，LPLR 系方法取 B = B′ = 8 比特。朴素量化在 1 比特下几乎完全失效，而 LPLR 与 LSVD 保持甚至反超未量化基线（k 近邻在去噪后表现更好）。",
+              "headers": [
+                "数据集",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "朴素量化",
+                "未量化"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "对比非常鲜明：在每比特预算 Bnq = 1 的极端设置下，朴素量化在 CIFAR-10 上准确率跌到 11%、在 CIFAR-100 上更是跌到约 1%，基本等同于瞎猜；而 LPLR 分别保持 92% 与 79%，与未量化的 91%、76% 持平甚至更高。换句话说，LPLR 在把嵌入压到约 1 比特的同时，几乎没有牺牲任务性能。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 100.61,
+        "end": 140.03,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 39.42,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 40.32,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 100.61,
+          "global_end": 140.03,
+          "relative_start": 0.0,
+          "relative_end": 39.42,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Evidence 1: downstream classification of embeddings"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first experiment asks whether the compressed matrix is still usable. The authors generate CIFAR-10 and CIFAR-100 image embeddings with MobileNetV3 and IMDB and Emotion text embeddings with BERT, compress the embedding matrices, and then measure downstream accuracy and weighted F1 with a k-nearest-neighbor classifier. Every method is compared at parity — the same total bit budget — where Bnq denotes the bits per entry used by the naive-quantization baseline."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Embedding classification accuracy (%) at a baseline budget of Bnq = 1 bit, with B = B′ = 8 bits for the LPLR-family methods. Naive quantization all but collapses at one bit, whereas LPLR and LSVD match or exceed the unquantized baseline (kNN benefits from the denoising).",
+              "headers": [
+                "Dataset",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "Naive Quant.",
+                "Unquantized"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "The contrast is stark. At the extreme setting Bnq = 1, naive quantization falls to 11% accuracy on CIFAR-10 and to roughly 1% on CIFAR-100 — essentially random guessing — while LPLR holds 92% and 79%, on par with or above the unquantized 91% and 76%. In other words, LPLR compresses the embeddings to about one bit per entry with almost no loss in task performance."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据一：嵌入向量的下游分类"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一组实验检验的是「压缩后还能不能用」。作者用 MobileNetV3 生成 CIFAR-10 / CIFAR-100 的图像嵌入、用 BERT 生成 IMDB / Emotion 的文本嵌入，压缩这些嵌入矩阵后，再用 k 近邻分类器测量下游的准确率与加权 F1。所有方法都在相同的总比特预算（parity）下比较，其中 Bnq 表示朴素量化基线所用的每元素比特数。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 嵌入分类准确率（%），比较基线量化预算 Bnq = 1 比特，LPLR 系方法取 B = B′ = 8 比特。朴素量化在 1 比特下几乎完全失效，而 LPLR 与 LSVD 保持甚至反超未量化基线（k 近邻在去噪后表现更好）。",
+              "headers": [
+                "数据集",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "朴素量化",
+                "未量化"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "对比非常鲜明：在每比特预算 Bnq = 1 的极端设置下，朴素量化在 CIFAR-10 上准确率跌到 11%、在 CIFAR-100 上更是跌到约 1%，基本等同于瞎猜；而 LPLR 分别保持 92% 与 79%，与未量化的 91%、76% 持平甚至更高。换句话说，LPLR 在把嵌入压到约 1 比特的同时，几乎没有牺牲任务性能。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 140.03,
+        "end": 171.03,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 31.0,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.9,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 140.03,
+          "global_end": 171.03,
+          "relative_start": 0.0,
+          "relative_end": 31.0,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Matrices are the workhorse data structure of science and machine learning, but modern ones can hold billions of entries. Simply storing them, moving them across memory, and multiplying them strains both memory and compute. What rescues us is a fact that is easy to overlook: many real-world matrices are approximately low rank. They carry far less information than their raw dimensions suggest."
+            },
+            {
+              "type": "paragraph",
+              "text": "There are two well-worn ways to exploit that redundancy. One is low-rank approximation, which writes a matrix as the product of a tall factor and a wide factor, collapsing the number of entries. The other is low-precision quantization, which stores each number in a handful of bits instead of a 32-bit float. Both are mature on their own. Yet folding them into a single factorization, with a provable error guarantee, has remained an open problem."
+            },
+            {
+              "type": "paragraph",
+              "text": "At NeurIPS 2023, a team from Stanford proposes LPLR (Low-Precision Low-Rank factorization): a single randomized routine that produces two factors that are simultaneously low rank and low precision, so that A ≈ LR, and that comes with upper bounds on the approximation error as a function of the target rank and the bit budget. Across a deliberately varied set of matrices — from medical test images to embedding vectors to the weight matrices of LlaMa-7b — LPLR compresses down to roughly one bit per entry while matching, and in some settings exceeding, the accuracy of conventional compression."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2310.11028　　Code: https://github.com/pilancilab/matrix-compressor"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How LPLR works"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR runs in a few steps. It first draws a Gaussian random matrix S and forms the sketch AS — a randomized rangefinder that approximates the column space of A. It quantizes this basis to obtain Q(AS), which becomes the first factor, L."
+            },
+            {
+              "type": "paragraph",
+              "text": "Next it projects the columns of A onto the quantized basis by solving the least-squares problem W* = argmin_W ‖Q(AS)·W − A‖²_F, which has a closed form and can also be solved iteratively with conjugate gradients. Finally it quantizes W* with a second quantizer, returning the two factors L = Q(AS) and R = Q'(W*). The whole procedure costs O(ndm) with sketch size m — far less than the O(nd²) of a direct SVD."
+            },
+            {
+              "type": "paragraph",
+              "text": "The paper backs this with an error bound: E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε, where A_k is the best rank-k approximation of A, k is the target rank, and ε is set by the quantization budget. The bound cleanly separates the truncation error from choosing a low rank and the precision error from quantization, giving practitioners an explicit knob to trade compression ratio against accuracy."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据一：嵌入向量的下游分类"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一组实验检验的是「压缩后还能不能用」。作者用 MobileNetV3 生成 CIFAR-10 / CIFAR-100 的图像嵌入、用 BERT 生成 IMDB / Emotion 的文本嵌入，压缩这些嵌入矩阵后，再用 k 近邻分类器测量下游的准确率与加权 F1。所有方法都在相同的总比特预算（parity）下比较，其中 Bnq 表示朴素量化基线所用的每元素比特数。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 嵌入分类准确率（%），比较基线量化预算 Bnq = 1 比特，LPLR 系方法取 B = B′ = 8 比特。朴素量化在 1 比特下几乎完全失效，而 LPLR 与 LSVD 保持甚至反超未量化基线（k 近邻在去噪后表现更好）。",
+              "headers": [
+                "数据集",
+                "LPLR",
+                "LPLR-SVD",
+                "DSVD",
+                "朴素量化",
+                "未量化"
+              ],
+              "rows": [
+                [
+                  "CIFAR-10",
+                  "92",
+                  "92",
+                  "92",
+                  "11",
+                  "91"
+                ],
+                [
+                  "CIFAR-100",
+                  "79",
+                  "82",
+                  "82",
+                  "1",
+                  "76"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "对比非常鲜明：在每比特预算 Bnq = 1 的极端设置下，朴素量化在 CIFAR-10 上准确率跌到 11%、在 CIFAR-100 上更是跌到约 1%，基本等同于瞎猜；而 LPLR 分别保持 92% 与 79%，与未量化的 91%、76% 持平甚至更高。换句话说，LPLR 在把嵌入压到约 1 比特的同时，几乎没有牺牲任务性能。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "拆解：低秩与低精度各自的贡献"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的收益到底来自「低秩结构」还是「量化精度」？论文通过一组消融实验把两者分开。作者在固定压缩率的前提下扫描比特三元组 (B, B′, Bnq)，结果显示：当把预算从低秩因子（B）挪向非量化参照（提高 Bnq）时，LPLR 及其 SVD 变体的 Frobenius 误差会系统性地下降。在各个嵌入实验里，把 Bnq 从 1 比特提到 4 比特，会让 LPLR 从「在激进端大幅领先朴素量化与 Direct-SVD」逐渐走向「在宽松端与它们打平」。这恰恰说明：压缩越激进，LPLR 的优势越大。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 171.03,
+        "end": 206.18,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 35.15,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.05,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 171.03,
+          "global_end": 206.18,
+          "relative_start": 0.0,
+          "relative_end": 35.15,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why combining the two is hard"
+            },
+            {
+              "type": "paragraph",
+              "text": "The intuition is simple enough. If a matrix is low rank, we can write it as a tall factor times a wide factor, which slashes the entry count. If we then store those factors in low precision, we save even more. It looks like a matter of stacking the two steps. In practice, two obstacles get in the way."
+            },
+            {
+              "type": "paragraph",
+              "text": "The first is accuracy. Combining low-rank factorization and quantization crudely — especially at aggressive bit budgets — lets error accumulate quickly, and quality collapses. The second is cost. The most accurate route to low-rank factors is the singular value decomposition (SVD), but its O(nd²) cost is prohibitive for the largest matrices on today's GPU hardware. The paper asks whether there is a fast, analyzable, randomized path that yields low-rank and low-precision factors in one shot while keeping the approximation error under firm control."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "LPLR 是怎么做的"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR 的流程可以拆成几步。首先，它抽取一个高斯随机矩阵 S，构造草图（sketch）AS——这是一个随机化的「值域探测器」（rangefinder），用来近似 A 的列空间。然后它把这个基底量化，得到 Q(AS)，这就是第一个因子 L。"
+            },
+            {
+              "type": "paragraph",
+              "text": "接下来，它把 A 的列向量投影到这个量化后的基底上，求解最小二乘问题 W* = argmin_W ‖Q(AS)·W − A‖²_F，这个问题有闭式解，也可以用共轭梯度迭代求解。最后，它用第二个量化器把 W* 量化为 R = Q'(W*)，并返回两个因子 L = Q(AS) 与 R = Q'(W*)。整个过程只需 O(ndm) 的计算量（m 为草图尺寸），远低于直接 SVD 的 O(nd²)。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文进一步给出近似误差的上界：E‖LR − A‖²_F ≤ (1 + k/(m−k−1))·‖A_k − A‖²_F + ε，其中 A_k 是 A 的最优 k 秩近似，k 为目标秩，ε 由量化比特预算决定。这个式子把「低秩带来的截断误差」和「量化带来的精度误差」清晰地分成了两项，让实践者可以在压缩率与精度之间明确地权衡。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 206.18,
+        "end": 235.06,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 28.88,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 29.78,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 206.18,
+          "global_end": 235.06,
+          "relative_start": 0.0,
+          "relative_end": 28.88,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "Figure 2. Relative Frobenius norm error on the LlaMa-7b weight matrices for LPLR (blue), LPLR-SVD (green), and naive quantization (orange), ordered by the original sequence of layers. Naive quantization is high and volatile across most layers, spiking above 1.5 repeatedly, while LPLR and LPLR-SVD stay consistently lower and far steadier.",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 2,
+              "text": "Why one bit still holds up"
+            },
+            {
+              "type": "paragraph",
+              "text": "LPLR stays stable at such aggressive budgets because of a property of the Gaussian sketch. A Gaussian matrix is a Johnson-Lindenstrauss (JL) embedding, and it brings an equalization effect: the quantization error of the reconstruction x̂ = SᵀQ(Sx) stays O(1) rather than growing to O(d) with the dimension, as entrywise quantization would. That is precisely what keeps LPLR accurate even when each coordinate is stored with a single sign bit. It also explains a counterintuitive observation in the paper — spending bits on thinner factors often pays off more than piling bits onto the original matrix."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "证据二：压缩 LlaMa-7b 的权重"
+            },
+            {
+              "type": "paragraph",
+              "text": "更能说明问题的是大语言模型。作者逐层压缩 LlaMa-7b 的权重矩阵，用相对 Frobenius 范数误差衡量重建质量——误差越低，压缩后的权重越接近原始权重。下图按层的原始顺序，把 LPLR、LPLR-SVD 和朴素量化的逐层误差画在一起。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "width_inches": 6.3,
+              "caption": "图2 在 LlaMa-7b 各层权重矩阵上，LPLR（蓝）、LPLR-SVD（绿）与朴素量化（橙）的相对 Frobenius 范数误差，按层的原始顺序排列。朴素量化在多数层误差高且抖动剧烈（不时冲到 1.5 以上），而 LPLR 与 LPLR-SVD 的误差始终更低、更平稳。",
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图中橙色的朴素量化曲线剧烈抖动，在不少层冲到 1.5 甚至 3.0 以上；而蓝色的 LPLR 与绿色的 LPLR-SVD 则贴着一条更低、更平的水平带走。汇总成数字后，这个优势同样清晰。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 LlaMa-7b 权重矩阵上的平均相对 Frobenius 范数误差（越低越好）。在两种比特预算下，LPLR-SVD 的误差都明显低于朴素量化，且层间方差更小。",
+              "headers": [
+                "比特预算",
+                "LPLR",
+                "LPLR-SVD",
+                "朴素量化"
+              ],
+              "rows": [
+                [
+                  "B = B′ = 8, Bnq = 4",
+                  "0.672",
+                  "0.537",
+                  "0.836"
+                ],
+                [
+                  "B = B′ = Bnq = 4",
+                  "0.548",
+                  "0.540",
+                  "0.836"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在 B = B′ = 8、Bnq = 4 的设置下，LPLR-SVD 的平均相对误差为 0.537，而朴素量化为 0.836；不仅均值更低，标准差（0.079 对 0.470）也小得多，意味着它在不同层上的表现更稳定、更可预测。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 235.06,
+        "end": 265.91,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 30.85,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 31.75,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 235.06,
+          "global_end": 265.91,
+          "relative_start": 0.0,
+          "relative_end": 30.85,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "Figure 1. Compressing the Shepp-Logan phantom, a standard medical-imaging test image, at a fixed total budget of about 2·10⁶ bits. (a) the original; (b) naive quantization at 2 bits per pixel washes out the internal structure; (c) quantizing the SVD factors directly (DSVD) introduces visible artifacts; (d) LPLR and (e) LSVD (this work) factor the image into a product of tall-and-wide matrices, which lets each stored entry use more precision and best preserves fine detail such as the small internal ellipses.",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why combining the two is hard"
+            },
+            {
+              "type": "paragraph",
+              "text": "The intuition is simple enough. If a matrix is low rank, we can write it as a tall factor times a wide factor, which slashes the entry count. If we then store those factors in low precision, we save even more. It looks like a matter of stacking the two steps. In practice, two obstacles get in the way."
+            },
+            {
+              "type": "paragraph",
+              "text": "The first is accuracy. Combining low-rank factorization and quantization crudely — especially at aggressive bit budgets — lets error accumulate quickly, and quality collapses. The second is cost. The most accurate route to low-rank factors is the singular value decomposition (SVD), but its O(nd²) cost is prohibitive for the largest matrices on today's GPU hardware. The paper asks whether there is a fast, analyzable, randomized path that yields low-rank and low-precision factors in one shot while keeping the approximation error under firm control."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and boundaries"
+            },
+            {
+              "type": "paragraph",
+              "text": "The message of this work is that low rank and low precision are complementary, and exploiting them jointly is what pushes compression to the extreme. With one Gaussian random projection and two rounds of quantization, LPLR compresses a matrix to roughly one bit per entry while preserving accuracy on images, embeddings, and LLM weights — and it carries provable upper bounds on the approximation error. Because it sidesteps the expensive SVD and runs in O(ndm) time, it is especially practical for the very largest matrices where exact methods simply do not fit."
+            },
+            {
+              "type": "paragraph",
+              "text": "It is worth being precise about the boundary. LPLR's guarantee rests on the matrix being approximately low rank; for matrices that are genuinely high rank, with slowly decaying singular values, low-rank factorization has little to save in the first place. The paper also observes that as Bnq relaxes toward 4 bits, LPLR's advantage over naive quantization narrows to a near tie — its brightest regime is exactly the aggressive end where competing methods break down first."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "width_inches": 6.5,
+              "caption": "图1 在标准医学测试图 Shepp-Logan phantom 上的压缩对比。在总比特数相同（约 2·10⁶ 比特）的前提下：(a) 原图；(b) 朴素量化（每像素 2 比特）几乎抹平了内部结构；(c) 直接量化 SVD 因子（DSVD）引入明显伪影；(d) LPLR 与 (e) LSVD（本文方法）把图像分解成瘦长因子的乘积，从而让每个元素能用更高精度表示，最完整地保留了内部的小椭圆等细节。",
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇工作传达的核心信息是：低秩与低精度是互补的，把它们放在一起利用才能把压缩推到极致。通过一次高斯随机投影加两次量化，LPLR 把矩阵压到平均每个元素约 1 比特，同时保持在图像、嵌入向量与大模型权重上的精度，并且带有可证明的误差上界。它绕开了昂贵的 SVD，只需 O(ndm) 的计算量，因而对那些连精确方法都塞不下的超大矩阵格外实用。"
+            },
+            {
+              "type": "paragraph",
+              "text": "需要说明的是，LPLR 的误差保证建立在矩阵近似低秩这一前提上；对于本身秩就很高、奇异值衰减缓慢的矩阵，低秩分解本身能省下的空间有限。论文也观察到，随着 Bnq 放宽到 4 比特，LPLR 相对朴素量化的优势会收窄到基本持平——它最闪光的区间，正是压缩最激进、别的方法最先崩溃的那一端。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "NeurIPS 2023 | Compressing a Matrix to One Bit per Entry",
+            "subtitle": "Stanford's LPLR fuses randomized low-rank factorization with low-precision quantization, matching or beating standard compression on images, embeddings, and LlaMa weights"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 把矩阵压到每个元素只用 1 比特",
+            "subtitle": "斯坦福提出 LPLR：一次随机化的低秩 + 低精度分解，在图像、嵌入向量与 LlaMa 权重上媲美甚至反超传统压缩"
+          }
+        }
+      },
+      "segment": {
+        "start": 265.91,
+        "end": 291.87,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 25.96,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 26.86,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 265.91,
+          "global_end": 291.87,
+          "relative_start": 0.0,
+          "relative_end": 25.96,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

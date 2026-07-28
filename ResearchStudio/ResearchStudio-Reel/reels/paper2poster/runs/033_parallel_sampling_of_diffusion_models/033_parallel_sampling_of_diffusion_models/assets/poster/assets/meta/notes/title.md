@@ -1,0 +1,3 @@
+# Title
+
+Diffusion models produce stunning samples, but they are slow, often needing a thousand sequential denoising steps to generate a single sample. This paper from Stanford asks a different question than most prior work. Instead of cutting the number of steps and paying with sample quality, can we keep every step but run them in parallel, trading extra compute for lower latency? The answer is a method called ParaDiGMS, which uses Picard iterations to guess the whole denoising trajectory and refine it in parallel until it converges. It delivers two-to-four times faster sampling with no measurable drop in quality.

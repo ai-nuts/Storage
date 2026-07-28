@@ -1,0 +1,1 @@
+On a random population split, the three proposed methods deliver competitive-to-best discrimination against same-input models. DeepJoint, seeing only lab values, already outperforms Ignore-LSTM and GRU-D. Modelling the observation process — even without feeding it in — yields a more predictive embedding. Fine-tuning reaches a 1-day C-index of 0.878.

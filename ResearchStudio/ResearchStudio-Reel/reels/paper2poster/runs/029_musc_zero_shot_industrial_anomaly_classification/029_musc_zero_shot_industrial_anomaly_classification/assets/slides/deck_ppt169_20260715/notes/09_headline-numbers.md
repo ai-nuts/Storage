@@ -1,0 +1,1 @@
+In headline terms, MuSc reaches ninety-seven point eight percent image AUROC on MVTec AD and ninety-two point eight on VisA, with pixel AUROC of ninety-seven point three and ninety-eight point eight. It adds over twenty-one points on MVTec segmentation, all with no training, prompts, or references.

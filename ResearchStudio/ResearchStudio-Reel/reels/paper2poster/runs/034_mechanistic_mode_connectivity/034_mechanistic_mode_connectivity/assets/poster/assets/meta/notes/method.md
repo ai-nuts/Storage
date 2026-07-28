@@ -1,0 +1,7 @@
+# Method
+
+Core claim: Mechanistic similarity is defined through invariance to unit interventions on latent factors of the data-generating process; the core result links linear loss barriers to differing invariances. CBFT then minimizes cross-entropy on cue-free data plus a barrier loss that raises loss along the linear path to the cue-relying solution, plus an invariance loss aligning representations across counterfactuals.
+
+Supporting detail: Counterfactual datasets (removing, keeping, randomizing the cue, or randomizing the natural image) probe how much a model relies on natural versus spurious attributes; quadratic paths can still connect dissimilar models while linear paths cannot.
+
+Narration: The method rests on defining mechanistic similarity through invariance to interventions on the data-generating process. The authors then prove that a loss barrier along the linear path between two models implies the models are mechanistically dissimilar, they have learned different invariances. Connectivity-Based Fine-Tuning turns this into an algorithm. It minimizes three terms: a cross-entropy loss on a small cue-free dataset, a barrier loss that deliberately raises loss along the linear path to the cue-relying solution up to an upper bound, and an invariance loss that aligns penultimate-layer representations across counterfactual versions of each class. Together these push the model to a mechanistically dissimilar, cue-invariant solution.

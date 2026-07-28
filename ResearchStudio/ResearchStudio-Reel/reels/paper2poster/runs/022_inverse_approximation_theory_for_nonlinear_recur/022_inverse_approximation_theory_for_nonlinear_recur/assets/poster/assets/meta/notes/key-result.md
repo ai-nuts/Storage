@@ -1,0 +1,7 @@
+# Key Result
+
+Core claim: The main theorem proves that any target stably approximated by nonlinear RNNs must have exponentially decaying memory, so nonlinearity does not remove the curse of memory. Numerically, polynomial-memory targets show no stability radius (intersection curves shift left as m grows), and filtering teacher models by stability leaves only those with exponential memory.
+
+Supporting detail: Targets with slower-than-exponential memory need about 1000 epochs to approximate versus roughly 10 epochs for exponential-memory targets, and even then lack perturbation stability.
+
+Narration: The headline theoretical result is a clean inverse statement: if a nonlinear RNN can stably approximate a target sequence relationship, then that target's memory must decay exponentially. This extends the linear curse of memory to the nonlinear regime and proves the failure on long-term dependencies is intrinsic to the RNN hypothesis space, not just a training artifact. The numerics back this up. For polynomial-memory targets, the perturbation-error curves for different hidden dimensions keep intersecting further and further left as the dimension grows, meaning no positive stability radius survives. And when the authors filter randomly generated teacher models to keep only those that are both approximable and stable, the only survivors are teachers whose memory decays exponentially. They also observe that slowly-decaying targets take on the order of a thousand epochs to fit versus about ten for exponential ones.

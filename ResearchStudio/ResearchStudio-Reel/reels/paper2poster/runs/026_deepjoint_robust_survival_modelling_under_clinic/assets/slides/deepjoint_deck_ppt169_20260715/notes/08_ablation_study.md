@@ -1,0 +1,1 @@
+The approach decomposes into three variants against six baselines. DeepJointFeature improves over plain DeepJoint and matches a strong feature baseline. The fine-tuned variant reaches the highest discrimination but overfits under shift. Across the robustness experiment, DeepJointFeature sits closest to the diagonal, transferring most reliably.

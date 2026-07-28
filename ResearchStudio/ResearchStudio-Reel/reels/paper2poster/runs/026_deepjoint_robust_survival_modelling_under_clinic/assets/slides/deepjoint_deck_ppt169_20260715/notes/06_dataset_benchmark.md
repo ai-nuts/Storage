@@ -1,0 +1,1 @@
+Experiments use MIMIC-III, an intensive-care database of anonymised lab tests for over 38,000 patients. Restricting to those surviving the first 24 hours leaves 30,834 patients. Models predict in-hospital survival from the embedding at the last day-1 observation, scored by time-dependent C-index and Brier at 1 / 7 / 14 days.

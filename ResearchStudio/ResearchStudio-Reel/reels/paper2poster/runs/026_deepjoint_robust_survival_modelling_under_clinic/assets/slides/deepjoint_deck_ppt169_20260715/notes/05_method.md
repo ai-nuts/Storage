@@ -1,0 +1,1 @@
+An LSTM encodes each patient's irregular lab-test sequence into an embedding h. Three clinical-presence heads model next values (Gaussian), which tests appear (Bernoulli), and inter-observation timing. A DeepSurv head models survival under Cox proportional hazards. The four losses are combined by dynamic weighting, balanced by alpha, optimised end-to-end.

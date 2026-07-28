@@ -1,0 +1,1 @@
+Results are striking for a label-free method. On MVTec AD, MuSc reaches ninety-seven point eight percent image AUROC and lifts per-region overlap segmentation by over twenty-one points versus the best prior zero-shot method. On VisA it gains over ten points. It even beats most four-shot methods and rivals full-shot approaches.

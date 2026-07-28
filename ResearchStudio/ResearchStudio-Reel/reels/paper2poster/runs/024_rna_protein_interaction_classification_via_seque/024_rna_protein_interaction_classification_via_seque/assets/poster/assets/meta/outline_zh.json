@@ -1,0 +1,33 @@
+{
+  "title": "只凭序列，预测 RNA 与蛋白质是否相互作用",
+  "subtitle": "弗莱堡大学与 ELLIS Institute Tuebingen 提出同源分离数据集 RNAInterAct 与轻量 Transformer 模型 RPIembeddor（GEM workshop, ICLR 2024）",
+  "lang": "zh",
+  "blocks": [
+    {"type": "paragraph", "text": "非编码 RNA（non-coding RNA）在细胞中主要通过与蛋白质结合来发挥调控作用，但用 SELEX、CLIP-seq 等实验手段逐一测定这些相互作用，既慢又贵。已有的计算方法大多回避了通用问题：它们为每个蛋白质单独训练一个模型，而这需要该蛋白质专属的大规模相互作用数据。这样的数据集，只覆盖了大约 2000 个人类 RNA 结合蛋白中的几百个。"},
+    {"type": "paragraph", "text": "领域真正缺少的，是一个能回答更朴素也更困难问题的预测器：给定任意一条 RNA 和任意一个蛋白质，仅凭它们的序列，判断二者是否相互作用。两条近期思路让这件事变得可行。一是跨多种相互作用类型一起学习，而不是一次只学一个蛋白质，这在标注稀缺时更有优势；二是在海量无标注生物语料上训练的基础模型（foundation model），能够暴露原始序列本身并不直接显示的结构与功能信号。"},
+    {"type": "paragraph", "text": "这项来自弗莱堡大学（University of Freiburg）与 ELLIS Institute Tuebingen 的工作，补齐了缺失拼图的两半：RNAInterAct，一个带同源分离划分的大规模非编码 RNA 与蛋白质相互作用数据集；以及 RPIembeddor，一个仅 1.4M 参数、只用序列嵌入就能分类相互作用的轻量 Transformer 模型。与以往工具不同，它能泛化到训练中从未见过的 RNA 家族。"},
+    {"type": "paragraph", "text": "论文（bioRxiv 预印本）：https://www.biorxiv.org/content/10.1101/2024.11.08.622607v1 。数据集（RNAInterAct 存档）：https://ml.informatik.uni-freiburg.de/research-artifacts/RNAInterAct/RNAInterAct.tar.gz 。两者均由作者公开发布，供研究使用。"},
+    {"type": "heading", "level": 1, "text": "为什么“只凭序列、跨家族泛化”很难"},
+    {"type": "paragraph", "text": "像 IPMiner 和 XRPI 这样的既有方法，当训练集和测试集共享 RNA 家族时可以取得不错的分数，因为序列同源性会在二者之间泄漏信息。真正的考验是泛化：一个在部分 RNA 家族上训练的模型，能否为它从未见过的家族判断相互作用？RPIembeddor 正是面向这一设定构建和评测的，其数据划分保证训练与测试不共享任何 RNA 家族。"},
+    {"type": "heading", "level": 1, "text": "RPIembeddor：两个基础模型，一个分类器"},
+    {"type": "paragraph", "text": "模型依托两个预训练基础模型。RNA 序列用 RNA-FM 嵌入，蛋白质序列用 150M 参数的 ESM-2 嵌入；之所以选 ESM-2 而非 AlphaFold 这类结构预测器，是因为它不需要多序列比对。两者都产生 640 维的嵌入，携带着原始字母序列并不直接显示的结构与功能先验。"},
+    {"type": "paragraph", "text": "如图1 所示，两路并行的前馈层把两种嵌入归一化到统一尺寸，基于注意力的编码器层再对称地处理 RNA 与蛋白质表示，让任何一种模态都不会压过另一种。随后把潜在表示拼接起来，经过进一步的前馈层，最后一个带 sigmoid 的线性层输出这一对是否相互作用的概率。整个分类器只有 1.4M 参数，用二元损失和 AdamW 优化器训练。"},
+    {"type": "figure", "path": "../figures/page17_figure8.png", "caption": "图1 RPIembeddor 架构。RNA 与蛋白质的嵌入先由两路并行的前馈层归一化，再经基于注意力的编码器层对称处理，使两种模态影响力相等；随后拼接，并通过最后一个带 sigmoid 的线性层，输出相互作用的概率。", "width_inches": 3.1},
+    {"type": "heading", "level": 1, "text": "RNAInterAct：一个考虑同源性的基准"},
+    {"type": "paragraph", "text": "一个模型的可信度，取决于它在什么样的数据上被检验。作者从 RNAInter 数据库出发构建 RNAInterAct，通过交叉比对 NCBI、UniProt 和 Ensembl 恢复序列，并用 Rfam 标注 RNA 家族、用 Pfam 标注蛋白质 clan。正是这些家族与 clan 标注，让他们能够生成生物学上合理的负样本，而不是随机配对。"},
+    {"type": "figure", "path": "../figures/page10_figure2.png", "caption": "图2 RNAInterAct 数据构建流程：来自 RNAInter 的正相互作用，先与外部数据库（NCBI、UniProt、Ensembl、miRBase、NONCODE）中的序列匹配，再用 Rfam 家族与 Pfam clan 标注，并结合家族-clan 相互作用网络生成有生物学意义的负样本。", "width_inches": 6.2},
+    {"type": "paragraph", "text": "最终数据集包含 122,217 条非编码 RNA 与蛋白质相互作用，正负比为 1:2。关键在于，它按 RNA 家族划分为训练集 TRinter（109,214 条相互作用，覆盖 976 个家族）和测试集 TSfam（13,003 条相互作用，覆盖 172 个家族），两者不共享任何家族。此外，模型还在外部的、仅含正样本的 RPI2825 集（871 条相互作用）上测试，用以检验跨数据分布而非分布内的泛化能力。"},
+    {"type": "heading", "level": 1, "text": "结果：基线接近随机，模型学到真实信号"},
+    {"type": "paragraph", "text": "在同源分离的 TSfam 测试集上，“学习”与“记忆”的差别变得格外明显。一个仅仅靠同源性取巧的模型会在这里失灵，因为没有任何测试家族在训练中出现过。"},
+    {"type": "figure", "path": "../figures/page5_figure1.png", "caption": "图3 TSfam 上的 ROC 曲线。RPIembeddor 的 AUC 达到 0.70，而 XRPI（0.48）和 IPMiner（0.50）几乎贴着对角线，说明它们在未见过的 RNA 家族上表现接近随机。", "width_inches": 3.0},
+    {"type": "paragraph", "text": "RPIembeddor 取得 0.586 的 F1 和 0.667 的准确率，ROC AUC 为 0.70；而 XRPI 与 IPMiner 的 AUC 分别只有 0.48 和 0.50，处于或低于随机水平。具体来说，RPIembeddor 在 TSfam 上正确判别了 4,887 条正样本中的 2,971 条、8,116 条负样本中的 5,586 条；而 XRPI 几乎把 91% 的样本都判为相互作用，尽管其中约 62% 实为负样本。"},
+    {"type": "table", "caption": "表2 在同源分离的 TSfam 测试集上的平均性能。RPIembeddor 在兼顾精确率的 F1 与准确率上领先，而基线要么牺牲精确率换召回率，要么反之。", "headers": ["Model", "Prec.", "Rec.", "F1", "Acc."], "rows": [["RPIembeddor", "0.550", "0.627", "0.586", "0.667"], ["IPMiner", "0.357", "0.375", "0.366", "0.512"], ["XRPI", "0.375", "0.909", "0.531", "0.398"]]},
+    {"type": "paragraph", "text": "在外部 RPI2825 集上，RPIembeddor 也取得第二好的 F1（0.8），显示模型能够跨数据分布迁移，而不是只对单一基准过拟合。"},
+    {"type": "heading", "level": 1, "text": "消融实验：两个嵌入缺一不可"},
+    {"type": "paragraph", "text": "基础模型的嵌入究竟是不是承载信号的关键，还是注意力网络自己就能搞定？作者把 RNA-FM 嵌入、ESM-2 嵌入或两者，替换成随机向量或 one-hot 编码后重新训练 RPIembeddor，再看还剩下什么。"},
+    {"type": "table", "caption": "表3 TSfam 上的消融实验。移除任一嵌入都会让模型退化成只预测负类的分类器；只有完整的双嵌入模型才能正确分类。", "headers": ["Model", "Prec.", "Rec.", "F1", "Acc."], "rows": [["RPIembeddor", "0.563", "0.659", "0.605", "0.678"], ["One-Hot", "0.0", "0.0", "0.0", "0.624"], ["Random-Protein", "0.0", "0.0", "0.0", "0.624"], ["RNA-Random", "0.0", "0.0", "0.0", "0.624"]]},
+    {"type": "paragraph", "text": "每一个变体都退化成只会预测负类的分类器：精确率、召回率和 F1 都降到 0.0，准确率卡在 0.624，恰好等于测试集中负样本的比例。只有当 RNA-FM 与 ESM-2 两个嵌入同时存在时，模型才能达到 0.605 的 F1 和 0.678 的准确率。这两个基础模型嵌入并非可有可无的附加项，结构与功能信息正藏在其中。"},
+    {"type": "heading", "level": 1, "text": "小结"},
+    {"type": "paragraph", "text": "这项工作留下的核心信息是：当你站在基础模型的肩膀上，通用的、只凭序列的 RNA 与蛋白质相互作用预测就变得可行。一个用 RNA-FM 和 ESM-2 嵌入喂入的轻量注意力网络，不仅胜过专用工具，还能泛化到从未见过的 RNA 家族。同样重要的是，做了同源分离的 RNAInterAct 数据集，为社区提供了一个衡量泛化能力、而非同源性泄漏的基准。作者也指出了清晰的下一步：引入 RNA 结构模型，并放宽当前的序列长度限制。"}
+  ]
+}

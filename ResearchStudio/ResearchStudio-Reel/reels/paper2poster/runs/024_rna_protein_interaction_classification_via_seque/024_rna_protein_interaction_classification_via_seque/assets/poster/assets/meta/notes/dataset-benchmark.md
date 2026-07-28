@@ -1,0 +1,7 @@
+# Dataset / Benchmark
+
+Core claim: RNAInterAct is built from the RNAInter database (over 47 million RNA interactions), cross-referenced with NCBI, UniProt and Ensembl for sequences and annotated with Rfam families and Pfam clans to generate biologically plausible negatives. It totals 122,217 ncRNA-protein interactions at a 1:2 positive-to-negative ratio, split by RNA family into TRinter (training) and TSfam (test) with no family overlap; models are additionally tested on the external, positives-only RPI2825 set.
+
+Supporting detail: Curation applies a 1024 nucleotide/amino-acid length cutoff, caps interactions per interactor at 150, and excludes mRNAs. TRinter holds 109,214 interactions over 976 RNA families; TSfam holds 13,003 over 172 families; RPI2825 holds 871 positive interactions.
+
+Narration: The dataset is the backbone of the study. Starting from RNAInter, with over forty-seven million RNA interactions, the authors recover sequences by cross-referencing NCBI, UniProt and Ensembl, and assign RNA families from Rfam and protein clans from Pfam. Those annotations let them generate negatives that are biologically meaningful rather than random. The final RNAInterAct set holds about one hundred twenty-two thousand interactions at a one-to-two positive-to-negative ratio. Crucially, it is split by RNA family, so no family appears in both training and testing. This homology-aware split, plus evaluation on the external RPI2825 dataset, tests true generalization instead of memorization.

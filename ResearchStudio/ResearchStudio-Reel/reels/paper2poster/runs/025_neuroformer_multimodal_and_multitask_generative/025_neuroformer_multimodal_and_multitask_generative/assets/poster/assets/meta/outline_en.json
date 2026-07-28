@@ -1,0 +1,187 @@
+{
+  "title": "ICLR 2024 | Bringing the Pretraining Playbook to Systems Neuroscience: Neuroformer",
+  "subtitle": "UC Santa Barbara proposes a multimodal, multitask generative pretrained transformer for brain data",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "Systems neuroscience has quietly entered its own big-data era. A single modern experiment can record the spiking of thousands of neurons at cellular resolution while simultaneously capturing the visual stimuli an animal sees and the way it moves its eyes and body. The recordings are getting larger and more multimodal every year, yet many of the tools used to analyze them were designed for far smaller, single-modality data."
+    },
+    {
+      "type": "paragraph",
+      "text": "The result is a widening gap between the richness of what we can record and the methods available to make sense of it. We can watch neural circuits and behavior change together, but relating the two with a single, general method remains hard. Vision and language offer a tempting reference point: large pretrained transformers learn general-purpose representations from raw data through self-supervised next-token prediction, then transfer to many downstream tasks with very little labeled data."
+    },
+    {
+      "type": "paragraph",
+      "text": "This ICLR 2024 paper asks whether the same recipe can work for the brain. It introduces Neuroformer, a multimodal, multitask generative pretrained transformer built for neural data. The core move is to reframe spike analysis as autoregressive spatiotemporal generation — predicting, one token at a time, which neuron fires and when — much as a language model predicts the next token. Training is entirely self-supervised and label-free, yet the resulting model recovers the wiring of a neural circuit and transfers to decoding an animal's behavior after only a handful of fine-tuning examples."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. The Neuroformer architecture. On the left, feature encoding tokenizes each modality — neural spikes, video, behavior — and a contrastive matching module first aligns them. In the middle, multimodal feature fusion uses a cascade of self- and cross-attention blocks to fuse the small Current State with the larger feature arrays. On the right, autoregressive decoding reads out two kinds of token per step: the neuron ID and the time-interval (dt) token. The cross-attention between the small Current State and the large feature arrays is what lets the model scale linearly with feature size.",
+      "width_inches": 5.7
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper and code:"
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper (arXiv): https://arxiv.org/abs/2311.00136"
+    },
+    {
+      "type": "paragraph",
+      "text": "Code (GitHub): https://github.com/a-antoniades/Neuroformer"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why a new analysis paradigm is needed"
+    },
+    {
+      "type": "paragraph",
+      "text": "Most existing methods for neural data are task-specific, single-modality, and scale poorly as the number of neurons grows. When an experiment delivers neural activity, visual stimuli, and behavior at once, jointly modeling those heterogeneous signals — and transferring the result to a new downstream task — has been genuinely difficult. The authors' bet is simple: if self-supervised generative pretraining can learn transferable, general-purpose representations in vision and language, the same recipe might unlock scalable analysis of large-scale neural spiking data."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The method: treat each spike as a token, then generate autoregressively"
+    },
+    {
+      "type": "paragraph",
+      "text": "Neuroformer assigns every neuron an ID and treats each spike as a token. It splits activity into a Current State and a Past State according to temporal context windows. Video frames pass through a small 3D-convolutional encoder and are split into patches; behavior enters as its own feature stream."
+    },
+    {
+      "type": "paragraph",
+      "text": "Before fusion, a multimodal contrastive module aligns the neural, visual, and behavioral representations by maximizing the similarity of true pairs, so the modalities live in a comparable space. A cascade of cross-attention modules then fuses the small Current State with the larger feature arrays — and this is the design choice that reduces attention cost from quadratic to roughly linear in the number of features, whenever the Current State is much shorter than the feature sequence. Finally, a causally masked transformer decoder predicts, at each step, both which neuron fires and the sub-interval time bin it falls into, so that simultaneous spikes can still be generated sequentially. The whole model is trained jointly with a weighted sum of the contrastive loss and the two spike cross-entropy losses."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Validation I: on a ground-truth network, attention recovers the real wiring"
+    },
+    {
+      "type": "paragraph",
+      "text": "To test whether the model learns real circuit structure rather than mere co-variation, the cleanest approach is to start where the answer is known. The authors build a simulated spiking neural network in which three \"hub\" neurons are strongly connected to many others, giving a ground-truth connectivity matrix to check against. The figure below asks which of several analysis methods can actually recover that wiring from spikes alone."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Validating Neuroformer against ground truth. (a) In the simulated network, three red hub neurons connect strongly to many others; (b) the true connectivity matrix serves as reference; (c) Neuroformer's spike predictions (red) closely track the ground-truth spikes (black), with prediction-to-truth correlations generally positive and above 0.1; (d) a plain Pearson correlation reveals three subnetworks but misses the hubs, because it has no notion of direction or causality; (e) Neuroformer's attention infers directionality and correctly surfaces the hub neurons. The model learns directed structure, not just co-activation.",
+      "width_inches": 4.6
+    },
+    {
+      "type": "paragraph",
+      "text": "The contrast between (d) and (e) is the point of the figure. Pearson correlation is undirected, so it cannot tell who drives whom and never isolates the hubs. Neuroformer's attention matrix, by contrast, infers a directed connectivity that marks all three hub neurons cleanly — with attention serving here as a data-driven probe of the underlying causal structure."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Validation II: on real mouse visual cortex, predictions get sharper"
+    },
+    {
+      "type": "paragraph",
+      "text": "Success in simulation is not enough. The authors turn to real recordings: large field-of-view two-photon calcium imaging of mouse visual areas V1 and AL, keeping 386 reliably responsive neurons while the animal views gratings and naturalistic videos."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. Neuroformer on real data. (a) Two-photon calcium imaging records areas V1 and AL, with 386 reliable neurons retained after screening; (b) for both gratings and naturalistic video, Neuroformer's generated spikes (red) track the ground truth (black); (c) against a generalized linear model (GLM), Neuroformer's population-response predictions are more correlated with the truth (t-test, p = 0.0196); (d) attention yields data-driven maps of the stimulus regions that carry statistical dependencies with neural responses.",
+      "width_inches": 5.4
+    },
+    {
+      "type": "paragraph",
+      "text": "Panel (c) plots each neuron's Neuroformer prediction correlation against its GLM correlation. Most points fall above the diagonal, meaning that on the same set of neurons, Neuroformer's population-response predictions are, overall, closer to the truth than the GLM's — and the difference is statistically significant (p = 0.0196)."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "From predicting spikes to decoding behavior: few-shot transfer from pretraining"
+    },
+    {
+      "type": "paragraph",
+      "text": "Neuroformer's most striking result is that representations learned from neural spikes transfer to a genuinely different task: decoding the mouse's running speed from neural activity. The authors test this on a virtual-navigation (Visnav) dataset that records neural activity alongside the animal's movement."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure5.png",
+      "caption": "Figure 5. Behavior decoding and few-shot learning. (a) Neuroformer's predicted speed is highly correlated with the true speed (Pearson r = 0.97); (b) a pretrained model fine-tuned on just 1% of the behavior data (light green) significantly outperforms a non-pretrained model trained from scratch on 10% of the data (dark blue) — r = 0.51 versus 0.33; (c) behavior-loss curves show the pretrained models (green) converging faster and to a lower test loss. Self-supervised pretraining on spikes learns behaviorally relevant, transferable structure."
+    },
+    {
+      "type": "paragraph",
+      "text": "Panel (b) is the crux. A model first pretrained on neural responses with masked prediction, then fine-tuned on just 1% of the behavior labels, decodes speed better (r = 0.51) than an equivalent model trained from random initialization on ten times as much data (r = 0.33). This is exactly the \"few-shot still competitive\" transfer that pretraining buys in other fields, shown clearly on brain data. The table below reports behavior-prediction correlations when each method is trained on the full dataset."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Behavior (speed) prediction correlation (Pearson r) when trained on the full dataset, for the Visnav Lateral and Medial datasets. Neuroformer reaches the highest correlation on both (0.95 / 0.97), clearly ahead of Lasso regression, GLM, MLP, and a bidirectional GRU.",
+      "headers": [
+        "Method",
+        "Lateral",
+        "Medial"
+      ],
+      "rows": [
+        [
+          "Lasso Regression",
+          "0.62",
+          "0.73"
+        ],
+        [
+          "GLM",
+          "0.69",
+          "0.81"
+        ],
+        [
+          "MLP",
+          "0.83",
+          "0.85"
+        ],
+        [
+          "Bidirectional GRU",
+          "0.83",
+          "0.88"
+        ],
+        [
+          "Neuroformer",
+          "0.95",
+          "0.97"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Ablation: every component earns its place, and joint modeling wins"
+    },
+    {
+      "type": "paragraph",
+      "text": "Since Neuroformer is assembled from several parts, a natural question is which one actually drives performance. The authors remove components one at a time to find out."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure6.png",
+      "caption": "Figure 6. Effect of each component on performance. Adding the Current State, Past State, Video, Behavior, and Contrastive components in turn steadily improves predictive performance (F1) across datasets and brain regions. Each part contributes measurable gains, and jointly modeling neural responses together with behavior beats using either signal alone.",
+      "width_inches": 5.2
+    },
+    {
+      "type": "paragraph",
+      "text": "Two conclusions stand out. First, training jointly on neural responses and behavior beats training on either signal alone — evidence that the model learns, in an unsupervised way, to associate neural and behavioral representations. Second, the contrastive alignment objective is especially valuable when data is scarce, guarding against overfitting to noisy neural signals."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway and boundaries"
+    },
+    {
+      "type": "paragraph",
+      "text": "The message of Neuroformer is that the pretraining paradigm which reshaped vision and language can also work for the brain. By treating neural spikes as an autoregressive, multimodal generation problem, a single self-supervised transformer can both recover the directed connectivity of a neural circuit and transfer to decoding an animal's behavior from only a few examples. It points to a practical path toward scalable neuroscience foundation models, and hints at a future where such models connect to large language models."
+    },
+    {
+      "type": "paragraph",
+      "text": "For practitioners the appeal is concrete: a single pretrained backbone can serve circuit inference and behavior decoding at once, and it keeps improving as more modalities are recorded. That is the same compounding return on scale and self-supervision that reshaped other fields, now within reach for neural data."
+    },
+    {
+      "type": "paragraph",
+      "text": "It is worth being clear about the boundaries. The validation centers on a simulated network and mouse visual-cortex / virtual-navigation data, with the largest models around a hundred million parameters. The \"connectivity\" that attention recovers is checked against ground truth in simulation; reading attention as circuitry in real recordings, where no ground truth exists, still calls for caution. These are the questions to face when scaling the paradigm further, not reasons to discount what it already shows."
+    }
+  ]
+}

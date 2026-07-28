@@ -1,0 +1,3 @@
+# Title
+
+This paper introduces First-order Repulsive Deep Ensembles, or FoRDE, a new way to train neural network ensembles. Deep ensembles work well because their members learn diverse functions, but existing methods that repel members in weight space or function space have struggled to improve on plain deep ensembles. The key idea here is to instead repel ensemble members in the space of their input gradients. Because input gradients uniquely characterize a function up to translation and are far smaller than the weights, this guarantees members become functionally different and encourages each network to learn distinct features. The result is an ensemble that is markedly more robust and better calibrated under input corruptions.

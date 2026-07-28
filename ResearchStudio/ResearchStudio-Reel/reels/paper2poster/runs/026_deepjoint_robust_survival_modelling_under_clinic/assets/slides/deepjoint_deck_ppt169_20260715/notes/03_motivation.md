@@ -1,0 +1,1 @@
+The same patient population appears differently under different observation processes, and that process shifts across countries, over time, and between weekdays and weekends. ML has studied covariate and label shift, but shift in the observation process itself is under-explored.

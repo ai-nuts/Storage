@@ -1,0 +1,7 @@
+# Method
+
+Core claim: The generator G splits into a structure synthesizer G_S, a coordinate-driven neural implicit function producing structural features z_S from a global latent z_g, a local latent z_l, and a coordinate grid c, and a padding-free fully-convolutional texture synthesizer G_T that renders a patch p_c from z_S, z_g, and noise z_n.
+
+Supporting detail: Coordinates use sine/cosine positional encoding horizontally and tanh saturation vertically; a mode-seeking diversity loss prevents repetition, feature unfolding widens the receptive field, and removing all padding guarantees consistent, independently-composable patches with constant O(1) memory.
+
+Narration: InfinityGAN's generator has two modules. The structure synthesizer is a neural implicit function: it takes a global latent for scene appearance, a local latent tensor for variation, and a continuous coordinate grid, and outputs a structural latent for any region. Coordinates use sine-cosine horizontally to exploit landscape self-similarity and a tanh vertically for the ground-to-sky gradient, so it can be queried infinitely far from the origin. The texture synthesizer is a fully-convolutional StyleGAN2 with all zero-padding removed, turning the structural latent, global style, and noise into a patch. With no padding, the same coordinate always yields identical pixels, so independent patches tile seamlessly at constant memory. Training combines adversarial, R1, path-length, diversity, and vertical-coordinate regression losses.

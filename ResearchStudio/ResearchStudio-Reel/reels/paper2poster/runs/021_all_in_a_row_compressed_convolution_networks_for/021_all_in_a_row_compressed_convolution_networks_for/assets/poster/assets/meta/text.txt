@@ -1,0 +1,1122 @@
+               All in a Row: Compressed Convolution Networks for Graphs
+
+
+                   Junshu Sun 1 2 Shuhui Wang 1 3 Xinzhe Han 1 2 Zhe Xue 4 Qingming Huang 1 2 3
+
+
+                          Abstract                                       tasks, such as node classification (Hamilton et al., 2017)
+                                                                         and graph classification (Xu et al., 2019). Despite their ef-
+     Compared to Euclidean convolution, existing                         fectiveness, convolutional GNNs (Defferrard et al., 2016;
+     graph convolution methods generally fail to learn                   Kipf & Welling, 2017; He et al., 2021; Chien et al., 2022)
+     diverse convolution operators under limited pa-                     suffer from inherent problems. First, the customized graph
+     rameter scales and depend on additional treat-                      convolution based on polynomials is less expressive under
+     ments of multi-scale feature extraction. The chal-                  limited parameter scales (Li et al., 2018; Huang et al., 2022;
+     lenges of generalizing Euclidean convolution to                     Eliasof et al., 2022). Second, convolutional GNNs fail to
+     graphs arise from the irregular structure of graphs.                directly perform hierarchical representation learning (Ying
+     To bridge the gap between Euclidean space and                       et al., 2018). Existing graph convolution models require
+     graph space, we propose a differentiable method                     additional node clustering (Ying et al., 2018) or node drop
+     for regularization on graphs that applies permuta-                  methods (Gao & Ji, 2019) to extract multi-scale features. In
+     tions to the input graphs. The permutations con-                    contrast, Convolution Neural Networks (CNNs) based on
+     strain all nodes in a row regardless of their input                 Euclidean convolution are free of the above problems. Own-
+     order and therefore enable the flexible general-                    ing to the local feature learning ability and global parameter
+     ization of Euclidean convolution. Based on the                      sharing mechanism, CNNs can learn diverse convolution
+     regularization of graphs, we propose Compressed                     operators and capture multi-scale local patterns on regular
+     Convolution Network (CoCN) for hierarchical                         grid data. The expressiveness of CNN has led to its great
+     graph representation learning. CoCN follows the                     success in various domains such as image understanding
+     local feature learning and global parameter shar-                   (Krizhevsky et al., 2017; He et al., 2016) and video under-
+     ing mechanisms of Convolution Neural Networks.                      standing (Ji et al., 2013; Tran et al., 2015). In light of this, a
+     The whole model can be trained end-to-end and                       straightforward solution is to adopt Euclidean convolution
+     is able to learn both individual node features and                  for GNNs on non-grid graph data.
+     the corresponding structure features. We validate
+     CoCN on several node classification and graph                       Nevertheless, directly generalizing Euclidean convolution
+     classification benchmarks. CoCN achieves supe-                      to graphs faces with challenges from various aspects. From
+     rior performance over competitive convolutional                     the graph perspective, they generally have irregular local
+     GNNs and graph pooling models. Codes are avail-                     structures that are different from the grid data in Euclidean
+     able at https://github.com/sunjss/CoCN.                             space. Therefore, a graph regularization module is required
+                                                                         to extend the expressiveness of Euclidean convolution from
+                                                                         regular grids to irregular topology. Methods have been
+                                                                         proposed for the regularization of graphs based on node se-
+1. Introduction
+                                                                         quence selection (Niepert et al., 2016; Eliasof et al., 2022).
+Graph Neural Networks (GNNs) based on convolution have                   However, these methods may generate less informative reg-
+become ubiquitous in various graph representation learning               ularized graphs for the subsequent convolution operations,
+    1
+                                                                         since their regularization methods on graphs are indepen-
+      Key Laboratory of Intelligent Information Processing, Insti-       dent of the convolution process and hence cannot be opti-
+tute of Computing Technology, Chinese Academy of Sciences,
+China 2 School of Computer Science and Technology, University            mized for specific tasks. From the Euclidean convolution
+of Chinese Academy of Sciences, China 3 Peng Cheng Laboratory,           perspective, it is sensitive to the local spatial order, while
+China 4 Beijing Key Laboratory of Intelligent Telecommunication          GNNs should preserve permutation invariance, i.e., produce
+Software and Multimedia, School of Computer Science, Beijing             the same node representations regardless of the order of
+University of Posts and Telecommunications, China. Correspon-            the nodes. For permutation invariant transformation, recent
+dence to: Shuhui Wang <wangshuhui@ict.ac.cn>.
+                                                                         studies (Murphy et al., 2019a;b; Huang et al., 2022) propose
+Proceedings of the 40 th International Conference on Machine             to enumerate or sample permutations to adopt permutation-
+Learning, Honolulu, Hawaii, USA. PMLR 202, 2023. Copyright               sensitive operators for GNNs, but they are computationally
+2023 by the author(s).
+
+                                                                     1
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+intractable for learning on large graphs.                           e.g., first-order low-pass filter model (Kipf & Welling, 2017;
+                                                                    Wu et al., 2019). Except for graph Laplacian polynomials,
+In this paper, we propose Compressed Convolution Network
+                                                                    methods have been proposed for more expressive convo-
+(CoCN), a hierarchical GNN model for end-to-end graph
+                                                                    lution operators. Klicpera et al. extend graph Laplacian
+representation learning. Compared to existing models, we
+                                                                    to a more general transition matrix. Inspired by Feynman
+highlight our CoCN as follows: (1) it optimizes regular re-
+                                                                    path integral theory, PAN (Ma et al., 2020) formulates graph
+ceptive field for convolution while preserving permutation
+                                                                    convolution as the polynomial of adjacency matrix with
+invariance; (2) it can learn diverse local operators; and (3)
+                                                                    coefficients depending on the corresponding path. Though
+it directly applies hierarchical feature learning on graphs.
+                                                                    polynomials can approximate any sophisticated filter the-
+Technically, CoCN generalizes Euclidean convolution to
+                                                                    oretically (Wang & Zhang, 2022), its expressive power is
+graphs with two main components, i.e., Permutation Gener-
+                                                                    bounded by the order, and high-order filters are known to
+ation and Diagonal Convolution. For Permutation Genera-
+                                                                    be computationally expensive.
+tion, we consider regularization on graphs as a permutation
+problem that arranges input nodes under a proper order. It          The other vital type of graph convolution is combining reg-
+constrains all nodes in a row with permutation invariance,          ularized graphs with shared filters. These methods are able
+enabling flexible generalization of Euclidean convolution to        to learn complex filters without the constraint of polyno-
+graphs. This is achieved by approximating the permutation           mial order. Niepert et al. propose to extract normalized
+matrix through a differentiable transformation with node            neighborhoods to serve as input data to CNNs. However,
+position regression and cyclic shift.                               the model is less expressive since its normalization cannot
+                                                                    be integrated into the learning process. PathConv (Elia-
+We theoretically demonstrate the convergence of our pro-
+                                                                    sof et al., 2022) regularizes graphs with random walk and
+posed permutation generation method and the permutation
+                                                                    applies convolution to the generated node sequence. PG-
+invariance of the permuted features. Based on the permuted
+                                                                    GNN (Huang et al., 2022) also utilizes sampling methods
+graph representation, Diagonal Convolution is proposed
+                                                                    to convert the neighborhood of nodes into sequences and
+to aggregate both individual node features and the corre-
+                                                                    models pairwise correlations by RNN. Despite using expres-
+sponding structure features. It inherits the local feature
+                                                                    sive spatial filters, the above-mentioned sampling strategies
+learning and global parameter sharing mechanisms from
+                                                                    involve increasing computational costs and may inject noise
+Euclidean convolution and follows the diagonal sliding fash-
+                                                                    signals. Compared to existing regularization-based models,
+ion for edge feature learning. Moreover, to directly achieve
+                                                                    our CoCN regularizes the input graphs with differentiable
+hierarchical feature learning with Diagonal Convolution,
+                                                                    permutations that can be optimized for specific tasks.
+anti-diagonal compression (Fig. 1) is proposed for edge
+features update. Therefore, CoCN can learn diverse local            Hierarchical Pooling GNNs. Except for node-level and
+operators and extract both node features and edge features          graph-level features, the intermediate-scale features are also
+explicitly with hierarchical convolution. Our contribution          crucial for graph representation learning (Ying et al., 2018;
+can be summarized as follows:                                       Boguñá et al., 2021). GNNs with hierarchical representation
+                                                                    learning have been studied, which are generally called graph
+   • We propose a novel method for regularization                   pooling or graph coarsening. Defferrard et al. use Graclus
+     on graphs that enables the generalization of the               greedy algorithm to select and combine node pairs at every
+     permutation-sensitive Euclidean convolution to graphs.         coarsening level. To further preserve structural information,
+                                                                    more topology-based clustering methods are adopted for
+   • We propose a hierarchical GNN model, CoCN, which               iterative graph pooling, such as edge collapsing (Hu, 2006;
+     can learn both individual node features and the corre-         Chen et al., 2018), structural similarity (Hu et al., 2019) and
+     sponding structure features from coarse to fine.               spectral similarity (Deng et al., 2020). Other node cluster-
+   • We demonstrate the advantages of CoCN on six node              ing methods (Ying et al., 2018; Baek et al., 2022) learn soft
+     classification and six graph classification benchmarks.        assignment matrix rather than deterministic clustering to
+                                                                    perform graph pooling. Node drop methods (Cangea et al.,
+                                                                    2018; Gao & Ji, 2019; Lee et al., 2019) use top-K selection
+2. Related Work                                                     method to drop irrelevant nodes. Despite their effectiveness,
+Convolution Operator on Graphs. To generalize convo-                these methods suffer from information loss (Wu et al., 2022).
+lution operators to graph-structured data, Bruna et al. first       To address this problem, Wu et al. use structural entropy
+propose graph convolution based on graph signal processing          to get a learning-free hierarchical structure. Different from
+theory. To reduce filter parameter scale, ChebyNet (Deffer-         graph pooling methods, our CoCN avoids node clustering
+rard et al., 2016) uses parameterized graph Laplacian poly-         or node drop layer-by-layer and performs hierarchical rep-
+nomial to learn convolution filters. Following up this work,        resentation learning directly through diagonal convolution
+models with simpler filter structures have been proposed,           with anti-diagonal compression.
+
+                                                                2
+                                                      All in a Row: Compressed Convolution Networks for Graphs
+
+
+
+                                                       1   2   7   5   6   3   4
+                                                  1
+       2          3                                                                                          0                                0
+  1                                           2                                                              0   0                                0
+                      PERMUTE             7                                    CONV
+                                                                                                             0       0       CONV                 0
+                  4                   5
+                                                                                                        00
+                                                                                                             0           0
+          7                       6
+                                                                                             00                                 000
+                              3
+                                                                                      0 0
+              5
+                                                                                       0 00 0
+                          4
+      6
+
+
+
+
+Figure 1. Compressed Convolution Network Pipeline. CoCN first permutes the node feature matrix and the edge feature matrix based
+on the learnable permutation matrix. Then diagonal convolution is applied to both feature matrices following the diagonal sliding fashion
+on the edge feature matrix. The off-diagonal features, displayed with twill pattern, are not involved in the convolution, so they are learned
+                                                                                                                                  3
+in the subsequent layers.
+
+
+3. Regularization on Graphs                                                                  function is not differentiable. To address this problem, we
+                                                                                             use the sigmoid function to approximate the sign function
+We describe how to regularize graph-structured data through                                  in backpropagation.
+learnable permutations, which facilitates the whole model
+to be trained end-to-end. This enables task-specific opti-
+                                                                                             3.3. Permutation Matrix Generation
+mization on the regularized graph.
+                                                                                             With Eq. 1 and Eq. 2, the generated node positions are
+3.1. Notations                                                                               assigned to all input nodes. A natural follow-up question is
+                                                                                             how to convert the absolute position r into a permutation
+Let G = (V, E) be a graph with node set V =                                                  matrix. We resort to the cyclic shift (Carter, 2009) of matrix
+{v1 , v2 , · · · , vn } of n nodes and edge set E. Each node                                 entries.
+v ∈ V has a feature vector xv ∈ Rd where d denotes the
+number of features. We use X ∈ Rn×d to denote the graph                                      Take row permutation as an example, Pi,j = 1 indicates
+node feature matrix. Node feature vector x⊤     vi corresponds
+                                                                                             moving the j-th row to the i-th row. Therefore, given ab-
+to the i-th row of X. Let A ∈ Rn×n be the adjacency                                          solute position ri for the i-th node, the corresponding per-
+matrix of G and D ∈ Rn×n be the diagonal degree ma-                                          mutation matrix P should have an entry equal to 1 at (ri , i).
+trix. Ai,j =P1 if there exists an edge ei,j = (i, j) ∈ E                                     To convert absolute positions into a permutation matrix, the
+and Di,i = j Ai,j . We use 1 ∈ Rn to denote the all-                                         model needs to assign 1 to the given positions.
+ones vector. Let P be the permutation set over n indices,                                    We first consider the column vector P·,j which corresponds
+|P| = n!. For any P ∈ P, P ∈ Rn×n , P1 = 1⊤ P = 1,                                           to the j-th node assignment. Let m ∈ Rn denote the in-
+Pi,j ∈ {0, 1}.                                                                               dicator of P·,j , initialized as mi = i. The zero entry of
+                                                                                             m indicates that the corresponding entry of P·,j equals 1,
+3.2. Position Regression                                                                     while non-zero entries indicate the number of cyclic shift
+We formulate permutation generation as a position regres-                                    steps to 1. Pi,j is mi steps away from value 1. The cyclic
+sion problem. The intuition behind is that nodes with similar                                shift on m is equivalent to value assignment on P·,j . We
+features or short paths in between will get closer position                                  can use element-wise addition and modulus to cyclically
+prediction. The approximate position rA ∈ Rn is given by:                                    shift the indicator entries. Given absolute position k, the
+                                                                                             initial indicator m takes k steps cyclic shift by (m − k + n)
+                              rA = f (X, A) ,                                      (1)       (mod n).
+where f can be any permutation equivariant function. Since                                   We now extend to determine the whole permutation matrix
+the approximate position for each node is a scalar, we can                                   for the given absolute position r. Each column of the permu-
+apply global pair-wise value comparison to rank the nodes.                                   tation matrix corresponds to a single node assignment. Let
+The resulted absolute position r ∈ Rn can be formulated as:                                  m1⊤ denote the initial indicator of the permutation matrix.
+                r = sgn rA 1⊤ − 1r⊤
+                                                                                            The absolute position r can be converted into permutation
+                                      A 1,              (2)
+                                                                                             matrix as:
+where sgn(·) denotes the sign function. If x > 0,
+                                                                                                P̂ = exp −τ m1⊤ − 1r⊤ + n
+                                                                                                                                              
+sgn(x) = 1 otherwise sgn(x) = 0. Note that the sign                                                                                     (mod n) , (3)
+
+                                                                                         3
+                                 All in a Row: Compressed Convolution Networks for Graphs
+
+where τ denotes the relaxation factor and exp(·) denotes              permutation generation module then follows Eq. 2 and Eq. 3
+the exponential function for mapping indicator entries to             to generate multiple permutations to the subsequent convo-
+permutation entries. Note that the Eq. 3 gives the relaxed            lution layers.
+permutation matrix to overcome the gradient vanishing prob-
+lem, where P̂i,j ∈ (0, 1]. One can instead use Proposition            4.2. Diagonal Convolution
+3.1 or replace exp(·) with other functions to get the standard
+permutation matrix. Proofs for propositions in this section           The permutations can be seen as a spatial position map-
+are provided in Appendix A.                                           ping to Euclidean space where all nodes are in a row. The
+                                                                      adjacent nodes can be defined as a sequence of neighbors
+Proposition 3.1. (Permutation Convergence) P̂ converges               regardless of the edge connection. All nodes share the con-
+to standard permutation matrix as relaxation factor τ ap-             stant local geometry structure, allowing us to generalize
+proaching positive infinity: lim P̂ = P, P ∈ P.                       convolution in Euclidean space to graphs. We now present
+                              τ →+∞
+                                                                      our diagonal convolution operator.
+For simplicity, we compile Eq. 1-3 as operation PERM(·).
+The output of PERM(·) can be used to generate permutation             Let X̂ = P̂X be the sequential node feature matrix and
+invariant input for the subsequent convolution.                       Â = P̂AP̂⊤ be the sequential topological feature matrix.
+                                                                      Note that the adjacency matrix can be seen as the edge fea-
+Proposition 3.2. (Permutation Invariant Input) Let f                  ture matrix with a single channel. We can easily generalize
+be a permutation equivariant function such that for any               our model to multi-channel edge features. For simplicity,
+P ∈ P, f (PX, PAP⊤ ) = Pf (X, A). Then given P̂ =                     we only consider the adjacency matrix here. Similar to
+PERM(X, A), X̂ = P̂X, and Â = P̂AP̂⊤ , for any P ∈ P                 2D convolution, the diagonal structural convolution with a
+on X and A, X̂ and Â are invariant.                                  single kernel can be formulated as:
+
+Regularization on graphs with position regression and or-                                  k−1
+                                                                                              X k−1
+                                                                                                 X
+der permutation transfers the irregular graph to a regular                      Kistr Â, k =       wp,q Âi+p,i+q ,            (5)
+vector with proper order. Proposition 3.1 and 3.2 demon-                                         p=0 q=0
+strate that such permutation is differentiable, convergent,
+and input-order invariant, which facilitates flexible calcula-        where w ∈ Rk×k denotes the convolution kernel parame-
+tion of spatial convolutions.                                         ters for Â, k denotes the kernel size and i denotes the index
+                                                                      of Â that corresponds to the top-left entry of convolution
+                                                                      kernel. Eq. 5 gives the single-step diagonal structural con-
+4. Compressed Convolution Network                                     volution. Typical 2D convolution follows the progressive
+In this section, we present Compressed Convolution Net-               sliding fashion on images where the kernels first slide in a
+work (CoCN), a GNN model based on diagonal convolution                column-wise manner and then row-wise. Instead, we per-
+for hierarchical graph representation learning. We first out-         form diagonal sliding on Â to adapt to the scale of graphs.
+line the implementation of the building blocks of CoCN and            Specifically, for k × k convolution with step length s, the
+then describe the network architecture for node classifica-           top-left entry index i starts at (0, 0), moves to (s, s) and
+tion and graph classification.                                        stops at (n − k + 1, n − k + 1). Further including sequential
+                                                                      node features, the diagonal structural convolution can be
+4.1. Permutation Generation                                           generalized to a unified diagonal convolution as:
+                                                                                                                                       !
+The permutation module is described in Section 3. There are                       k−1
+                                                                                     X k−1
+                                                                                        X                   d−1
+                                                                                                            X
+many possible implementations of the permutation equiv-               Ki Â, X̂, k =       wp,q Âi+p,i+q +     vp,t X̂i+p,t               ,
+                                                                                        p=0   q=0                    t=0
+ariant function in Eq. 1. In this paper, we use MLP to learn
+                                                                                                                             (6)
+node features and the Laplacian operator to smooth the ap-
+                                                                      where v ∈ Rk×d denotes the convolution kernel parameters
+proximate position of connected nodes. Nodes with similar
+                                                                      for X̂. For the input graph of n nodes, applying k × k
+features or short paths in between will have similar positions.
+                                                                      diagonal convolution with diagonal sliding step length s
+Eq. 1 can be written as:
+                                                                      gives rise to the node feature vector of length ⌊ n−k
+                                                                                                                          s ⌋ +
+                                                                                               n−k
+                      rA = Ãt MLP(X),                     (4)        1. Let S = (Sj ) ∈ R⌊ s ⌋+1 denote the output single
+                                                                      channel node feature vector. We can formulate the multi-
+                  1       1
+where Ã = D− 2 AD− 2 denotes the Laplacian operator,                 step diagonal convolution with diagonal sliding as:
+and t denotes the power of Ã to adjust the smoothness.                                                
+MLP uses ReLU as the activation function at each layer. In                            S = K Â, X̂, k, s ,
+practice, we produce multiple approximate positions rA to                                                                  (7)
+allow node arrangements under different similarities. The                            Sj = Ki Â, X̂, k , i = sj.
+
+                                                                  4
+                                      All in a Row: Compressed Convolution Networks for Graphs
+
+4.3. Compressed Convolution Layer
+                                                                                   Permutation
+                                                                                     Module
+To construct a multi-layer network with diagonal convolu-
+tion, we need to update the input features at each layer. As
+                                                                               Input             CoConv                                                     CoConv            Output
+                                                                                                            +                 Pooling     +                               +
+described in Subsection 4.2, the diagonal convolution fol-                     Module             Layer                                                      Layer            Module
+
+                                                                                                            ×                            ×
+lows the diagonal sliding fashion on the input edge feature                                                              Convolution Module
+matrix (Â for example). At each step, the diagonal convo-
+lution extracts node set features including individual node                                                (a) Graph Classification
+features from X̂ and the structure features among nodes
+from the main diagonal blocks of Â.                                                                                       Permutation
+                                                                                                                             Module
+For individual node feature update, we take input nodes as
+n node sets where each node set only contains a single node.
+Let H be the node set feature matrix and H(0) = X̂ be the                     Input
+                                                                              Module
+                                                                                                   CoConv
+                                                                                                    Layer
+                                                                                                                                                          TConv       +
+                                                                                                                                                                              Output
+                                                                                                                                                                              Module
+
+initial node set feature matrix. H can be updated with the                                            +         ×                                  ×
+
+
+diagonal convolution output.
+For structure feature update, let E be the structure fea-                                                 Pooling                                   TConv         +
+ture matrix initialized with E(0) = Â1 . The off-                                                          +        ×                        ×
+
+diagonal features in E that are not involved in the convo-
+lution represent the topological structure features among
+node sets. If the diagonal convolution takes unit slid-                                                     CoConv
+                                                                                                             Layer
+                                                                                                                                                  TConv     +
+
+ing steps, we can update E by removing the main diag-                                                           +
+onal blocks. We use PyTorch-style pseudo-code to for-                                                                Convolution Module
+
+mulate the update equation as E(l) = Tri(E(l−1) , k) =
+triu(E(l−1) , k)+tril(E(l−1) , −k), where k denotes the                                                     (b) Node Classification
+kernel size, triu(·, i) denotes the upper triangular matrix
+                                                                            Figure 2. Compressed Convolution Network Structure. The Co-
+with i diagonals above the main diagonal and tril(·, −i)                    Conv layer represents compressed convolution layers. Pooling
+denotes the lower triangular matrix with i diagonals below                  represents compressed pooling layers. TConv represents trans-
+the main diagonal. If the diagonal convolution takes non-                   posed convolution with ReLU. The dashed lines represent shortcut
+unit steps, we use standard 2D max pooling with the same                    with average pooling
+kernel size and step size as diagonal convolution to update
+the structure features.
+                                                                            4.4. Network Architecture
+With the proposed update method, the structure feature ma-
+trix E is compressed from the anti-diagonal direction. We                   We now present our hierarchical graph representation learn-
+name this network layer with diagonal convolution and anti-                 ing model CoCN. CoCN mainly contains four modules,
+diagonal compression as compressed convolution layer. The                   i.e., input module, permutation generation module, convo-
+l-th compressed convolution layer with k (l) × k (l) diagonal               lution module and output module. The network structures
+convolution and sliding step s(l) is formulated as:                         of CoCN for graph classification and node classification are
+                                                                            presented in Fig. 2(a) and Fig. 2(b). The input module is
+                                                                            implemented with a single-layer linear transformation fol-
+                                                    
+             H(l) = σ K E(l−1) , H(l−1) , k (l) , s(l) ,         (8)
+                                                                            lowed by layer normalization and ReLU. The permutation
+                                                                            generation module has been described in Subsection 4.1. In
+                                                                            the convolution module, features permuted under different
+               (                 
+       (l)   Tri E(l−1) , k (l) ,             if s(l) = 1;
+   E =                                                                     permutation matrices are learned in parallel, where different
+             MaxPool E(l−1) , k (l) , s(l) , otherwise.
+                                                                            permutation heads share the same module parameters.
+                                                          (9)
+                                                 (l)  (l)
+where σ denotes the ReLU function, E(l) ∈ Rn ×n and                         For both tasks, the down-sampling convolution block con-
+n(l) denotes the number of the output node sets. Following                  sists of L1 compressed convolution layers with unit step,
+the common practice in CNN models, compressed convolu-                      L2 compressed pooling layers with the same step length as
+tion layers will contain multiple convolution kernels which                 filter size, and a single compressed convolution layer with
+                        (l)  (l)
+give rise to H(l) ∈ Rn ×c , where c(l) denotes the num-                     unit step. To recover node representations from multi-scale
+ber of kernels. We refer to the compressed convolution layer                features, we stack L1 +L2 +1 transposed convolution layers
+with non-unit step as compressed pooling layer.                             (Noh et al., 2015) as an up-sampling convolution block for
+                                                                            node classification. Direct shortcut connections are estab-
+   1
+       Â can be replaced with any multi-channel edge feature matrix.       lished between the compressed convolution/pooling layers
+
+                                                                        5
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+                              Table 1. Graph Classification Results (measured by accuracy: %).
+
+                             MUTAG         PROTEINS          NCI1            IMDB-B         IMDB-M         COLLAB
+        GRAPHS                  188           1,113          4,110             1,000          1,500          5,000
+        AVG NODES              17.93          39.06          29.87             19.77            13           74.5
+        AVG EDGES              39.6           145.6          64.6              193.1         131.87         4,914.4
+        NODE FEATURES            7              3              37                0              0              0
+        PATCHY-SAN          88.95±4.21     75.00±2.51     78.60±1.90        71.00±2.29     45.23±2.84     72.60±2.15
+        GCN                 69.50±1.78     73.24±0.73     76.29±1.79        73.26±0.46     50.39±0.41     80.59±0.27
+        GIN                 81.39±1.53     71.46±1.66     80.00±1.40        72.78±0.86     48.13±1.36     78.19±0.63
+        G RAPH SAGE         83.60±9.60     73.00±4.50     76.00±1.80        68.80±4.50     47.60±3.50     73.90±1.70
+        PG-GNN                   -         76.80±3.80     82.80±1.30        76.80±2.60     53.20±3.60     80.90±0.80
+        T OP KP OOL         67.61±3.36     70.48±1.01     67.02±2.25        71.58±0.95     48.59±0.72     77.58±0.85
+        SAGP OOL            73.67±4.28     71.56±1.49     67.45±1.11        72.55±1.28     50.23±0.44     78.03±0.31
+        ASAP                77.83±1.49     73.92±0.63     71.48±0.42        72.81±0.50     50.78±0.75     78.64±0.50
+        D IFF P OOL         79.22±1.02     76.25±1.00     62.32±1.90        73.14±0.70     51.31±0.72     82.13±0.43
+        M IN C UT P OOL     79.17±1.64     74.72±0.48     74.25±0.86        72.65±0.75     51.04±0.70     80.87±0.34
+        S TRUCT P OOL       79.50±0.75     75.16±0.86     78.64±1.53        72.06±0.64     50.23±0.53     77.27±0.51
+        E DGE P OOL         74.17±1.82     75.12±0.76           -           72.46±0.74     50.79±0.59          -
+        SEP                 85.56±1.09     76.42±0.39     79.35±0.33        74.12±0.56     51.53±0.65     81.28±0.15
+        GMT                 83.44±1.33     75.09±0.59     76.35±2.62        73.48±0.76     50.66±0.82     80.74±0.54
+        C O CN (O URS )     87.08±0.17     76.86±0.13     82.89±0.19        77.26±0.27     56.32±0.18     86.15±0.10
+
+
+
+and the transposed convolution layers for better feature re-        features, we use the one-hot encoding of node degrees as
+covery. Within both the compressed convolution/pooling              node features following Xu et al.. The statistics of these
+layers and the transposed convolution layers, we also add           datasets are summarized in Tab. 1.
+average pooling as shortcuts. Eq. 8 can be written as:
+                                                                    Baselines. For baseline models, we consider (1) GNNs
+                                                                    with different convolution designs including PATCHY-SAN
+                                                
+         H(l) =σ K E(l−1) , H(l−1) , k (l) , s(l)
+                                                     (10)         (Niepert et al., 2016), GCN (Kipf & Welling, 2017), Graph-
+                 + AvgPool H(l−1) , k (l) , s(l) .                  SAGE (Hamilton et al., 2017), GIN (Xu et al., 2019) and
+                                                                    PG-GNN (Huang et al., 2022); (2) Node drop based hierar-
+In the output module of graph classification, CoCN uses             chical graph pooling models including TopKPool (Gao &
+max pooling to extract graph-level representation. While            Ji, 2019), SAGPool (Lee et al., 2019) and ASAP (Ranjan
+for node classification, CoCN re-permutes the extracted             et al., 2020); and (3) Node clustering based hierarchical
+features from the L-th layer with P̂⊤ H(L) and concatenates         graph pooling models including DiffPool (Ying et al., 2018),
+the re-permuted features under different permutations to            EdgePool (Diehl, 2019), MinCutPool (Bianchi et al., 2020),
+perform the final predictions.                                      StructPool (Yuan & Ji, 2020), SEP (Wu et al., 2022) and
+                                                                    GMT (Baek et al., 2022).
+5. Experiments                                                      Performance. The results of CoCN and baselines for graph
+                                                                    classification are presented in Tab. 1. CoCN surpasses con-
+We empirically evaluate CoCN on real-world benchmarks.              volutional GNNs and graph pooling methods on all datasets
+The code of CoCN is implemented with PyTorch (Paszke                except MUTAG, especially on social network datasets like
+et al., 2019) and PyTorch-Geometric (Fey & Lenssen, 2019).          COLLAB that do not provide any node features. For MU-
+CoCN is trained on a single Nvidia Geforce RTX 3090. The            TAG, only PATCHY-SAN outperforms our method but it
+detailed model structure and hyper-parameter setting are            is very unstable across repeat tests and degrades a lot on
+presented in Appendix B.                                            COLLAB and IMDB-M due to the lack of edge feature
+                                                                    learning. In Section 5.3, we further demonstrate that CoCN
+5.1. Graph Classification                                           can achieve comparable performance to PATCHY-SAN with
+                                                                    only structure features on MUTAG.
+Datasets. For graph classification, we use six datasets (Mor-
+ris et al., 2020) including three biochemical datasets MU-
+TAG, PROTEINS, NCI1 and three social network datasets               5.2. Node Classification
+COLLAB, IMDB-BINARY and IMDB-MULTI. We per-                         Datasets. For node classification, we conduct experiments
+form 10-fold cross-validation with LIB-SVM following Xu             on six datasets including Chameleon, Squirrel (Rozember-
+et al. and report average performance. Since COLLAB,                czki et al., 2021), Cornell, Texas, Wisconsin (Pei et al.,
+IMDB-BINARY and IMDB-MULTI have no input node
+
+                                                                6
+                                 All in a Row: Compressed Convolution Networks for Graphs
+
+                               Table 2. Node Classification Results (measured by accuracy: %).
+
+                    C HAMELEON       S QUIRREL       C ORNELL           T EXAS        W ISCONSIN         ACTOR
+ N ODES                 2,277           5,201           198               183             251             7,600
+ E DGES                36,101         198,493           295               309             499             33544          AVG R ANK
+ F EATURES              2,325           2,089          1,703             1,703           1,703             932
+ GCN                59.82±2.58      36.89±1.34      57.03±4.67        59.46±5.25      59.80±6.99       30.26±0.79           11.17
+ C HEBY N ET        55.24±2.76      43.86±1.64      74.30±7.46        77.30±4.07      79.41±4.46       34.11±1.09            8.17
+ G EOM -GCN         60.00±2.81      38.15±0.92      60.54±3.67        66.76±2.72      64.51±3.66       31.59±1.15           10.17
+ G RAPH SAGE        49.06±1.88      36.73±1.21      80.08±2.96        82.03±2.77      81.36±3.91       35.07±0.15            7.00
+ FAGCN              46.07±2.11      30.83±0.69      76.76±5.87        76.49±2.87      79.61±1.58       34.82±1.35            9.17
+ APPNP              40.44±2.02      29.20±1.45      56.76±4.58        55.10±6.23      54.59±6.13       30.02±0.89           13.00
+ M IX H OP          60.50±2.53      43.80±1.48      73.51±6.34        77.84±7.73      75.88±4.90       32.22±2.34            8.33
+ LINKX              68.42±1.38      61.81±1.80      77.84±5.81        74.60±8.37      75.49±5.72       36.10±1.55            6.33
+ GGCN               71.14±1.84      55.17±1.58      85.68±6.63        84.86±4.55      86.86±3.29       37.54±1.56            2.50
+ ACMII-GCN          68.46±1.70      51.80±1.50      85.95±5.64        86.76±4.75      87.45±3.74       36.43±1.20            2.33
+ GPRGCN             62.59±2.04      46.31±2.46      78.11±6.55        81.35±5.32      82.55±6.23       35.16±0.90            5.17
+ GCNII              63.86±3.04      38.47±1.58      77.86±3.79        80.39±3.83      77.57±3.40       37.44±1.30            5.83
+ C O CN (O URS )    79.17±0.17      72.95±0.23      86.22±0.49        85.21±0.49      86.88±0.45       36.35±0.12            1.83
+
+
+2020) and Actor (Tang et al., 2009). For Chameleon, Squir-
+                                                                     Table 3. Node Classification Results (measured by accuracy:
+rel, Cornell, Texas and Wisconsin, we use the same random
+                                                                     %) on Original / Filtered Chameleon and Squirrel.
+train/validation/test splits of 48%/32%/20% as Pei et al.2
+and report average performance over ten splits. The statis-
+tics of node classification datasets are summarized in Tab. 2                                Chameleon                  Squirrel
+                                                                                      Ori.    Filtered Ranks Ori.       Filtered Ranks
+Baselines. We consider GNNs with different convolu-                  FAGCN           64.23     41.90    6/2     47.63   41.08    5/1
+tion designs which can make node-level predictions, in-              GCN             50.18     40.89   11 / 4   39.06   39.47    7/3
+cluding ChebyNet (Defferrard et al., 2016), GCN (Kipf                ResNet+adj      71.07     38.67   3 / 13   65.46   38.37    3/5
+& Welling, 2017), GraphSAGE(Hamilton et al., 2017),                  FSGNN           77.85     40.61   2/5      68.93   35.92   2 / 11
+APPNP (Gasteiger et al., 2018), MixHop (Abu-El-Haija                 CoCN (Ours) 79.61         41.95   1/1      73.27   39.69    1/2
+et al., 2019), Geom-GCN (Pei et al., 2020), GCNII (Chen
+et al., 2020), FAGCN (Bo et al., 2021), GGCN (Yan et al.,
+2022), LINKX (Lim et al., 2022), GPRGCN (Chien et al.,
+                                                                     following Platonov et al.. The performance comparison
+2022) and ACMII-GCN (Luan et al., 2022).
+                                                                     between original and filtered datasets is presented in Tab. 3.
+Performance. The results of CoCN and baselines are                   The results of baselines are from Platonov et al.. The ranks
+presented in Tab. 2. CoCN gets competitive results on                denote the accuracy ranking out of 18 models on original
+all six datasets and outperforms other baseline models on            and filtered datasets respectively. We only list four top-
+Chameleon, Squirrel and Cornell. For Texas, Wisconsin and            ranking baselines here: FSGNN (Maurya et al., 2022) and
+Actor, CoCN slightly underperforms GGCN and ACMII-                   ResNet+adj (Platonov et al., 2023) for original datasets,
+GCN. This is because the node connectivity is weak on these          GCN and FAGCN for filtered datasets. For full compar-
+datasets, making the structure features less informative for         ison results, please refer to Appendix C.1. As presented
+CoCN. However, CoCN still constantly achieves superior               in Tab. 3, CoCN consistently outperforms baseline models
+performance compared to other models, which proves the               on both original and filtered datasets. Compared to other
+efficacy of our model for node classification.                       models, CoCN is less sensitive to node duplicates and has
+                                                                     stronger generalizing ability. The results further validate the
+Filtered Datasets. Platonov et al. find that there are many
+                                                                     reliability of CoCN on Chameleon and Squirrel.
+duplicate nodes among the train, validation and test splits in
+Chameleon and Squirrel. This results in the train-test data          Mini-Batch Classification. CoCN achieves permutation
+leakage that induces GNNs to fit the test splits during the          invariance through learnable permutations. Compared to
+training stage, making the performances on Chameleon and             permutation enumeration, the permutation module of CoCN
+Squirrel become less convincing. To further validate CoCN            depends on specific tasks to generate the required permu-
+on Chameleon and Squirrel, we adopt filtered Chameleon               tations. As a result, CoCN reduces the time complexity
+and Squirrel datasets that do not contain duplicate nodes            of permutation modeling on n nodes from O(n!) to O(n2 )
+   2                                                                 which enables node permutation on large graphs. How-
+     The original random splits in Pei et al. is 60%/20%/20%,
+which is different from their open source data splits.               ever, as the scale of real-world graphs continuously grows,
+                                                                     mini-batching becomes vital for scalable graph learning
+
+                                                                 7
+                                    All in a Row: Compressed Convolution Networks for Graphs
+
+
+Table 4. Batching Node Classification Results (amazon-ratings
+measured by accuracy: %, questions and genius measured by
+ROC AUC: %).
+
+                     questions     amazon-ratings    genius
+   Nodes             48,921             24,492       421,961
+   Edges             153,540            93,050       984,979
+   Features            301               300           12
+   GCN                76.09             48.70         87.42
+   GAT                77.43             49.09         55.80                (a) 0            (b) 1           (c) 2            (d) 4
+   APPNP              64.49             46.62         85.36
+   GPRGCN             55.48             44.88         90.05           Figure 4. Permutation Results. The results are compared under
+   GCNII              75.17             46.13         90.24           different values of the smoothness parameter t. The first row
+   GloGNN             65.74             36.89         90.66
+                                                                      displays the permuted adjacency matrix and the brighter pixels
+   MixHop             58.51             42.06         90.58
+   LINKX              69.43             44.76         90.77           indicate that the nodes are connected in the adjacency matrix. The
+                                                                      second row displays the permuted node feature similarity and the
+   CoCN (Ours)        77.86             49.05         90.58           brightness of the pixels indicate the similarity.
+
+
+
+(Zeng et al., 2020). To evaluate the potential of CoCN on             include synthetic graphs (Bianchi et al., 2020) of ring and
+large-scale graphs, we conduct batching node classification           grid. The input features are the coordinates of nodes in
+experiments on three datasets including genius (Lim et al.,           2D Euclidean space. The original synthetic graphs and the
+2022), questions and amazon-ratings (Platonov et al., 2023).          corresponding recovered graphs under different relaxation
+We use the mini-batching method Cluster-GCN (Chiang                   factors τ are presented in Fig. 3. The autoencoder can re-
+et al., 2019) for CoCN and full-batch training for baselines.         cover the original node position with small distortion. As
+The batch size is selected from {10, 50, 100} that achieves           τ increases, the distortion gets reduced. When τ equals
+the best performance on the validation set. CoCN performs             10, the autoencoder can reconstruct the graph with almost
+comparably to full-batch classification results in Tab. 4. The        no visible distortion. This suggests that our permutation
+results show that CoCN still demonstrates promising node              generation module can well approximate the permutation
+classification efficacy under mini-batch training settings.           matrix with little information loss.
+This facilitates its application to large-scale graphs.               Smoothness. We compare the permutation matrix P̂t
+                                                                      with different values of the smoothness parameter t on
+                                                                      Chameleon. The relaxation factor τ is set to 0.01. The
+                                                                      permuted adjacency matrix P̂t AP̂⊤ t and the permuted node
+                                                                      feature similarity P̂t XX⊤ P̂⊤
+                                                                                                   t are visualized in the first row
+                                                                      and second row of Fig. 4. When t equals 0, the absolute
+                                                                      positions only depend on node features. Nodes with similar
+                                                                      features are assigned together. As t increases, the adja-
+                                                                      cency of graph nodes has more influence on the permutation.
+(a) Original   (b) 0.01       (c) 0.1      (d) 1.0    (e) 10.0        Edges in the adjacency matrix, i.e., the brighter pixels in
+                                                                      Fig. 4, are permuted close to the main diagonal. Moreover,
+Figure 3. Permutation Information Loss. The results under dif-        in Subsection 5.1 and 5.2 we find that the improvement
+ferent relaxation factors τ are compared.                             of CoCN is limited for weakly connected datasets, such
+                                                                      as MUTAG for graph classification and TEXAS for node
+5.3. Model Analysis                                                   classification. We speculate that it is due to the implicit
+                                                                      encoding of structure information in Eq. 4. More detailed
+5.3.1. P ERMUTATION A NALYSIS                                         analysis is provided in Appendix C.2.
+Information Loss. We conduct graph reconstruction ex-                 Multiple Permutations. We conduct ablation studies on
+periments following Bianchi et al. to study whether the               the number of permutations and analyze the convolution
+approximate permutations cause information loss. Given in-            module output of different permutations. Fig. 5 presents
+put features, an autoencoder is trained to recover the original       the classification accuracy under different numbers of per-
+features from the permuted features. The learning objective           mutations on MUTAG, Chameleon, Cornell and Wisconsin.
+is to minimize the mean squared error (MSE) between the               As the number of permutations increases, CoCN gets im-
+input features and the recovered features. The input graphs           provement in accuracy for all the datasets. Following this
+
+                                                                  8
+                                                                     All in a Row: Compressed Convolution Networks for Graphs
+
+                                                                                                      1
+                                                                                                                    Cornell        Wisconsin           Chameleon     MUTAG
+                                                                                                                                                                                              0.795
+           0.9                                                                                       0.9
+                                                                                                     0.8                                                                                       0.79
+
+
+
+
+                                                                                Average Similarity
+                                                                                                     0.7
+
+
+
+
+                                                                                                                                                                                   Accuracy
+                                                                                                     0.6                                                                                      0.785
+Accuracy
+
+
+
+
+                                                                                                     0.5
+           0.8
+                                                                                                     0.4                                                                                       0.78
+                                                                                                     0.3
+                                                                                                     0.2                                                                                      0.775
+
+                     Chamleon       Cornell         Wisconsin        MUTAG                           0.1
+                                                                                                                                                                                                          k=3    k=5          k=7       k=9
+           0.7                                                                                        0                                                                                        0.77
+                 2       4          6           8               10     16                                  1   21   41   61   81 101 121 141 161 181 201 221 241 261 281 301 321                      1     10          100          1000     10000   100000
+                                Number of Permutations                                                                                         Epoch                                                                   Receptive Field Size
+
+
+Figure 5. Ablation Study on the Number                                         Figure 6. Feature Similarity between                                                                Figure 7. Ablation Study on Kernel Size
+of Permutations.                                                               Different Permutations.                                                                             and Receptive Field Size. The dashed line
+                                                                                                                                                                                   represents the number of input nodes.
+
+result, we further analyze the relationship between different
+                                                                                                                                                  Table 5. Ablation Study (measured by accuracy: %) on Struc-
+permutations. Fig. 6 presents the average feature similarity
+                                                                                                                                                  ture Features and Node Features.
+between permutations during the training process. Given
+two feature vectors x and y, the feature similarity is x⊤ y/d                                                                                                                          Str. Feat.                Nod. Feat.                   Both
+where d denotes the number of feature channels. The results                                                                                                        MUTAG                 88.35                     85.12                      87.08
+                                                                                                                                                                   IMDB-B                70.47                     75.09                      77.26
+are normalized into [0, 1] for a unified presentation. From                                                                                                        Chameleon             69.14                     77.98                      79.17
+Fig. 6, the model gradually learns to reduce the feature sim-                                                                                                      Cornell               66.22                     79.19                      81.08
+ilarity between different permutations. This indicates that
+CoCN learns complementary feature representations under
+different permutations and requires multiple permutations                                                                                         6. Conclusion
+for sufficient feature learning.
+                                                                                                                                                  We presented a differentiable permutation method for gener-
+                                                                                                                                                  alizing Euclidean convolution to graphs. We formulated the
+5.3.2. N ETWORK S TRUCTURE A NALYSIS
+                                                                                                                                                  permutation generation as a node position assignment prob-
+We conduct ablation studies on kernel size k and the number                                                                                       lem and transformed the generated node positions into ap-
+of compressed pooling layers L2 for Chameleon (Fig. 7)                                                                                            proximated permutation matrix with cyclic shift. Based on
+and MUTAG (presented in Appendix C.3). As shown in                                                                                                Euclidean convolution, we designed diagonal convolution
+Fig. 7, CoCN achieves better performance as the receptive                                                                                         for graphs to learn both node features and the correspond-
+field size increases. However, if the receptive field size gets                                                                                   ing structure features. We further presented Compressed
+larger than the number of input nodes, CoCN cannot extract                                                                                        Convolution Network (CoCN), a hierarchical GNN model
+informative features anymore and therefore shows perfor-                                                                                          for graph representation learning. Experiment results show
+mance degradation. For different kernel sizes k, CoCN with                                                                                        that CoCN achieves superior performance on both node
+k = 5 has better performance. This is because that larger                                                                                         classification and graph classification.
+kernels (k = 7, 9) can hardly capture fine-grain features
+                                                                                                                                                  Limitations For homophilous graph datasets, the nodes
+well and smaller kernels (k = 3) requires more layers to
+                                                                                                                                                  with short paths in-between tends to be assigned closer
+get the larger receptive field. CoCN mainly relies on com-
+                                                                                                                                                  to each other after permutation. However, due to the im-
+pressed pooling layers to get larger receptive fields. For
+                                                                                                                                                  plicit encoding of structure information for the permutation
+the compressed convolution layer with unit-step, stacking
+                                                                                                                                                  process, this tendency cannot be fully fulfilled. As a re-
+multiple layers generally degrades the model performance.
+                                                                                                                                                  sult, CoCN performs less promising on graphs with strong
+We provide the quantitative results in Appendix C.3.
+                                                                                                                                                  homophily and gains limited improvement on weakly con-
+                                                                                                                                                  nected datasets. We will explore more efficient position
+5.3.3. F EATURE A NALYSIS
+                                                                                                                                                  regression techniques in future work.
+We perform ablation studies on node features and struc-
+ture features for the datasets described above. Results on                                                                                        Acknowledgements
+Chameleon, Cornell, MUTAG and IMDB-BINARY are pre-
+sented in Tab. 5. Full results are provided in Appendix C.4.                                                                                      This work was supported in part by the National Key
+From Tab. 5 we observe that CoCN with both types of fea-                                                                                          R&D Program of China under Grant 2018AAA0102000,
+tures has better performance on most datasets. Therefore,                                                                                         in part by National Natural Science Foundation of China:
+both node features and structure features generally con-                                                                                          62022083, 62236008, 61931008 and U21B2038, and in part
+tribute to the model prediction. CoCN can still obtain good                                                                                       by ICT Innovative Project: E161060. Z. Xue is sponsored
+performance with only structure features, which indicates                                                                                         by CCF-Tencent Open Fund: RAGR20220125. We would
+its ability in capturing the structure information.                                                                                               like to thank anonymous reviewers for helpful suggestions
+                                                                                                                                                  that improved this work.
+
+                                                                                                                                           9
+                                 All in a Row: Compressed Convolution Networks for Graphs
+
+References                                                            Chien, E., Peng, J., Li, P., and Milenkovic, O. Adaptive
+                                                                        Universal Generalized PageRank Graph Neural Network.
+Abu-El-Haija, S., Perozzi, B., Kapoor, A., Alipourfard, N.,
+                                                                        In International Conference on Learning Representations,
+  Lerman, K., Harutyunyan, H., Steeg, G. V., and Gal-
+                                                                        virtual, 2022.
+  styan, A. MixHop: Higher-Order Graph Convolutional
+ Architectures via Sparsified Neighborhood Mixing. In In-
+                                                                      Defferrard, M., Bresson, X., and Vandergheynst, P. Con-
+  ternational Conference on Machine Learning, pp. 21–29,
+                                                                        volutional neural networks on graphs with fast localized
+  Long Beach, USA, 2019. PMLR.
+                                                                        spectral filtering. In International Conference on Neu-
+Baek, J., Kang, M., and Hwang, S. J. Accurate Learning of               ral Information Processing Systems, pp. 3844–3852, Red
+  Graph Representations with Graph Multiset Pooling. In                 Hook, NY, USA, 2016. Curran Associates Inc.
+  International Conference on Learning Representations,
+  virtual, 2022.                                                      Deng, C., Zhao, Z., Wang, Y., Zhang, Z., and Feng, Z.
+                                                                        GraphZoom: A Multi-level Spectral Approach for Ac-
+Bianchi, F. M., Grattarola, D., and Alippi, C. Spectral                 curate and Scalable Graph Embedding. In International
+  clustering with graph neural networks for graph pooling.              Conference on Learning Representations, Addis Ababa,
+  In International Conference on Machine Learning, pp.                  Ethiopia, 2020.
+  874–883, virtual, 2020. PMLR.
+                                                                      Diehl, F. Edge Contraction Pooling for Graph Neural Net-
+Bo, D., Wang, X., Shi, C., and Shen, H. Beyond Low-                     works. arXiv preprint, arXiv.1905.10990, 2019.
+  frequency Information in Graph Convolutional Networks.
+  In AAAI Conference on Artificial Intelligence, volume 35,           Du, L., Shi, X., Fu, Q., Ma, X., Liu, H., Han, S., and Zhang,
+  pp. 3950–3957, virtual, 2021.                                         D. GBK-GNN: Gated Bi-Kernel Graph Neural Networks
+                                                                        for Modeling Both Homophily and Heterophily. In ACM
+Boguñá, M., Bonamassa, I., De Domenico, M., Havlin, S.,
+                                                                       Web Conference, pp. 1550–1558, New York, NY, USA,
+  Krioukov, D., and Serrano, M. Á. Network geometry.
+                                                                        2022. Association for Computing Machinery.
+  Nature Reviews Physics, 3(2):114–135, 2021.
+
+Bruna, J., Zaremba, W., Szlam, A., and LeCun, Y. Spectral             Eliasof, M., Haber, E., and Treister, E. pathGCN: Learning
+  Networks and Locally Connected Networks on Graphs. In                 General Graph Spatial Operators from Paths. In Interna-
+  International Conference for Learning Representations,                tional Conference on Machine Learning, pp. 5878–5891,
+  Banff, Canada, 2013.                                                  Baltimore, Maryland, USA, 2022. PMLR.
+
+Cangea, C., Veličković, P., Jovanović, N., Kipf, T., and           Fey, M. and Lenssen, J. E. Fast Graph Representation Learn-
+  Liò, P. Towards Sparse Hierarchical Graph Classifiers.               ing with PyTorch Geometric. In International Conference
+  In Neural Information Processing Systems Workshop on                  on Learning Representations Workshop on Graphs and
+  Relational Representation Learning, Montréal, Canada,                Manifolds, 2019.
+  2018.
+                                                                      Gao, H. and Ji, S. Graph U-Nets. In International Confer-
+Carter, N. C. Visual group theory. pp. 65–66. Mathematical              ence on Machine Learning, pp. 2083–2092, Long Beach,
+  Association of America, 2009.                                         California, USA, 2019. PMLR.
+Chen, H., Perozzi, B., Hu, Y., and Skiena, S. HARP: Hier-
+                                                                      Gasteiger, J., Bojchevski, A., and Günnemann, S. Predict
+  archical Representation Learning for Networks. In AAAI
+                                                                        then Propagate: Graph Neural Networks meet Personal-
+  Conference on Artificial Intelligence, volume 32, New
+                                                                        ized PageRank. In International Conference on Learning
+  Orleans, Louisiana, USA, 2018. AAAI Press.
+                                                                        Representations, Addis Ababa, Ethiopia, 2018.
+Chen, M., Wei, Z., Huang, Z., Ding, B., and Li, Y. Simple
+  and Deep Graph Convolutional Networks. In Interna-                  Hamilton, W. L., Ying, R., and Leskovec, J. Inductive rep-
+  tional Conference on Machine Learning, pp. 1725–1735,                 resentation learning on large graphs. In International
+  virtual, 2020. PMLR.                                                  Conference on Neural Information Processing Systems,
+                                                                        pp. 1025–1035, Red Hook, USA, 2017. Curran Asso-
+Chiang, W.-L., Liu, X., Si, S., Li, Y., Bengio, S., and Hsieh,          ciates Inc.
+  C.-J. Cluster-GCN: An Efficient Algorithm for Train-
+  ing Deep and Large Graph Convolutional Networks. In                 He, K., Zhang, X., Ren, S., and Sun, J. Deep Residual
+  ACM SIGKDD International Conference on Knowledge                      Learning for Image Recognition. In IEEE Conference on
+  Discovery & Data Mining, pp. 257–266, New York, NY,                   Computer Vision and Pattern Recognition, pp. 770–778,
+  USA, 2019. Association for Computing Machinery.                       Las Vegas, NV, USA, 2016.
+
+                                                                 10
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+He, M., Wei, Z., Huang, z., and Xu, H. BernNet: Learning            Li, X., Zhu, R., Cheng, Y., Shan, C., Luo, S., Li, D., and
+  Arbitrary Graph Spectral Filters via Bernstein Approxi-             Qian, W. Finding Global Homophily in Graph Neural Net-
+  mation. In Advances in Neural Information Processing                works When Meeting Heterophily. In International Con-
+  Systems, volume 34, pp. 14239–14251, virtual, 2021. Cur-            ference on Machine Learning, volume 162, pp. 13242–
+  ran Associates, Inc.                                                13256, Baltimore, Maryland, USA, 2022. PMLR.
+
+Hu, F., Zhu, Y., Wu, S., Wang, L., and Tan, T. Hierarchical         Lim, D., Hohne, F. M., Li, X., Huang, S. L., Gupta, V.,
+  graph convolutional networks for semi-supervised node               Bhalerao, O. P., and Lim, S.-N. Large Scale Learning on
+  classification. In International Joint Conference on Arti-          Non-Homophilous Graphs: New Benchmarks and Strong
+  ficial Intelligence, pp. 4532–4539, Macao, China, 2019.             Simple Methods. In Advances in Neural Information
+ AAAI Press.                                                          Processing Systems, pp. 20887–20902, virtual, 2022.
+                                                                    Luan, S., Hua, C., Lu, Q., Zhu, J., Zhao, M., Zhang, S.,
+Hu, Y. Efficient, high-quality force-directed graph drawing.          Chang, X.-W., and Precup, D. Revisiting Heterophily
+ Mathematica journal, 10:37–71, 2006.                                 For Graph Neural Networks. In Advances in Neural
+                                                                      Information Processing Systems, virtual, 2022.
+Huang, Z., Wang, Y., Li, C., and He, H. Going Deeper
+  into Permutation-Sensitive Graph Neural Networks. In              Ma, Z., Xuan, J., Wang, Y. G., Li, M., and Liò, P. Path
+ International Conference on Machine Learning, pp. 9377–             Integral Based Convolution and Pooling for Graph Neural
+  9409, Baltimore, Maryland, USA, 2022. PMLR.                        Networks. In Advances in Neural Information Processing
+                                                                     Systems, volume 33, pp. 16421–16433, virtual, 2020.
+Ji, S., Xu, W., Yang, M., and Yu, K. 3D Convolutional                Curran Associates, Inc.
+   Neural Networks for Human Action Recognition. IEEE
+   Transactions on Pattern Analysis and Machine Intelli-            Maurya, S. K., Liu, X., and Murata, T. Simplifying approach
+   gence, 35(1):221–231, 2013.                                       to node classification in Graph Neural Networks. Journal
+                                                                     of Computational Science, 62:101695, 2022.
+Kingma, D. P. and Ba, J. Adam: A Method for Stochastic
+                                                                    Morris, C., Kriege, N. M., Bause, F., Kersting, K., Mutzel,
+  Optimization. In International Conference for Learn-
+                                                                     P., and Neumann, M. TUDataset: A collection of bench-
+  ing Representations, San Diego, USA, 2015. Comment:
+                                                                     mark datasets for learning with graphs. In International
+  Published as a conference paper at the 3rd International
+                                                                     Conference on Machine Learning Workshop on Graph
+  Conference for Learning Representations, San Diego,
+                                                                     Representation Learning and Beyond, 2020.
+  2015.
+                                                                    Murphy, R. L., Srinivasan, B., Rao, V., and Ribeiro, B.
+Kipf, T. N. and Welling, M. Semi-Supervised Classification           Janossy Pooling: Learning Deep Permutation-Invariant
+  with Graph Convolutional Networks. In International                Functions for Variable-Size Inputs. In International Con-
+  Conference on Learning Representations, Toulon, France,            ference on Learning Representations, New Orleans, LA,
+  2017.                                                              USA, 2019a.
+
+Klicpera, J., Weiß enberger, S., and Günnemann, S. Diffu-          Murphy, R. L., Srinivasan, B., Rao, V., and Ribeiro, B.
+  sion Improves Graph Learning. In International Confer-             Relational Pooling for Graph Representations. In Internet
+  ence on Advances in Neural Information Processing Sys-             Conference on Machine Learning, pp. 4663–4673, Long
+  tems, volume 32, pp. 13333–13345, Vancouver, Canada,               Beach, California, USA, 2019b. PMLR.
+  2019. Curran Associates, Inc.
+                                                                    Niepert, M., Ahmed, M., and Kutzkov, K. Learning con-
+Krizhevsky, A., Sutskever, I., and Hinton, G. E. ImageNet             volutional neural networks for graphs. In International
+  classification with deep convolutional neural networks.             Conference on Machine Learning, volume 48, pp. 2014–
+  Communications of the ACM, 60(6):84–90, 2017.                       2023, New York, NY, USA, 2016. PMLR.
+                                                                    Noh, H., Hong, S., and Han, B. Learning Deconvolution
+Lee, J., Lee, I., and Kang, J. Self-Attention Graph Pooling.          Network for Semantic Segmentation. In IEEE Interna-
+  In International Conference on Machine Learning, pp.                tional Conference on Computer Vision, pp. 1520–1528,
+  3734–3743, Long Beach, California, USA, 2019. PMLR.                 Santiago, Chile, 2015. IEEE Computer Society.
+Li, Q., Han, Z., and Wu, X.-M. Deeper Insights into Graph           Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J.,
+  Convolutional Networks for Semi-Supervised Learning.                Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga,
+  In AAAI Conference on Artificial Intelligence, New Or-              L., Desmaison, A., Köpf, A., Yang, E., DeVito, Z., Rai-
+  leans, USA, 2018.                                                   son, M., Tejani, A., Chilamkurthy, S., Steiner, B., Fang,
+
+                                                               11
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+  L., Bai, J., and Chintala, S. PyTorch: An imperative style,        Wu, J., Chen, X., Li, S., and Xu, K. Structural entropy
+  high-performance deep learning library. In International            guided graph hierarchical pooling. In International Con-
+  Conference on Neural Information Processing Systems,                ference on Machine Learning, volume 162, pp. 24017–
+  pp. 8026–8037, Red Hook, NY, USA, 2019. Curran As-                  24030, Baltimore, Maryland, USA, 2022. PMLR.
+  sociates Inc.
+                                                                     Xu, K., Hu, W., Leskovec, J., and Jegelka, S. How Powerful
+Pei, H., Wei, B., Chang, K. C.-C., Lei, Y., and Yang, B.               are Graph Neural Networks? In International Conference
+  Geom-GCN: Geometric Graph Convolutional Networks.                    on Learning Representations, New Orleans, LA, USA,
+  In International Conference on Learning Representations,             2019.
+  Addis Ababa, Ethiopia, 2020.
+                                                                     Yan, Y., Hashemi, M., Swersky, K., Yang, Y., and Koutra,
+Platonov, O., Kuznedelev, D., Diskin, M., Babenko, A., and             D. Two Sides of the Same Coin: Heterophily and Over-
+  Prokhorenkova, L. A critical look at the evaluation of               smoothing in Graph Convolutional Neural Networks.
+  GNNs under heterophily: Are we really making progress?               In IEEE International Conference on Data Mining, pp.
+  In International Conference on Learning Representations,             1287–1292, Orlando, FL, USA, 2022. IEEE.
+  Kigali, Rwanda, 2023.
+                                                                     Ying, Z., You, J., Morris, C., Ren, X., Hamilton, W., and
+Ranjan, E., Sanyal, S., and Talukdar, P. ASAP: Adaptive                Leskovec, J. Hierarchical Graph Representation Learning
+  Structure Aware Pooling for Learning Hierarchical Graph              with Differentiable Pooling. In Advances in Neural Infor-
+  Representations. In AAAI Conference on Artificial Intelli-           mation Processing Systems, volume 31, pp. 4805–4815,
+  gence, volume 34, pp. 5470–5477, New York, NY, USA,                  Montréal, Canada, 2018. Curran Associates, Inc.
+  2020.
+                                                                     Yuan, H. and Ji, S. StructPool: Structured Graph Pooling via
+Rozemberczki, B., Allen, C., and Sarkar, R. Multi-Scale at-
+                                                                       Conditional Random Fields. In International Conference
+  tributed node embedding. Journal of Complex Networks,
+                                                                       on Learning Representations, Addis Ababa, Ethiopia,
+  9(2), 2021.
+                                                                       2020.
+Shi, Y., Huang, Z., Feng, S., Zhong, H., Wang, W., and
+  Sun, Y. Masked Label Prediction: Unified Message                   Zeng, H., Zhou, H., Srivastava, A., Kannan, R., and
+  Passing Model for Semi-Supervised Classification. In                 Prasanna, V. GraphSAINT: Graph Sampling Based In-
+  International Joint Conference on Artificial Intelligence,           ductive Learning Method. In International Conference on
+  volume 2, pp. 1548–1554. ijcai.org, 2021.                            Learning Representations, Addis Ababa, Ethiopia, 2020.
+
+Tang, J., Sun, J., Wang, C., and Yang, Z. Social influ-              Zhu, J., Yan, Y., Zhao, L., Heimann, M., Akoglu, L., and
+  ence analysis in large-scale networks. In ACM SIGKDD                 Koutra, D. Beyond homophily in graph neural networks:
+  International Conference on Knowledge Discovery and                  Current limitations and effective designs. In International
+  Data Mining, pp. 807–816, New York, NY, USA, 2009.                   Conference on Neural Information Processing Systems,
+  Association for Computing Machinery.                                 pp. 7793–7804, Red Hook, NY, USA, 2020. Curran As-
+                                                                       sociates Inc.
+Tran, D., Bourdev, L., Fergus, R., Torresani, L., and Paluri,
+  M. Learning Spatiotemporal Features with 3D Convolu-               Zhu, J., Rossi, R. A., Rao, A., Mai, T., Lipka, N., Ahmed,
+  tional Networks. In IEEE International Conference on                 N. K., and Koutra, D. Graph neural networks with het-
+  Computer Vision, pp. 4489–4497, Santiago, Chile, 2015.               erophily. In AAAI Conference on Artificial Intelligence,
+  IEEE Computer Society.                                               pp. 11168–11176, virtual, 2021. AAAI Press.
+Veličković, P., Cucurull, G., Casanova, A., Romero, A.,
+  Liò, P., and Bengio, Y. Graph Attention Networks. In
+  International Conference on Learning Representations,
+  Vancouver, Canada, 2018.
+Wang, X. and Zhang, M. How Powerful are Spectral Graph
+ Neural Networks. In International Conference on Ma-
+ chine Learning, pp. 23341–23362, Baltimore, Maryland,
+ USA, 2022. PMLR.
+Wu, F., Souza, A., Zhang, T., Fifty, C., Yu, T., and Wein-
+ berger, K. Simplifying Graph Convolutional Networks.
+ In International Conference on Machine Learning, pp.
+ 6861–6871, Long Beach, USA, 2019. PMLR.
+
+                                                                12
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+A. Proofs
+A.1. Proof of Proposition 3.1
+Proposition 3.1. (Permutation Convergence) P̂ converges to standard permutation matrix as relaxation factor τ
+approaching positive infinity: lim P̂ = P, P ∈ P.
+                              τ →+∞
+
+
+Proof. Assuming that we have absolute position r ∈ Rn given by Eq. 2 where sgn(·) ∈ {0, 1}, r is a integer vector and
+ri ∈ [0, n − 1]. Let mP = (m1⊤ − 1r⊤ + n) (mod n) and P̂ = exp(−τ mP ). For every row of mP , there always exists
+an entry equal to 0 where the corresponding entry in P̂ constantly equals 1. The rest of entries are integers belonging to
+[1, n − 1] and the corresponding entries in P̂ converge to 0 as τ approaches positive infinity.
+
+A.2. Proof of Proposition 3.2
+Proposition 3.2. (Permutation Invariant Input) Let f be a permutation equivariant function such that for any P ∈ P,
+f (PX, PAP⊤ ) = Pf (X, A). Then given P̂ = PERM(X, A), X̂ = P̂X, and Â = P̂AP̂⊤ , for any P ∈ P on X and A,
+X̂ and Â are invariant.
+
+Proof. We first prove that PERM(·) is permutation equivariant. Given PX and PAP⊤ for any P ∈ P, the output of f can
+be written as PrA = f (PX, PAP⊤ ). Substituting PrA into Eq. 2 gives:
+
+                                            sgn PrA 1⊤ − 1r⊤       ⊤
+                                                                     
+                                                                AP     1
+                                                                          
+                                          =sgn PrA 1⊤ P⊤ − P1r⊤       AP
+                                                                         ⊤
+                                                                             1
+                                          =Psgn rA 1⊤ − 1r⊤
+                                                                    ⊤                                       (A.11)
+                                                                A P 1
+
+                                          =Psgn rA 1⊤ − 1r⊤
+                                                                 
+                                                                A 1
+                                           =Pr
+
+Therefore, Eq. 2 is permutation equivariant. Further substituting Pr into Eq. 3 gives:
+
+                                   exp −τ m1⊤ − 1r⊤ P⊤ + n
+                                                                                
+                                                                          (mod n)
+                                  =exp −τ m1⊤ P⊤ − 1r⊤ P⊤ + n
+                                                                                    
+                                                                             (mod n)
+                                                                                                                      (A.12)
+                                  =exp −τ m1⊤ − 1r⊤ + n               (mod n) P⊤
+                                                                            
+
+                                  =P̂P⊤
+
+Hence PERM(·) is permutation equivariant. For any P ∈ P, we can use the generated permutation matrix P̂P⊤ to permute
+the input features where P̂P⊤ (PX) = P̂X and P̂P⊤ (PAP⊤ )PP̂⊤ = P̂AP̂⊤ . Therefore, given P̂ = PERM(X, A),
+X̂ = P̂X and Â = P̂AP̂⊤ , X̂ and Â are invariant for any P ∈ P on X and A.
+
+B. Details for Experiments
+B.1. Graph Classification
+Datasets. We use six datasets (Morris et al., 2020) for graph classification experiments including three biochemical datasets
+MUTAG, PROTEINS and NCI1, and three social network datasets COLLAB, IMDB-BINARY and IMDB-MULTI. MUTAG
+is a collection of nitroaromatic compounds. It includes 188 graphs of chemical compounds labeled with their mutagenicity
+on Salmonella typhimurium. PROTEINS is a collection of 1,113 proteins with amino acids as nodes. The goal is to predict
+whether the protein graphs are enzymes or not. NCI1 is collected by National Cancer Institute (NCI) with 4,110 graphs of
+chemical compounds. The graphs are labeled by whether the corresponding compounds are positive or negative for cell lung
+cancer. All three biochemical datasets use the one-hot node labels as node features. IMDB-BINARY and IMDB-MULTI
+are two movie actor/actress collaboration network datasets labeled by the genre of the movies. COLLAB is a scientific
+collaboration network dataset. Each graph represents a researcher’s ego network with collaborators and is labeled by the
+scientific study field of the researcher.
+
+                                                             13
+                                    All in a Row: Compressed Convolution Networks for Graphs
+
+
+                               Table A.6. Detailed Experimental Setup For Node Classification.
+
+                                  C HAMELEON          S QUIRREL   C ORNELL          T EXAS   W ISCONSIN   ACTOR
+                   t                   1                  1           0                0          0         0
+                   L1                  1                  2           1                1          1         2
+                   L2                  4                  4           3                3          3         4
+                   D ROPOUT           0.1                0.1         0.5              0.5        0.5       0.3
+
+
+
+Experimental Setup. For experiments on all datasets, the learning rate is set to 1 × 10−4 , the hidden size is set to 64, and
+the dropout rate is set to 0.5. For Adam (Kingma & Ba, 2015) optimizer, weight decay is set ∈ {1 × 10−4 , 5 × 10−4 , 1 ×
+10−3 , 1 × 10−2 , 1 × 10−1 }. We also use early stopping regularization, where we stop the training if there is no further
+reduction in the validation loss during 100 epochs. The maximum epoch number is set to 200. The batch size is set to 4 on
+MUTAG and PROTEINS, 8 on NCI1, IMDB-BINARY and IMDB-MULTI, and 32 on COLLAB. We follow the network
+structure in Fig. 2(a) to construct CoCN. For all datasets, the smoothness parameter t in Eq. 4 is set ∈ {6, 8}, the number of
+permutations is set to 8, the relaxation factor τ is set to 0.1, L1 and L2 are set to 1, the kernel size is set ∈ {5, 7, 9}.
+
+B.2. Node Classification
+Datasets. For node classification, we use six datasets including Chameleon, Squirrel (Rozemberczki et al., 2021), Cornell,
+Texas, Wisconsin (Pei et al., 2020) and Actor (Tang et al., 2009). Chameleon and Squirrel are collected from Wikipedia.
+Each graph corresponds to a topic in Wikipedia. The nodes represent Web pages with keywords of the pages as node
+features. The edges are links between Web pages. Based on the average monthly traffic, the nodes are classified into five
+classes. Cornell, Texas and Wisconsin are Web page datasets collected from computer departments of different universities.
+Actor is an actor-actor relation dataset with nodes representing actors. For each node, the features are the keywords of the
+corresponding actor on Wikipedia. Two nodes are connected if they appear on the same page.
+Experimental Setup. For experiments on all datasets, the learning rate is set to 1 × 10−4 , the hidden size is set ∈ {64, 128},
+and the weight decay is set ∈ {1 × 10−4 , 5 × 10−4 , 1 × 10−3 , 1 × 10−2 , 1 × 10−1 }. The maximum epoch number is set to
+500. We stop the training if there is no further reduction in the validation loss during 150 epochs. We follow the network
+structure in Fig. 2(b) to construct CoCN. The number of permutations is set ∈ {8, 10}, the relaxation factor τ is set to 0.1
+and the kernel size is set to 5. The rest of the hyper-parameter setting and detailed network structure for all datasets are
+summarized in Tab. A.6.
+
+B.3. Model Analysis
+For all the experiments in Subsection 5.3, the number of permutations is set to 8, the learning rate is set to 1 × 10−4 , and the
+hidden size is set to 64. For the permutation information loss experiment, we construct the autoencoder with the permutation
+generation module. The position smoothness parameter t is set to 6 and the dropout rate is set to 0, the maximum epoch is
+set to 10, 000 and the early stopping patience is set to 2, 000 epochs. For the rest of the experiments, the experimental setup
+is the same as the classification experiments except for the ablation items.
+                                           0.89
+                                           0.88
+                                           0.87
+                                           0.86
+                                Accuracy
+
+
+
+
+                                           0.85
+                                           0.84
+                                           0.83
+                                           0.82
+                                           0.81                                     k=3      k=5
+                                            0.8                                     k=7      k=9
+                                           0.79
+                                                  1         10                  100                1000
+                                                             Receptive Field Size
+
+Figure A.8. Ablation Study on the Kernel Size and Receptive Field Size for MUTAG. The dashed line represents the average number
+of nodes for all graphs. The dotted line represents the maximum number of nodes in one graph.
+
+
+                                                                  14
+                                All in a Row: Compressed Convolution Networks for Graphs
+
+
+       Table A.7. Full Comparison Results (measured by accuracy: %) on Original / Filtered Chameleon and Squirrel.
+
+                                                C HAMELEON                             S QUIRREL
+                                     ORIGINAL      FILTERED      RANKS      ORIGINAL     FILTERED     RANKS
+                   R ES N ET           49.52           36.73     13 / 15     33.88           36.55    13 / 8
+                   R ES N ET +SGC      49.93           41.01     12 / 3      34.36           38.36     12 / 6
+                   R ES N ET + ADJ     71.07           38.67      3 / 13     65.46           38.37      3/5
+                   GCN                 50.18           40.89      10 / 4     39.06           39.47      7/3
+                   G RAPH SAGE         50.18           37.77     10 / 14     35.83           36.09    10 / 10
+                   GAT                 45.02           39.21     17 / 10     32.21           35.62    15 / 12
+                   GAT- SEP            50.24           39.26       9/9       35.72           35.46    11 / 14
+                   GT                  44.93           38.87     18 / 12     31.61           36.30     16 / 9
+                   GT- SEP             50.33           40.31       8/6       36.08           36.66      9/7
+                   H2 GCN              46.27           26.75     16 / 17     29.45           35.10    18 / 16
+                   CPGNN               48.77           33.00     14 / 16     30.91           30.04    17 / 17
+                   GPRGNN              47.26           39.93      15 / 7     33.39           38.95     14 / 4
+                   FSGNN               77.85           40.61       2/5       68.93           35.92     2 / 11
+                   G LO GNN            70.04           25.90     4 / 18      61.21           35.11     4 / 15
+                   FAGCN               64.23           41.90       6/2       47.63           41.08      5/1
+                   GBK-GNN             51.36           39.61       7/8       37.06           35.51     8 / 13
+                   JACOBI C ONV        68.33           39.00      5 / 11     46.17           29.71    6 / 18
+                   C O CN (O URS )     79.61           41.95       1/1       73.27           39.69      1/2
+
+
+
+                     Table A.8. Ablation Study on Smoothness Parameter t (measured by accuracy: %).
+
+                                                 0        1        2         4         6        8
+                             C HAMELEON        49.45    78.39    77.26     76.63     75.77    74,04
+                             C ORNELL          82.16    75.95    76.49     75.95     75.14    72.43
+                             MUTAG             85.09    85.94    85.84     86.62     86.51    87.19
+
+
+
+
+C. Additional Results
+C.1. Node Classification on Filtered Datasets
+Following Platonov et al., we further conduct node classification experiments on filtered Chameleon and Squirrel. Baselines
+include: GCN (Kipf & Welling, 2017), GraphSAGE (Hamilton et al., 2017), GAT (Veličković et al., 2018), SGC (Wu et al.,
+2019), H2 GCN (Zhu et al., 2020), GT (Shi et al., 2021), CPGNN (Zhu et al., 2021), FAGCN (Bo et al., 2021), GPRGNN
+(Chien et al., 2022), FSGNN (Maurya et al., 2022), GloGNN (Li et al., 2022), GBK-GNN (Du et al., 2022), JacobiConv
+(Wang & Zhang, 2022) and ResNet with GNN methods (Platonov et al., 2023). Platonov et al. also separate ego- and
+neighbor-embeddings in the GNN aggregation step of GAT and GT, which is denoted as sep. All the results of baselines are
+from Platonov et al.. Full comparison results are presented in Tab. A.7. It shows that CoCN consistently outperforms other
+models on both the original and filtered datasets, which further validates the reliability of CoCN.
+
+C.2. Permutation Analysis
+We conduct ablation studies on the smoothness parameter t in the permutation generation module. The results for Chameleon,
+Cornel and MUTAG are presented in Tab. A.8. For node classification datasets, the optimal smoothness parameter t is small,
+i.e., 1 for Chameleon and 0 for Cornell. The optimal value of t for graph classification dataset MUTAG is 8, which is larger
+than that on node classification datasets. This indicates that graph classification requires representation learning from node
+clusters with strong connections while node classification concentrates on nodes clustered by features.
+We also find that the classification performance of CoCN is limited on the weakly connected datasets. The average degrees
+for all datasets are summarized in Tab. A.9. CoCN slightly underperforms one or two baseline models on MUTAG, Texas,
+Wisconsin and Actor which has a lower average degree than other datasets. To explain this, we speculate that it is due to the
+implicit encoding of structure information in permutation generation in Eq. 4. We leave the further improvement of this
+module to future work.
+
+                                                                15
+                                    All in a Row: Compressed Convolution Networks for Graphs
+
+
+                                               Table A.9. Statistics on Average Degree.
+
+                                    MUTAG         PROTEINS         NCI1          IMDB-B      IMDB-M        COLLAB
+              AVG D EGREE             4                 7           4               39           40          263
+                                  C HAMELEON       S QUIRREL     C ORNELL         T EXAS    W ISCONSIN      ACTOR
+              AVG D EGREE            15.85            41.74         1.63           1.78         2.05         3.95
+
+
+
+                                    Table A.10. Ablation Study on L1 (measured by accuracy: %).
+
+                                              1        2         3         4        6        8      10
+                         C HAMELEON         79.25    78.86     78.81     79.08    78.64    77.94   77.74
+                         MUTAG              87.08    86.06     86.60     85.27    84.58    84.79   84.62
+
+
+
+C.3. Network Structure Analysis
+From Fig. A.8, CoCN also gains improvement on MUTAG as the size of the receptive field increases, and the improvement
+is bounded by the maximum number of nodes in a single graph. Since the maximum number of nodes is small in MUTAG,
+the number of compressed pooling layers can only be set to 1 with kernel size {5, 7, 9}. Among these configurations, CoCN
+with kernel size 9 has the largest receptive field and shows the best performance.
+For ablation studies on the number of compressed convolution layers with unit-step which is denoted as L1 , the full results
+are presented in Tab. A.10. We can see that on both Chameleon and MUTAG, CoCN achieves the best performance on
+L1 = 1. This is because the compressed convolution layer cannot expand the size of the receptive field efficiently while
+stacking multiple compressed convolution layers increases the difficulty of training.
+
+C.4. Feature Analysis
+The full ablation study results on structure features and node features are presented in Tab. A.11 and Tab. A.12. Compared
+to baseline models in Tab. 1 and Tab. 2, CoCN can achieve comparable or even better performance with only structure
+features which indicates that CoCN can capture structure information. CoCN with both node features and structure features
+has better performance. Therefore, both kinds of features contribute to the classification.
+
+
+
+
+Table A.11. Ablation Study on Structure Features and Node Features for Graph Classification Datasets (measured by accuracy:
+%).
+
+                                      MUTAG       PROTEINS       NCI1      IMDB-B         IMDB-M   COLLAB
+                    S TR . F EAT.      88.35        72.03        64.08      70.47          48.16    78.14
+                    N OD . F EAT.      85.12        76.22        78.65      76.17          54.03    84.46
+                    B OTH              87.08        76.86        82.28      77.26          56.32    86.15
+
+
+
+Table A.12. Ablation Study on Structure Features and Node Features for Node Classification Datasets (measured by accuracy: %).
+
+                                    C HAMELEON      S QUIRREL     C ORNELL       T EXAS    W ISCONSIN    ACTOR
+                  S TR . F EAT.        67.82           72.79        66.22        72.16        79.23      33.73
+                  N OD . F EAT.        77.98           71.91        79.19        79.41        83.53      34.36
+                  B OTH                79.17           72.95        81.08        80.54        84.90      35.55
+
+
+                                                                 16
+

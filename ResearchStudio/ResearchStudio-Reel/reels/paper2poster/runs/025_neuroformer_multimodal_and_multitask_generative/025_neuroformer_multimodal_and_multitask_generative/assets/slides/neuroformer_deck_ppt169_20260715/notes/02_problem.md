@@ -1,0 +1,1 @@
+Modern neuroscience records thousands of neurons at cellular resolution, alongside visual stimuli and behavior. These datasets are large, multimodal, and messy, yet the field's traditional statistical tools were built for far smaller, single-modality recordings, leaving a widening data-analysis gap.

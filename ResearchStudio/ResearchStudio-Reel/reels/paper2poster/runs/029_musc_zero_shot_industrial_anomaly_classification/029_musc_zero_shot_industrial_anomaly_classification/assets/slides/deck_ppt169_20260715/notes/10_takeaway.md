@@ -1,0 +1,1 @@
+The lasting idea: a set of unlabeled test images can supervise itself. By letting images score one another, repeating normal structure is separated from rare defects, with no training or prompts, giving state-of-the-art zero-shot detection that rivals full-shot methods.

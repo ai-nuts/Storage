@@ -1,0 +1,1 @@
+Detecting defects is a core vision task, but existing methods are demanding. One-class approaches need a bank of normal images per product; CLIP-based zero-shot methods rely on hand-written prompts. Many factories have neither. The goal: segment anomalies with no training, prompts, or references.

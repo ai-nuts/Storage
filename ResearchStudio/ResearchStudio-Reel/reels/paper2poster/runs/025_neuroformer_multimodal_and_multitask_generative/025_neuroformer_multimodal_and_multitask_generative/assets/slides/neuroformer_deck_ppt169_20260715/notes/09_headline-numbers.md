@@ -1,0 +1,1 @@
+For behavior prediction, Neuroformer reaches Pearson correlation up to 0.97, versus about 0.73 for Lasso. Few-shot, a model pretrained and fine-tuned on just 1% of behavior data hits 0.51, beating a non-pretrained model given 10%, which reaches only 0.33. Its largest models scale to roughly 100 million parameters.

@@ -1,0 +1,1 @@
+The takeaway: the way clinical data are sampled is itself informative, and jointly modelling that observation process with survival produces predictions that are both more accurate and markedly more robust when clinical practice changes. Clinical presence is signal, not noise.

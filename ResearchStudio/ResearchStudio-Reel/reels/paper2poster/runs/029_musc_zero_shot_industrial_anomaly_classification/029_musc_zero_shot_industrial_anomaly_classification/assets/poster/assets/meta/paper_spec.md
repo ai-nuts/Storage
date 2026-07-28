@@ -1,0 +1,58 @@
+---
+title: MuSc: Zero-Shot Industrial Anomaly Classification and Segmentation with Mutual Scoring of the Unlabeled Images
+authors: Xurui Li¹, Ziming Huang¹, Feng Xue³, Yu Zhou¹²
+institutes: ¹School of Electronic Information and Communications, Huazhong University of Science and Technology; ²Artificial Intelligence Research Institute, Wuhan JingCe Electronic Group Co., LTD; ³Department of Information Engineering and Computer Science, University of Trento
+venue: ICLR 2024
+paper_url: https://arxiv.org/abs/2401.16753
+code_url: https://github.com/xrli-U/MuSc
+title_audio_script: This paper introduces MuSc, a zero-shot method for industrial anomaly classification and segmentation. Unlike prior work, MuSc needs no training, no prompts, and no normal reference images. Its key insight is that the unlabeled test images themselves already contain enough normal and abnormal cues to detect defects, if the images are allowed to score one another. Published at ICLR 2024, MuSc sets a new state of the art on the MVTec AD and VisA benchmarks.
+---
+
+## Problem
+**Necessary:** Industrial anomaly classification and segmentation usually need many normal reference images (one-class methods) or hand-crafted text prompts (CLIP-based zero-shot methods), both of which limit real-world deployment.
+**Additional:** In a true zero-shot setting no training data, prompts, or normal references are available, yet defects still must be localized at the pixel level and flagged at the image level.
+**Audio script:** Detecting defects in industrial products is a core computer-vision task, but existing methods come with heavy requirements. One-class approaches need a large bank of normal reference images for every product, and CLIP-based zero-shot methods depend on carefully written text prompts. In many real factories neither is available. The challenge is to classify and segment anomalies with no training, no prompts, and no reference images at all.
+
+## Motivation
+**Necessary:** The abundant normal and abnormal cues implicit in the unlabeled test images themselves are ignored by prior methods, yet they are enough to determine anomalies without any labels or prompts.
+**Additional:** Key observation: a normal image patch finds many similar patches across other unlabeled images, while an abnormal patch finds only a few, giving a discriminative, training-free signal.
+**Audio script:** The authors make a simple but powerful observation. When you look at a batch of unlabeled test images of the same product, a normal patch tends to find many visually similar patches across the other images, because normal appearance repeats. An abnormal patch, by contrast, finds only a handful of similar patches, because defects are rare and idiosyncratic. This asymmetry is a discriminative signal that is already sitting inside the test set, waiting to be used, no labels required.
+
+## Contribution
+**Necessary:** (1) A novel training- and prompt-free zero-shot AC/AS method, MuSc, that lets unlabeled test images mutually score each other. (2) A Local Neighborhood Aggregation with Multiple Degrees (LNAMD) module and a Mutual Scoring Mechanism (MSM) for patch-level scoring. (3) A Re-scoring with Constrained Image-level Neighborhood (RsCIN) module that refines image-level classification and also boosts existing methods.
+**Additional:** MuSc requires no training, no prompts, and no normal reference images, and is a plug-in improvement for other AC methods via RsCIN.
+**Audio script:** MuSc contributes a training-free and prompt-free zero-shot pipeline built from three pieces. First, local neighborhood aggregation with multiple degrees, which represents each patch at several spatial scales so both tiny and large defects can be captured. Second, the mutual scoring mechanism, where every unlabeled test image assigns anomaly scores to every other image. Third, re-scoring with a constrained image-level neighborhood, which cleans up the final image-level decision and can even be dropped into existing methods to improve them.
+
+## Method
+**Necessary:** MuSc has three parts. LNAMD aggregates patch tokens from a frozen ViT at multiple degrees r to represent anomalies of different sizes. MSM lets every unlabeled test image assign anomaly scores to every other image's patches (mutual scoring), averaging only the minimum-interval scores to sharpen the normal/abnormal separation. RsCIN then refines the image-level classification score using a constrained neighborhood graph over class tokens with a multi-window mask.
+**Additional:** Backbone is a frozen ViT-L/14-336 (OpenAI CLIP), 24 layers in 4 stages; patch tokens from each stage feed LNAMD, and the last-layer class token feeds RsCIN. Inputs are scaled to 518×518; MSM keeps the minimum 30% interval; RsCIN uses multi-window {2,3} on MVTec AD and {8,9} on VisA.
+**Key equation:** `$a^{m,r}_{i,l}(I_j) = \min_{n} \lVert \hat{p}^{m,r}_{i,l} - \hat{p}^{n,r}_{j,l} \rVert_2$` ; `$a^{m,r}_{i,l} = \frac{1}{K}\sum_{k\in[1,K]} a^{m,r}_{i,l}(I_k)$` ; `$\hat{C} = \Big(\sum_{M_k\in\mathcal{M}} D^{-1}(M_k \odot W)C + C\Big)/(K+1)$`
+**Audio script:** The architecture uses a frozen vision transformer as its backbone, with no fine-tuning. Patch tokens from several stages are aggregated at multiple neighborhood degrees so anomalies of different sizes are represented well. In the mutual scoring step, each patch is scored by its nearest match in every other test image, and only the smallest interval of those scores is averaged, which sharpens the gap between normal and abnormal patches. Finally, the image-level score is refined using a constrained neighborhood graph built on the transformer's class tokens, so an image is called normal only if it and its nearest neighbors all look normal.
+
+## Dataset / Benchmark
+**Necessary:** Evaluated on two standard industrial benchmarks: MVTec AD (15 categories, 10 objects + 5 textures) and VisA (12 objects). Both contain normal and anomalous test images.
+**Additional:** Classification is scored with AUROC, AP, and F1-max; segmentation with pixel-wise AUROC, F1-max, AP, and Per-Region Overlap (PRO).
+**Audio script:** MuSc is evaluated on the two most widely used industrial anomaly benchmarks. MVTec AD covers fifteen categories, ten objects and five textures, with high-resolution images. VisA covers twelve object categories across three domains. Both include a mix of normal and defective test images. Classification quality is measured with AUROC, average precision, and F1-max, while segmentation quality adds pixel-level AUROC, F1-max, average precision, and per-region overlap.
+
+## Key Result
+**Necessary:** MuSc sets a new zero-shot state of the art. On MVTec AD it reaches 97.8% image-AUROC and improves segmentation PRO by +21.1% and AP by +21.9% over the second-best zero-shot method. On VisA it gains over +10% in both classification and segmentation versus the second-best zero-shot method.
+**Additional:** Without any labels, MuSc surpasses most 4-shot methods, beats 32-shot RegAD, is competitive with 8-shot GraphCore, and rivals full-shot methods like CutPaste, IGD, and NSA.
+**Audio script:** The results are striking for a method that uses no labels at all. On MVTec AD, MuSc reaches ninety-seven point eight percent image-level AUROC and improves the per-region overlap segmentation metric by more than twenty-one points over the previous best zero-shot method. On VisA it gains over ten points in both classification and segmentation. Remarkably, MuSc without any reference images beats most four-shot methods, outperforms a thirty-two-shot baseline, and even rivals full-shot approaches that use the entire normal training set.
+
+## Ablation Study
+**Necessary:** Using all three aggregation degrees r∈{1,3,5} in LNAMD gives the best combined AC/AS (small r for small defects on VisA, large r for large defects on MVTec AD). For MSM, averaging the minimum 30% interval (30% + mean) is optimal, reaching 97.8% AC on MVTec AD versus 83.8% for a max strategy. RsCIN lifts VisA image-AUROC from 90.0% to 92.8%.
+**Additional:** Figure 7 confirms the minimum 30% interval selection gives the best comprehensive AC and AS across both datasets.
+**Audio script:** Ablations confirm each design choice. Combining three aggregation degrees works best, because small neighborhoods catch tiny defects common on VisA while large neighborhoods catch big defects common on MVTec AD. For mutual scoring, averaging only the smallest thirty percent interval clearly beats using the maximum or the full range, lifting classification AUROC from the low eighties to ninety-seven point eight percent on MVTec AD. And the re-scoring module raises VisA image-level AUROC from ninety to ninety-two point eight percent.
+
+## Headline Numbers
+**Necessary:**
+- MVTec AD: 97.8% image-AUROC (AC), 97.3% pixel-AUROC (AS), zero-shot.
+- MVTec AD zero-shot gains over second-best: +21.1% PRO, +21.9% AP-segm, +18.4% F1-max-segm.
+- VisA: 92.8% image-AUROC (AC), 98.8% pixel-AUROC (AS), zero-shot.
+- No training, no prompts, no normal reference images.
+**Audio script:** In headline terms, MuSc reaches ninety-seven point eight percent image AUROC on MVTec AD and ninety-two point eight percent on VisA, with pixel-level AUROC of ninety-seven point three and ninety-eight point eight percent respectively. Against the previous best zero-shot method it adds more than twenty-one points on per-region overlap and average precision for MVTec AD segmentation. All of this is achieved with no training, no prompts, and no normal reference images.
+
+## Takeaway
+**Necessary:** Unlabeled industrial test images can score each other to detect anomalies, so MuSc achieves state-of-the-art zero-shot classification and segmentation with no training, no prompts, and no reference images.
+**Additional:** Because normal patches recur across images while abnormal ones do not, mutual scoring turns a batch of unlabeled test images into its own supervision signal.
+**Audio script:** The lasting idea from this paper is that a set of unlabeled test images can supervise itself. By letting the images score one another, normal structure that repeats across the batch is separated from rare defects, with no training, no prompts, and no reference images. The result is state-of-the-art zero-shot anomaly classification and segmentation that even rivals methods trained on the full normal dataset.

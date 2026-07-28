@@ -1,0 +1,1 @@
+MuSc is evaluated on the two most-used industrial benchmarks. MVTec AD spans fifteen categories, ten objects and five textures. VisA covers twelve object categories across three domains. Both mix normal and defective images. Classification uses AUROC and F1-max; segmentation adds pixel-level metrics and per-region overlap.

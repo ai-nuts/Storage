@@ -1,0 +1,948 @@
+                                                        DeepJoint: Robust Survival Modelling
+                                                            Under Clinical Presence Shift
+
+
+                                                        Vincent Jeanselme                                    Glen Martin
+                                                       MRC Biostatistics Unit                          Health e-Research Centre
+                                                      University of Cambridge                          University of Manchester
+arXiv:2205.13481v1 [cs.LG] 26 May 2022
+
+
+
+
+                                              vincent.jeanselme@mrc-bsu.cam.ac.uk                  glen.martin@manchester.ac.uk
+
+                                                           Niels Peek                                Matthew Sperrin
+                                                    Health e-Research Centre                      Health e-Research Centre
+                                                    University of Manchester                      University of Manchester
+                                                niels.peek@manchester.ac.uk                 matthew.sperrin@manchester.ac.uk
+
+                                                         Brian Tom                                    Jessica Barrett
+                                                    MRC Biostatistics Unit                         MRC Biostatistics Unit
+                                                   University of Cambridge                        University of Cambridge
+                                               brian.tom@mrc-bsu.cam.ac.uk                 jessica.barrett@mrc-bsu.cam.ac.uk
+
+
+
+                                                                                     Abstract
+                                                  Observational data in medicine arise as a result of the complex interaction be-
+                                                  tween patients and the healthcare system. The sampling process is often highly
+                                                  irregular and itself constitutes an informative process. When using such data
+                                                  to develop prediction models, this phenomenon is often ignored, leading to sub-
+                                                  optimal performance and generalisability of models when practices evolve. We
+                                                  propose a multi-task recurrent neural network which models three clinical presence
+                                                  dimensions – namely the longitudinal, the inter-observation and the missingness
+                                                  processes – in parallel to the survival outcome. On a prediction task using MIMIC
+                                                  III laboratory tests [1], explicit modelling of these three processes showed im-
+                                                  proved performance in comparison to state-of-the-art predictive models (C-index
+                                                  at 1 day horizon: 0.878). More importantly, the proposed approach was more
+                                                  robust to change in the clinical presence setting, demonstrated by performance
+                                                  comparison between patients admitted on weekdays and weekends. This analy-
+                                                  sis demonstrates the importance of studying and leveraging clinical presence to
+                                                  improve performance and create more transportable clinical models.
+
+
+                                         1   Introduction
+                                         Machine learning has increasingly been leveraged in the medical context to model diagnoses and
+                                         health outcomes given different data modalities [2, 3, 4, 5]. Despite promising results, medical data
+                                         present additional domain-specific challenges that impact upon the applicability of machine learning
+                                         in real-world settings. The complex interaction between patients and the healthcare system results
+                                         in a dual representation of one’s health status: times and types of observations not only reflect the
+                                         patient’s condition but the clinical staff’s assessment of what was needed and when. Therefore,
+                                         the sampling process is an informative process, which we refer to as clinical presence for which
+                                         ordering, missingness, and observation times are informative proxies.
+                                         While the machine learning community has explored individual aspects of clinical presence, there
+                                         are few clinical predictive models which explicitly model the full observation process. This limited
+
+                                         Preprint. Under review.
+research of clinical presence leads to approaches that assume non-informativeness. Although practi-
+tioners justify ignoring clinical presence as a way to avoid leveraging a changeable and unpredictable
+process [6], no evidence has been provided to justify this [7].
+Finally, a key challenge of clinical presence is its heterogeneity: the same underlying covariate
+distribution might present itself in different ways under different observation processes. For instance,
+note how change may occur between countries and over time due to new medical discoveries or
+insurance policies. The machine learning literature has explored how models may suffer from
+transportability under different labels, covariates, or concept shift [8, 9]. In this paper, we explore
+how a shift in the observation process might impact performance and how explicit modelling of
+clinical presence might offer more robust medical models.
+
+2     Related work
+2.1   Clinical presence
+
+Medical observations reflect the complex interaction between patient, clinical staff, and healthcare
+services. In the context of a hospital stay, each observation from admission to discharge emerges
+from one of these interactions. If, when, and where patients seek care is not only linked to their
+medical condition but also their socio-economic characteristics, which will influence the care they
+can afford [10], the distance they will have to travel, and times they can access these services [11].
+On the clinical side, the choice and timing of testing and treatment procedures are guided by the
+staff’s assessment of the patient’s condition. Clinical presence, therefore, breaks a key assumption of
+traditional statistical modelling: observations under clinical presence are an informative sample of
+the underlying distribution. Formally, for an unknown distribution f (X), clinical presence consists
+in an observation process o : X → Xobs resulting in an observed distribution f (Xobs ). Modelling
+f (Xobs ) is an obstacle to the application of machine learning in healthcare [12] as, under clinical
+presence, the observed distribution might not present the characteristics of the true distribution we
+aim to model, f (Xobs ) 6= f (X).
+In this work, we look at how clinical presence might affect Electronic Health Records (EHRs) in three
+different ways and how to model them appropriately. First, observation times potentially provide
+information on the clinical assessment of a patient’s condition. For instance, testing frequency
+may decrease when clinical staff believe that the patient’s condition is improving. Second, the
+order of tests reflects their interpretation by clinical staff, e.g. if a laboratory test is inconclusive,
+a second would follow. Third, missingness accompanies this previous process, e.g. a missing
+value reflects its non-importance for diagnosis, or its non-informative value [13]. These different
+dimensions have independently shown predictive edge [7, 14, 15] and reduced biases emerging
+from this process [16]. For instance, [17] shows improved 3-year-survival predictive performance
+when inputs contain missingness indicators, and [7] discusses how using this information may
+improve mortality prediction. Our work shows how modelling them jointly may improve predictive
+performance and robustness to transfer by encoding clinical presence in the shared representation.
+
+2.2   Handling clinical presence
+
+Clinical presence has been handled in multiple ways in the statistical literature [18]. In this work, we
+divide the methodologies used in the machine learning literature into four groups:
+
+       • Assumed uninformative
+       • Leveraged for pre-processing
+       • Featured
+       • Jointly modelled
+
+Assumed uninformative One may assume that the observed distribution f (Xobs ) is representative
+of the underlying distribution f (X). For example, regular re-sampling or imputation assuming
+missing-at-random patterns rely on this hypothesis. While one could obtain equal fit with these
+approaches [19], inappropriate assumptions might lead to biased estimates and potentially lead to
+misleading conclusions.
+
+
+                                                    2
+Leveraged for pre-processing One can consider clinical presence informative of the longitudinal
+process and use pre-processing methods which model the clinical process to recover f (X) from the
+observed distribution. Therefore, these approaches make assumptions on the observation process.
+However, [7] underlines how difficult it might be to adequately model clinical presence and questions
+the utility of these methodologies as they only partially recover the original distribution.
+
+Featurized One may consider clinical presence informative of the outcome of interest and there-
+fore extracts measures of clinical presence reflecting medical practitioners’ expertise that are then
+leveraged as model inputs. For instance, adding missing indicators [7], observation times [17, 20, 21],
+inter-observation time [22, 23], or frequency [24] have improved models’ performance. Similarly, in
+an automatic fashion, attention-based models leverage the observation times as inputs [25, 26, 27].
+
+Jointly modelled Instead of the two-step approaches described above, one can jointly model the
+clinical presence. In the statistical literature, joint models [16, 28, 29], marked point process [30]
+and Markov models [31] have been proposed to model the visit process and the outcome of interest.
+However, these methods either rely on strong parametric assumptions or do not scale to large datasets.
+Machine learning models have also been extended to leverage missing data [32] and recurrent models
+to handle irregularities in time series [33]. The key idea of this last family of methods is to integrate
+the temporal information by slowly converging to a ‘stable’ latent state as time passes through the use
+of a decay parameter [20, 34, 35] or multi-level memory [36]. For instance, GRU-D [20] has shown
+promising results by extending Gated Recurrent Unit (GRU) with an exponential decay on the hidden
+state, incorporating the temporal dimension in the embedding.
+While all these approaches aim to tackle the problem of clinical presence, they make different
+assumptions on its informativeness, have usually focused on one specific aspect of it, and didn’t study
+the impact of change in this observation process.
+
+2.3   Robustness to clinical presence shift
+
+A fundamental feature of clinical presence is its propensity to vary as medical practices might
+differ across hospitals, regions and countries and be subject to policies, insurance incentives and
+the evolution of medical knowledge. This shows a crucial limitation of the application of machine
+learning for medical data as models may not generalise and may become outdated as practices and
+policies evolve [6]. Evidence of this problem has been suggested by region and time performance
+shift [37, 38, 39, 40].
+Shifts in time or between hospitals have been characterised and studied as covariates, labels or
+concept shifts [8, 9]. Given a set of covariates X and an outcome Y , a covariates (resp. labels) shift
+consists of a shift in f (X) (resp. f (Y )), and concept shift results in a change in the relationship
+between input and output, i.e. P(Y |X). Detecting and measuring shifts have led to methodologies to
+alleviate these phenomena [41, 42], and to more robust clinical embeddings [37, 39, 43].
+Clinical presence shift can be understood as a combination of both covariate and concept shifts with
+regard to the observed distribution f (Xobs ). Assuming the underlying distribution stable, a shift in
+the observation process o to o0 results in a shift in the available data Xobs , i.e. a covariate shift from
+f (o(X)) to f (o0 (X)). Additionally, despite the preservation of P(Y |X), the modelled P(Y |Xobs )
+also suffers from a shift. We propose to explicitly model clinical presence in a multi-task setting to
+detect this potential shift in the observation process and regularise the model to obtain a more robust
+data embedding. We show how this approach results in improved performance and more robustness
+to shift in clinical presence.
+
+3     Deep Joint
+In this paper, we study the problem of clinical presence in the context of EHRs. More specifically, we
+focus on laboratory tests after admission to the Intensive Care Unit (ICU) to predict patient survival
+as these tests are ordered by clinical staff at specific times and will be more informative in their
+sampling patterns than semi-automatic measurements. We propose a recurrent neural network that
+jointly models the observation process, namely: (i) the time of the next observation using a temporal
+point process neural network, (ii) the presence of specific tests and (iii) the expected results using
+neural networks with Bernoulli and Gaussian likelihoods respectively. Finally, an extension of Cox
+
+
+                                                    3
+regression leveraging a neural network, known as DeepSurv [2], models the survival outcome. The
+proposed model allows scalable joint modelling by an end-to-end gradient descent maximisation of
+the full likelihood.
+
+3.1   Notations
+
+The studied medical setting consists of a population of N individuals with a vector of laboratory tests
+labi,j – potentially with missing values – observed through time, in which the notation j ∈ [[0, li ]]
+denotes the j th observation for patient i at time ti,j ∈ R+ , where ti,0 = 0 is the patient’s admission
+to the ICU and li is the last observation for patient i. The proposed approach focuses on modelling the
+clinical presence aspect of these data. To do so, we introduce the two following notations. First, we
+model the elapsed time between two observations: i,j = ti,j − ti,j−1 , note the subscript i underlines
+that observations may not happen at similar times for different patients. Second, the observation
+process is also characterised by which laboratory tests are performed. Consequently, we introduce
+mi,j = [1Lab test k observed at j ]k∈labs a vector of indicators of observed laboratory tests at observation
+time ti,j .
+Finally, the aim is to model the survival outcome after the first 24 hour of observation. Each patient
+has, therefore, an associated time of the end of follow-up Ti and the type of observed event di for
+which di = 1 signifies that the patient died, di = 0 means the patient was censored.
+
+3.2   Architecture
+
+
+
+
+Figure 1: Deep Joint Model - Multi-task modelling of clinical presence and survival outcome.
+An LSTM network extracts an embedding h which is leveraged to model the clinical presence
+mechanisms through the networks L – to model the longitudinal evolution, I – to model the inter-
+observation time, M – to model the missingness patterns, and the survival outcome through the
+network S.
+
+The proposed architecture decomposes clinical presence into three aspects (see Section 1) that
+are modelled through three different neural networks relying on the embedding hi,j outputted by
+a Recurrent Neural Network (RNN) at the observation time ti,j . To extract this embedding, we
+adopted a Long Short Term Memory (LSTM) network [44] that leverages the sequential nature of the
+observed data and can capture temporal dependencies. Note, however, that the inputs are the series
+of observations at irregular times. The resulting embedding is then leveraged to model the survival
+outcome. We now introduce the networks used for each of these tasks.
+
+Longitudinal process Similarly to traditional joint models, the latent state hi,j is leveraged through
+a multi-layer perceptron L to model the future value of each laboratory test to be observed after a
+period t from the prediction time ti,j . Assuming a Gaussian distribution for the observed data, the
+
+
+                                                     4
+neural network L models the mean and variance of each future covariate given both the embedding
+and the prediction time, i.e.
+                                  c i (t) ∼ N (µi (t), σ 2 (t))
+                                  lab                   i
+
+with µi (t) and σi (t) the means, variances vectors outputted by L(hi,j , t).
+
+Missingness process hi,j is also used in a second multi-layer perceptron M to model the likelihood
+of observing the different covariates, i.e. which tests are likely to be performed after the period t.
+One can assume a Bernoulli distribution over the missingness patterns, i.e.
+                                               m̂i (t) ∼ Bern(M (hi,j , t))
+
+Temporal process A monotonic positive neural network I leverages hi,j to model the recurrent
+patterns of observations. This neural network with constrained positive weights models the likelihood
+of observing any new laboratory test after time t following the approach proposed in [45]. The model
+allows the computing of the risk of observing an event at any time ∆ after t minutes by directly
+outputting the cumulative hazard I while avoiding any parametric assumption, i.e.
+                                           P(∆ > t) = exp(−I(hi,j , t))
+
+Survival outcome Finally, to model the hazard function λ(t) defining the survival model, we used
+the DeepSurv model [2] that leverages a multi-layer perceptron S to extract a non-linear covariates
+shift used in a standard multiplicative proportional hazards Cox model. Given λ0 , the baseline hazard,
+the hazard is expressed as:
+                                       λ(t) = λ0 (t) exp(S(hi,j ))
+
+The final model, therefore, models both clinical presence and survival outcome by leveraging
+the representation hi,j extracted by the LSTM. This embeds the observation process in the latent
+representation leveraged for survival modelling.
+
+3.3   Training
+
+For training, the aim is to maximise the likelihood of observations while maximising the survival
+likelihood. To do so, the model is trained in a multi-task fashion in which each objective is back-
+propagated simultaneously by averaging the loss of the different tasks: survival, longitudinal, timing
+and missingness processes. As balancing the losses may greatly impact performance [46], we
+ensured that no clinical presence task was over-represented in the average by computing negative
+log-likelihoods for each task and using a dynamic weighting average scheme [47]. This consists in
+weighting each loss related to clinical presence by its relative change at iteration e as follows:
+                                                                             Ltask (e)
+                          ∀ task ∈ {L, I, M }, wtask (e) = log
+                                                                          Ltask (e − 1) ∗ θ
+which is then normalised between the three tasks using a Softmax. L is the average training likelihood
+for the given task and θ is a temperature hyperparameter that controls softness, i.e. larger values
+would lead to equal weights.
+
+Longitudinal process This first neural network aims to maximise the likelihood of the next ob-
+served laboratory tests values at time i,j . The assumption of normality leads to the use of the
+Gaussian log likelihood loss:
+                    X X
+                                                                   2
+              lL =               mi,j+1 ∗ log N (labi,j+1 |µi,j , σi,j )
+                      i    j∈[[1,li −1]]
+
+                                                              (labi,j+1 − µi,j )2
+                          X        X                                                     q                
+                  =−                           mi,j+1 ∗                           + log       2πσi,j   2
+
+                           i
+                                                                     2σi,j 2
+                               j∈[[1,li −1]]
+
+with µi,j and σi,j the means, variances vectors outputted by L(hi,j , i,j+1 ) and ∗ the element-wise
+multiplication. Note the filtering through mi,j+1 to avoid a penalty on unobserved data.
+
+
+                                                               5
+Missingness process Similarly, the loss for the missingness process relies on the Bernoulli distri-
+bution. This leads to the binary cross entropy loss:
+       X X
+ lM =                 log Bern(mi,j+1 |M (hi,j , i,j+1 ))
+             i    j∈[[1,li −1]]
+                 X        X
+          =−                          (mi,j+1 ∗ log[M (hi,j , i,j+1 )] + (1 − mi,j+1 ) ∗ log[1 − M (hi,j , i,j+1 )])
+                  i   j∈[[1,li −1]]
+
+Temporal process The likelihood of the timing process can be exactly modelled without the need
+for distributional assumptions on the inter-observation distribution as the neural network returns
+the cumulative intensity at horizon t. Additionally, the instantaneous intensity can be computed by
+differentiation, at no extra computational cost in the context of neural networks training procedure.
+                          X X                                  dI(hi,j , t)
+                                                                                      
+                     lI =               I(hi,j , i,j+1 ) − log
+                           i
+                                                                   dt        t=i,j+1
+                                          j∈[[1,li −1]]
+
+Survival outcome Finally, the survival model, DeepSurv, relies on the proportional hazards as-
+sumption made by the Cox model. This results in the following log likelihood:
+                                                                       
+                           X                        X
+                      lS =      S(hi,j ) − log           exp(S(hi,j ))
+                                            i,di =1                  k,Tk >Ti
+
+Then, the population baseline hazard, λ0 (t), is estimated as piece-wise constant based on the training
+population.
+The final loss is therefore defined at iteration e as X
+                        l(e) = (1 − α)lS + α                                wtask (e) ∗ ltask (e)
+                                                            task∈{L,I,M }
+With α, a hyperparameter balancing between survival and clinical presence. This loss was evaluated
+on a validation set and an early stopping strategy was adopted to stop the multi-task training. Then,
+a fine-tuning of the network S with all other weights fixed – using the same stopping criterion –
+allowed to improve the survival performance.
+
+4         Experiments
+This paper explored the problem of in-hospital survival prediction after 24 hours of ICU admission
+using laboratory tests. We used data from the Medical Information Mart for Intensive Care III
+(MIMIC III) [1]. While the clinical actionability of these predictive models has been questioned
+[48], it serves the optimisation of resource allocation and remains a standard comparison task in
+the machine learning literature. The code for the proposed models and experiments is available on
+Github1 .
+
+4.1        Data
+
+The MIMIC III dataset gathers anonymized laboratory tests, vital signs and diagnoses of 38,597
+patients admitted to the Beth Israel Deaconess medical centre between 2001 and 2012. This analysis
+focused on the laboratory tests as their ordering will follow from medical observations and practi-
+tioners’ expertise. While other measurements such as vital signs monitoring may improve outcome
+modelling, we chose to demonstrate the impact of clinical presence on a limited set of potentially
+informative covariates as other modalities might present different clinical presence patterns. After
+pre-processing [49], we selected – using an ECLAT algorithm [50] – a set of adults with shared
+laboratory tests for whom at least one laboratory test of each was performed during the 24 hours after
+admission and who survived at least this amount of time. This leads to a subset of 30,834 patients
+with 17 different laboratory tests (See Table 1 in Appendix for a population description and Table
+2 for the list of laboratory tests). Note that similar results are observed when all laboratory tests
+are considered, but are more sensitive to the imputation strategies which are out of the scope of this
+analysis.
+      1
+          https://github.com/Jeanselme/ClinicalPresence/
+
+
+                                                                 6
+4.2   Modelling clinical presence
+
+The proposed approach models the in-hospital survival of patients admitted to the hospital after
+24 hours of observation. To measure the gain of leveraging clinical presence, we compared our
+method DeepJoint against multiple strategies relying on last observation carried forward data with
+patient-mean imputation, i.e. any missing laboratory tests is replaced by the last observed results
+and remaining missing data are imputed by the patient’s mean per lab test type – guaranteed to exist
+because of the selection of patients presenting each laboratory test at least once. First, we compared
+against two baseline approaches:
+
+       • Last observation (Last): Extract the last observation li as representation for each patient.
+         This approach assumes no informativeness in the evolution of the laboratory results.
+       • Summarising (Count): Add to the previous representation the number of each test per-
+         formed in the first 24 hours. This approach assumes informativeness of the counting process
+         but ignores the laboratory test evolution.
+
+Second, we used RNN-based approaches to take advantage of the longitudinal evolution of the
+laboratory tests:
+
+       • Ignoring clinical presence (Ignore): An LSTM is trained on the imputed data leveraging
+         the inputs’ temporal order but ignoring their irregularity and missingness patterns.
+       • Resampling (Resample): Imputed data are re-sampled every hour to satisfy the LSTM
+         regularity assumption. This assumes non informativeness of the sampling process for the
+         outcome of interest.
+       • Modelling (GRU-D): The imputed data concatenated with missingness indicators serve as
+         inputs to a GRU-D model [20] that models the inter-observation time as a decaying function,
+         following the intuition that the hidden state should converge to a stable state with time.
+       • Featurization (Feature): Imputed longitudinal data are concatenated with missingness
+         indicators and time elapsed since previous observation [7], allowing the LSTM to extract
+         information from these proxies of the clinical presence.
+
+Finally, we propose two additional variants of our proposed model that aim to identify which aspect
+of clinical presence modelling provides a predictive and robustness edge:
+
+       • DeepJointFeature which consists of using the same input as Feature to both model and
+         leverage the information contained in clinical presence as input of the recurrent neural
+         network.
+       • DeepJointFineTune for which the entire DeepJointFeature model is fine tuned to max-
+         imise the survival likelihood in the last 500 iterations. This approach only leverages clinical
+         presence to initialise weights.
+
+For all experiments, input data were normalised and we used DeepSurv to model the hazard shift
+from the population hazard baseline using a multi-layer perceptron (see Section 3.2). All methods
+were trained using an Adam optimiser over 1000 epochs with early stopping on 10% of the training
+set. 500 epochs were used to train the LSTM and any additional outcomes and the last iterations were
+used to fine tune the survival network only. Additionally, hyperparameter tuning was performed on a
+10% split of the remaining training set on the grid presented in Appendix Table 3.
+Models were evaluated on a 90%-10% train-test patients split. Survival was inferred on the embedding
+obtained at the last observation li in the 24 hour post-admission and performances were compared
+using time-dependent C-index [51] and Brier score [52] evaluated at time horizons of 1, 7 and 14
+days after the observation period. 95% confidence intervals were obtained using 100 bootstrapped
+iterations on the test set predicted values.
+
+4.3   Robustness to change in clinical presence
+
+The previous comparison shows how handling clinical presence in different ways may impact
+predictive performance. However, as mentioned earlier, one characteristic of clinical presence is
+its heterogeneity: experts’ practice might change from one country to another, from one hospital to
+
+
+                                                   7
+another, or even in one hospital as practices change across specialities or exogeneous factors such as
+day of the week. In this second set of experiments, we focused on this last scenario. Motivated by the
+difference in the distribution of the numbers of tests performed during weekends and weekdays (see
+Figure 3), we hypothesised that practice might differ during weekends and weekdays admissions due
+to physicians and laboratory availability.
+
+
+
+
+Figure 2: Robustness evaluation between patients ad-
+mitted on weekdays and weekends.                               Figure 3: Total number of tests per-
+                                                               formed in the 24 hours after admission
+                                                               to the ICU.
+The weekend effect is a well-known – while not well-understood – phenomenon in public health:
+patients admitted on weekends are more likely to die than patients on weekdays [53]. While providing
+an opportunity to study the transfer of survival models, this outcome difference represents a difference
+in label distributions for which performance cannot directly be compared. To make this comparison
+possible, we adopted the evaluation methodology used in the robustness literature. Patients were
+separated given days of admission (from Monday 8 am to Saturday 8 am vs the rest). Each group of
+admission were then further divided between training and testing. As described in Figure 2, a first
+model uses the train set of patients admitted on weekends and tested on the test set of weekdays-
+admitted patients. Then, a second model uses the train set of patients admitted on weekdays and
+tested on the test set of weekdays-admitted patients. The two resulting models are comparable as
+they are applied to the same test set. Moreover, to ensure that performance differences were not due
+to training sample size, the weekends’ population was over-sampled to match the weekdays’ one
+(similar results were observed when leveraging the whole available populations).
+Finally, the opposite analysis was performed for the weekend test set. We compared the three best-
+performing methodologies and the Last baseline in this second set of experiments using identical
+performance metrics.
+
+5     Results
+5.1   Modelling clinical presence improves performance
+
+
+
+
+Figure 4: C-Index performance on a random split of the population with 95% confidence intervals
+Higher is better – The proposed methodologies (in bold) present state-of-the-art performance on
+short time horizons compared to models based on the same input. This advantage fades as clinical
+presence is informative of short-term instability.
+
+Figure 4 describes the discrimination of the models at different evaluation horizons on the test set
+(see also Appendix A.1.3 for Brier score and detailed results). The three proposed approaches present
+competitive performances compared to models based on the same input. First, DeepJoint only
+based on the laboratory tests has improved C-index in comparison to Ignore or even GRU-D which
+leverages missingness as inputs. This result shows how modelling clinical presence, even if not
+leveraged as inputs, leads to more predictive embedding.
+
+
+                                                   8
+Next, note how the baseline method Last gains from extracting features reflecting the observation
+process (Count). Similarly, DeepJointFeature improves over DeepJoint and presents equivalent
+results to Feature showing that the joint modelling does not provide additional predictive improve-
+ment when informative features are fed as inputs and the model leverages the temporality of the data.
+Finally, a full fine-tuning of the network after modelling clinical presence provides an additional
+edge, suggesting that clinical presence initialisation leads to a more stable minimum.
+Note how all methodologies have decreasing performance with larger time horizons. This obser-
+vation results from the complexity of modelling long term survival for critically unstable patients.
+Additionally, the reduced edge of modelling clinical presence stresses how the observation process
+reflects short term instability as increased testing might indicate critical conditions.
+These experiments show how modelling and featuring of clinical presence improves discriminative
+performance. Nonetheless, we hypothesised that clinical presence modelling leads to more robust
+embedding when a shift in the observation process is observed.
+
+
+5.2   Joint modelling improves robustness
+
+
+
+
+Figure 5: Discriminative performance evaluated on patients admitted on weekdays for a transferred
+model (y-axis) and an oracle model trained on the train weekdays-admitted patients and tested on the
+test set of this same group (x-axis) (with 95% confidence intervals).
+Models closer to the diagonal are more robust to change in clinical presence – DeepJointFeature
+presents better property under this clinical presence shift with robust discriminative performance.
+
+
+Figure 5 presents the performance change of transferring the model from one clinical presence setting
+to another for the top performing proposed methodologies (see Appendix for detailed results Table 6
+and the complementary scenario in Appendix Figure 7). A model robust to change would be one for
+which the performance on the test set of the same setting as the training set is similar to the model that
+has been transferred, i.e. models close to the diagonal. Models under the diagonal show overfitting
+to the training set. Therefore, one should select a model both close to the diagonal, and with the
+strongest discriminative performance (upper right corner).
+First, Feature presents the best predictive performance on the training set but is sensitive to the
+setting shift. At the opposite end, the model based on the last observation (Last) presents the worst
+discriminative performance. However, as the model does not leverage clinical presence, changes in
+the observation process impact its performance to a lesser extent. The proposed DeepJointFeature
+features similar level of robustness but with significantly improved discrimination. Conversely,
+despite presenting better predictive performances at the population level, the proposed fine-tuned
+variant is prone to overfitting. This underlines how modelling jointly the clinical presence regularises
+the embedding against the shift in the observation process.
+Similarly to the previous experiment, models’ differences fade with larger time horizons. However,
+note how DeepJointFeature remains the model presenting the most robust performance.
+This experiment underlines how jointly modelling clinical presence and survival may improve the
+robustness of the embedding to change. However, traditional strategies of leveraging this information
+may appear to improve performance in internal validation but are prone to overfitting when transferred
+to a different clinical presence setting.
+
+
+                                                    9
+6   Discussion
+In this work, we propose to explicitly model the clinical presence reflected in the ordering, timing
+and missingness of observational longitudinal data. The novelty of the proposed approach does not
+only lie in its discriminative performance but in its transportability under change in the observation
+process compared to state-of-the-art approaches. Additionally, this modelling allows the detection of
+change in the observation process.
+Approaching clinical presence as a multi-task problem can be understood as an embedding regulari-
+sation [54] which results in a more clinically relevant representation for survival prediction. However,
+despite multi-task improvements observed in the literature, theoretical foundations are still lacking
+[55]. Another limitation of this work is the lack of consideration of potential competing risks, but also
+the assumption of independence between patients: in the medical context, and even more particularly
+in the ICU setting, prioritisation is key in the delivery of care. When considering clinical presence,
+the assumption of independence might consequently be questioned and calls for future work. While
+we propose a set of experiments to study robustness in the MIMIC III dataset, this focuses on one
+hospital, external validation would allow the quantification of the methodology’s robustness under
+different shifts. Lastly, our modelling highlighted the importance of modelling clinical presence
+in the context of laboratory tests. Studying the relation between adding new covariates and the
+change in predictive performance would indicate potential correlation between covariates and medical
+behaviour.
+Finally, we would like to echo the remark on the risk of leveraging clinical presence information
+raised by [6, 7] in which the authors underline how taking advantage of missing data might lead to
+a mismatch between the training and deployment settings, but that ignoring this information might
+not be possible. Our work proposes a way to leverage this information while informing the user
+of changes in the patterns of observation. Nonetheless, practitioners should be wary of informing
+medical practice by leveraging clinical presence as it may result in a self-fulfilling prophecy and
+reinforced biases. Further work on the impact on medical behaviour would be a necessary step
+towards deployment.
+
+
+
+
+                                                   10
+Acknowledgments and Disclosure of Funding
+This work has been partially funded by UKRI Medical Research Council (MC_UU_00002/5 and
+MC_UU_00002/2).
+
+References
+ [1] A. E. Johnson, T. J. Pollard, L. Shen, H. L. Li-Wei, M. Feng, M. Ghassemi, B. Moody,
+     P. Szolovits, L. A. Celi, and R. G. Mark, “Mimic-iii, a freely accessible critical care database,”
+     Scientific data, vol. 3, no. 1, pp. 1–9, 2016.
+ [2] J. L. Katzman, U. Shaham, A. Cloninger, J. Bates, T. Jiang, and Y. Kluger, “Deepsurv: person-
+     alized treatment recommender system using a cox proportional hazards deep neural network,”
+     BMC medical research methodology, vol. 18, no. 1, pp. 1–12, 2018.
+ [3] C. Lee, W. Zame, J. Yoon, and M. van der Schaar, “Deephit: A deep learning approach to
+     survival analysis with competing risks,” in Proceedings of the AAAI Conference on Artificial
+     Intelligence, vol. 32, 2018.
+ [4] C. Nagpal, V. Jeanselme, and A. Dubrawski, “Deep parametric time-to-event regression with
+     time-varying covariates,” in Proceedings of AAAI Spring Symposium on Survival Prediction
+     - Algorithms, Challenges, and Applications 2021 (R. Greiner, N. Kumar, T. A. Gerds, and
+     M. van der Schaar, eds.), vol. 146 of Proceedings of Machine Learning Research, pp. 184–193,
+     PMLR, 22–24 Mar 2021.
+ [5] V. Jeanselme, B. Tom, and J. Barrett, “Neural survival clustering: Non-parametric mixture of
+     neural networks for survival clustering,” in Conference on Health, Inference, and Learning,
+     pp. 92–102, PMLR, 2022.
+ [6] M. van Smeden, R. H. Groenwold, and K. G. Moons, “A cautionary note on the use of the
+     missing indicator method for handling missing data in prediction research,” Journal of clinical
+     epidemiology, vol. 125, pp. 188–190, 2020.
+ [7] Z. C. Lipton, D. Kale, and R. Wetzel, “Directly modeling missing data in sequences with rnns:
+     Improved classification of clinical time series,” in Machine Learning for Healthcare Conference,
+     pp. 253–270, 2016.
+ [8] K. Zhang, B. Schölkopf, K. Muandet, and Z. Wang, “Domain adaptation under target and
+     conditional shift,” in International Conference on Machine Learning, pp. 819–827, PMLR,
+     2013.
+ [9] J. G. Moreno-Torres, T. Raeder, R. Alaiz-Rodríguez, N. V. Chawla, and F. Herrera, “A unifying
+     view on dataset shift in classification,” Pattern recognition, vol. 45, no. 1, pp. 521–530, 2012.
+[10] K. T. Smith, D. Monti, N. Mir, E. Peters, R. Tipirneni, and M. C. Politi, “Access is necessary
+     but not sufficient: factors influencing delay and avoidance of health care services,” MDM Policy
+     & Practice, vol. 3, no. 1, p. 2381468318760298, 2018.
+[11] D. Barik and A. Thorat, “Issues of unequal access to public health in india,” Frontiers in public
+     health, vol. 3, p. 245, 2015.
+[12] C. Xiao, E. Choi, and J. Sun, “Opportunities and challenges in developing deep learning models
+     using electronic health records data: a systematic review,” Journal of the American Medical
+     Informatics Association, vol. 25, no. 10, pp. 1419–1428, 2018.
+[13] B. J. Wells, K. M. Chagin, A. S. Nowacki, and M. W. Kattan, “Strategies for handling missing
+     data in electronic health record derived data,” Egems, vol. 1, no. 3, 2013.
+[14] R. H. Groenwold, “Informative missingness in electronic health record systems: the curse of
+     knowing,” Diagnostic and prognostic research, vol. 4, no. 1, pp. 1–6, 2020.
+[15] M. Saar-Tsechansky and F. Provost, “Handling missing values when applying classification
+     models,” Journal of Machine Learning Research, vol. 8, 2007.
+[16] M. Sperrin, E. Petherick, and E. Badrick, “Informative observation in health data: association
+     of past level and trend with time to next measurement,” Stud Health Technol Inform, vol. 235,
+     pp. 261–265, 2017.
+
+
+                                                 11
+[17] D. Agniel, I. S. Kohane, and G. M. Weber, “Biases in electronic health record data due to
+     processes within the healthcare system: retrospective observational study,” Bmj, vol. 361, 2018.
+[18] R. Sisk, L. Lin, M. Sperrin, J. K. Barrett, B. Tom, K. Diaz-Ordaz, N. Peek, and G. P. Martin,
+     “Informative presence and observation in routine health data: A review of methodology for
+     clinical risk prediction,” Journal of the American Medical Informatics Association, 2020.
+[19] G. Molenberghs, C. Beunckens, C. Sotto, and M. G. Kenward, “Every missingness not at
+     random model has a missingness at random counterpart with equal fit,” Journal of the Royal
+     Statistical Society: Series B (Statistical Methodology), vol. 70, no. 2, pp. 371–388, 2008.
+[20] Z. Che, S. Purushotham, K. Cho, D. Sontag, and Y. Liu, “Recurrent neural networks for
+     multivariate time series with missing values,” Scientific reports, vol. 8, no. 1, pp. 1–12, 2018.
+[21] R. T. Sousa, L. A. Pereira, and A. S. Soares, “Improving irregularly sampled time series learning
+     with dense descriptors of time,” arXiv preprint arXiv:2003.09291, 2020.
+[22] E. Choi, M. T. Bahadori, A. Schuetz, W. F. Stewart, and J. Sun, “Doctor ai: Predicting clinical
+     events via recurrent neural networks,” in Machine learning for healthcare conference, pp. 301–
+     318, PMLR, 2016.
+[23] R. Moskovitch, C. Walsh, F. Wang, G. Hripcsak, and N. Tatonetti, “Outcomes prediction
+     via time intervals related patterns,” in 2015 IEEE international conference on data mining,
+     pp. 919–924, IEEE, 2015.
+[24] R. Pivovarov, D. J. Albers, J. L. Sepulveda, and N. Elhadad, “Identifying and mitigating biases
+     in ehr laboratory tests,” Journal of biomedical informatics, vol. 51, pp. 24–34, 2014.
+[25] X. Cai, J. Gao, K. Y. Ngiam, B. C. Ooi, Y. Zhang, and X. Yuan, “Medical concept embedding
+     with time-aware attention,” arXiv preprint arXiv:1806.02873, 2018.
+[26] E. Choi, M. T. Bahadori, J. Sun, J. Kulas, A. Schuetz, and W. Stewart, “Retain: An interpretable
+     predictive model for healthcare using reverse time attention mechanism,” in Advances in Neural
+     Information Processing Systems, pp. 3504–3512, 2016.
+[27] Y. Zhang, “Attain: Attention-based time-aware lstm networks for disease progression modeling.,”
+     in In Proceedings of the 28th International Joint Conference on Artificial Intelligence (IJCAI-
+     2019), pp. 4369-4375, Macao, China., 2019.
+[28] A. Gasparini, K. R. Abrams, J. K. Barrett, R. W. Major, M. J. Sweeting, N. J. Brunskill, and M. J.
+     Crowther, “Mixed-effects models for health care longitudinal data with an informative visiting
+     process: A monte carlo simulation study,” Statistica Neerlandica, vol. 74, no. 1, pp. 5–23, 2020.
+[29] L. Su, Q. Li, J. K. Barrett, and M. J. Daniels, “A sensitivity analysis approach for informative
+     dropout using shared parameter models,” Biometrics, vol. 75, no. 3, pp. 917–926, 2019.
+[30] K. T. Islam, C. R. Shelton, J. I. Casse, and R. Wetzel, “Marked point process for severity of
+     illness assessment,” in Machine Learning for Healthcare Conference, pp. 255–270, PMLR,
+     2017.
+[31] A. M. Alaa, S. Hu, and M. Schaar, “Learning from clinical judgments: Semi-markov-modulated
+     marked hawkes processes for risk prognosis,” in International Conference on Machine Learning,
+     pp. 60–69, PMLR, 2017.
+[32] B. Twala, M. Jones, and D. J. Hand, “Good methods for coping with missing data in decision
+     trees,” Pattern Recognition Letters, vol. 29, no. 7, pp. 950–956, 2008.
+[33] P. B. Weerakody, K. W. Wong, G. Wang, and W. Ela, “A review of irregular time series data
+     handling with gated recurrent neural networks,” Neurocomputing, 2021.
+[34] I. M. Baytas, C. Xiao, X. Zhang, F. Wang, A. K. Jain, and J. Zhou, “Patient subtyping via
+     time-aware lstm networks,” in Proceedings of the 23rd ACM SIGKDD international conference
+     on knowledge discovery and data mining, pp. 65–74, 2017.
+[35] T. Pham, T. Tran, D. Phung, and S. Venkatesh, “Deepcare: A deep dynamic memory model
+     for predictive medicine,” in Pacific-Asia conference on knowledge discovery and data mining,
+     pp. 30–41, Springer, 2016.
+[36] M. C. Mozer, D. Kazakov, and R. V. Lindsey, “Discrete event, continuous time rnns,” arXiv
+     preprint arXiv:1710.04110, 2017.
+
+
+                                                 12
+[37] L. L. Guo, S. R. Pfohl, J. Fries, A. E. Johnson, J. Posada, C. Aftandilian, N. Shah, and L. Sung,
+     “Evaluation of domain generalization and adaptation on improving model robustness to temporal
+     dataset shift in clinical medicine,” Scientific reports, vol. 12, no. 1, pp. 1–10, 2022.
+[38] D. Lazer, R. Kennedy, G. King, and A. Vespignani, “The parable of google flu: traps in big data
+     analysis,” science, vol. 343, no. 6176, pp. 1203–1205, 2014.
+[39] B. Nestor, M. B. McDermott, W. Boag, G. Berner, T. Naumann, M. C. Hughes, A. Goldenberg,
+     and M. Ghassemi, “Feature robustness in non-stationary health records: caveats to deployable
+     model performance in common clinical machine learning tasks,” in Machine Learning for
+     Healthcare Conference, pp. 381–405, PMLR, 2019.
+[40] H. Singh, V. Mhasawade, and R. Chunara, “Generalizability challenges of mortality risk
+     prediction models: A retrospective analysis on a multi-center database,” PLOS Digital Health,
+     vol. 1, no. 4, p. e0000023, 2022.
+[41] J. Lu, A. Liu, F. Dong, F. Gu, J. Gama, and G. Zhang, “Learning under concept drift: A review,”
+     IEEE Transactions on Knowledge and Data Engineering, vol. 31, no. 12, pp. 2346–2363, 2018.
+[42] Z. Lipton, Y.-X. Wang, and A. Smola, “Detecting and correcting for label shift with black box
+     predictors,” in International conference on machine learning, pp. 3122–3130, PMLR, 2018.
+[43] A. Rajkomar, E. Oren, K. Chen, A. M. Dai, N. Hajaj, M. Hardt, P. J. Liu, X. Liu, J. Marcus,
+     M. Sun, et al., “Scalable and accurate deep learning with electronic health records,” NPJ Digital
+     Medicine, vol. 1, no. 1, pp. 1–10, 2018.
+[44] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural computation, vol. 9,
+     no. 8, pp. 1735–1780, 1997.
+[45] S. Xiao, J. Yan, X. Yang, H. Zha, and S. Chu, “Modeling the intensity function of point process
+     via recurrent neural networks,” in Proceedings of the AAAI Conference on Artificial Intelligence,
+     vol. 31, 2017.
+[46] T. Gong, T. Lee, C. Stephenson, V. Renduchintala, S. Padhy, A. Ndirango, G. Keskin, and
+     O. H. Elibol, “A comparison of loss weighting strategies for multi task learning in deep neural
+     networks,” IEEE Access, vol. 7, pp. 141627–141632, 2019.
+[47] S. Liu, E. Johns, and A. J. Davison, “End-to-end multi-task learning with attention,” in Proceed-
+     ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 1871–1880,
+     2019.
+[48] D. Schoenfeld, “Survival methods, including those using competing risk analysis, are not
+     appropriate for intensive care unit outcome studies,” Critical Care, vol. 10, no. 1, pp. 1–2, 2005.
+[49] S. Wang, M. B. McDermott, G. Chauhan, M. Ghassemi, M. C. Hughes, and T. Naumann,
+     “Mimic-extract: A data extraction, preprocessing, and representation pipeline for mimic-iii,” in
+     Proceedings of the ACM Conference on Health, Inference, and Learning, pp. 222–235, 2020.
+[50] M. J. Zaki, S. Parthasarathy, M. Ogihara, and W. Li, “Parallel algorithms for discovery of
+     association rules,” Data mining and knowledge discovery, vol. 1, no. 4, pp. 343–373, 1997.
+[51] H. Hung and C.-T. Chiang, “Estimation methods for time-dependent auc models with survival
+     data,” Canadian Journal of Statistics, vol. 38, no. 1, pp. 8–26, 2010.
+[52] E. Graf, C. Schmoor, W. Sauerbrei, and M. Schumacher, “Assessment and comparison of
+     prognostic classification schemes for survival data,” Statistics in medicine, vol. 18, no. 17-18,
+     pp. 2529–2545, 1999.
+[53] L. A. Pauls, R. Johnson-Paben, J. McGready, J. D. Murphy, P. J. Pronovost, and C. L. Wu, “The
+     weekend effect in hospitalized patients: a meta-analysis.,” Journal of hospital medicine, vol. 12,
+     no. 9, pp. 760–766, 2017.
+[54] S. Sagawa, P. W. Koh, T. B. Hashimoto, and P. Liang, “Distributionally robust neural networks,”
+     in International Conference on Learning Representations, 2019.
+[55] S. Ruder, “An overview of multi-task learning in deep neural networks,” arXiv preprint
+     arXiv:1706.05098, 2017.
+
+
+
+
+                                                  13
+Checklist
+    1. For all authors...
+        (a) Do the main claims made in the abstract and introduction accurately reflect the paper’s
+            contributions and scope? [Yes] See Section 5.
+        (b) Did you describe the limitations of your work? [Yes] See Section 6.
+        (c) Did you discuss any potential negative societal impacts of your work? [Yes] See last
+            paragraph of Section 6 on the risk of reinforcing error.
+        (d) Have you read the ethics review guidelines and ensured that your paper conforms to
+            them? [Yes]
+    2. If you ran experiments...
+        (a) Did you include the code, data, and instructions needed to reproduce the main experi-
+            mental results (either in the supplemental material or as a URL)? [Yes] Code will be
+            released upon acceptance of the manuscript and have been shared as a supplemental
+            material.
+        (b) Did you specify all the training details (e.g., data splits, hyperparameters, how they
+            were chosen)? [Yes] See Section 4 and Appendix A.1.
+        (c) Did you report error bars (e.g., with respect to the random seed after running experi-
+            ments multiple times)? [Yes] Bootstrapped confidence intervals are reported.
+        (d) Did you include the total amount of compute and the type of resources used (e.g., type
+            of GPUs, internal cluster, or cloud provider)? [Yes] See Appendix A.1.
+    3. If you are using existing assets (e.g., code, data, models) or curating/releasing new assets...
+        (a) If your work uses existing assets, did you cite the creators? [Yes] All models and data
+            source were cited in Section 4.
+        (b) Did you mention the license of the assets? [No] References are included to access
+            license details.
+        (c) Did you include any new assets either in the supplemental material or as a URL? [Yes]
+            All code is publicly available under a MIT licence.
+        (d) Did you discuss whether and how consent was obtained from people whose data you’re
+            using/curating? [No] All data and code used were publicly available and received prior
+            IRB approval.
+        (e) Did you discuss whether the data you are using/curating contains personally identifiable
+            information or offensive content? [Yes] All data were anonymized as mentioned in
+            Section 4.
+
+
+
+
+                                                14
+A      Appendix
+A.1     Experiments
+
+A.1.1      Data characteristics
+Table 1 presents the demographic characteristics of the studied population and 2 summarises the set
+of tests selected with the mean number of tests performed during the 24 hours post admission and
+their mean values.
+
+       Table 1: Population characteristics between patient admitted on weekdays and weekends.
+
+                                                                         Population
+                                                            Overall       Weekday        Weekend
+                                 Number of patients         30,834         23,359          7,475
+                                                  ∗
+                          Length of stay (in days )     10.05 (10.49)   10.05 (10.60)   10.03 (10.15)
+                                         Overall (%)        13.86          13.50           15.00
+        Outcome                          1 day+ (%)          1.15          1.13             1.20
+                           Death
+                                        7 days+ (%)          7.05          6.79             7.88
+                                       14 days+ (%)         10.33          9.94            11.52
+                                          Male (%)          56.43          56.38           56.62
+                          Gender
+                                        Female (%)          43.57          43.62           43.38
+                                         White (%)          71.84          72.52           69.74
+                                          Other (%)         14.52          14.03           16.04
+    Demographics         Ethnicity        Black (%)          7.88           7.87            7.92
+                                       Hispanic (%)          3.32           3.19            3.73
+                                          Asian (%)          2.43           2.39            2.57
+                                         Public (%)         66.15          65.68           67.59
+                         Insurance      Private (%)         32.65          33.31           30.58
+                                       Self Pay (%)         1.21           1.01             1.82
+  ∗
+      Mean (std)
+  +
+      After first day of observation
+
+
+
+
+                                                       15
+                  Table 2: List of laboratory tests used with associated mean number
+                  of tests and values (and standard deviations).
+
+                                Laboratory test      Number of tests         Value
+                                 Anion gap               1.84 (1.00)     13.87 (3.23)
+                               Bicarbonate               1.88 (1.00)      24.15 (4.34)
+                        Blood urea nitrogen              1.90 (1.00)     24.91 (20.36)
+                                  Chloride               1.92 (1.03)     105.09 (5.74)
+                                 Creatinine              1.91 (1.00)       1.33 (1.38)
+                                   Glucose               2.84 (2.59)    136.77 (49.89)
+                                Hematocrit               2.89 (2.36)      32.89 (5.34)
+                               Hemoglobin                2.39 (2.04)     11.09 (1.91)
+                               Magnesium                 1.81 (0.97)       1.98 (0.37)
+                                     MCH∗                1.76 (0.96)     30.29 (2.52)
+                        MCH concentration                1.76 (0.96)      33.82 (1.52)
+                   Mean corpuscular volume               1.76 (0.96)      89.63 (6.65)
+                                   Platelets             1.88 (1.10)    224.07 (109.73)
+                                 Potassium               2.01 (1.08)       4.13 (0.55)
+                       Red blood cell count              1.87 (1.02)      5.23 (15.24)
+                                   Sodium                1.93 (1.08)     138.89 (4.38)
+                     White blood cell count              1.88 (1.03)     11.83 (13.08)
+                  ∗
+                      Mean corpuscular hemoglobin.
+
+
+A.1.2   Hyperparameters tuning
+All models’ hyper-parameters were selected over the following grid of hyperparameters (if appropri-
+ate) following 100 iterations of random search. All experiments were ran on a A100 GPU over 100
+hours for each experiment.
+
+                                Table 3: Grid for hyperparameters search
+
+                                  Hyperparameter          Values
+                                      Learning rate       10−3 , 10−4
+                                        Batch size        100, 250
+                 Training
+                                                 α        0.1, 0.5
+                                                  θ       2∗
+                                           Layers         1, 2, 3
+                  RNN
+                                     Hidden nodes         10, 30
+                                                Layers    0, 1, 2, 3
+                 Survival
+                                                Nodes     50
+                                      Longitudinal        Same parameters explored as survival
+          Clinical Presence             Temporal          Same parameters explored as survival
+                                          Missing         Same parameters explored as survival
+         ∗
+             Following the results from [47].
+
+
+
+
+                                                         16
+A.1.3     Results
+Table 4 presents the discriminative results on the test set of the first set of experiment for which
+patients are randomly assigned to train and test sets.
+
+               Table 4: Time Dependent C-Index - Mean (95%-CI) – Higher is better.
+
+                                                      Evaluation horizons
+                                                (in days after last observation)
+                            Models          1                  7               14
+                             Last     0.851 (0.004)     0.734 (0.002)    0.691 (0.002)
+                           Count      0.860 (0.004)     0.746 (0.002)    0.699 (0.002)
+                           Ignore     0.853 (0.003)     0.740 (0.002)    0.697 (0.002)
+                        Resample      0.844 (0.004)     0.739 (0.002)    0.695 (0.002)
+                       DeepJoint      0.862 (0.003)     0.742 (0.002)    0.695 (0.002)
+                          GRU-D       0.855 (0.004)     0.743 (0.002)    0.697 (0.002)
+                          Feature     0.873 (0.003)     0.750 (0.002)    0.697 (0.002)
+                DeepJointFeature      0.873 (0.003)     0.749 (0.002)    0.697 (0.002)
+               DeepJointFineTune      0.878 (0.003)     0.751 (0.002)    0.700 (0.002)
+
+Figure 6 and Table 5 present the Brier score obtained on a random split of patients, showing little
+difference in the calibration of the different models.
+
+
+
+
+        Figure 6: Robustness evaluation between patients admitted on weekdays and weekends.
+
+
+
+               Table 5: Time dependent Brier score - Mean (95%-CI) – Lower is better.
+
+                                                      Evaluation horizons
+                                                (in days after last observation)
+                            Models          1                  7               14
+                             Last     0.011 (0.000)     0.079 (0.000)    0.148 (0.001)
+                           Count      0.011 (0.000)     0.078 (0.000)    0.147 (0.001)
+                           Ignore     0.011 (0.000)     0.078 (0.000)    0.147 (0.001)
+                        Resample      0.011 (0.000)     0.078 (0.000)    0.148 (0.001)
+                       DeepJoint      0.011 (0.000)     0.078 (0.000)    0.149 (0.001)
+                          GRU-D       0.011 (0.000)     0.079 (0.000)    0.148 (0.001)
+                          Feature     0.011 (0.000)     0.078 (0.000)    0.149 (0.001)
+                DeepJointFeature      0.011 (0.000)     0.078 (0.000)    0.149 (0.001)
+               DeepJointFineTune      0.011 (0.000)     0.078 (0.000)    0.150 (0.001)
+
+
+
+
+                                                  17
+A.1.4     Transfer performances
+Figure 7 shows the performance on patients admitted on weekends. This echoes the conclusion made
+in Section 5.2 that the proposed model is more robust to change in the clinical presence.
+
+
+
+
+        Figure 7: Robustness evaluation between patients admitted on weekdays and weekends.
+
+Table 6 (resp. 7) present the discriminative difference on the weekdays test set between the model
+trained on weekdays-admissions and the model transferred from weekends to weekdays (resp. on
+the weekends test set). In the context of weekdays performance, note that the proposed approach
+DeepJoint is more robust than the Resample approach but presents similar results than the Ignore
+model. Note that, for weekends evaluation, GRU-D presents state-of-the-art predictive performance
+and robustness at short time horizons but presents a larger confidence intervals. Additionally, this
+result didn’t generalise to the other evaluation horizons.
+These results emphasise that the proposed joint modelling DeepJointFeature is more robust than
+state-of-the-art approaches. Interestingly, ignoring the clinical process (Resample or Ignore) seems
+to be less robust to a change in the observation process, echoing the remark made by [7] about the
+difficulty of ignoring it. Finally, note how simple features such as in Count might be detrimental to
+the model due to a covariate shift – particularly pronounced when applied to weekends admission.
+
+Table 6: Difference between model trained on weekends and model trained on weekdays tested on
+weekdays admission test set - Mean (95%-CI) – Lower absolute value is better.
+
+                                                      Evaluation horizons
+                                                (in days after last observation)
+                           Models           1                  7                   14
+                            Last      0.001 (0.004)     -0.010 (0.003)    -0.021 (0.002)
+                          Count      -0.061 (0.006)     -0.036 (0.003)    -0.030 (0.003)
+                          Ignore     -0.016 (0.007)     -0.021 (0.003)    -0.035 (0.003)
+                       Resample      0.042 (0.005)      -0.006 (0.003)    -0.031 (0.003)
+                      DeepJoint      -0.015 (0.006)     -0.025 (0.003)    -0.042 (0.003)
+                         GRU-D       -0.015 (0.005)     -0.029 (0.003)    -0.033 (0.003)
+                         Feature     -0.047 (0.006)     -0.033 (0.003)    -0.042 (0.003)
+               DeepJointFeature       0.007 (0.006)      0.004 (0.003)    -0.021 (0.003)
+              DeepJointFineTune      -0.019 (0.005)     -0.009 (0.004)    -0.035 (0.003)
+
+
+
+
+                                                  18
+Table 7: Difference between model trained on weekdays and model trained on weekends tested on
+weekends admission test set - Mean (95%-CI) – Lower absolute value is better.
+
+                                                  Evaluation horizons
+                                            (in days after last observation)
+                         Models         1                  7                   14
+                          Last    -0.005 (0.009)    -0.007 (0.005)    0.007 (0.003)
+                        Count      0.130 (0.023)    -0.001 (0.004)    0.015 (0.004)
+                        Ignore    0.060 (0.029)     -0.006 (0.005)    0.016 (0.003)
+                     Resample     0.058 (0.012)     0.005 (0.006)     0.046 (0.004)
+                    DeepJoint      0.071 (0.011)     0.014 (0.005)    0.030 (0.003)
+                       GRU-D       0.003 (0.010)     0.028 (0.004)    0.039 (0.004)
+                       Feature     0.068 (0.013)     0.020 (0.004)    0.039 (0.003)
+             DeepJointFeature     -0.004 (0.002)     0.010 (0.004)    0.034 (0.004)
+            DeepJointFineTune      0.017 (0.003)     0.003 (0.004)    0.033 (0.004)
+
+
+
+
+                                              19
+

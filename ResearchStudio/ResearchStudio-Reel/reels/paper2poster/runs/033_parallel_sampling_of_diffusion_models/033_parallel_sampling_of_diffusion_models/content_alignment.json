@@ -1,0 +1,2393 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-15T17:08:59Z",
+  "title": "Parallel Sampling of Diffusion Models",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Diffusion models generate strikingly good images, and increasingly good robot actions, but they are slow. Producing a single sample can take up to 1000 sequential passes through the neural network, one denoising step feeding into the next. For anything interactive, that latency is the wall everyone hits first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The field's standard answer is to take fewer steps. Fast samplers like DDIM and DPMSolver cut the 1000 steps down to a few dozen, and they work remarkably well, but the tradeoff is real: push the step count low enough and sample quality visibly degrades. We have largely accepted this as the deal, spending quality to buy speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper from Stanford asks a different question. What if, instead of trading quality for speed, we trade compute for speed? Keep every denoising step, but stop running them strictly one after another. The result is ParaDiGMS (Parallel Diffusion Generative Model Sampling), the first general method that spends extra parallel compute to sample a pretrained diffusion model faster, with no retraining and no measurable loss in quality."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code: https://github.com/AndyShih12/paradigms"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why single-sample latency is the hard part"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be precise about what is slow. Diffusion sampling is sequential by construction: each denoising step reads the output of the previous one, so the 1000 steps form a chain you cannot obviously shortcut. You can trivially parallelize across samples, generating a whole batch of images at once, but that only raises throughput. It does nothing for the latency of the single sample a user is waiting on. Making one sample appear faster in wall-clock time is the genuinely hard problem, and it is the one ParaDiGMS targets."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' insight is that this sequential chain is really an ODE being solved by the simplest possible integrator, and there are better ways to solve an ODE than marching one step at a time."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method: denoising as a parallel fixed-point iteration"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS builds on Picard iteration, a classic technique for solving ordinary differential equations by fixed-point iteration. The idea is to write the value at each timestep as the starting point plus the accumulated drift along the path, then refine the whole trajectory at once. You begin with a rough guess for every timestep, evaluate the model's drift at all of them in parallel, and use those drifts to produce an updated guess for the entire trajectory. Repeat until the guess stops changing."
+            },
+            {
+              "type": "paragraph",
+              "text": "The reason this is a win is empirical but robust: the number of refinement iterations needed to converge turns out to be far smaller than the number of denoising steps, often by more than an order of magnitude. Each iteration touches all timesteps in parallel, so wall-clock time scales with the small iteration count rather than the large step count. To respect GPU memory, ParaDiGMS does not refine the full trajectory at once; it slides a batch window of fixed size p across the timeline, advancing the window as soon as the leading timesteps have converged. For stochastic (SDE) samplers, the noise is drawn up front so the resulting ODE stays well-behaved (Lipschitz)."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 2. Inside the batch window. ParaDiGMS evaluates the drift (blue arrows) at every point in a window of size p simultaneously, uses the cumulative drift to update each point toward the true trajectory (black curve), and slides the window forward once the leading points have converged below the error tolerance.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because it only changes how a fixed trajectory is computed, ParaDiGMS is orthogonal to the fast samplers people already use. Layer it on DDPM, DDIM, or DPMSolver and you get ParaDDPM, ParaDDIM, and ParaDPMSolver: the parallel speedup stacks on top of whatever step-count reduction those methods already provide. It is also compatible with classifier-free guidance."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: a consistent 2-4x speedup, quality held flat"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is how consistent the gain is. Across two very different domains, robot control and image generation, and across every sampler tested, ParaDiGMS delivers a 2-4x reduction in sampling latency with no measurable drop in task reward, FID, or CLIP score. The deep reason it works: the number of parallel iterations to converge is up to 20x smaller than the number of sequential steps."
+            },
+            {
+              "type": "paragraph",
+              "text": "On robotics, the authors evaluate DiffusionPolicy models on three manipulation tasks, measuring task reward averaged over 200 evaluation episodes. Applying ParaDiGMS to the full 100-step DDPM policy (ParaDDPM) speeds up sampling by 3.4x to 3.9x while leaving reward essentially unchanged, bringing a 100-step policy down to about 0.2s per sample."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Robotics DiffusionPolicy (100-step DDPM, tolerance 0.1, window 20, single A40 GPU). Reward is averaged over 200 episodes; time is per episode. ParaDDPM holds reward flat while cutting latency 3.4-3.9x.",
+              "headers": [
+                "Task",
+                "Reward (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On image generation the picture is the same. StableDiffusion-v2 generating 768x768 images from COCO captions drops from 50.0s to 14.6s per sample with ParaDDPM (3.4x) at an unchanged CLIP score of 32.1; stacking the parallel scheme on the already-fast DDIM and DPMSolver reaches 4.0x while CLIP holds at 31.7-31.9. On pixel-space LSUN Church, ParaDDPM matches full DDPM's FID (12.8 vs 12.9) at 3.9x."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Image generation on A100 GPUs. StableDiffusion-v2 quality is CLIP score (higher is better) over COCO2017 captions; LSUN Church is FID (lower is better) over 5000 samples. Quality is preserved across every configuration.",
+              "headers": [
+                "Model",
+                "Quality (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "What stands out across both tables is not any single number but the uniformity of the effect. A method that only helped latent-space image models, or only kicked in once quality was already saturated, would be a narrow trick. Seeing the same 2-4x hold from a 100-step robot policy to a 1000-step image model, and across FID, CLIP score, and task reward alike, is what makes the compute-for-speed trade look like a general property of diffusion sampling rather than a result tuned to one setting."
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the speedup preserves quality, the samples themselves look no different from sequential output. The image below was generated with ParaDDPM running the full 1000-step StableDiffusion-v2 schedule over its 4x96x96 latent space, at 3.4x lower latency than the sequential baseline that produces an equivalent result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 3. A StableDiffusion-v2 sample from the prompt \"a beautiful castle, matte painting,\" generated with ParaDDPM over the full 1000-step schedule on A100 GPUs. Parallel sampling produces the same quality output at 3.4x lower latency.",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The one knob: convergence tolerance"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS exposes a single, interpretable dial: the error tolerance of the fixed-point iteration. A tighter tolerance demands more iterations, giving higher fidelity but less speedup; a looser tolerance converges sooner and runs faster. The useful finding is that there is a wide comfortable regime where a fairly relaxed tolerance still leaves quality untouched, and only a genuinely loose setting begins to nudge quality down."
+            },
+            {
+              "type": "table",
+              "caption": "Table 3. Tolerance ablation on StableDiffusion-v2 with 200-step DDIM (CLIP over 1000 samples, A100 GPUs). Speedup grows steadily as tolerance loosens, and CLIP score stays flat until the tolerance becomes very large.",
+              "headers": [
+                "Tolerance τ",
+                "Parallel iters",
+                "CLIP score",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "seq",
+                  "200",
+                  "31.9",
+                  "-"
+                ],
+                [
+                  "5e-3",
+                  "36",
+                  "31.9",
+                  "1.4x"
+                ],
+                [
+                  "1e-2",
+                  "28",
+                  "31.9",
+                  "2.0x"
+                ],
+                [
+                  "5e-2",
+                  "19",
+                  "31.9",
+                  "3.1x"
+                ],
+                [
+                  "1e-1",
+                  "15",
+                  "31.9",
+                  "4.0x"
+                ],
+                [
+                  "5e-1",
+                  "13",
+                  "31.5",
+                  "4.9x"
+                ],
+                [
+                  "1e-0",
+                  "12",
+                  "31.5",
+                  "5.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "One more control confirms the speedup is real rather than a disguised step-count reduction. On LSUN Church, ParaDDPM matches full DDPM's FID at nearly 4x, whereas simply shortening DDIM to 500 steps produces visibly worse images. The gains genuinely come from parallelism across all the steps, not from quietly taking fewer of them."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS opens a new axis for accelerating diffusion models. Rather than sacrificing quality by taking fewer steps, it spends parallel compute to run all the steps faster, cutting sampling latency by 2-4x with no quality loss, and it composes with the fast samplers already in wide use. The honest boundary is that this is a compute-for-speed trade: the extra parallel model evaluations are not free, so the win is largest when you have spare parallel hardware and care about latency rather than total FLOPs."
+            },
+            {
+              "type": "paragraph",
+              "text": "Looking ahead, that framing is also the interesting part. As GPUs keep getting better at large parallel batches, the wall-clock cost of sampling becomes bounded mainly by the small number of Picard iterations rather than the long chain of steps, pointing toward diffusion sampling that keeps getting faster as hardware scales, without ever paying for it in quality."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "扩散模型（diffusion model）能生成惊艳的图像，如今在机器人动作生成上也越来越强，但它有一个绕不开的短板：慢。生成一个样本往往要顺序跑上千步去噪，每一步都要过一次神经网络，而且下一步必须等上一步算完。对任何需要实时交互的场景来说，这个延迟就是第一道墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "业界通行的解法是「少走几步」。DDIM、DPMSolver 这类快速采样器把上千步压缩到几十步，效果确实很好，但代价也很实在：步数压得越低，样本质量下降得越明显。大家基本上默认了这笔交易，用质量去换速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自斯坦福的论文换了一个问题来问：与其用质量换速度，能不能用算力换速度？也就是每一步去噪都保留，只是不再严格地一步接一步地算。答案就是 ParaDiGMS（Parallel Diffusion Generative Model Sampling，并行扩散生成模型采样）——第一个用额外并行算力给「预训练好的」扩散模型加速的通用方法，不需要重新训练，采样质量也没有可测量的损失。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/AndyShih12/paradigms"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "难点：难的是「单个样本」的延迟"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把「慢在哪」说清楚。扩散采样天生是顺序的：每一步去噪都要读上一步的输出，所以上千步构成了一条看似无法抄近路的链。你当然可以在「样本之间」轻松并行，一次生成一整批图，但那只提升吞吐量（throughput），对用户正在等待的那「一个」样本的延迟毫无帮助。让单个样本在真实时间（wall-clock）里更快出现，才是真正困难的问题，而这正是 ParaDiGMS 要攻的点。"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的关键洞察是：这条顺序链其实就是在用最朴素的积分器求解一个常微分方程（ODE），而求解 ODE 的方法，远不止「一步一步往前挪」这一种。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "方法：把去噪变成可并行的不动点迭代"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 建立在 Picard 迭代之上，这是一种用不动点迭代求解常微分方程的经典技巧。它的思路是：把每个时间步的取值写成「起点 + 沿途累积的漂移量（drift）」，然后一次性地把整条轨迹一起精修。具体做法是先给每个时间步一个粗糙的猜测，并行地在所有时间步上评估模型给出的漂移，再用这些漂移一次性更新整条轨迹的猜测，如此反复，直到猜测不再变化。"
+            },
+            {
+              "type": "paragraph",
+              "text": "它之所以能加速，靠的是一个经验性但相当稳健的现象：收敛所需的精修迭代次数，远远少于去噪步数，常常要少一个数量级以上。而每一轮迭代都在所有时间步上并行完成，于是真实时间只跟「较小的迭代次数」挂钩，而不是「较大的步数」。为了照顾 GPU 显存，ParaDiGMS 并不会一次精修整条轨迹，而是让一个固定大小为 p 的批处理窗口（batch window）沿时间轴滑动，一旦窗口前端的时间步收敛，就把窗口往前推。对于随机（SDE）采样器，噪声会被提前一次性采好，这样得到的 ODE 才能保持良态（满足 Lipschitz 条件）。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图2 批处理窗口内部。ParaDiGMS 在大小为 p 的窗口内同时评估每个点的漂移（蓝色箭头），用累积漂移把每个点推向真实轨迹（黑色曲线），一旦前端的点收敛到误差容忍度以下，窗口就向前滑动。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "由于它只改变「一条既定轨迹如何被计算」，ParaDiGMS 和大家已经在用的快速采样器是正交（orthogonal）的。把它叠加到 DDPM、DDIM、DPMSolver 上，就得到 ParaDDPM、ParaDDIM、ParaDPMSolver：并行带来的加速，直接叠在这些方法本就有的「减步数」加速之上。它也兼容 classifier-free guidance。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：稳定的 2-4x 加速，质量几乎不动"
+            },
+            {
+              "type": "paragraph",
+              "text": "最值得注意的是这个提升有多稳定。它奏效的底层原因是：并行收敛所需的迭代次数，最多可以比顺序步数少 20x。正是凭借这一点，跨越机器人控制和图像生成两个差异极大的领域、跨越测试过的每一种采样器，ParaDiGMS 都能把采样延迟降低 2-4x，而任务奖励、FID、CLIP score 都没有可测量的下降。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在机器人方向，作者在三个操作任务上评测 DiffusionPolicy 模型，用 200 个评测回合的平均任务奖励来衡量。把 ParaDiGMS 用在完整 100 步的 DDPM 策略上（即 ParaDDPM）后，采样加速 3.4x 到 3.9x，一个 100 步策略的单样本采样时间降到约 0.2 秒，而任务奖励基本保持不变。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 机器人 DiffusionPolicy（100 步 DDPM，容忍度 0.1，窗口 20，单张 A40）。奖励为 200 回合平均，时间为每回合耗时。ParaDDPM 在奖励保持不变的情况下把延迟降低 3.4-3.9x。",
+              "headers": [
+                "任务",
+                "奖励（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "图像生成这边情况完全一致。StableDiffusion-v2 从 COCO caption 生成 768x768 图像，用 ParaDDPM 后单样本从 50.0 秒降到 14.6 秒（3.4x），CLIP score 保持在 32.1 不变；把并行方案叠加到本就更快的 DDIM 和 DPMSolver 上，加速达到 4.0x，而 CLIP 稳定在 31.7-31.9。在像素空间的 LSUN Church 上，ParaDDPM 的 FID 与完整 DDPM 持平（12.8 对 12.9），加速 3.9x。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 图像生成（A100）。StableDiffusion-v2 用 CLIP score 衡量质量（越高越好，基于 COCO2017 caption）；LSUN Church 用 FID 衡量（越低越好，5000 个样本）。所有配置下质量都得以保持。",
+              "headers": [
+                "模型",
+                "质量（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "两张表里真正值得注意的，不是某一个具体数字，而是这份提升的一致性。如果一个方法只对隐空间的图像模型有效，或者只在质量本已饱和时才生效，那它就只是个狭窄的技巧。而从 100 步的机器人策略到 1000 步的图像模型，从 FID 到 CLIP score 再到任务奖励，都能看到同样的 2-4x，这才让「算力换速度」看起来是扩散采样的一个普遍性质，而不是针对某个设定精调出来的结果。"
+            },
+            {
+              "type": "paragraph",
+              "text": "因为加速的同时质量不变，样本本身看起来和顺序采样的输出没有区别。下面这张图就是用 ParaDDPM 跑完整 1000 步的 StableDiffusion-v2 调度、在其 4x96x96 的隐空间（latent space）上生成的，延迟比顺序基线低约 3.4x。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图3 StableDiffusion-v2 在提示词「a beautiful castle, matte painting」下的采样结果，用 ParaDDPM 跑完整 1000 步调度、在 A100 上生成。并行采样在延迟降低约 3.4x 的同时，产出同等质量的输出。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "唯一的旋钮：收敛容忍度"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 只暴露一个可解释的旋钮：不动点迭代的误差容忍度（tolerance）。容忍度越紧，需要的迭代越多，保真度更高但加速更少；容忍度越松，收敛越早，跑得越快。有价值的发现是：存在一个相当宽的「舒适区」，容忍度放得比较松时质量依然纹丝不动，只有当它真正调得很大时，质量才开始被拉低。"
+            },
+            {
+              "type": "table",
+              "caption": "表3 容忍度消融（StableDiffusion-v2，200 步 DDIM，CLIP 基于 1000 样本，A100）。随着容忍度放松，加速稳步上升；在容忍度变得很大之前，CLIP score 一直保持不变。",
+              "headers": [
+                "容忍度 τ",
+                "并行迭代数",
+                "CLIP score",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "seq",
+                  "200",
+                  "31.9",
+                  "-"
+                ],
+                [
+                  "5e-3",
+                  "36",
+                  "31.9",
+                  "1.4x"
+                ],
+                [
+                  "1e-2",
+                  "28",
+                  "31.9",
+                  "2.0x"
+                ],
+                [
+                  "5e-2",
+                  "19",
+                  "31.9",
+                  "3.1x"
+                ],
+                [
+                  "1e-1",
+                  "15",
+                  "31.9",
+                  "4.0x"
+                ],
+                [
+                  "5e-1",
+                  "13",
+                  "31.5",
+                  "4.9x"
+                ],
+                [
+                  "1e-0",
+                  "12",
+                  "31.5",
+                  "5.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "还有一个对照实验证明这份加速是「真」的，而不是偷偷减了步数。在 LSUN Church 上，ParaDDPM 以近 4x 的速度匹配完整 DDPM 的 FID，而单纯把 DDIM 缩到 500 步则会得到明显更差的图像。也就是说，收益确实来自「对所有步数做并行」，而不是悄悄少走几步。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 为加速扩散模型开辟了一条新的轴：不是靠减步数牺牲质量，而是花并行算力把所有步数跑得更快，把采样延迟降低 2-4x 且质量无损，还能和大家已经在用的快速采样器叠加。需要诚实说明的边界是：这是一笔「算力换速度」的交易，额外的并行模型评估并不免费，因此它的收益在「有富余的并行硬件、且更在意延迟而非总算力」时最大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "往前看，这个视角本身才是最有意思的地方。随着 GPU 在大批量并行上越来越强，采样的真实耗时将主要受限于那少数几轮 Picard 迭代，而不再是那条长长的步数链——这指向一种会随硬件规模持续变快、又始终不必用质量买单的扩散采样。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 359.45,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 359.45,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 39.08,
+          "relative_start": 0.5,
+          "relative_end": 39.08,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 39.08,
+          "global_end": 68.9,
+          "relative_start": 39.08,
+          "relative_end": 68.9,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 68.9,
+          "global_end": 101.34,
+          "relative_start": 68.9,
+          "relative_end": 101.34,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 101.34,
+          "global_end": 132.89,
+          "relative_start": 101.34,
+          "relative_end": 132.89,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 132.89,
+          "global_end": 180.71,
+          "relative_start": 132.89,
+          "relative_end": 180.71,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 180.71,
+          "global_end": 218.38,
+          "relative_start": 180.71,
+          "relative_end": 218.38,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 218.38,
+          "global_end": 259.26,
+          "relative_start": 218.38,
+          "relative_end": 259.26,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 259.26,
+          "global_end": 297.77,
+          "relative_start": 259.26,
+          "relative_end": 297.77,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 297.77,
+          "global_end": 326.65,
+          "relative_start": 297.77,
+          "relative_end": 326.65,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 326.65,
+          "global_end": 359.37,
+          "relative_start": 326.65,
+          "relative_end": 359.37,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why single-sample latency is the hard part"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be precise about what is slow. Diffusion sampling is sequential by construction: each denoising step reads the output of the previous one, so the 1000 steps form a chain you cannot obviously shortcut. You can trivially parallelize across samples, generating a whole batch of images at once, but that only raises throughput. It does nothing for the latency of the single sample a user is waiting on. Making one sample appear faster in wall-clock time is the genuinely hard problem, and it is the one ParaDiGMS targets."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' insight is that this sequential chain is really an ODE being solved by the simplest possible integrator, and there are better ways to solve an ODE than marching one step at a time."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "扩散模型（diffusion model）能生成惊艳的图像，如今在机器人动作生成上也越来越强，但它有一个绕不开的短板：慢。生成一个样本往往要顺序跑上千步去噪，每一步都要过一次神经网络，而且下一步必须等上一步算完。对任何需要实时交互的场景来说，这个延迟就是第一道墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "业界通行的解法是「少走几步」。DDIM、DPMSolver 这类快速采样器把上千步压缩到几十步，效果确实很好，但代价也很实在：步数压得越低，样本质量下降得越明显。大家基本上默认了这笔交易，用质量去换速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自斯坦福的论文换了一个问题来问：与其用质量换速度，能不能用算力换速度？也就是每一步去噪都保留，只是不再严格地一步接一步地算。答案就是 ParaDiGMS（Parallel Diffusion Generative Model Sampling，并行扩散生成模型采样）——第一个用额外并行算力给「预训练好的」扩散模型加速的通用方法，不需要重新训练，采样质量也没有可测量的损失。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/AndyShih12/paradigms"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 39.08,
+        "end": 68.9,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 29.82,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 30.72,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 39.08,
+          "global_end": 68.9,
+          "relative_start": 0.0,
+          "relative_end": 29.82,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why single-sample latency is the hard part"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be precise about what is slow. Diffusion sampling is sequential by construction: each denoising step reads the output of the previous one, so the 1000 steps form a chain you cannot obviously shortcut. You can trivially parallelize across samples, generating a whole batch of images at once, but that only raises throughput. It does nothing for the latency of the single sample a user is waiting on. Making one sample appear faster in wall-clock time is the genuinely hard problem, and it is the one ParaDiGMS targets."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' insight is that this sequential chain is really an ODE being solved by the simplest possible integrator, and there are better ways to solve an ODE than marching one step at a time."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "扩散模型（diffusion model）能生成惊艳的图像，如今在机器人动作生成上也越来越强，但它有一个绕不开的短板：慢。生成一个样本往往要顺序跑上千步去噪，每一步都要过一次神经网络，而且下一步必须等上一步算完。对任何需要实时交互的场景来说，这个延迟就是第一道墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "业界通行的解法是「少走几步」。DDIM、DPMSolver 这类快速采样器把上千步压缩到几十步，效果确实很好，但代价也很实在：步数压得越低，样本质量下降得越明显。大家基本上默认了这笔交易，用质量去换速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自斯坦福的论文换了一个问题来问：与其用质量换速度，能不能用算力换速度？也就是每一步去噪都保留，只是不再严格地一步接一步地算。答案就是 ParaDiGMS（Parallel Diffusion Generative Model Sampling，并行扩散生成模型采样）——第一个用额外并行算力给「预训练好的」扩散模型加速的通用方法，不需要重新训练，采样质量也没有可测量的损失。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/AndyShih12/paradigms"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 68.9,
+        "end": 101.34,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 32.44,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 33.34,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 68.9,
+          "global_end": 101.34,
+          "relative_start": 0.0,
+          "relative_end": 32.44,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: a consistent 2-4x speedup, quality held flat"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is how consistent the gain is. Across two very different domains, robot control and image generation, and across every sampler tested, ParaDiGMS delivers a 2-4x reduction in sampling latency with no measurable drop in task reward, FID, or CLIP score. The deep reason it works: the number of parallel iterations to converge is up to 20x smaller than the number of sequential steps."
+            },
+            {
+              "type": "paragraph",
+              "text": "On robotics, the authors evaluate DiffusionPolicy models on three manipulation tasks, measuring task reward averaged over 200 evaluation episodes. Applying ParaDiGMS to the full 100-step DDPM policy (ParaDDPM) speeds up sampling by 3.4x to 3.9x while leaving reward essentially unchanged, bringing a 100-step policy down to about 0.2s per sample."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Robotics DiffusionPolicy (100-step DDPM, tolerance 0.1, window 20, single A40 GPU). Reward is averaged over 200 episodes; time is per episode. ParaDDPM holds reward flat while cutting latency 3.4-3.9x.",
+              "headers": [
+                "Task",
+                "Reward (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On image generation the picture is the same. StableDiffusion-v2 generating 768x768 images from COCO captions drops from 50.0s to 14.6s per sample with ParaDDPM (3.4x) at an unchanged CLIP score of 32.1; stacking the parallel scheme on the already-fast DDIM and DPMSolver reaches 4.0x while CLIP holds at 31.7-31.9. On pixel-space LSUN Church, ParaDDPM matches full DDPM's FID (12.8 vs 12.9) at 3.9x."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Image generation on A100 GPUs. StableDiffusion-v2 quality is CLIP score (higher is better) over COCO2017 captions; LSUN Church is FID (lower is better) over 5000 samples. Quality is preserved across every configuration.",
+              "headers": [
+                "Model",
+                "Quality (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "What stands out across both tables is not any single number but the uniformity of the effect. A method that only helped latent-space image models, or only kicked in once quality was already saturated, would be a narrow trick. Seeing the same 2-4x hold from a 100-step robot policy to a 1000-step image model, and across FID, CLIP score, and task reward alike, is what makes the compute-for-speed trade look like a general property of diffusion sampling rather than a result tuned to one setting."
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the speedup preserves quality, the samples themselves look no different from sequential output. The image below was generated with ParaDDPM running the full 1000-step StableDiffusion-v2 schedule over its 4x96x96 latent space, at 3.4x lower latency than the sequential baseline that produces an equivalent result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 3. A StableDiffusion-v2 sample from the prompt \"a beautiful castle, matte painting,\" generated with ParaDDPM over the full 1000-step schedule on A100 GPUs. Parallel sampling produces the same quality output at 3.4x lower latency.",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：稳定的 2-4x 加速，质量几乎不动"
+            },
+            {
+              "type": "paragraph",
+              "text": "最值得注意的是这个提升有多稳定。它奏效的底层原因是：并行收敛所需的迭代次数，最多可以比顺序步数少 20x。正是凭借这一点，跨越机器人控制和图像生成两个差异极大的领域、跨越测试过的每一种采样器，ParaDiGMS 都能把采样延迟降低 2-4x，而任务奖励、FID、CLIP score 都没有可测量的下降。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在机器人方向，作者在三个操作任务上评测 DiffusionPolicy 模型，用 200 个评测回合的平均任务奖励来衡量。把 ParaDiGMS 用在完整 100 步的 DDPM 策略上（即 ParaDDPM）后，采样加速 3.4x 到 3.9x，一个 100 步策略的单样本采样时间降到约 0.2 秒，而任务奖励基本保持不变。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 机器人 DiffusionPolicy（100 步 DDPM，容忍度 0.1，窗口 20，单张 A40）。奖励为 200 回合平均，时间为每回合耗时。ParaDDPM 在奖励保持不变的情况下把延迟降低 3.4-3.9x。",
+              "headers": [
+                "任务",
+                "奖励（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "图像生成这边情况完全一致。StableDiffusion-v2 从 COCO caption 生成 768x768 图像，用 ParaDDPM 后单样本从 50.0 秒降到 14.6 秒（3.4x），CLIP score 保持在 32.1 不变；把并行方案叠加到本就更快的 DDIM 和 DPMSolver 上，加速达到 4.0x，而 CLIP 稳定在 31.7-31.9。在像素空间的 LSUN Church 上，ParaDDPM 的 FID 与完整 DDPM 持平（12.8 对 12.9），加速 3.9x。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 图像生成（A100）。StableDiffusion-v2 用 CLIP score 衡量质量（越高越好，基于 COCO2017 caption）；LSUN Church 用 FID 衡量（越低越好，5000 个样本）。所有配置下质量都得以保持。",
+              "headers": [
+                "模型",
+                "质量（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "两张表里真正值得注意的，不是某一个具体数字，而是这份提升的一致性。如果一个方法只对隐空间的图像模型有效，或者只在质量本已饱和时才生效，那它就只是个狭窄的技巧。而从 100 步的机器人策略到 1000 步的图像模型，从 FID 到 CLIP score 再到任务奖励，都能看到同样的 2-4x，这才让「算力换速度」看起来是扩散采样的一个普遍性质，而不是针对某个设定精调出来的结果。"
+            },
+            {
+              "type": "paragraph",
+              "text": "因为加速的同时质量不变，样本本身看起来和顺序采样的输出没有区别。下面这张图就是用 ParaDDPM 跑完整 1000 步的 StableDiffusion-v2 调度、在其 4x96x96 的隐空间（latent space）上生成的，延迟比顺序基线低约 3.4x。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图3 StableDiffusion-v2 在提示词「a beautiful castle, matte painting」下的采样结果，用 ParaDDPM 跑完整 1000 步调度、在 A100 上生成。并行采样在延迟降低约 3.4x 的同时，产出同等质量的输出。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 101.34,
+        "end": 132.89,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 31.55,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 32.45,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 101.34,
+          "global_end": 132.89,
+          "relative_start": 0.0,
+          "relative_end": 31.55,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Diffusion models generate strikingly good images, and increasingly good robot actions, but they are slow. Producing a single sample can take up to 1000 sequential passes through the neural network, one denoising step feeding into the next. For anything interactive, that latency is the wall everyone hits first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The field's standard answer is to take fewer steps. Fast samplers like DDIM and DPMSolver cut the 1000 steps down to a few dozen, and they work remarkably well, but the tradeoff is real: push the step count low enough and sample quality visibly degrades. We have largely accepted this as the deal, spending quality to buy speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper from Stanford asks a different question. What if, instead of trading quality for speed, we trade compute for speed? Keep every denoising step, but stop running them strictly one after another. The result is ParaDiGMS (Parallel Diffusion Generative Model Sampling), the first general method that spends extra parallel compute to sample a pretrained diffusion model faster, with no retraining and no measurable loss in quality."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code: https://github.com/AndyShih12/paradigms"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The method: denoising as a parallel fixed-point iteration"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS builds on Picard iteration, a classic technique for solving ordinary differential equations by fixed-point iteration. The idea is to write the value at each timestep as the starting point plus the accumulated drift along the path, then refine the whole trajectory at once. You begin with a rough guess for every timestep, evaluate the model's drift at all of them in parallel, and use those drifts to produce an updated guess for the entire trajectory. Repeat until the guess stops changing."
+            },
+            {
+              "type": "paragraph",
+              "text": "The reason this is a win is empirical but robust: the number of refinement iterations needed to converge turns out to be far smaller than the number of denoising steps, often by more than an order of magnitude. Each iteration touches all timesteps in parallel, so wall-clock time scales with the small iteration count rather than the large step count. To respect GPU memory, ParaDiGMS does not refine the full trajectory at once; it slides a batch window of fixed size p across the timeline, advancing the window as soon as the leading timesteps have converged. For stochastic (SDE) samplers, the noise is drawn up front so the resulting ODE stays well-behaved (Lipschitz)."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 2. Inside the batch window. ParaDiGMS evaluates the drift (blue arrows) at every point in a window of size p simultaneously, uses the cumulative drift to update each point toward the true trajectory (black curve), and slides the window forward once the leading points have converged below the error tolerance.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because it only changes how a fixed trajectory is computed, ParaDiGMS is orthogonal to the fast samplers people already use. Layer it on DDPM, DDIM, or DPMSolver and you get ParaDDPM, ParaDDIM, and ParaDPMSolver: the parallel speedup stacks on top of whatever step-count reduction those methods already provide. It is also compatible with classifier-free guidance."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "扩散模型（diffusion model）能生成惊艳的图像，如今在机器人动作生成上也越来越强，但它有一个绕不开的短板：慢。生成一个样本往往要顺序跑上千步去噪，每一步都要过一次神经网络，而且下一步必须等上一步算完。对任何需要实时交互的场景来说，这个延迟就是第一道墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "业界通行的解法是「少走几步」。DDIM、DPMSolver 这类快速采样器把上千步压缩到几十步，效果确实很好，但代价也很实在：步数压得越低，样本质量下降得越明显。大家基本上默认了这笔交易，用质量去换速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自斯坦福的论文换了一个问题来问：与其用质量换速度，能不能用算力换速度？也就是每一步去噪都保留，只是不再严格地一步接一步地算。答案就是 ParaDiGMS（Parallel Diffusion Generative Model Sampling，并行扩散生成模型采样）——第一个用额外并行算力给「预训练好的」扩散模型加速的通用方法，不需要重新训练，采样质量也没有可测量的损失。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/AndyShih12/paradigms"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "难点：难的是「单个样本」的延迟"
+            },
+            {
+              "type": "paragraph",
+              "text": "先把「慢在哪」说清楚。扩散采样天生是顺序的：每一步去噪都要读上一步的输出，所以上千步构成了一条看似无法抄近路的链。你当然可以在「样本之间」轻松并行，一次生成一整批图，但那只提升吞吐量（throughput），对用户正在等待的那「一个」样本的延迟毫无帮助。让单个样本在真实时间（wall-clock）里更快出现，才是真正困难的问题，而这正是 ParaDiGMS 要攻的点。"
+            },
+            {
+              "type": "paragraph",
+              "text": "作者的关键洞察是：这条顺序链其实就是在用最朴素的积分器求解一个常微分方程（ODE），而求解 ODE 的方法，远不止「一步一步往前挪」这一种。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 132.89,
+        "end": 180.71,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 47.82,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.72,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 132.89,
+          "global_end": 180.71,
+          "relative_start": 0.0,
+          "relative_end": 47.82,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The one knob: convergence tolerance"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS exposes a single, interpretable dial: the error tolerance of the fixed-point iteration. A tighter tolerance demands more iterations, giving higher fidelity but less speedup; a looser tolerance converges sooner and runs faster. The useful finding is that there is a wide comfortable regime where a fairly relaxed tolerance still leaves quality untouched, and only a genuinely loose setting begins to nudge quality down."
+            },
+            {
+              "type": "table",
+              "caption": "Table 3. Tolerance ablation on StableDiffusion-v2 with 200-step DDIM (CLIP over 1000 samples, A100 GPUs). Speedup grows steadily as tolerance loosens, and CLIP score stays flat until the tolerance becomes very large.",
+              "headers": [
+                "Tolerance τ",
+                "Parallel iters",
+                "CLIP score",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "seq",
+                  "200",
+                  "31.9",
+                  "-"
+                ],
+                [
+                  "5e-3",
+                  "36",
+                  "31.9",
+                  "1.4x"
+                ],
+                [
+                  "1e-2",
+                  "28",
+                  "31.9",
+                  "2.0x"
+                ],
+                [
+                  "5e-2",
+                  "19",
+                  "31.9",
+                  "3.1x"
+                ],
+                [
+                  "1e-1",
+                  "15",
+                  "31.9",
+                  "4.0x"
+                ],
+                [
+                  "5e-1",
+                  "13",
+                  "31.5",
+                  "4.9x"
+                ],
+                [
+                  "1e-0",
+                  "12",
+                  "31.5",
+                  "5.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "One more control confirms the speedup is real rather than a disguised step-count reduction. On LSUN Church, ParaDDPM matches full DDPM's FID at nearly 4x, whereas simply shortening DDIM to 500 steps produces visibly worse images. The gains genuinely come from parallelism across all the steps, not from quietly taking fewer of them."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "扩散模型（diffusion model）能生成惊艳的图像，如今在机器人动作生成上也越来越强，但它有一个绕不开的短板：慢。生成一个样本往往要顺序跑上千步去噪，每一步都要过一次神经网络，而且下一步必须等上一步算完。对任何需要实时交互的场景来说，这个延迟就是第一道墙。"
+            },
+            {
+              "type": "paragraph",
+              "text": "业界通行的解法是「少走几步」。DDIM、DPMSolver 这类快速采样器把上千步压缩到几十步，效果确实很好，但代价也很实在：步数压得越低，样本质量下降得越明显。大家基本上默认了这笔交易，用质量去换速度。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇来自斯坦福的论文换了一个问题来问：与其用质量换速度，能不能用算力换速度？也就是每一步去噪都保留，只是不再严格地一步接一步地算。答案就是 ParaDiGMS（Parallel Diffusion Generative Model Sampling，并行扩散生成模型采样）——第一个用额外并行算力给「预训练好的」扩散模型加速的通用方法，不需要重新训练，采样质量也没有可测量的损失。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文地址：https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码地址：https://github.com/AndyShih12/paradigms"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 180.71,
+        "end": 218.38,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 37.67,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 38.57,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 180.71,
+          "global_end": 218.38,
+          "relative_start": 0.0,
+          "relative_end": 37.67,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Diffusion models generate strikingly good images, and increasingly good robot actions, but they are slow. Producing a single sample can take up to 1000 sequential passes through the neural network, one denoising step feeding into the next. For anything interactive, that latency is the wall everyone hits first."
+            },
+            {
+              "type": "paragraph",
+              "text": "The field's standard answer is to take fewer steps. Fast samplers like DDIM and DPMSolver cut the 1000 steps down to a few dozen, and they work remarkably well, but the tradeoff is real: push the step count low enough and sample quality visibly degrades. We have largely accepted this as the deal, spending quality to buy speed."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper from Stanford asks a different question. What if, instead of trading quality for speed, we trade compute for speed? Keep every denoising step, but stop running them strictly one after another. The result is ParaDiGMS (Parallel Diffusion Generative Model Sampling), the first general method that spends extra parallel compute to sample a pretrained diffusion model faster, with no retraining and no measurable loss in quality."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2305.16317"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code: https://github.com/AndyShih12/paradigms"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: a consistent 2-4x speedup, quality held flat"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is how consistent the gain is. Across two very different domains, robot control and image generation, and across every sampler tested, ParaDiGMS delivers a 2-4x reduction in sampling latency with no measurable drop in task reward, FID, or CLIP score. The deep reason it works: the number of parallel iterations to converge is up to 20x smaller than the number of sequential steps."
+            },
+            {
+              "type": "paragraph",
+              "text": "On robotics, the authors evaluate DiffusionPolicy models on three manipulation tasks, measuring task reward averaged over 200 evaluation episodes. Applying ParaDiGMS to the full 100-step DDPM policy (ParaDDPM) speeds up sampling by 3.4x to 3.9x while leaving reward essentially unchanged, bringing a 100-step policy down to about 0.2s per sample."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Robotics DiffusionPolicy (100-step DDPM, tolerance 0.1, window 20, single A40 GPU). Reward is averaged over 200 episodes; time is per episode. ParaDDPM holds reward flat while cutting latency 3.4-3.9x.",
+              "headers": [
+                "Task",
+                "Reward (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On image generation the picture is the same. StableDiffusion-v2 generating 768x768 images from COCO captions drops from 50.0s to 14.6s per sample with ParaDDPM (3.4x) at an unchanged CLIP score of 32.1; stacking the parallel scheme on the already-fast DDIM and DPMSolver reaches 4.0x while CLIP holds at 31.7-31.9. On pixel-space LSUN Church, ParaDDPM matches full DDPM's FID (12.8 vs 12.9) at 3.9x."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Image generation on A100 GPUs. StableDiffusion-v2 quality is CLIP score (higher is better) over COCO2017 captions; LSUN Church is FID (lower is better) over 5000 samples. Quality is preserved across every configuration.",
+              "headers": [
+                "Model",
+                "Quality (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "What stands out across both tables is not any single number but the uniformity of the effect. A method that only helped latent-space image models, or only kicked in once quality was already saturated, would be a narrow trick. Seeing the same 2-4x hold from a 100-step robot policy to a 1000-step image model, and across FID, CLIP score, and task reward alike, is what makes the compute-for-speed trade look like a general property of diffusion sampling rather than a result tuned to one setting."
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the speedup preserves quality, the samples themselves look no different from sequential output. The image below was generated with ParaDDPM running the full 1000-step StableDiffusion-v2 schedule over its 4x96x96 latent space, at 3.4x lower latency than the sequential baseline that produces an equivalent result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 3. A StableDiffusion-v2 sample from the prompt \"a beautiful castle, matte painting,\" generated with ParaDDPM over the full 1000-step schedule on A100 GPUs. Parallel sampling produces the same quality output at 3.4x lower latency.",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：稳定的 2-4x 加速，质量几乎不动"
+            },
+            {
+              "type": "paragraph",
+              "text": "最值得注意的是这个提升有多稳定。它奏效的底层原因是：并行收敛所需的迭代次数，最多可以比顺序步数少 20x。正是凭借这一点，跨越机器人控制和图像生成两个差异极大的领域、跨越测试过的每一种采样器，ParaDiGMS 都能把采样延迟降低 2-4x，而任务奖励、FID、CLIP score 都没有可测量的下降。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在机器人方向，作者在三个操作任务上评测 DiffusionPolicy 模型，用 200 个评测回合的平均任务奖励来衡量。把 ParaDiGMS 用在完整 100 步的 DDPM 策略上（即 ParaDDPM）后，采样加速 3.4x 到 3.9x，一个 100 步策略的单样本采样时间降到约 0.2 秒，而任务奖励基本保持不变。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 机器人 DiffusionPolicy（100 步 DDPM，容忍度 0.1，窗口 20，单张 A40）。奖励为 200 回合平均，时间为每回合耗时。ParaDDPM 在奖励保持不变的情况下把延迟降低 3.4-3.9x。",
+              "headers": [
+                "任务",
+                "奖励（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "图像生成这边情况完全一致。StableDiffusion-v2 从 COCO caption 生成 768x768 图像，用 ParaDDPM 后单样本从 50.0 秒降到 14.6 秒（3.4x），CLIP score 保持在 32.1 不变；把并行方案叠加到本就更快的 DDIM 和 DPMSolver 上，加速达到 4.0x，而 CLIP 稳定在 31.7-31.9。在像素空间的 LSUN Church 上，ParaDDPM 的 FID 与完整 DDPM 持平（12.8 对 12.9），加速 3.9x。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 图像生成（A100）。StableDiffusion-v2 用 CLIP score 衡量质量（越高越好，基于 COCO2017 caption）；LSUN Church 用 FID 衡量（越低越好，5000 个样本）。所有配置下质量都得以保持。",
+              "headers": [
+                "模型",
+                "质量（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "两张表里真正值得注意的，不是某一个具体数字，而是这份提升的一致性。如果一个方法只对隐空间的图像模型有效，或者只在质量本已饱和时才生效，那它就只是个狭窄的技巧。而从 100 步的机器人策略到 1000 步的图像模型，从 FID 到 CLIP score 再到任务奖励，都能看到同样的 2-4x，这才让「算力换速度」看起来是扩散采样的一个普遍性质，而不是针对某个设定精调出来的结果。"
+            },
+            {
+              "type": "paragraph",
+              "text": "因为加速的同时质量不变，样本本身看起来和顺序采样的输出没有区别。下面这张图就是用 ParaDDPM 跑完整 1000 步的 StableDiffusion-v2 调度、在其 4x96x96 的隐空间（latent space）上生成的，延迟比顺序基线低约 3.4x。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图3 StableDiffusion-v2 在提示词「a beautiful castle, matte painting」下的采样结果，用 ParaDDPM 跑完整 1000 步调度、在 A100 上生成。并行采样在延迟降低约 3.4x 的同时，产出同等质量的输出。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "唯一的旋钮：收敛容忍度"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 只暴露一个可解释的旋钮：不动点迭代的误差容忍度（tolerance）。容忍度越紧，需要的迭代越多，保真度更高但加速更少；容忍度越松，收敛越早，跑得越快。有价值的发现是：存在一个相当宽的「舒适区」，容忍度放得比较松时质量依然纹丝不动，只有当它真正调得很大时，质量才开始被拉低。"
+            },
+            {
+              "type": "table",
+              "caption": "表3 容忍度消融（StableDiffusion-v2，200 步 DDIM，CLIP 基于 1000 样本，A100）。随着容忍度放松，加速稳步上升；在容忍度变得很大之前，CLIP score 一直保持不变。",
+              "headers": [
+                "容忍度 τ",
+                "并行迭代数",
+                "CLIP score",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "seq",
+                  "200",
+                  "31.9",
+                  "-"
+                ],
+                [
+                  "5e-3",
+                  "36",
+                  "31.9",
+                  "1.4x"
+                ],
+                [
+                  "1e-2",
+                  "28",
+                  "31.9",
+                  "2.0x"
+                ],
+                [
+                  "5e-2",
+                  "19",
+                  "31.9",
+                  "3.1x"
+                ],
+                [
+                  "1e-1",
+                  "15",
+                  "31.9",
+                  "4.0x"
+                ],
+                [
+                  "5e-1",
+                  "13",
+                  "31.5",
+                  "4.9x"
+                ],
+                [
+                  "1e-0",
+                  "12",
+                  "31.5",
+                  "5.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "还有一个对照实验证明这份加速是「真」的，而不是偷偷减了步数。在 LSUN Church 上，ParaDDPM 以近 4x 的速度匹配完整 DDPM 的 FID，而单纯把 DDIM 缩到 500 步则会得到明显更差的图像。也就是说，收益确实来自「对所有步数做并行」，而不是悄悄少走几步。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 218.38,
+        "end": 259.26,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 40.88,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 41.78,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 218.38,
+          "global_end": 259.26,
+          "relative_start": 0.0,
+          "relative_end": 40.88,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why single-sample latency is the hard part"
+            },
+            {
+              "type": "paragraph",
+              "text": "It helps to be precise about what is slow. Diffusion sampling is sequential by construction: each denoising step reads the output of the previous one, so the 1000 steps form a chain you cannot obviously shortcut. You can trivially parallelize across samples, generating a whole batch of images at once, but that only raises throughput. It does nothing for the latency of the single sample a user is waiting on. Making one sample appear faster in wall-clock time is the genuinely hard problem, and it is the one ParaDiGMS targets."
+            },
+            {
+              "type": "paragraph",
+              "text": "The authors' insight is that this sequential chain is really an ODE being solved by the simplest possible integrator, and there are better ways to solve an ODE than marching one step at a time."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "唯一的旋钮：收敛容忍度"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 只暴露一个可解释的旋钮：不动点迭代的误差容忍度（tolerance）。容忍度越紧，需要的迭代越多，保真度更高但加速更少；容忍度越松，收敛越早，跑得越快。有价值的发现是：存在一个相当宽的「舒适区」，容忍度放得比较松时质量依然纹丝不动，只有当它真正调得很大时，质量才开始被拉低。"
+            },
+            {
+              "type": "table",
+              "caption": "表3 容忍度消融（StableDiffusion-v2，200 步 DDIM，CLIP 基于 1000 样本，A100）。随着容忍度放松，加速稳步上升；在容忍度变得很大之前，CLIP score 一直保持不变。",
+              "headers": [
+                "容忍度 τ",
+                "并行迭代数",
+                "CLIP score",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "seq",
+                  "200",
+                  "31.9",
+                  "-"
+                ],
+                [
+                  "5e-3",
+                  "36",
+                  "31.9",
+                  "1.4x"
+                ],
+                [
+                  "1e-2",
+                  "28",
+                  "31.9",
+                  "2.0x"
+                ],
+                [
+                  "5e-2",
+                  "19",
+                  "31.9",
+                  "3.1x"
+                ],
+                [
+                  "1e-1",
+                  "15",
+                  "31.9",
+                  "4.0x"
+                ],
+                [
+                  "5e-1",
+                  "13",
+                  "31.5",
+                  "4.9x"
+                ],
+                [
+                  "1e-0",
+                  "12",
+                  "31.5",
+                  "5.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "还有一个对照实验证明这份加速是「真」的，而不是偷偷减了步数。在 LSUN Church 上，ParaDDPM 以近 4x 的速度匹配完整 DDPM 的 FID，而单纯把 DDIM 缩到 500 步则会得到明显更差的图像。也就是说，收益确实来自「对所有步数做并行」，而不是悄悄少走几步。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 259.26,
+        "end": 297.77,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 38.51,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 39.41,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 259.26,
+          "global_end": 297.77,
+          "relative_start": 0.0,
+          "relative_end": 38.51,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Results: a consistent 2-4x speedup, quality held flat"
+            },
+            {
+              "type": "paragraph",
+              "text": "The headline is how consistent the gain is. Across two very different domains, robot control and image generation, and across every sampler tested, ParaDiGMS delivers a 2-4x reduction in sampling latency with no measurable drop in task reward, FID, or CLIP score. The deep reason it works: the number of parallel iterations to converge is up to 20x smaller than the number of sequential steps."
+            },
+            {
+              "type": "paragraph",
+              "text": "On robotics, the authors evaluate DiffusionPolicy models on three manipulation tasks, measuring task reward averaged over 200 evaluation episodes. Applying ParaDiGMS to the full 100-step DDPM policy (ParaDDPM) speeds up sampling by 3.4x to 3.9x while leaving reward essentially unchanged, bringing a 100-step policy down to about 0.2s per sample."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Robotics DiffusionPolicy (100-step DDPM, tolerance 0.1, window 20, single A40 GPU). Reward is averaged over 200 episodes; time is per episode. ParaDDPM holds reward flat while cutting latency 3.4-3.9x.",
+              "headers": [
+                "Task",
+                "Reward (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On image generation the picture is the same. StableDiffusion-v2 generating 768x768 images from COCO captions drops from 50.0s to 14.6s per sample with ParaDDPM (3.4x) at an unchanged CLIP score of 32.1; stacking the parallel scheme on the already-fast DDIM and DPMSolver reaches 4.0x while CLIP holds at 31.7-31.9. On pixel-space LSUN Church, ParaDDPM matches full DDPM's FID (12.8 vs 12.9) at 3.9x."
+            },
+            {
+              "type": "table",
+              "caption": "Table 2. Image generation on A100 GPUs. StableDiffusion-v2 quality is CLIP score (higher is better) over COCO2017 captions; LSUN Church is FID (lower is better) over 5000 samples. Quality is preserved across every configuration.",
+              "headers": [
+                "Model",
+                "Quality (seq → Para)",
+                "Time (seq → Para)",
+                "Speedup"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "What stands out across both tables is not any single number but the uniformity of the effect. A method that only helped latent-space image models, or only kicked in once quality was already saturated, would be a narrow trick. Seeing the same 2-4x hold from a 100-step robot policy to a 1000-step image model, and across FID, CLIP score, and task reward alike, is what makes the compute-for-speed trade look like a general property of diffusion sampling rather than a result tuned to one setting."
+            },
+            {
+              "type": "paragraph",
+              "text": "Because the speedup preserves quality, the samples themselves look no different from sequential output. The image below was generated with ParaDDPM running the full 1000-step StableDiffusion-v2 schedule over its 4x96x96 latent space, at 3.4x lower latency than the sequential baseline that produces an equivalent result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 3. A StableDiffusion-v2 sample from the prompt \"a beautiful castle, matte painting,\" generated with ParaDDPM over the full 1000-step schedule on A100 GPUs. Parallel sampling produces the same quality output at 3.4x lower latency.",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结果：稳定的 2-4x 加速，质量几乎不动"
+            },
+            {
+              "type": "paragraph",
+              "text": "最值得注意的是这个提升有多稳定。它奏效的底层原因是：并行收敛所需的迭代次数，最多可以比顺序步数少 20x。正是凭借这一点，跨越机器人控制和图像生成两个差异极大的领域、跨越测试过的每一种采样器，ParaDiGMS 都能把采样延迟降低 2-4x，而任务奖励、FID、CLIP score 都没有可测量的下降。"
+            },
+            {
+              "type": "paragraph",
+              "text": "在机器人方向，作者在三个操作任务上评测 DiffusionPolicy 模型，用 200 个评测回合的平均任务奖励来衡量。把 ParaDiGMS 用在完整 100 步的 DDPM 策略上（即 ParaDDPM）后，采样加速 3.4x 到 3.9x，一个 100 步策略的单样本采样时间降到约 0.2 秒，而任务奖励基本保持不变。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 机器人 DiffusionPolicy（100 步 DDPM，容忍度 0.1，窗口 20，单张 A40）。奖励为 200 回合平均，时间为每回合耗时。ParaDDPM 在奖励保持不变的情况下把延迟降低 3.4-3.9x。",
+              "headers": [
+                "任务",
+                "奖励（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "Robosuite Square",
+                  "0.85 → 0.85",
+                  "37.0s → 10.0s",
+                  "3.7x"
+                ],
+                [
+                  "PushT",
+                  "0.81 → 0.83",
+                  "32.3s → 8.33s",
+                  "3.9x"
+                ],
+                [
+                  "FrankaKitchen",
+                  "0.85 → 0.84",
+                  "112s → 33.3s",
+                  "3.4x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "图像生成这边情况完全一致。StableDiffusion-v2 从 COCO caption 生成 768x768 图像，用 ParaDDPM 后单样本从 50.0 秒降到 14.6 秒（3.4x），CLIP score 保持在 32.1 不变；把并行方案叠加到本就更快的 DDIM 和 DPMSolver 上，加速达到 4.0x，而 CLIP 稳定在 31.7-31.9。在像素空间的 LSUN Church 上，ParaDDPM 的 FID 与完整 DDPM 持平（12.8 对 12.9），加速 3.9x。"
+            },
+            {
+              "type": "table",
+              "caption": "表2 图像生成（A100）。StableDiffusion-v2 用 CLIP score 衡量质量（越高越好，基于 COCO2017 caption）；LSUN Church 用 FID 衡量（越低越好，5000 个样本）。所有配置下质量都得以保持。",
+              "headers": [
+                "模型",
+                "质量（顺序 → 并行）",
+                "时间（顺序 → 并行）",
+                "加速"
+              ],
+              "rows": [
+                [
+                  "SD-v2, ParaDDPM (1000)",
+                  "CLIP 32.1 → 32.1",
+                  "50.0s → 14.6s",
+                  "3.4x"
+                ],
+                [
+                  "SD-v2, ParaDDIM (200)",
+                  "CLIP 31.9 → 31.9",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "SD-v2, ParaDPMSolver (200)",
+                  "CLIP 31.7 → 31.7",
+                  "10.3s → 2.6s",
+                  "4.0x"
+                ],
+                [
+                  "LSUN Church, ParaDDPM (1000)",
+                  "FID 12.8 → 12.9",
+                  "24.0s → 6.1s",
+                  "3.9x"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "两张表里真正值得注意的，不是某一个具体数字，而是这份提升的一致性。如果一个方法只对隐空间的图像模型有效，或者只在质量本已饱和时才生效，那它就只是个狭窄的技巧。而从 100 步的机器人策略到 1000 步的图像模型，从 FID 到 CLIP score 再到任务奖励，都能看到同样的 2-4x，这才让「算力换速度」看起来是扩散采样的一个普遍性质，而不是针对某个设定精调出来的结果。"
+            },
+            {
+              "type": "paragraph",
+              "text": "因为加速的同时质量不变，样本本身看起来和顺序采样的输出没有区别。下面这张图就是用 ParaDDPM 跑完整 1000 步的 StableDiffusion-v2 调度、在其 4x96x96 的隐空间（latent space）上生成的，延迟比顺序基线低约 3.4x。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图3 StableDiffusion-v2 在提示词「a beautiful castle, matte painting」下的采样结果，用 ParaDDPM 跑完整 1000 步调度、在 A100 上生成。并行采样在延迟降低约 3.4x 的同时，产出同等质量的输出。",
+              "width_inches": 4.6,
+              "src": "assets/blog/figures/figure2.png"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 297.77,
+        "end": 326.65,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 28.88,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 29.78,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 297.77,
+          "global_end": 326.65,
+          "relative_start": 0.0,
+          "relative_end": 28.88,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "Figure 1. Two ways to compute a denoising trajectory. Left: sequential sampling evaluates one step at a time, so step t must finish before step t+1 begins. Right: ParaDiGMS runs a Picard iteration that updates every timestep at once (superscript k is the iteration index), introducing skip dependencies so information can propagate down the whole chain in parallel.",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS opens a new axis for accelerating diffusion models. Rather than sacrificing quality by taking fewer steps, it spends parallel compute to run all the steps faster, cutting sampling latency by 2-4x with no quality loss, and it composes with the fast samplers already in wide use. The honest boundary is that this is a compute-for-speed trade: the extra parallel model evaluations are not free, so the win is largest when you have spare parallel hardware and care about latency rather than total FLOPs."
+            },
+            {
+              "type": "paragraph",
+              "text": "Looking ahead, that framing is also the interesting part. As GPUs keep getting better at large parallel batches, the wall-clock cost of sampling becomes bounded mainly by the small number of Picard iterations rather than the long chain of steps, pointing toward diffusion sampling that keeps getting faster as hardware scales, without ever paying for it in quality."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure_compgraph.png",
+              "caption": "图1 计算一条去噪轨迹的两种方式。左：顺序采样一次只算一步，第 t 步算完才能开始第 t+1 步。右：ParaDiGMS 用 Picard 迭代同时更新所有时间步（上标 k 是迭代轮数），引入跨步依赖，让信息能在整条链上并行传播。",
+              "width_inches": 6.4,
+              "src": "assets/blog/figures/figure_compgraph.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "小结"
+            },
+            {
+              "type": "paragraph",
+              "text": "ParaDiGMS 为加速扩散模型开辟了一条新的轴：不是靠减步数牺牲质量，而是花并行算力把所有步数跑得更快，把采样延迟降低 2-4x 且质量无损，还能和大家已经在用的快速采样器叠加。需要诚实说明的边界是：这是一笔「算力换速度」的交易，额外的并行模型评估并不免费，因此它的收益在「有富余的并行硬件、且更在意延迟而非总算力」时最大。"
+            },
+            {
+              "type": "paragraph",
+              "text": "往前看，这个视角本身才是最有意思的地方。随着 GPU 在大批量并行上越来越强，采样的真实耗时将主要受限于那少数几轮 Picard 迭代，而不再是那条长长的步数链——这指向一种会随硬件规模持续变快、又始终不必用质量买单的扩散采样。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "Trade Compute for Speed: Sampling Diffusion Models 2-4x Faster Without Losing Quality",
+            "subtitle": "Stanford's ParaDiGMS (NeurIPS 2023) reframes denoising as parallel Picard iteration"
+          },
+          "zh": {
+            "title": "NeurIPS 2023 | 不用砍步数，也能让扩散模型采样快 2-4x",
+            "subtitle": "斯坦福提出 ParaDiGMS：把去噪重写成可并行的 Picard 迭代，用算力换速度"
+          }
+        }
+      },
+      "segment": {
+        "start": 326.65,
+        "end": 359.37,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 32.72,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 33.62,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 326.65,
+          "global_end": 359.37,
+          "relative_start": 0.0,
+          "relative_end": 32.72,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

@@ -1,0 +1,392 @@
+1
+00:00:00,500 --> 00:00:04,273
+<font color="#FFFFFF">Diffusion models produce stunning samples, but they
+are slow,</font>
+
+2
+00:00:04,353 --> 00:00:09,327
+<font color="#FFFFFF">often needing a thousand sequential denoising steps
+to generate a single sample.</font>
+
+3
+00:00:09,407 --> 00:00:13,875
+<font color="#FFFFFF">This paper from Stanford asks a different question
+than most prior work.</font>
+
+4
+00:00:13,955 --> 00:00:18,297
+<font color="#FFFFFF">Instead of cutting the number of steps and paying
+with sample quality,</font>
+
+5
+00:00:18,377 --> 00:00:21,329
+<font color="#FFFFFF">can we keep every step but run them in parallel,</font>
+
+6
+00:00:21,409 --> 00:00:23,855
+<font color="#FFFFFF">trading extra compute for lower latency?</font>
+
+7
+00:00:23,935 --> 00:00:26,382
+<font color="#FFFFFF">The answer is a method called ParaDiGMS,</font>
+
+8
+00:00:26,462 --> 00:00:33,583
+<font color="#FFFFFF">which uses Picard iterations to guess the whole
+denoising trajectory and refine it in parallel until it converges.</font>
+
+9
+00:00:33,663 --> 00:00:38,700
+<font color="#FFFFFF">It delivers two-to-four times faster sampling with
+no measurable drop in quality.</font>
+
+10
+00:00:39,080 --> 00:00:43,111
+<font color="#FFFFFF">The central limitation of diffusion models is
+sampling speed.</font>
+
+11
+00:00:43,191 --> 00:00:49,042
+<font color="#FFFFFF">A standard denoising diffusion probabilistic model
+can take a thousand sequential passes</font>
+
+12
+00:00:49,122 --> 00:00:52,277
+<font color="#FFFFFF">through the neural network to create one sample,</font>
+
+13
+00:00:52,357 --> 00:00:55,108
+<font color="#FFFFFF">which is far too slow for interactive use.</font>
+
+14
+00:00:55,188 --> 00:01:00,567
+<font color="#FFFFFF">The popular fix is to simply use fewer denoising
+steps, as DDIM and DPMSolver do,</font>
+
+15
+00:01:00,647 --> 00:01:04,274
+<font color="#FFFFFF">but reducing steps comes at the cost of sample quality.</font>
+
+16
+00:01:04,354 --> 00:01:08,520
+<font color="#FFFFFF">The field has largely accepted this
+quality-for-speed tradeoff.</font>
+
+17
+00:01:08,900 --> 00:01:11,629
+<font color="#FFFFFF">The authors pursue an orthogonal direction.</font>
+
+18
+00:01:11,709 --> 00:01:14,046
+<font color="#FFFFFF">Instead of trading quality for speed,</font>
+
+19
+00:01:14,126 --> 00:01:17,182
+<font color="#FFFFFF">they ask whether we can trade compute for speed.</font>
+
+20
+00:01:17,262 --> 00:01:21,297
+<font color="#FFFFFF">The goal is to lower the latency of generating a
+single sample,</font>
+
+21
+00:01:21,377 --> 00:01:24,106
+<font color="#FFFFFF">not just the throughput of generating many.</font>
+
+22
+00:01:24,186 --> 00:01:26,131
+<font color="#FFFFFF">At first this seems impossible,</font>
+
+23
+00:01:26,211 --> 00:01:31,488
+<font color="#FFFFFF">because denoising is inherently sequential: each
+step depends on the previous one.</font>
+
+24
+00:01:31,568 --> 00:01:35,407
+<font color="#FFFFFF">Naive parallelization can generate multiple samples
+at once,</font>
+
+25
+00:01:35,487 --> 00:01:40,960
+<font color="#FFFFFF">but making a single sample appear faster in
+wall-clock time is a much harder problem.</font>
+
+26
+00:01:41,340 --> 00:01:43,621
+<font color="#FFFFFF">The key contribution is ParaDiGMS,</font>
+
+27
+00:01:43,701 --> 00:01:47,441
+<font color="#FFFFFF">short for Parallel Diffusion Generative Model Sampling.</font>
+
+28
+00:01:47,521 --> 00:01:53,343
+<font color="#FFFFFF">It is the first general method that lets you spend
+extra parallel compute to sample a</font>
+
+29
+00:01:53,423 --> 00:01:55,704
+<font color="#FFFFFF">pretrained diffusion model faster,</font>
+
+30
+00:01:55,784 --> 00:01:57,302
+<font color="#FFFFFF">without any retraining.</font>
+
+31
+00:01:57,382 --> 00:02:00,843
+<font color="#FFFFFF">Crucially, it is orthogonal to existing techniques,</font>
+
+32
+00:02:00,923 --> 00:02:06,746
+<font color="#FFFFFF">so it can be layered on top of DDIM or DPMSolver to
+yield ParaDDIM and ParaDPMSolver,</font>
+
+33
+00:02:06,826 --> 00:02:08,899
+<font color="#FFFFFF">combining both axes of speedup.</font>
+
+34
+00:02:08,979 --> 00:02:12,510
+<font color="#FFFFFF">It is also compatible with classifier-free guidance.</font>
+
+35
+00:02:12,890 --> 00:02:15,314
+<font color="#FFFFFF">The method builds on Picard iterations,</font>
+
+36
+00:02:15,394 --> 00:02:21,030
+<font color="#FFFFFF">a classic technique for solving ordinary
+differential equations by fixed-point iteration.</font>
+
+37
+00:02:21,110 --> 00:02:28,607
+<font color="#FFFFFF">The insight is to write the value at each timestep
+as the initial value plus the integral of the drift along the path.</font>
+
+38
+00:02:28,687 --> 00:02:31,497
+<font color="#FFFFFF">Starting from a full guess of the trajectory,</font>
+
+39
+00:02:31,577 --> 00:02:36,313
+<font color="#FFFFFF">ParaDiGMS updates every timestep simultaneously
+using the cumulative drift,</font>
+
+40
+00:02:36,393 --> 00:02:39,074
+<font color="#FFFFFF">and repeats until the values stop changing.</font>
+
+41
+00:02:39,154 --> 00:02:43,441
+<font color="#FFFFFF">Because each iteration can be computed in parallel
+across timesteps,</font>
+
+42
+00:02:43,521 --> 00:02:48,707
+<font color="#FFFFFF">and the number of iterations to converge is much
+smaller than the number of steps,</font>
+
+43
+00:02:48,787 --> 00:02:51,404
+<font color="#FFFFFF">the whole trajectory resolves much faster.</font>
+
+44
+00:02:51,484 --> 00:02:56,220
+<font color="#FFFFFF">In practice it uses a sliding window of a fixed
+size to respect GPU memory,</font>
+
+45
+00:02:56,300 --> 00:03:00,330
+<font color="#FFFFFF">advancing the window as soon as the earliest
+timesteps converge.</font>
+
+46
+00:03:00,710 --> 00:03:05,536
+<font color="#FFFFFF">The experiments cover two very different domains to
+show generality.</font>
+
+47
+00:03:05,616 --> 00:03:11,668
+<font color="#FFFFFF">On the robotics side, the authors test diffusion
+policies on Robosuite Square, PushT,</font>
+
+48
+00:03:11,748 --> 00:03:12,966
+<font color="#FFFFFF">and FrankaKitchen,</font>
+
+49
+00:03:13,046 --> 00:03:17,872
+<font color="#FFFFFF">measuring task reward averaged over hundreds of
+evaluation episodes.</font>
+
+50
+00:03:17,952 --> 00:03:19,171
+<font color="#FFFFFF">On the image side,</font>
+
+51
+00:03:19,251 --> 00:03:25,519
+<font color="#FFFFFF">they evaluate StableDiffusion version 2 generating
+768-by-768 images from COCO captions,</font>
+
+52
+00:03:25,599 --> 00:03:30,497
+<font color="#FFFFFF">judged by CLIP score, and pixel-space LSUN Church
+and Bedroom models,</font>
+
+53
+00:03:30,577 --> 00:03:31,940
+<font color="#FFFFFF">judged by FID score.</font>
+
+54
+00:03:32,020 --> 00:03:38,000
+<font color="#FFFFFF">Together these span latent-space and pixel-space
+diffusion at very different scales.</font>
+
+55
+00:03:38,380 --> 00:03:45,883
+<font color="#FFFFFF">The headline finding is remarkably consistent: a
+two-to-four times speedup across every task and every sampler,</font>
+
+56
+00:03:45,963 --> 00:03:48,752
+<font color="#FFFFFF">with no measurable degradation in quality.</font>
+
+57
+00:03:48,832 --> 00:03:50,050
+<font color="#FFFFFF">On robotic control,</font>
+
+58
+00:03:50,130 --> 00:03:56,267
+<font color="#FFFFFF">ParaDDPM speeds up sampling by roughly 3.4 to 3.9
+times while holding task reward constant.</font>
+
+59
+00:03:56,347 --> 00:03:58,248
+<font color="#FFFFFF">On StableDiffusion version 2,</font>
+
+60
+00:03:58,328 --> 00:04:03,782
+<font color="#FFFFFF">it brings the time to generate an image down from
+fifty seconds to under fifteen,</font>
+
+61
+00:04:03,862 --> 00:04:08,359
+<font color="#FFFFFF">a 3.4x gain, and stacking it on faster samplers
+reaches four times.</font>
+
+62
+00:04:08,439 --> 00:04:14,234
+<font color="#FFFFFF">The number of parallel iterations needed for
+convergence is up to twenty times smaller</font>
+
+63
+00:04:14,314 --> 00:04:16,694
+<font color="#FFFFFF">than the number of sequential steps,</font>
+
+64
+00:04:16,774 --> 00:04:18,880
+<font color="#FFFFFF">which is why the approach works.</font>
+
+65
+00:04:19,260 --> 00:04:25,157
+<font color="#FFFFFF">The main ablation studies the effect of the error
+tolerance in the fixed-point iteration.</font>
+
+66
+00:04:25,237 --> 00:04:30,529
+<font color="#FFFFFF">A lower tolerance means more iterations and slower
+sampling but higher fidelity,</font>
+
+67
+00:04:30,609 --> 00:04:32,879
+<font color="#FFFFFF">while a looser tolerance is faster.</font>
+
+68
+00:04:32,959 --> 00:04:40,266
+<font color="#FFFFFF">The paper shows there is a comfortable regime where
+a fairly relaxed tolerance still preserves sample quality.</font>
+
+69
+00:04:40,346 --> 00:04:42,146
+<font color="#FFFFFF">Importantly, on LSUN Church,</font>
+
+70
+00:04:42,226 --> 00:04:46,847
+<font color="#FFFFFF">ParaDDPM matches full DDPM's FID score at nearly
+four times the speed,</font>
+
+71
+00:04:46,927 --> 00:04:51,682
+<font color="#FFFFFF">whereas simply reducing DDIM to 500 steps produces
+visibly worse images,</font>
+
+72
+00:04:51,762 --> 00:04:57,390
+<font color="#FFFFFF">demonstrating that the gains genuinely come from
+parallelism rather than fewer steps.</font>
+
+73
+00:04:57,770 --> 00:05:03,290
+<font color="#FFFFFF">To put concrete numbers on it: sampling speedups of
+two to four times across the board.</font>
+
+74
+00:05:03,370 --> 00:05:09,148
+<font color="#FFFFFF">StableDiffusion version 2 drops from fifty seconds
+to fourteen-point-six seconds per image.</font>
+
+75
+00:05:09,228 --> 00:05:14,233
+<font color="#FFFFFF">On LSUN Church, FID barely moves, from
+twelve-point-eight to twelve-point-nine,</font>
+
+76
+00:05:14,313 --> 00:05:16,743
+<font color="#FFFFFF">while running almost four times faster.</font>
+
+77
+00:05:16,823 --> 00:05:22,279
+<font color="#FFFFFF">And the deep reason it scales is that the number of
+parallel iterations to converge is</font>
+
+78
+00:05:22,359 --> 00:05:26,270
+<font color="#FFFFFF">up to twenty times smaller than the thousand
+sequential steps.</font>
+
+79
+00:05:26,650 --> 00:05:31,117
+<font color="#FFFFFF">The lasting takeaway is a new axis for accelerating
+diffusion models.</font>
+
+80
+00:05:31,197 --> 00:05:34,675
+<font color="#FFFFFF">Rather than sacrificing quality by taking fewer steps,</font>
+
+81
+00:05:34,755 --> 00:05:38,760
+<font color="#FFFFFF">ParaDiGMS spends parallel compute to run all the
+steps faster,</font>
+
+82
+00:05:38,840 --> 00:05:43,373
+<font color="#FFFFFF">cutting sampling latency by two to four times with
+no loss in quality,</font>
+
+83
+00:05:43,453 --> 00:05:47,195
+<font color="#FFFFFF">and it composes with the fast samplers people already use.</font>
+
+84
+00:05:47,275 --> 00:05:50,753
+<font color="#FFFFFF">Looking forward, as parallel hardware keeps improving,</font>
+
+85
+00:05:50,833 --> 00:05:55,761
+<font color="#FFFFFF">sampling time will be limited only by the small
+number of Picard iterations,</font>
+
+86
+00:05:55,841 --> 00:05:58,990
+<font color="#FFFFFF">pointing toward even faster real-time generation.</font>

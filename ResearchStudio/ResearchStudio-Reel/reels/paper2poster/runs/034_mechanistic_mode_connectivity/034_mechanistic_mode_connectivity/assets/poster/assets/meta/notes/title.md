@@ -1,0 +1,3 @@
+# Title
+
+This paper, Mechanistic Mode Connectivity, studies neural network loss landscapes through the lens of mode connectivity. The authors ask whether minimizers that rely on different mechanisms for making predictions are connected via simple paths of low loss. They define mechanistic similarity as shared invariances to input transformations, and show that a lack of linear connectivity between two models implies they use dissimilar mechanisms. Building on this insight, they propose connectivity-based fine-tuning, a method to deliberately alter a model's mechanisms and reduce its reliance on spurious attributes.

@@ -1,0 +1,142 @@
+{
+  "title": "ICML 2023 | When Two Good Models Disagree: Reading Mechanisms Off the Loss Landscape",
+  "subtitle": "Michigan, Harvard, NTT Research, and Cambridge show that a lack of linear mode connectivity reveals when two networks rely on different features, and turn it into a fine-tuning method called CBFT.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "A deep network has infinitely many weight settings that all drive the training loss to nearly zero, and a now-large literature on “mode connectivity” has shown these minimizers are not isolated islands: you can usually draw a simple, low-loss path from one to another, as if all the good solutions sit on a single connected plateau. But “same loss” is not “same model.” Two networks can both classify a training set almost perfectly while relying on completely different features of the input: one reads an object’s shape, the other keys off the background it usually appears against. The mode-connectivity literature never asked which of these mechanisms the connected minimizers actually use, and this paper argues the question is not academic. If we do not know whether a low-loss path preserves a model’s mechanism, we cannot trust that fine-tuning has changed the model’s behavior in the way we intended."
+    },
+    {
+      "type": "paragraph",
+      "text": "Mechanistic Mode Connectivity, presented at ICML 2023, closes that gap. It defines what it means for two models to be mechanistically similar, proves that a lack of linear connectivity between two minimizers implies they use different mechanisms, and turns that result into Connectivity-Based Fine-Tuning (CBFT): a method that deliberately breaks connectivity to strip a model of its reliance on a spurious feature."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. The mechanistic lens on mode connectivity. Two minimizers, θ_Background and θ_Shape, both reach low loss but predict from different attributes. The paper asks three questions: are such mechanistically dissimilar solutions joined by low-loss paths, does the kind of path (linear versus non-linear) reveal the difference in mechanism, and can we exploit connectivity to move a model onto the mechanism we want?",
+      "width_inches": 4.5
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2211.08422  ·  Code: https://github.com/EkdeepSLubana/MMC"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "What “same mechanism” actually means"
+    },
+    {
+      "type": "paragraph",
+      "text": "The paper’s first move is to make “mechanism” measurable rather than metaphorical. It models the data as generated from a latent vector z, whose coordinates control different attributes: one for shape, one for background, and so on. A unit intervention flips one of those coordinates, for example keeping a fish’s shape while swapping its pond for open water. Two models are mechanistically similar if they are invariant to the same set of interventions: whenever changing an attribute leaves one model’s prediction unchanged, it leaves the other’s unchanged too."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Defining mechanistic similarity through counterfactuals. Each row is an image obtained by intervening on one latent (A₁ changes shape, A₂ changes background); each column is a model. The two shape models stay invariant to the same interventions and are mechanistically similar (∼), while the background model responds differently and is mechanistically dissimilar (≁).",
+      "width_inches": 6.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "A benchmark where the mechanism is known"
+    },
+    {
+      "type": "paragraph",
+      "text": "To test the idea you need datasets where the “right” and “wrong” mechanisms are known in advance. The authors build them by augmenting a dataset’s natural latents (z_n) with synthetic latents (z_s) whose induced cues are conditioned on the label: an easily separable shortcut a network will happily learn instead of the real object. They embed these cues in three datasets: CIFAR-10 with 3×3 box cues whose location depends on the label, CIFAR-100 with box cues colored and positioned by the label’s digits, and Dominoes, which stacks each CIFAR-10 image with a class-matched Fashion-MNIST image. The cue correlation is swept from 60% to 100% of the training set. Crucially, each dataset ships with counterfactual test splits (with the cue, without the cue, with a randomized cue, and with a randomized natural image), so a model’s reliance on the spurious versus the natural attribute can be read off directly."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. The data-generating process. Natural latents z_n (blue) fix the object; synthetic latents z_s (red) inject a cue whose value is conditioned on the label y, making the cue a predictive but spurious shortcut.",
+      "width_inches": 2.3
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The central result: linear disconnection signals a different mechanism"
+    },
+    {
+      "type": "paragraph",
+      "text": "With mechanism now measurable, the theory makes a sharp prediction: if two minimizers are mechanistically dissimilar, no linear low-loss path can connect them, even after accounting for the permutation symmetries that reshuffle equivalent neurons. Figure 4 confirms it on ResNet-18. A model trained with the cue (θ_C) and one trained without it (θ_NC) are demonstrably dissimilar: randomizing the cue leaves θ_NC’s accuracy untouched but sinks θ_C’s. A quadratic path connects the two with almost no loss barrier, yet the linear path between them cannot be made low-loss no matter the permutation. The geometry of the landscape carries mechanistic information, and linear disconnection is a reliable flag that two solutions “think” differently."
+    },
+    {
+      "type": "paragraph",
+      "text": "This also explains a puzzle about fine-tuning. Fine-tuned models tend to stay linearly connected to their pretraining solution, which, by the same theorem, means fine-tuning has not changed their mechanism. Cleaning the data is not enough: the model keeps leaning on whatever shortcut it learned first."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "Figure 4. Linear versus quadratic connectivity on CIFAR-10 (cue proportions 60% to 100%). Quadratic paths stay accurate throughout; linear paths cannot avoid a barrier even after permutation, confirming that the cue-relying (θ_C) and cue-free (θ_NC) minimizers are mechanistically dissimilar.",
+      "width_inches": 5.5
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Turning the barrier into a tool: CBFT"
+    },
+    {
+      "type": "paragraph",
+      "text": "If a loss barrier along the linear path is the signature of a mechanism change, then deliberately building such a barrier is a way to force one. That is the idea behind Connectivity-Based Fine-Tuning. Given a small cue-free dataset, CBFT minimizes three terms: an ordinary cross-entropy loss so the model keeps classifying, a barrier loss that actively raises the loss along the linear path toward the cue-relying solution (pushing the model to a mechanistically different place), and an invariance loss that aligns the model’s penultimate-layer representations across counterfactual versions of each class (pinning down which mechanism to adopt)."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure6.png",
+      "caption": "Figure 6. The two cues CBFT exploits. Along the linear path from a cue-free model (θ_NC) to a cue-relying model (θ_C), the loss shows (i) a barrier in the middle and (ii) invariance at the θ_NC endpoint, where the loss is the same whether or not the attribute is present. CBFT’s barrier and invariance losses target exactly these two properties.",
+      "width_inches": 4.7
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "The payoff: a model that stops reading the shortcut"
+    },
+    {
+      "type": "paragraph",
+      "text": "On CIFAR-10 with 60% cued data, CBFT holds its accuracy nearly flat across the counterfactual tests: 74.1% with no cue, 71.5% with the cue, and 73.4% when the cue is randomized. That flatness is the signature of a model that simply ignores the cue. A standard fine-tuning baseline looks excellent when the cue is present (98.7%) but collapses to 17.5% once the cue is randomized, exposing how much it was leaning on the shortcut. And when the underlying natural image is randomized, CBFT falls to near chance (8.75%), confirming it predicts from the object rather than the cue."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. CBFT on CIFAR-10 with 60% cued data: accuracy (%) across the four counterfactual test sets. Accuracy stays flat while the cue is present, absent, or randomized, then drops to near chance once the natural image itself is randomized.",
+      "headers": [
+        "Counterfactual test set",
+        "CBFT accuracy (%)"
+      ],
+      "rows": [
+        [
+          "No cue",
+          "74.1"
+        ],
+        [
+          "With cue",
+          "71.5"
+        ],
+        [
+          "Randomized cue",
+          "73.4"
+        ],
+        [
+          "Randomized image",
+          "8.75"
+        ]
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Both losses earn their place"
+    },
+    {
+      "type": "paragraph",
+      "text": "Does CBFT need both auxiliary losses? An ablation says yes, and it separates their jobs cleanly. Removing the barrier loss leaves the model near its original, cue-relying solution; it never moves to a mechanistically different one. Removing the invariance loss lets the model move away but no longer reliably lands on the specific cue-invariant mechanism the user wanted. In short, the barrier loss controls where the model goes (away from the shortcut) and the invariance loss controls which mechanism it settles on. Both are necessary."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway"
+    },
+    {
+      "type": "paragraph",
+      "text": "The broader message is that mode connectivity is not just a geometric curiosity about the shape of loss landscapes; it carries information about what a model has learned. Whether two low-loss models are linearly connected tells you whether they share a mechanism, and that fact can be turned into a lever: CBFT uses it to edit a model’s mechanism on purpose, removing reliance on a spurious attribute where ordinary fine-tuning on clean data would quietly fail. The results are shown on synthetic cue benchmarks with controlled shortcuts and ResNet-18 and VGG models, so the natural next question is how the same connectivity signal behaves for the messier, entangled features of large-scale models. But as a way to both diagnose and steer what a network attends to, the connectivity handle is a genuinely new one."
+    }
+  ]
+}

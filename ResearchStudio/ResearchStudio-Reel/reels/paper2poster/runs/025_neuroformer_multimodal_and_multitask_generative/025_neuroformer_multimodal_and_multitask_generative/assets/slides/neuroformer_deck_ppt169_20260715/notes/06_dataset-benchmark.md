@@ -1,0 +1,1 @@
+Validation spans two levels. First, a simulated spiking network with three hub neurons gives a ground-truth connectivity matrix. Second, two-photon calcium imaging of mouse visual cortex records 386 neurons across V1 and AL viewing gratings and natural videos, plus a virtual-navigation dataset pairing activity with running speed.

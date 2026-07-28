@@ -1,0 +1,3 @@
+# Title
+
+MuSc is a zero-shot method for industrial anomaly detection and segmentation, with no training, no prompts, and no normal reference images. Its insight: unlabeled test images hold enough cues to score one another. Published at ICLR 2024, it tops MVTec AD and VisA.

@@ -1,0 +1,7 @@
+# Method
+
+Core claim: RPIembeddor embeds RNA sequences with RNA-FM and protein sequences with the 150M-parameter ESM-2 (both 640-dimensional), normalizes them through parallel feed-forward layers, then processes them symmetrically in attention-based encoder layers so each modality has equal influence. The latent representations are concatenated, passed through feed-forward layers, and a linear layer with sigmoid activation outputs the interaction probability.
+
+Supporting detail: The resulting model has only 1.4M parameters and is trained with a binary loss and the AdamW optimizer using linear warm-up plus cosine annealing; ESM-2 is chosen over AlphaFold because it needs no multiple sequence alignments.
+
+Narration: RPIembeddor turns sequences into knowledge by leaning on two pre-trained foundation models. RNA sequences are embedded with RNA-FM, trained on twenty-three million non-coding RNAs, and protein sequences with ESM-2, which predicts folding without multiple sequence alignments. Both produce embeddings of size N by six hundred forty. Two parallel feed-forward layers normalize their sizes, and encoder layers process the RNA and protein embeddings symmetrically so attention can focus on the parts of each sequence most relevant to interaction. The latent representations are concatenated and passed through further feed-forward layers, ending in a linear layer with a sigmoid that outputs the probability of interaction. The whole model has just one-point-four million parameters.

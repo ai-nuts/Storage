@@ -1,0 +1,1 @@
+The paper contributes a deep joint model that treats clinical presence as multi-task learning. A shared recurrent embedding feeds four heads — longitudinal, inter-observation timing, missingness, and survival — trained together with dynamic weighting. The result encodes the observation process, giving a predictive edge and robustness.

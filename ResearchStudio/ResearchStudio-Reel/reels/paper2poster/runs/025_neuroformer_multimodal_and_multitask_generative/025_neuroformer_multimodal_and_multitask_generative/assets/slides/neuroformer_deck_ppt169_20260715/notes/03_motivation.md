@@ -1,0 +1,1 @@
+Large pretrained models in vision and language point a way forward: they learn general representations self-supervised from raw data, then transfer with little labeling. The authors ask whether reframing spike analysis as generative prediction can likewise scale, fuse modalities, and transfer to behavior decoding.

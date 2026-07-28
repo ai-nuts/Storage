@@ -1,0 +1,163 @@
+{
+  "title": "From weights to input gradients: a cheaper place to make ensembles disagree",
+  "subtitle": "FoRDE (ICLR 2024) repels ensemble members in input-gradient space, and the payoff shows up under image corruptions.",
+  "lang": "en",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "A deep ensemble is a blunt instrument that works surprisingly well: train the same network a handful of times from different random seeds, average their predictions, and you usually get better accuracy, better calibration, and more graceful behavior on inputs the model has never seen. The reason is diversity. Each member settles into a different explanation of the data, and their disagreement is exactly what makes the average trustworthy."
+    },
+    {
+      "type": "paragraph",
+      "text": "So a natural idea is to stop leaving that diversity to chance and start enforcing it. Particle-based variational inference does this by treating each network as a particle and adding a repulsion term that actively pushes members apart during training. The catch is a question that turns out to matter a great deal: in what space should the members be pushed apart? Repel them in weight space and you fight against the fact that neural networks are wildly over-parameterized, so countless different weight vectors encode the same function. Repel them in function space and you run into an intractable comparison between whole functions, which forces shortcuts that tend to make the models underfit. In practice, neither approach had improved much on a plain deep ensemble."
+    },
+    {
+      "type": "paragraph",
+      "text": "This paper, First-order Repulsive Deep Ensembles (FoRDE), proposes a third space to disagree in. Instead of comparing weights or outputs, it pushes members apart in the space of their input gradients, the derivatives of the output with respect to the input. The choice is not cosmetic: input gradients characterize a function up to a translation, they are the same small size as the input rather than the enormous weight vector, and forcing them to differ forces each network to lean on different input features. The result is an ensemble that is markedly more robust and better calibrated when the input is corrupted."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure1.png",
+      "caption": "Figure 1. Input-gradient repulsion in a 1D regression toy problem with three networks. Left: early in training the three models fit the data but agree almost everywhere, so functional diversity is low. Middle: the repulsion term pushes the members' input gradients (the arrows) apart on a unit circle at each data point. Right: by the end of training the three functions have genuinely diverged, gaining the diversity that makes an ensemble useful.",
+      "width_inches": 6.0
+    },
+    {
+      "type": "paragraph",
+      "text": "Paper: https://arxiv.org/abs/2306.02775 · Code: https://github.com/AaltoPML/FoRDE"
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Why the space of repulsion matters"
+    },
+    {
+      "type": "paragraph",
+      "text": "To see why input gradients are a good place to enforce disagreement, it helps to compare the three views of a neural network. Its weights are what you optimize, but they are a poor handle on diversity: over-parameterization means two very different weight vectors can compute the exact same function, so pushing weights apart can waste effort without changing behavior at all. Its function values are what you ultimately care about, but comparing entire functions requires a kernel over function space that is expensive to evaluate; earlier repulsive methods approximated it on training inputs only, which nudged the models toward underfitting and left little real gain over a vanilla ensemble."
+    },
+    {
+      "type": "paragraph",
+      "text": "Input gradients sit between these two extremes. A function is determined, up to an additive constant, by its gradient field, so two networks with different input gradients are guaranteed to be different functions, not redundant re-parameterizations. And a gradient has the dimensionality of the input, which for an image is far smaller than the weight vector, so it is cheap to compare with a kernel. There is a bonus that turns out to be the crux of the empirical story: the input gradient tells you which input features a network is sensitive to. Make two members' gradients point in different directions and you have made them attend to complementary features, which is precisely the property you want when the input is later perturbed."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "How FoRDE trains"
+    },
+    {
+      "type": "paragraph",
+      "text": "FoRDE is built on Wasserstein gradient descent, a particle-based flavor of variational inference. Every ensemble member is a particle, and each update combines two forces. A driving force pulls the particle toward high-density regions of the Bayesian posterior, which is essentially ordinary training with a prior. A repulsion force, weighted by a kernel, pushes the particle away from the others. Everything hinges on what that kernel compares."
+    },
+    {
+      "type": "paragraph",
+      "text": "FoRDE's kernel compares the input gradient of the true-label logit, averaged over the training data, after normalizing each gradient to unit length. Two design decisions make this practical. First, using only the true-label gradient rather than the full Jacobian keeps the cost linear in the number of training samples. Second, normalizing to the unit sphere and comparing directions matters because gradient magnitudes shrink as training converges; comparing directions keeps the repulsion meaningful late in training and is what encourages members to rely on complementary features. On top of an RBF base kernel, FoRDE sets the per-dimension lengthscales from a Principal Component Analysis of the data, so repulsion is strongest along the most informative input directions. The authors show this data-driven kernel behaves much like a feature-robustness prior (EmpCov), which is a clean explanation for why the robustness gains appear."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Evidence that the diversity is real"
+    },
+    {
+      "type": "paragraph",
+      "text": "Before the large-scale numbers, two toy problems make the mechanism visible. In 1D regression, the honest test of an ensemble is what it does away from the training data: a diverse ensemble should spread out and report high uncertainty where it has seen nothing. FoRDE fans out noticeably more than a deep ensemble or the weight- and function-space repulsive variants."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure2.png",
+      "caption": "Figure 2. Predictive uncertainty in 1D regression. Away from the data clusters, FoRDE (right) spreads into a visibly wider band than the deep ensemble, Weight-RDE, and Function-RDE baselines, indicating greater functional diversity where it matters most.",
+      "width_inches": 5.8
+    },
+    {
+      "type": "paragraph",
+      "text": "The 2D classification task tells the same story in the plane. Measuring the entropy of the predictive posterior, FoRDE is the only method that stays uncertain across essentially all regions outside the training clusters, rather than confidently extrapolating a sharp decision boundary into territory where it has no real basis for that confidence."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure3.png",
+      "caption": "Figure 3. Predictive-entropy maps for a 2D classification problem. Warmer regions are confident, cooler regions uncertain. FoRDE (right) keeps high uncertainty across the whole input plane outside the labeled clusters, while the baselines commit confidently far from any data.",
+      "width_inches": 5.8
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Robustness under corruption"
+    },
+    {
+      "type": "paragraph",
+      "text": "The main experiments run on CIFAR-10, CIFAR-100, and TinyImageNet with ResNet-18 and PreActResNet-18 backbones and ten-member ensembles. Robustness is measured on the corrupted benchmarks CIFAR-10-C, CIFAR-100-C, and TinyImageNet-C, which apply 19 corruption types at 5 severity levels, reporting corruption accuracy (cA), corruption NLL, and corruption ECE alongside their clean counterparts. The pattern is consistent: FoRDE with PCA lengthscales is the strongest method on every corruption metric while staying competitive on clean data. Against the second-best method it improves accuracy by about +2.4% on CIFAR-10-C and +1.3% on CIFAR-100-C."
+    },
+    {
+      "type": "table",
+      "caption": "Table 1. Clean accuracy and corruption accuracy (cA) on CIFAR-10 and CIFAR-100 with ResNet-18, 10-member ensembles, averaged over 5 seeds. FoRDE-PCA stays within a fraction of a point of the best clean accuracy while clearly leading under corruption.",
+      "headers": [
+        "Method",
+        "C10 Acc",
+        "C10-C cA",
+        "C100 Acc",
+        "C100-C cA"
+      ],
+      "rows": [
+        [
+          "Deep Ensembles",
+          "96.3",
+          "78.1",
+          "81.8",
+          "54.3"
+        ],
+        [
+          "Weight-RDE",
+          "96.2",
+          "78.0",
+          "81.7",
+          "54.2"
+        ],
+        [
+          "Function-RDE",
+          "95.8",
+          "77.1",
+          "80.1",
+          "51.9"
+        ],
+        [
+          "FoRDE-PCA (ours)",
+          "96.1",
+          "80.5",
+          "81.4",
+          "56.1"
+        ]
+      ],
+      "note": "Higher is better for all columns. C10-C / C100-C are the corrupted benchmarks (19 corruption types x 5 severities). Numbers from Tables 1 and 2 of the paper."
+    },
+    {
+      "type": "paragraph",
+      "text": "The transfer-learning experiments broaden the picture across NLL, ECE, accuracy, and epistemic uncertainty, under both natural distribution shift (CINIC-10) and corruption shift. FoRDE improves on the baselines across the board, and its higher epistemic uncertainty on out-of-distribution data is a direct readout of the extra functional diversity that the method is explicitly designed to produce."
+    },
+    {
+      "type": "figure",
+      "path": "../figures/figure4.png",
+      "caption": "Figure 4. Transfer-learning results. Across NLL, ECE, and accuracy on in-distribution, naturally shifted (CINIC-10), and corrupted test sets, FoRDE matches or beats the baselines; the rightmost panels show it also carries the highest epistemic uncertainty on out-of-distribution data, the signature of greater functional diversity.",
+      "width_inches": 6.0
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Where the lengthscales come from, and what they cost"
+    },
+    {
+      "type": "paragraph",
+      "text": "The kernel lengthscales are the knob that decides how repulsion is spread across input dimensions, and the paper ablates them carefully. PCA lengthscales, which emphasize high-variance features, give the best corruption robustness. Identity lengthscales instead give the best clean accuracy on CIFAR-100 and the best NLL on CIFAR-10, at the price of slightly weaker robustness. A tuned interpolation between the two extremes, FoRDE-Tuned, tends to win on both clean and corrupted data. A separate study on WideResNet-16x4 makes the efficiency of the diversity concrete: a 10-member FoRDE matches or beats the corruption robustness of a 30-member deep ensemble, though it trails a deep ensemble slightly on clean data."
+    },
+    {
+      "type": "paragraph",
+      "text": "None of this is free. Each update needs an extra forward-backward pass to compute input gradients, so FoRDE trains about three times as long as a plain deep ensemble (roughly 101 seconds per epoch on an A100). The trade is worth it when the deployment cares about corrupted or shifted inputs, which is exactly where FoRDE pulls ahead."
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "text": "Takeaway"
+    },
+    {
+      "type": "paragraph",
+      "text": "The lasting lesson is that the space in which you enforce diversity matters as much as how hard you enforce it. Weight space is wasteful because of over-parameterization; function space is intractable to compare directly. Input gradients sit in between: small enough to compare cheaply, expressive enough to make members genuinely different functions, and meaningful enough that pushing them apart makes members rely on complementary features. Paired with data-driven PCA lengthscales, that choice buys more robust, better-calibrated ensembles under real-world input corruptions, at about three times the training cost."
+    }
+  ]
+}

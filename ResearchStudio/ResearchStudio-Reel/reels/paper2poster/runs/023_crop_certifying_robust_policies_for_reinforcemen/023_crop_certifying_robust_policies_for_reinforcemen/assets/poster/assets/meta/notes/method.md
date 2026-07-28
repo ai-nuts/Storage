@@ -1,0 +1,7 @@
+# Method
+
+Core claim: For each state, CROP draws Gaussian noise to smooth the trained Q-function; the smoothed value function is Lipschitz continuous, which yields a certified radius on the action from the margin between the top two smoothed action-values. For reward, global smoothing bounds the expected and percentile reward, and an adaptive local-smoothing tree search certifies an absolute lower bound.
+
+Supporting detail: Monte Carlo sampling estimates the smoothed values; the Q-output range [Vmin, Vmax] is pre-estimated on a state subset, and Hoeffding's inequality bounds the top-two smoothed values to certify a positive radius.
+
+Narration: The engine of CROP is functional smoothing. At each state, and for each action, the method adds Gaussian noise to the state and averages the trained Q-network's output, producing a smoothed value function. A key lemma shows this smoothed function is Lipschitz continuous, with a constant that shrinks as the smoothing variance grows. From that continuity, Theorem 1 gives a certified radius: as long as the perturbation is smaller than this radius, the smoothed policy's action does not change. The radius depends on the gap between the best and runner-up smoothed action-values, revealing a trade-off, since more smoothing stabilizes the values but also narrows their margin. For cumulative reward, global smoothing treats the whole trajectory as a function to bound the expected and percentile reward, while the adaptive local search of CROP-LoRe grows a trajectory tree to certify a tight absolute lower bound.

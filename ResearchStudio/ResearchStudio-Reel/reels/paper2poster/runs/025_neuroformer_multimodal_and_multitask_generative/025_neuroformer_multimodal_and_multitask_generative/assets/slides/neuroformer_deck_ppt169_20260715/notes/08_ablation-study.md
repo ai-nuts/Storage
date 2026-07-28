@@ -1,0 +1,1 @@
+An ablation removes components one at a time: the Current State, Past State, video stream, behavior stream, and contrastive objective each add measurable predictive power. Two findings stand out. Jointly training on neural responses and behavior beats either alone, and the contrastive objective helps most when data is scarce.
