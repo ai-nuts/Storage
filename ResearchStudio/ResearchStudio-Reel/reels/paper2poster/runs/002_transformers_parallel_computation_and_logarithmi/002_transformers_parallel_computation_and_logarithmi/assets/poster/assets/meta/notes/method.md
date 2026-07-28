@@ -1,0 +1,7 @@
+# Method
+
+Core claim: The core technical step (Lemma 3.2) builds a single self-attention unit that implements MPC's simultaneous message routing, using multiple hashing and sparse propagation to keep query/key/value matrices tall-and-skinny. Stacking one such layer per round simulates an R-round protocol in depth R+1. For k-hop induction heads, a specialized construction gives depth L = ⌊log₂ k⌋ + 2 at constant width.
+
+Supporting detail: The reverse direction (Theorem 3.4) encodes each transformer layer as one MPC round, so depth-L transformers with mH = O(N) are no more powerful than O(L)-round protocols, yielding conditional lower bounds.
+
+Narration: The heart of the forward simulation is a routing gadget. In MPC, each round ends with machines sending addressed messages to one another, and the authors show a single self-attention layer can perform exactly this routing. The trick, captured in Lemma 3.2, is to encode each message redundantly in multiple fixed locations using multiple hashing, and to move information with sparse propagation, which keeps the query, key, and value matrices tall and skinny so the embedding dimension stays small. Put one such layer per communication round and a protocol of R rounds becomes a transformer of depth R plus one. The reverse direction packs a whole transformer layer into a single MPC round, proving transformers are no stronger than the model. For the k-hop task specifically, they give a tailored, causally-masked construction of constant width whose depth is exactly floor of log base two of k, plus two.

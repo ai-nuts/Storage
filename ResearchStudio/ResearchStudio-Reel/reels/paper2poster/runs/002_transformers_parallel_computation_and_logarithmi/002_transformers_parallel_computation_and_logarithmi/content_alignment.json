@@ -1,0 +1,1583 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-16T11:18:43Z",
+  "title": "Transformers, parallel computation, and logarithmic depth",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    },
+    {
+      "index": 10,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_10.png",
+      "source": "slide-10.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "Transformers dominate almost every sequence-modeling task, yet the most basic question about them still lacks a satisfying answer: what, exactly, are they good at? Prior theory splits into two lines. One proves that transformers are \"universal,\" but only for models so large as to be impractical, which says nothing about which tasks are solvable size-efficiently. The other fixes the depth and grows the context length, a regime in which even elementary algorithmic tasks such as matching parentheses or evaluating Boolean formulas are provably out of reach. Neither picture isolates the property that actually separates a transformer from a recurrent network or any other architecture."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper, by Clayton Sanford, Daniel Hsu, and Matus Telgarsky and published at ICML 2024, argues the answer is parallelism. Self-attention is fundamentally a parallel operation: any two tokens can interact within a single layer through the inner product of their query and key, whereas an RNN must thread information along the sequence one step at a time. The authors map that parallelism onto Massively Parallel Computation (MPC), the model theorists use to reason about MapReduce and other distributed systems, where many memory-limited machines each hold a little data and, in synchronous rounds, do local computation and exchange addressed messages."
+            },
+            {
+              "type": "paragraph",
+              "text": "Following that lens, the paper proves a two-way equivalence: logarithmic-depth transformers and constant-round MPC protocols capture exactly the same algorithmic power. The equivalence explains both what transformers can do and where their limits lie. The authors then design a clean synthetic task, k-hop induction heads, prove that a transformer solves it with only logarithmic depth while RNNs, state-space models such as Mamba, and sub-quadratic attention such as Performer cannot, and finally train real models and watch them land on precisely the depth threshold that the theory predicts for every hop count."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2402.09268   Code: https://github.com/chsanford/hop-induction-heads"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "One attention layer as one round of parallel communication"
+            },
+            {
+              "type": "paragraph",
+              "text": "MPC is the standard model for distributed algorithms: data is split across many memory-limited machines, and computation proceeds in synchronous \"rounds,\" where each machine first does local computation and then sends addressed messages to the others. Its power is measured in rounds, and fewer rounds means a more parallel algorithm. The paper's central claim is that one self-attention layer can simulate exactly one MPC round. The figure below shows how a single attention head carries that out."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 1. How one attention head simulates one MPC round: each machine's local computation is pushed inside Q(·), K(·), and V(·), and the pairwise attention matrix then performs message routing. Multiple hashing and sparse propagation keep Q, K, and V tall-and-skinny, which keeps the embedding dimension small.",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The key to reading the figure is the division of labor: Q(·), K(·), and V(·) carry out each machine's local computation, while the pairwise attention matrix routes messages between machines. To make the routing correct and keep those three matrices tall-and-skinny at the same time, the construction uses both multiple hashing and sparse propagation. Stack one such layer per round, and an R-round protocol becomes a transformer of depth roughly R + 1."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The core construction: multiple hashing and sparse propagation"
+            },
+            {
+              "type": "paragraph",
+              "text": "The heart of the forward simulation is a routing gadget, stated as the paper's core lemma (Lemma 3.2). At the end of each round, machines send addressed messages to one another, and the authors show that a single self-attention layer performs exactly this routing. The trick is to encode each message redundantly in several fixed locations using multiple hashing, and to move information with sparse propagation, which keeps the query, key, and value matrices tall-and-skinny so the embedding dimension stays small. The reverse direction (Theorem 3.4) packs a whole transformer layer into one MPC round, proving transformers are no more powerful than the model and yielding conditional lower bounds on depth. The figure below walks through message routing on a concrete example."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 2. A message-routing example: machines 1 and 3 send messages to machine 2. Each message is encoded, via multiple hashing, into several fixed-location \"packets\" in embedding space; this redundancy guarantees that every message appears alone at least once, so machine 2 can decode Rcvd2 from the aggregated Y2.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The encoding map (ϕ) turns each machine's outgoing content into an embedding; after attention aggregates them, the decoding map (ψ) reads back, from the row machine 2 receives, the messages meant for it. The reason the same message goes into several packets is that only \"appears alone at least once\" makes decoding unambiguous, and that is precisely what lets the construction work at a small embedding dimension, the step that aligns attention with a single round of communication."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "k-hop induction heads: a task that tells architectures apart"
+            },
+            {
+              "type": "paragraph",
+              "text": "To make everything concrete, the authors design the k-hop induction heads task. Standard induction heads asks a model to complete a bigram: predict the token that followed the current token the last time it appeared. The k-hop version chains that step: use one completion to decide which bigram to complete next, and repeat k times. Evaluation uses sequences of length N = 100 over an alphabet of size 4 (|Σ| = 4), sweeping k over {0, …, 16}, with one multi-task model handling a randomly drawn k each time. Intuitively this looks like it needs k serial steps, yet a parallel architecture can fold it into logarithmically many layers: the paper's construction has depth exactly L = ⌊log₂ k⌋ + 2, at constant width."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and limits"
+            },
+            {
+              "type": "paragraph",
+              "text": "The one thing to remember is that a transformer is, in a precise sense, a parallel computer. The paper pins that intuition down as a theorem: logarithmic-depth transformers are equivalent to constant-round Massively Parallel Computation, and that equivalence explains both their power and their limits while predicting a sharp separation. On k-hop induction heads, a transformer solves the task with depth logarithmic in k, whereas RNNs, state-space models like Mamba, and efficient attention approximations like Performer all need depth linear in k. The result has honest boundaries: the task is synthetic, the constants in the forward construction are not small, and the \"near-optimality\" of the reverse direction rests on an as-yet-unproven MPC lower-bound conjecture. Even so, the message is clear: the transformer's real edge is not just scale, but the ability to do many things at once."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "Transformer 几乎主导了所有序列建模任务,但一个最基础的问题始终没有令人满意的答案:它究竟强在哪里?过去的理论大致分两条线。一条证明了 Transformer 的“通用性”,却只对规模大得不切实际的模型成立,无法说明哪些任务能被高效地解决;另一条固定深度、增大上下文长度,在这个设定下,连括号匹配、布尔公式求值这类基础算法任务都被证明做不到。两幅图景都没能精确指出:到底是什么属性,把 Transformer 和 RNN 这样的其他架构区分开来。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇由 Clayton Sanford、Daniel Hsu 与 Matus Telgarsky 完成、发表于 ICML 2024 的工作给出的答案是:并行。自注意力本质上是一次并行操作,任意两个 token 都能在一层之内、通过 query 与 key 的内积直接交互;而 RNN 只能把信息沿着序列一步一步地传递。作者把这种并行性对应到理论计算机科学中的大规模并行计算模型(Massively Parallel Computation,简称 MPC),也就是刻画 MapReduce 这类分布式系统的抽象:许多台机器各自持有少量数据,在同步的一轮轮通信里做本地计算、互相收发消息。"
+            },
+            {
+              "type": "paragraph",
+              "text": "沿着这个视角,论文证明了一个双向的等价:对数深度的 Transformer 与常数轮数的 MPC 协议,在算法能力上完全对应。这个等价既解释了 Transformer 的强,也划出了它的边界。作者还设计了一个干净的合成任务——k-hop induction heads,在理论上证明 Transformer 只需对数深度即可求解,而 RNN、状态空间模型(如 Mamba)以及次二次注意力(如 Performer)都做不到;随后训练真实模型,观察到它们恰好落在理论预测的深度阈值上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文:https://arxiv.org/abs/2402.09268   代码:https://github.com/chsanford/hop-induction-heads"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把一层自注意力看成一轮并行通信"
+            },
+            {
+              "type": "paragraph",
+              "text": "MPC 是分布式算法研究里的标准模型:数据被切分到许多台内存受限的机器上,计算按同步的“轮”推进,每一轮里每台机器先做本地计算,再把带地址的消息发给其他机器。它的能力用轮数来衡量,轮数越少,算法越“并行”。论文的核心主张是:一层自注意力恰好能模拟 MPC 的一轮。下面这张图给出了单个注意力头是怎么承担这件事的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读图的关键在于分工:Q(·)、K(·)、V(·) 承担机器内部的本地计算,而成对的注意力矩阵负责在机器之间转发消息。为了让路由正确、又让这三个矩阵保持又高又窄,构造同时用到了多重哈希和稀疏传播两种技巧。把这样一层按“一轮一层”地叠起来,一个 R 轮的协议就变成了深度约为 R + 1 的 Transformer。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "核心构造:多重哈希与稀疏传播"
+            },
+            {
+              "type": "paragraph",
+              "text": "整个前向模拟的心脏是一个路由“小工具”,也就是论文里的核心引理(Lemma 3.2)。每一轮结束时,机器之间要互发带地址的消息,而作者证明一层自注意力就能精确完成这种路由。诀窍是用多重哈希把每条消息冗余地编码到若干个固定位置,再用稀疏传播来搬运信息,让 query、key、value 三个矩阵始终又高又窄,嵌入维度因此保持很小。反方向(Theorem 3.4)则把一整层 Transformer 打包进一轮 MPC,证明 Transformer 并不比这个模型更强,从而给出条件性的深度下界。下图用一个具体例子展示了消息路由。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图2 消息路由示例:机器 1 与机器 3 向机器 2 发送消息。每条消息通过“多重哈希”被编码进嵌入空间中多个固定位置的“数据包”里;这种冗余保证每条消息至少有一次单独出现,机器 2 因此能从汇聚到的 Y2 中把 Rcvd2 解码出来。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图里的编码(ϕ)把每台机器要发送的内容映射成嵌入向量,注意力完成汇聚后,解码(ψ)再从机器 2 收到的行里读回它该接收的消息。之所以要把同一条消息放进多个数据包,是因为只有“至少单独出现一次”才能保证解码无歧义——这正是构造能在小嵌入维度下运作的原因,也是把注意力和一轮通信精确对齐的关键一步。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "k-hop induction heads:一个能分辨架构的任务"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了把结论落到实处,作者设计了 k-hop induction heads 任务。标准的 induction heads 要求模型完成一个 bigram:预测当前 token 上一次出现时,紧跟其后的那个 token。k-hop 版本把这一步串起来:用一次补全决定下一次要补全哪个 bigram,如此重复 k 次。评测用长度 N = 100 的序列、大小为 4 的字母表(|Σ| = 4),并让 k 在 {0, …, 16} 之间变化,同一个模型每次随机处理一个 k。直觉上这像是需要 k 个串行步骤,但并行架构能把它折叠进对数多的层里——论文给出的构造深度恰好是 L = ⌊log₂ k⌋ + 2,而且宽度为常数。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "实验:训练出的模型恰好卡在对数阈值上"
+            },
+            {
+              "type": "paragraph",
+              "text": "理论预测能不能在真实训练里看到?作者训练了深度 2 到 6 的 Transformer,测量它们在多任务设定下随 k 增大的逐 token 分类误差。结果异常干净,下图把它完整地画了出来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图3 深度 L ∈ {2, 3, 4, 5, 6} 的 Transformer 在 hop_k 上的逐 token 分类误差(k 从 1 到 16)。每增加一层,能被小误差学会的最大 k 大约翻一倍:曲线整体向右平移一档,经验阈值恰好落在 ⌊log₂ k⌋ + 2。",
+              "width_inches": 4.7,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读法很直接:每增加一层,能被学会的最大 k 大约翻倍。6 层的模型在所有 k ≤ 16 上都表现良好,5 层能覆盖到 k ≤ 8,4 层覆盖到 k ≤ 4——可解的 k 随深度指数增长,和构造性理论完全吻合,经验边界正是 ⌊log₂ k⌋ + 2。几个消融进一步支撑了这一点:把 (m, H) 从 (128, 4) 增大到 (256, 8),深度–k 边界几乎不动,说明依赖的是深度而非单纯的规模;在只有 1000 到 3000 个样本的有限数据设定下,更深的模型泛化得更好,暗示了一种适合组合式任务的归纳偏置;而拆开训练好的网络会发现,注意力矩阵正在计算证明里用到的中间 find_j 指针,学到的机制和手工构造惊人地一致。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 求解 k-hop induction heads 所需的深度:Transformer 是对数的,串行架构是线性的。",
+              "headers": [
+                "架构",
+                "求解 k-hop 所需深度"
+              ],
+              "rows": [
+                [
+                  "Transformer(自注意力)",
+                  "⌊log₂ k⌋ + 2(对数)"
+                ],
+                [
+                  "多层 RNN / 状态空间模型(Mamba)",
+                  "≥ k(线性)"
+                ],
+                [
+                  "次二次注意力(如 Performer)",
+                  "≥ k(线性)"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇论文想让人记住的一点是:Transformer 在一种精确的意义上是并行计算机。作者把这个直觉钉死为一条定理——对数深度的 Transformer 等价于常数轮数的大规模并行计算,而这条等价既解释了它的能力,也预言了一条清晰的分界:在 k-hop induction heads 上,Transformer 只需对数于 k 的深度就能求解,RNN、Mamba 这样的状态空间模型以及 Performer 这样的高效注意力近似,却都需要线性于 k 的深度。当然,结论也有边界:任务是合成的,前向构造里的常数并不小,而反方向“近似最优”的那部分依赖于一个尚未证明的 MPC 下界猜想。即便如此,它给出的信息很明确——Transformer 真正的优势,不只是规模,而是同时做很多件事的能力。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 487.99,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 487.99,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 45.15,
+          "relative_start": 0.5,
+          "relative_end": 45.15,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 45.15,
+          "global_end": 87.83,
+          "relative_start": 45.15,
+          "relative_end": 87.83,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 87.83,
+          "global_end": 132.36,
+          "relative_start": 87.83,
+          "relative_end": 132.36,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 132.36,
+          "global_end": 188.63,
+          "relative_start": 132.36,
+          "relative_end": 188.63,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 188.63,
+          "global_end": 247.3,
+          "relative_start": 188.63,
+          "relative_end": 247.3,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 247.3,
+          "global_end": 294.54,
+          "relative_start": 247.3,
+          "relative_end": 294.54,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 294.54,
+          "global_end": 346.49,
+          "relative_start": 294.54,
+          "relative_end": 346.49,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 346.49,
+          "global_end": 394.0,
+          "relative_start": 346.49,
+          "relative_end": 394.0,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 394.0,
+          "global_end": 444.0,
+          "relative_start": 394.0,
+          "relative_end": 444.0,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        },
+        {
+          "slide": 10,
+          "global_start": 444.0,
+          "global_end": 487.93,
+          "relative_start": 444.0,
+          "relative_end": 487.93,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 1. How one attention head simulates one MPC round: each machine's local computation is pushed inside Q(·), K(·), and V(·), and the pairwise attention matrix then performs message routing. Multiple hashing and sparse propagation keep Q, K, and V tall-and-skinny, which keeps the embedding dimension small.",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Transformers dominate almost every sequence-modeling task, yet the most basic question about them still lacks a satisfying answer: what, exactly, are they good at? Prior theory splits into two lines. One proves that transformers are \"universal,\" but only for models so large as to be impractical, which says nothing about which tasks are solvable size-efficiently. The other fixes the depth and grows the context length, a regime in which even elementary algorithmic tasks such as matching parentheses or evaluating Boolean formulas are provably out of reach. Neither picture isolates the property that actually separates a transformer from a recurrent network or any other architecture."
+            },
+            {
+              "type": "paragraph",
+              "text": "This paper, by Clayton Sanford, Daniel Hsu, and Matus Telgarsky and published at ICML 2024, argues the answer is parallelism. Self-attention is fundamentally a parallel operation: any two tokens can interact within a single layer through the inner product of their query and key, whereas an RNN must thread information along the sequence one step at a time. The authors map that parallelism onto Massively Parallel Computation (MPC), the model theorists use to reason about MapReduce and other distributed systems, where many memory-limited machines each hold a little data and, in synchronous rounds, do local computation and exchange addressed messages."
+            },
+            {
+              "type": "paragraph",
+              "text": "Following that lens, the paper proves a two-way equivalence: logarithmic-depth transformers and constant-round MPC protocols capture exactly the same algorithmic power. The equivalence explains both what transformers can do and where their limits lie. The authors then design a clean synthetic task, k-hop induction heads, prove that a transformer solves it with only logarithmic depth while RNNs, state-space models such as Mamba, and sub-quadratic attention such as Performer cannot, and finally train real models and watch them land on precisely the depth threshold that the theory predicts for every hop count."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2402.09268   Code: https://github.com/chsanford/hop-induction-heads"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Transformer 几乎主导了所有序列建模任务,但一个最基础的问题始终没有令人满意的答案:它究竟强在哪里?过去的理论大致分两条线。一条证明了 Transformer 的“通用性”,却只对规模大得不切实际的模型成立,无法说明哪些任务能被高效地解决;另一条固定深度、增大上下文长度,在这个设定下,连括号匹配、布尔公式求值这类基础算法任务都被证明做不到。两幅图景都没能精确指出:到底是什么属性,把 Transformer 和 RNN 这样的其他架构区分开来。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇由 Clayton Sanford、Daniel Hsu 与 Matus Telgarsky 完成、发表于 ICML 2024 的工作给出的答案是:并行。自注意力本质上是一次并行操作,任意两个 token 都能在一层之内、通过 query 与 key 的内积直接交互;而 RNN 只能把信息沿着序列一步一步地传递。作者把这种并行性对应到理论计算机科学中的大规模并行计算模型(Massively Parallel Computation,简称 MPC),也就是刻画 MapReduce 这类分布式系统的抽象:许多台机器各自持有少量数据,在同步的一轮轮通信里做本地计算、互相收发消息。"
+            },
+            {
+              "type": "paragraph",
+              "text": "沿着这个视角,论文证明了一个双向的等价:对数深度的 Transformer 与常数轮数的 MPC 协议,在算法能力上完全对应。这个等价既解释了 Transformer 的强,也划出了它的边界。作者还设计了一个干净的合成任务——k-hop induction heads,在理论上证明 Transformer 只需对数深度即可求解,而 RNN、状态空间模型(如 Mamba)以及次二次注意力(如 Performer)都做不到;随后训练真实模型,观察到它们恰好落在理论预测的深度阈值上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文:https://arxiv.org/abs/2402.09268   代码:https://github.com/chsanford/hop-induction-heads"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 45.15,
+        "end": 87.83,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 42.68,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 43.58,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 45.15,
+          "global_end": 87.83,
+          "relative_start": 0.0,
+          "relative_end": 42.68,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "One attention layer as one round of parallel communication"
+            },
+            {
+              "type": "paragraph",
+              "text": "MPC is the standard model for distributed algorithms: data is split across many memory-limited machines, and computation proceeds in synchronous \"rounds,\" where each machine first does local computation and then sends addressed messages to the others. Its power is measured in rounds, and fewer rounds means a more parallel algorithm. The paper's central claim is that one self-attention layer can simulate exactly one MPC round. The figure below shows how a single attention head carries that out."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 1. How one attention head simulates one MPC round: each machine's local computation is pushed inside Q(·), K(·), and V(·), and the pairwise attention matrix then performs message routing. Multiple hashing and sparse propagation keep Q, K, and V tall-and-skinny, which keeps the embedding dimension small.",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The key to reading the figure is the division of labor: Q(·), K(·), and V(·) carry out each machine's local computation, while the pairwise attention matrix routes messages between machines. To make the routing correct and keep those three matrices tall-and-skinny at the same time, the construction uses both multiple hashing and sparse propagation. Stack one such layer per round, and an R-round protocol becomes a transformer of depth roughly R + 1."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "把一层自注意力看成一轮并行通信"
+            },
+            {
+              "type": "paragraph",
+              "text": "MPC 是分布式算法研究里的标准模型:数据被切分到许多台内存受限的机器上,计算按同步的“轮”推进,每一轮里每台机器先做本地计算,再把带地址的消息发给其他机器。它的能力用轮数来衡量,轮数越少,算法越“并行”。论文的核心主张是:一层自注意力恰好能模拟 MPC 的一轮。下面这张图给出了单个注意力头是怎么承担这件事的。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读图的关键在于分工:Q(·)、K(·)、V(·) 承担机器内部的本地计算,而成对的注意力矩阵负责在机器之间转发消息。为了让路由正确、又让这三个矩阵保持又高又窄,构造同时用到了多重哈希和稀疏传播两种技巧。把这样一层按“一轮一层”地叠起来,一个 R 轮的协议就变成了深度约为 R + 1 的 Transformer。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 87.83,
+        "end": 132.36,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 44.53,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 45.43,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 87.83,
+          "global_end": 132.36,
+          "relative_start": 0.0,
+          "relative_end": 44.53,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The core construction: multiple hashing and sparse propagation"
+            },
+            {
+              "type": "paragraph",
+              "text": "The heart of the forward simulation is a routing gadget, stated as the paper's core lemma (Lemma 3.2). At the end of each round, machines send addressed messages to one another, and the authors show that a single self-attention layer performs exactly this routing. The trick is to encode each message redundantly in several fixed locations using multiple hashing, and to move information with sparse propagation, which keeps the query, key, and value matrices tall-and-skinny so the embedding dimension stays small. The reverse direction (Theorem 3.4) packs a whole transformer layer into one MPC round, proving transformers are no more powerful than the model and yielding conditional lower bounds on depth. The figure below walks through message routing on a concrete example."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 2. A message-routing example: machines 1 and 3 send messages to machine 2. Each message is encoded, via multiple hashing, into several fixed-location \"packets\" in embedding space; this redundancy guarantees that every message appears alone at least once, so machine 2 can decode Rcvd2 from the aggregated Y2.",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The encoding map (ϕ) turns each machine's outgoing content into an embedding; after attention aggregates them, the decoding map (ψ) reads back, from the row machine 2 receives, the messages meant for it. The reason the same message goes into several packets is that only \"appears alone at least once\" makes decoding unambiguous, and that is precisely what lets the construction work at a small embedding dimension, the step that aligns attention with a single round of communication."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "核心构造:多重哈希与稀疏传播"
+            },
+            {
+              "type": "paragraph",
+              "text": "整个前向模拟的心脏是一个路由“小工具”,也就是论文里的核心引理(Lemma 3.2)。每一轮结束时,机器之间要互发带地址的消息,而作者证明一层自注意力就能精确完成这种路由。诀窍是用多重哈希把每条消息冗余地编码到若干个固定位置,再用稀疏传播来搬运信息,让 query、key、value 三个矩阵始终又高又窄,嵌入维度因此保持很小。反方向(Theorem 3.4)则把一整层 Transformer 打包进一轮 MPC,证明 Transformer 并不比这个模型更强,从而给出条件性的深度下界。下图用一个具体例子展示了消息路由。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图2 消息路由示例:机器 1 与机器 3 向机器 2 发送消息。每条消息通过“多重哈希”被编码进嵌入空间中多个固定位置的“数据包”里;这种冗余保证每条消息至少有一次单独出现,机器 2 因此能从汇聚到的 Y2 中把 Rcvd2 解码出来。",
+              "width_inches": 5.6,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "图里的编码(ϕ)把每台机器要发送的内容映射成嵌入向量,注意力完成汇聚后,解码(ψ)再从机器 2 收到的行里读回它该接收的消息。之所以要把同一条消息放进多个数据包,是因为只有“至少单独出现一次”才能保证解码无歧义——这正是构造能在小嵌入维度下运作的原因,也是把注意力和一轮通信精确对齐的关键一步。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 132.36,
+        "end": 188.63,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 56.27,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 57.17,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 132.36,
+          "global_end": 188.63,
+          "relative_start": 0.0,
+          "relative_end": 56.27,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "k-hop induction heads:一个能分辨架构的任务"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了把结论落到实处,作者设计了 k-hop induction heads 任务。标准的 induction heads 要求模型完成一个 bigram:预测当前 token 上一次出现时,紧跟其后的那个 token。k-hop 版本把这一步串起来:用一次补全决定下一次要补全哪个 bigram,如此重复 k 次。评测用长度 N = 100 的序列、大小为 4 的字母表(|Σ| = 4),并让 k 在 {0, …, 16} 之间变化,同一个模型每次随机处理一个 k。直觉上这像是需要 k 个串行步骤,但并行架构能把它折叠进对数多的层里——论文给出的构造深度恰好是 L = ⌊log₂ k⌋ + 2,而且宽度为常数。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 188.63,
+        "end": 247.3,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 58.67,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 59.57,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 188.63,
+          "global_end": 247.3,
+          "relative_start": 0.0,
+          "relative_end": 58.67,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "实验:训练出的模型恰好卡在对数阈值上"
+            },
+            {
+              "type": "paragraph",
+              "text": "理论预测能不能在真实训练里看到?作者训练了深度 2 到 6 的 Transformer,测量它们在多任务设定下随 k 增大的逐 token 分类误差。结果异常干净,下图把它完整地画了出来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图3 深度 L ∈ {2, 3, 4, 5, 6} 的 Transformer 在 hop_k 上的逐 token 分类误差(k 从 1 到 16)。每增加一层,能被小误差学会的最大 k 大约翻一倍:曲线整体向右平移一档,经验阈值恰好落在 ⌊log₂ k⌋ + 2。",
+              "width_inches": 4.7,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读法很直接:每增加一层,能被学会的最大 k 大约翻倍。6 层的模型在所有 k ≤ 16 上都表现良好,5 层能覆盖到 k ≤ 8,4 层覆盖到 k ≤ 4——可解的 k 随深度指数增长,和构造性理论完全吻合,经验边界正是 ⌊log₂ k⌋ + 2。几个消融进一步支撑了这一点:把 (m, H) 从 (128, 4) 增大到 (256, 8),深度–k 边界几乎不动,说明依赖的是深度而非单纯的规模;在只有 1000 到 3000 个样本的有限数据设定下,更深的模型泛化得更好,暗示了一种适合组合式任务的归纳偏置;而拆开训练好的网络会发现,注意力矩阵正在计算证明里用到的中间 find_j 指针,学到的机制和手工构造惊人地一致。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 求解 k-hop induction heads 所需的深度:Transformer 是对数的,串行架构是线性的。",
+              "headers": [
+                "架构",
+                "求解 k-hop 所需深度"
+              ],
+              "rows": [
+                [
+                  "Transformer(自注意力)",
+                  "⌊log₂ k⌋ + 2(对数)"
+                ],
+                [
+                  "多层 RNN / 状态空间模型(Mamba)",
+                  "≥ k(线性)"
+                ],
+                [
+                  "次二次注意力(如 Performer)",
+                  "≥ k(线性)"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 247.3,
+        "end": 294.54,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 47.24,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.14,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 247.3,
+          "global_end": 294.54,
+          "relative_start": 0.0,
+          "relative_end": 47.24,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and limits"
+            },
+            {
+              "type": "paragraph",
+              "text": "The one thing to remember is that a transformer is, in a precise sense, a parallel computer. The paper pins that intuition down as a theorem: logarithmic-depth transformers are equivalent to constant-round Massively Parallel Computation, and that equivalence explains both their power and their limits while predicting a sharp separation. On k-hop induction heads, a transformer solves the task with depth logarithmic in k, whereas RNNs, state-space models like Mamba, and efficient attention approximations like Performer all need depth linear in k. The result has honest boundaries: the task is synthetic, the constants in the forward construction are not small, and the \"near-optimality\" of the reverse direction rests on an as-yet-unproven MPC lower-bound conjecture. Even so, the message is clear: the transformer's real edge is not just scale, but the ability to do many things at once."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "实验:训练出的模型恰好卡在对数阈值上"
+            },
+            {
+              "type": "paragraph",
+              "text": "理论预测能不能在真实训练里看到?作者训练了深度 2 到 6 的 Transformer,测量它们在多任务设定下随 k 增大的逐 token 分类误差。结果异常干净,下图把它完整地画了出来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图3 深度 L ∈ {2, 3, 4, 5, 6} 的 Transformer 在 hop_k 上的逐 token 分类误差(k 从 1 到 16)。每增加一层,能被小误差学会的最大 k 大约翻一倍:曲线整体向右平移一档,经验阈值恰好落在 ⌊log₂ k⌋ + 2。",
+              "width_inches": 4.7,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读法很直接:每增加一层,能被学会的最大 k 大约翻倍。6 层的模型在所有 k ≤ 16 上都表现良好,5 层能覆盖到 k ≤ 8,4 层覆盖到 k ≤ 4——可解的 k 随深度指数增长,和构造性理论完全吻合,经验边界正是 ⌊log₂ k⌋ + 2。几个消融进一步支撑了这一点:把 (m, H) 从 (128, 4) 增大到 (256, 8),深度–k 边界几乎不动,说明依赖的是深度而非单纯的规模;在只有 1000 到 3000 个样本的有限数据设定下,更深的模型泛化得更好,暗示了一种适合组合式任务的归纳偏置;而拆开训练好的网络会发现,注意力矩阵正在计算证明里用到的中间 find_j 指针,学到的机制和手工构造惊人地一致。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 求解 k-hop induction heads 所需的深度:Transformer 是对数的,串行架构是线性的。",
+              "headers": [
+                "架构",
+                "求解 k-hop 所需深度"
+              ],
+              "rows": [
+                [
+                  "Transformer(自注意力)",
+                  "⌊log₂ k⌋ + 2(对数)"
+                ],
+                [
+                  "多层 RNN / 状态空间模型(Mamba)",
+                  "≥ k(线性)"
+                ],
+                [
+                  "次二次注意力(如 Performer)",
+                  "≥ k(线性)"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 294.54,
+        "end": 346.49,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 51.95,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 52.85,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 294.54,
+          "global_end": 346.49,
+          "relative_start": 0.0,
+          "relative_end": 51.95,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "实验:训练出的模型恰好卡在对数阈值上"
+            },
+            {
+              "type": "paragraph",
+              "text": "理论预测能不能在真实训练里看到?作者训练了深度 2 到 6 的 Transformer,测量它们在多任务设定下随 k 增大的逐 token 分类误差。结果异常干净,下图把它完整地画了出来。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图3 深度 L ∈ {2, 3, 4, 5, 6} 的 Transformer 在 hop_k 上的逐 token 分类误差(k 从 1 到 16)。每增加一层,能被小误差学会的最大 k 大约翻一倍:曲线整体向右平移一档,经验阈值恰好落在 ⌊log₂ k⌋ + 2。",
+              "width_inches": 4.7,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "读法很直接:每增加一层,能被学会的最大 k 大约翻倍。6 层的模型在所有 k ≤ 16 上都表现良好,5 层能覆盖到 k ≤ 8,4 层覆盖到 k ≤ 4——可解的 k 随深度指数增长,和构造性理论完全吻合,经验边界正是 ⌊log₂ k⌋ + 2。几个消融进一步支撑了这一点:把 (m, H) 从 (128, 4) 增大到 (256, 8),深度–k 边界几乎不动,说明依赖的是深度而非单纯的规模;在只有 1000 到 3000 个样本的有限数据设定下,更深的模型泛化得更好,暗示了一种适合组合式任务的归纳偏置;而拆开训练好的网络会发现,注意力矩阵正在计算证明里用到的中间 find_j 指针,学到的机制和手工构造惊人地一致。"
+            },
+            {
+              "type": "table",
+              "caption": "表1 求解 k-hop induction heads 所需的深度:Transformer 是对数的,串行架构是线性的。",
+              "headers": [
+                "架构",
+                "求解 k-hop 所需深度"
+              ],
+              "rows": [
+                [
+                  "Transformer(自注意力)",
+                  "⌊log₂ k⌋ + 2(对数)"
+                ],
+                [
+                  "多层 RNN / 状态空间模型(Mamba)",
+                  "≥ k(线性)"
+                ],
+                [
+                  "次二次注意力(如 Performer)",
+                  "≥ k(线性)"
+                ]
+              ]
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 346.49,
+        "end": 394.0,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 47.51,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 48.41,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 346.49,
+          "global_end": 394.0,
+          "relative_start": 0.0,
+          "relative_end": 47.51,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "headline-numbers",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Experiments: trained models land exactly on the log threshold"
+            },
+            {
+              "type": "paragraph",
+              "text": "Does the prediction actually show up in real training? The authors train transformers of depths 2 through 6 and measure token-wise classification error as k grows in the multi-task setup, and the figure below plots the remarkably clean result."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 3. Token-wise classification error of transformers of depth L ∈ {2, 3, 4, 5, 6} on hop_k, for k from 1 to 16. Each added layer roughly doubles the largest k learnable with small error: the whole curve shifts one notch to the right, and the empirical threshold lands exactly at ⌊log₂ k⌋ + 2.",
+              "width_inches": 5.8,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The reading is direct: each added layer roughly doubles the largest k the model can learn. A depth-6 model does well on every k ≤ 16, five layers reach k ≤ 8, four layers reach k ≤ 4, an exponential growth in solvable k with depth that matches the constructive theory, with the empirical boundary sitting right at ⌊log₂ k⌋ + 2. Several ablations reinforce this. Widening the model, from (m, H) = (128, 4) to (256, 8), barely moves the depth-versus-k boundary, showing the dependence is really on depth rather than sheer size. In the finite-sample regime, with only 1000 to 3000 training examples, deeper models generalize better, hinting at an inductive bias suited to compositional tasks. And opening up the trained networks reveals attention matrices computing the intermediate find_j pointers used in the proof, so the learned mechanism strikingly resembles the hand-designed construction."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Depth needed to solve k-hop induction heads: the transformer is logarithmic, serial architectures are linear.",
+              "headers": [
+                "Architecture",
+                "Depth to solve k-hop"
+              ],
+              "rows": [
+                [
+                  "Transformer (self-attention)",
+                  "⌊log₂ k⌋ + 2 (logarithmic)"
+                ],
+                [
+                  "Multi-layer RNN / state-space model (Mamba)",
+                  "≥ k (linear)"
+                ],
+                [
+                  "Sub-quadratic attention (e.g. Performer)",
+                  "≥ k (linear)"
+                ]
+              ]
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇论文想让人记住的一点是:Transformer 在一种精确的意义上是并行计算机。作者把这个直觉钉死为一条定理——对数深度的 Transformer 等价于常数轮数的大规模并行计算,而这条等价既解释了它的能力,也预言了一条清晰的分界:在 k-hop induction heads 上,Transformer 只需对数于 k 的深度就能求解,RNN、Mamba 这样的状态空间模型以及 Performer 这样的高效注意力近似,却都需要线性于 k 的深度。当然,结论也有边界:任务是合成的,前向构造里的常数并不小,而反方向“近似最优”的那部分依赖于一个尚未证明的 MPC 下界猜想。即便如此,它给出的信息很明确——Transformer 真正的优势,不只是规模,而是同时做很多件事的能力。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 394.0,
+        "end": 444.0,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 50.0,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 50.9,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 394.0,
+          "global_end": 444.0,
+          "relative_start": 0.0,
+          "relative_end": 50.0,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        10
+      ],
+      "slides": [
+        {
+          "slide_index": 10,
+          "slide_id": "takeaway",
+          "target": "#slide-10"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "Figure 1. How one attention head simulates one MPC round: each machine's local computation is pushed inside Q(·), K(·), and V(·), and the pairwise attention matrix then performs message routing. Multiple hashing and sparse propagation keep Q, K, and V tall-and-skinny, which keeps the embedding dimension small.",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway and limits"
+            },
+            {
+              "type": "paragraph",
+              "text": "The one thing to remember is that a transformer is, in a precise sense, a parallel computer. The paper pins that intuition down as a theorem: logarithmic-depth transformers are equivalent to constant-round Massively Parallel Computation, and that equivalence explains both their power and their limits while predicting a sharp separation. On k-hop induction heads, a transformer solves the task with depth logarithmic in k, whereas RNNs, state-space models like Mamba, and efficient attention approximations like Performer all need depth linear in k. The result has honest boundaries: the task is synthetic, the constants in the forward construction are not small, and the \"near-optimality\" of the reverse direction rests on an as-yet-unproven MPC lower-bound conjecture. Even so, the message is clear: the transformer's real edge is not just scale, but the ability to do many things at once."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure4.png",
+              "caption": "图1 一个注意力头如何模拟一轮 MPC:每台机器的本地计算被塞进 Q(·)、K(·)、V(·),随后成对的注意力矩阵完成消息路由。多重哈希(multiple hashing)与稀疏传播(sparse propagation)保证 Q、K、V 都是“又高又窄”的矩阵,从而把嵌入维度压得很小。",
+              "width_inches": 3.4,
+              "src": "assets/blog/figures/figure4.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "k-hop induction heads:一个能分辨架构的任务"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了把结论落到实处,作者设计了 k-hop induction heads 任务。标准的 induction heads 要求模型完成一个 bigram:预测当前 token 上一次出现时,紧跟其后的那个 token。k-hop 版本把这一步串起来:用一次补全决定下一次要补全哪个 bigram,如此重复 k 次。评测用长度 N = 100 的序列、大小为 4 的字母表(|Σ| = 4),并让 k 在 {0, …, 16} 之间变化,同一个模型每次随机处理一个 k。直觉上这像是需要 k 个串行步骤,但并行架构能把它折叠进对数多的层里——论文给出的构造深度恰好是 L = ⌊log₂ k⌋ + 2,而且宽度为常数。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论与边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇论文想让人记住的一点是:Transformer 在一种精确的意义上是并行计算机。作者把这个直觉钉死为一条定理——对数深度的 Transformer 等价于常数轮数的大规模并行计算,而这条等价既解释了它的能力,也预言了一条清晰的分界:在 k-hop induction heads 上,Transformer 只需对数于 k 的深度就能求解,RNN、Mamba 这样的状态空间模型以及 Performer 这样的高效注意力近似,却都需要线性于 k 的深度。当然,结论也有边界:任务是合成的,前向构造里的常数并不小,而反方向“近似最优”的那部分依赖于一个尚未证明的 MPC 下界猜想。即便如此,它给出的信息很明确——Transformer 真正的优势,不只是规模,而是同时做很多件事的能力。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "ICML 2024: The Transformer's Real Edge Is Parallelism, Not Scale",
+            "subtitle": "Columbia and NYU prove that logarithmic-depth transformers are equivalent to Massively Parallel Computation (MPC)"
+          },
+          "zh": {
+            "title": "ICML 2024 | Transformer 真正的优势是并行,而不是规模",
+            "subtitle": "哥伦比亚大学与纽约大学:对数深度的 Transformer 等价于大规模并行计算(MPC)"
+          }
+        }
+      },
+      "segment": {
+        "start": 444.0,
+        "end": 487.93,
+        "slides": [
+          10
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 43.93,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.83,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 10,
+          "global_start": 444.0,
+          "global_end": 487.93,
+          "relative_start": 0.0,
+          "relative_end": 43.93,
+          "clip": "assets/media/slide_clips/slide-10.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

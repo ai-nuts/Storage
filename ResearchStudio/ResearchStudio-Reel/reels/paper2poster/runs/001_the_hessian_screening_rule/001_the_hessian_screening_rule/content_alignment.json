@@ -1,0 +1,1959 @@
+{
+  "schema_version": "paper2any_alignment.v1",
+  "viewer_version": "section_modal.v2",
+  "template_version": "attention_golden_section_modal.v1",
+  "created_at": "2026-07-15T22:10:17Z",
+  "title": "The Hessian Screening Rule",
+  "artifacts": {
+    "poster": "assets/poster/poster.html",
+    "slides_dir": "assets/slides",
+    "video": "assets/media/video.mp4",
+    "video_source_kind": "raw_pre_subtitle",
+    "caption_delivery": "sidecar_vtt_toggle",
+    "captions": "assets/media/captions/video.vtt"
+  },
+  "downloads": [
+    {
+      "label": "All",
+      "href": "assets/downloads/all_final.zip"
+    },
+    {
+      "label": "Poster",
+      "href": "assets/downloads/poster_final.zip"
+    },
+    {
+      "label": "Video",
+      "href": "assets/downloads/video_final.zip"
+    },
+    {
+      "label": "Blog",
+      "href": "assets/downloads/blog_final.zip"
+    }
+  ],
+  "slides": [
+    {
+      "index": 1,
+      "id": "title",
+      "label": "Title",
+      "src": "assets/slides/slide_01.png",
+      "source": "slide-01.png"
+    },
+    {
+      "index": 2,
+      "id": "problem",
+      "label": "Problem",
+      "src": "assets/slides/slide_02.png",
+      "source": "slide-02.png"
+    },
+    {
+      "index": 3,
+      "id": "motivation",
+      "label": "Motivation",
+      "src": "assets/slides/slide_03.png",
+      "source": "slide-03.png"
+    },
+    {
+      "index": 4,
+      "id": "contribution",
+      "label": "Contribution",
+      "src": "assets/slides/slide_04.png",
+      "source": "slide-04.png"
+    },
+    {
+      "index": 5,
+      "id": "method",
+      "label": "Method",
+      "src": "assets/slides/slide_05.png",
+      "source": "slide-05.png"
+    },
+    {
+      "index": 6,
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "src": "assets/slides/slide_06.png",
+      "source": "slide-06.png"
+    },
+    {
+      "index": 7,
+      "id": "key-result",
+      "label": "Key Result",
+      "src": "assets/slides/slide_07.png",
+      "source": "slide-07.png"
+    },
+    {
+      "index": 8,
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "src": "assets/slides/slide_08.png",
+      "source": "slide-08.png"
+    },
+    {
+      "index": 9,
+      "id": "takeaway",
+      "label": "Takeaway",
+      "src": "assets/slides/slide_09.png",
+      "source": "slide-09.png"
+    }
+  ],
+  "sections": [
+    {
+      "id": "title",
+      "label": "Title",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": ".titlebar"
+      },
+      "slide_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fitting a whole path is the real cost"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because λ must be tuned, the unit of work is not a single lasso fit but a sequence of them along a decreasing grid of penalties, each seeded from the previous solution. Sequential screening rules like the strong rule and the working-set strategy exploit this: they use the solution at λ_k to predict which predictors can possibly become active at the next, smaller λ_{k+1}. The paper's first observation is unifying: both rules can be rewritten as estimates of the same quantity, the correlation (the negative gradient) at the next step. That reframing exposes their common flaw: the estimate is purely first-order, so it drifts when predictors are correlated, forcing the solver into extra KKT checks and re-optimization."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "One Hessian, two jobs"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method rests on a simple fact: on any interval of λ where the active set of nonzero coefficients does not change, the lasso solution is a linear function of λ. Linearity is exactly what a second-order estimate can exploit. Using the Hessian of the active predictors, the authors write down a sharper, second-order estimate of the correlation at the next penalty value:"
+            },
+            {
+              "type": "paragraph",
+              "text": "ĉ_H(λ_{k+1}) = c(λ_k) + (λ_{k+1} − λ_k) · Xᵀ X_A (X_Aᵀ X_A)⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "To keep this affordable the expensive inner products are restricted to the strong-rule set, with a small fraction of the unit bound added back as a safety margin. The same Hessian inverse then pulls double duty as a warm start for the coefficients themselves, and because the solution is linear in λ on a fixed active set, this warm start is not just close but exact whenever the active set stays constant:"
+            },
+            {
+              "type": "paragraph",
+              "text": "β̂(λ_{k+1})_A = β̂(λ_k)_A + (λ_k − λ_{k+1}) · H_A⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "Two engineering pieces make this practical at scale: low-rank updates keep the Hessian and its inverse current as predictors enter and leave the active set, and an approximate-homotopy scheme adaptively places the λ grid. Crucially, nothing here is specific to squared error. The rule applies to any twice-differentiable smooth loss, so ℓ1-regularized logistic regression comes along for free."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Job one: much tighter screening"
+            },
+            {
+              "type": "paragraph",
+              "text": "The first payoff is how few predictors the rule keeps. The figure below fits a full path on a design with n = 200 observations and p = 20000 predictors at three correlation levels, and plots how many predictors each rule screens in (keeps as candidates) at every step; the dashed line marks the true active-set floor. The y-axis is on a log scale, so vertical gaps are order-of-magnitude gaps."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The Hessian curve hugs the dashed floor, keeping on the order of a couple hundred predictors, while the safe and heuristic alternatives sit one to three orders of magnitude higher, retaining thousands to tens of thousands. The gap is smallest at ρ = 0 and widens as correlation grows, which is exactly the direction competing rules move the wrong way. Tighter screening means every inner solve the optimizer runs is over a dramatically smaller problem."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Job two: near-exact warm starts"
+            },
+            {
+              "type": "paragraph",
+              "text": "Tighter screening alone doesn't explain the full speedup; the warm start matters just as much. Because the Hessian warm start is the exact solution whenever the active set is unchanged, most path steps should converge almost immediately. The next figure isolates that effect by counting coordinate-descent passes per step for the Hessian warm start versus a standard warm start (the previous step's solution), on two real data sets."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Coordinate-descent passes per path step on colon-cancer (n = 62, p = 2000) and YearPredictionMSD (n = 463715, p = 90), Hessian warm start (orange) versus standard warm start (black). The Hessian warm start collapses most steps to a single pass, because it is near-exact whenever the active set does not change.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The standard warm start needs a fluctuating 10 to 30 passes per step; the Hessian warm start spends most steps at a single pass, spiking only at the steps where the active set actually changes. This is the mechanism behind the method's dominance in the n ≫ p setting, where the per-pass cost is high and cutting passes pays off directly."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How much faster, end to end"
+            },
+            {
+              "type": "paragraph",
+              "text": "Do tighter screening and better warm starts translate into wall-clock wins? The next figure benchmarks full-path fit time against the working-set strategy, Celer, and Blitz on simulated Gaussian designs, in a low-dimensional regime (n = 10000, p = 100) and a high-dimensional one (n = 400, p = 40000), across least-squares and logistic losses and three correlation levels. Time is relative to the fastest method in each group, so the Hessian bar sits at 1."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Relative full-path fit time on simulated data (lower is better; Hessian normalized to 1), across least-squares and logistic losses, two dimensional regimes, and correlations ρ = 0, 0.4, 0.8. The Hessian rule is fastest in every configuration; its margin is largest in the high-correlation, low-dimensional least-squares case, where baselines run 3–5× slower.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The Hessian rule is fastest in every single configuration, and its lead is widest precisely where screening rules have historically struggled: the high-correlation, low-dimensional least-squares case, where the working-set strategy, Celer, and Blitz all run roughly three to five times slower. Where correlation is zero and the problem is easy, the margin narrows, an honest reflection that the gains come from handling the hard regime well rather than from a uniform constant-factor trick."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The same story on real data"
+            },
+            {
+              "type": "paragraph",
+              "text": "The pattern carries over to twelve real data sets spanning gene-expression matrices, text corpora, and problems with millions of features. The table below reports full-path fit time in seconds (lower is better) on a representative subset. On ℓ1-regularized least-squares the Hessian rule is fastest on all five data sets, and in all but one of them it finishes in under half the runner-up's time: 78.8 s versus 541 s on YearPredictionMSD (about 6.9×), and 14.3 s versus 143 s on e2006-tfidf (about 10×)."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Full-path fit time in seconds on a representative subset of real data sets (lower is better). Hessian is fastest on every least-squares set shown and on the larger logistic sets; the working-set strategy is the usual runner-up. On the full benchmark the lone loss is arcene (logistic), where the working-set strategy is marginally faster.",
+              "headers": [
+                "Data set",
+                "n",
+                "p",
+                "Loss",
+                "Hessian",
+                "Working",
+                "Blitz",
+                "Celer"
+              ],
+              "rows": [
+                [
+                  "bcTCGA",
+                  "536",
+                  "17,322",
+                  "Least-Squares",
+                  "3.00",
+                  "7.67",
+                  "11.7",
+                  "10.6"
+                ],
+                [
+                  "e2006-tfidf",
+                  "16,087",
+                  "150,360",
+                  "Least-Squares",
+                  "14.3",
+                  "143",
+                  "277",
+                  "335"
+                ],
+                [
+                  "YearPredictionMSD",
+                  "463,715",
+                  "90",
+                  "Least-Squares",
+                  "78.8",
+                  "541",
+                  "706",
+                  "712"
+                ],
+                [
+                  "colon-cancer",
+                  "62",
+                  "2,000",
+                  "Logistic",
+                  "0.054",
+                  "0.134",
+                  "0.177",
+                  "0.169"
+                ],
+                [
+                  "madelon",
+                  "2,000",
+                  "500",
+                  "Logistic",
+                  "48.2",
+                  "232",
+                  "240",
+                  "247"
+                ],
+                [
+                  "rcv1",
+                  "20,242",
+                  "47,236",
+                  "Logistic",
+                  "132",
+                  "266",
+                  "384",
+                  "378"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On logistic regression the story is nearly as strong, with large wins on madelon (48.2 s versus 232 s) and rcv1 (132 s versus 266 s). Across all twelve sets the single exception is arcene, a small dense logistic problem where the working-set strategy is marginally faster; the authors report that case rather than hide it."
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway, and where it stops"
+            },
+            {
+              "type": "paragraph",
+              "text": "The appeal of the Hessian Screening Rule is that one idea pays off twice. Reusing second-order information tightens screening so the solver sees far fewer predictors, and supplies warm starts so accurate that many steps converge in a single pass. Together they make it the fastest way to fit lasso and ℓ1-logistic regularization paths across the benchmarks here, with the biggest edge in the high-correlation regime that has long been the hardest for screening rules."
+            },
+            {
+              "type": "paragraph",
+              "text": "The boundaries are stated plainly. Storing the Hessian and its inverse costs more memory than competing methods, which can become prohibitive when min{n, p} is large; there the working-set strategy is the more sensible fallback. And because this is a sequential rule tuned for fitting an entire path, it is not the right tool when you only need the solution at a single λ, where a dynamic method like Celer or Blitz is likely to win. But for the common workflow of fitting a full path and cross-validating on correlated high-dimensional data, and for any composite objective whose smooth part is twice-differentiable, the Hessian Screening Rule is a clear default."
+            }
+          ],
+          "zh": [
+            {
+              "type": "paragraph",
+              "text": "Lasso 是高维统计里最可靠的工具之一：在回归损失上加一个 ℓ1 惩罚，模型就能一边拟合、一边做特征选择。麻烦在于，合适的惩罚强度 λ 事先并不知道。实际做法不是拟合一个 Lasso 模型，而是沿着一整条正则化路径（regularization path），在很多个 λ 上都拟合一遍，再用交叉验证挑最好的一个，同一个昂贵的问题要反复重解。当特征有几万维时，时间几乎都花在这条路径上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "让每次拟合更省的常用技巧，是筛选规则（screening rule）：在求解器运行之前，先廉价地猜出哪些特征的系数会保持为零，把它们提前丢掉，让优化器只面对一个很小的候选集合。筛选规则正是大规模 Lasso 得以落地的关键。但主流筛选规则有个共同的软肋：恰恰在特征高度相关时变得保守，而这正是最需要速度的场景。它们会保留过多特征，交给求解器的热启动（warm start，用上一步的解作为下一步的初值）也不够准，收敛因此变慢。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇 NeurIPS 2022 论文由隆德大学的 Johan Larsson 与 Jonas Wallin 完成，把上面两个问题都归到同一个根源（只用了一阶信息），并用同一件工具来修复。Hessian 筛选规则（Hessian Screening Rule）改用二阶（曲率）信息来估计路径的下一步。作者证明，一份 Hessian 可以同时干两件事：既把特征筛得更紧，又给出一个在活跃集不变时几乎就是精确解的热启动。最终在几乎所有模拟和真实数据基准上，它都是最快的方法。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码（C++/R）：https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正的开销：拟合一整条路径"
+            },
+            {
+              "type": "paragraph",
+              "text": "由于 λ 必须调，工作单位不是一次 Lasso 拟合，而是沿着一列递减的惩罚值依次求解，每一步都用上一步的解来初始化。序贯筛选规则，如强规则（strong rule）和工作集策略（working-set strategy），正是利用了这一点：用 λ_k 处的解，去预测在下一个更小的 λ_{k+1} 处哪些特征可能变为活跃。论文的第一个观察带有统一性：这两种规则都可以改写成对同一个量的估计，即下一步的相关性（correlation，也就是负梯度）。这个改写暴露了它们共同的缺陷。这个估计是纯一阶的，一旦特征相关就会明显偏移，逼着求解器做额外的 KKT 检查和重新优化。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "一份 Hessian，两个用途"
+            },
+            {
+              "type": "paragraph",
+              "text": "方法建立在一个简单事实上：在任意一段 λ 区间内，只要非零系数构成的活跃集不变，Lasso 的解就是 λ 的线性函数。而线性正是二阶估计能利用的结构。作者用活跃特征的 Hessian，写出下一步相关性的一个更锐利的二阶估计："
+            },
+            {
+              "type": "paragraph",
+              "text": "ĉ_H(λ_{k+1}) = c(λ_k) + (λ_{k+1} − λ_k) · Xᵀ X_A (X_Aᵀ X_A)⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了控制开销，昂贵的内积只在强规则集合上计算，再加回一小部分单位上界作为安全余量。同一份 Hessian 的逆矩阵随后一物两用，直接给系数本身当热启动；而且因为在固定活跃集上解对 λ 线性，这个热启动不只是接近，而是在活跃集不变时就等于精确解："
+            },
+            {
+              "type": "paragraph",
+              "text": "β̂(λ_{k+1})_A = β̂(λ_k)_A + (λ_k − λ_{k+1}) · H_A⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "两处工程设计让它在大规模下依然实用：低秩更新（low-rank update）在特征进出活跃集时，实时维护 Hessian 及其逆；近似同伦（approximate homotopy）则自适应地安排 λ 网格。更重要的是，这里没有任何一步依赖平方误差。规则适用于任何二阶可微的光滑损失，因此 ℓ1 正则的逻辑回归可以顺带覆盖。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "用途一：筛选紧得多"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一个收益，是规则保留的特征之少。下图在一个 n = 200、p = 20000 的设计上拟合完整路径，取三种相关水平，画出每种规则在每一步筛入（保留为候选）的特征数量；虚线是真实活跃集的下界。注意 y 轴是对数刻度，因此纵向的距离就是数量级的差距。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 曲线贴着虚线走，大致只保留两百来个特征，而各类安全规则和启发式规则则高出一到三个数量级，动辄保留数千到数万个。差距在 ρ = 0 时最小，随相关性增大而拉开，而这恰恰是竞争规则走向恶化的方向。筛得更紧，意味着优化器每一次内部求解面对的问题都小得多。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "用途二：几乎精确的热启动"
+            },
+            {
+              "type": "paragraph",
+              "text": "只靠更紧的筛选还不足以解释全部提速，热启动同样关键。因为 Hessian 热启动在活跃集不变时就是精确解，大多数路径步骤应当几乎立刻收敛。下图把这一效应单独拎出来：在两个真实数据集上，比较 Hessian 热启动与标准热启动（上一步的解）各自每一步所需的坐标下降遍数。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2　colon-cancer（n = 62，p = 2000）与 YearPredictionMSD（n = 463715，p = 90）上每个路径步骤的坐标下降遍数：Hessian 热启动（橙）对比标准热启动（黑）。Hessian 热启动把大多数步骤压到只需一遍，因为只要活跃集不变，它就几乎是精确解。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "标准热启动每一步要在 10 到 30 遍之间来回波动；Hessian 热启动则大部分步骤只用一遍，只在活跃集真正发生变化的那几步才出现尖峰。这正是该方法在 n ≫ p 场景下占优的机制所在：那里每一遍的成本很高，砍掉遍数的收益立竿见影。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "端到端到底快多少"
+            },
+            {
+              "type": "paragraph",
+              "text": "更紧的筛选和更好的热启动，最终能否换成对强基线的实际墙钟时间优势？下图在模拟高斯设计上，把完整路径的拟合时间与工作集策略、Celer、Blitz 相比，覆盖低维（n = 10000，p = 100）与高维（n = 400，p = 40000）两种设定、最小二乘与逻辑回归两种损失、三个相关水平。时间以每组最快方法为基准做了归一化，因此 Hessian 那根柱子固定为 1。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "图3　模拟数据上完整路径的相对拟合时间（越低越好，Hessian 归一化为 1），跨最小二乘与逻辑回归两种损失、两种维度设定、相关水平 ρ = 0、0.4、0.8。Hessian 规则在每一种配置下都最快；在高相关、低维的最小二乘场景下优势最大，此时基线要慢上 3–5×。",
+              "width_inches": 4.9,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 规则在每一种配置下都是最快的，而且优势最大的地方，恰恰是筛选规则历来最吃力的场景：高相关、低维的最小二乘，此时工作集策略、Celer、Blitz 都要慢上大约三到五倍。而在相关性为零、问题本就简单时，差距收窄，这是一个诚实的信号：收益来自把困难场景处理好，而不是靠一个一刀切的常数倍加速。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真实数据上是同一个故事"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一规律延续到了十二个真实数据集上，涵盖基因表达矩阵、文本语料，以及特征多达数百万的问题。下表列出其中有代表性的一部分，报告完整路径的拟合时间（秒，越低越好）。在 ℓ1 正则最小二乘上，Hessian 规则在全部五个数据集上都最快，且在其中除一个之外都用不到次优方法一半的时间：在 YearPredictionMSD 上是 78.8 秒对 541 秒（约 6.9×），在 e2006-tfidf 上是 14.3 秒对 143 秒（约 10×），提速接近一个数量级。"
+            },
+            {
+              "type": "table",
+              "caption": "表1　真实数据集代表性子集上完整路径的拟合时间（秒，越低越好）。Hessian 在所列的每个最小二乘集合、以及较大的逻辑回归集合上都最快，工作集策略通常是次优。在完整基准里唯一的失手是 arcene（逻辑回归），那里工作集策略略快一点。",
+              "headers": [
+                "数据集",
+                "n",
+                "p",
+                "损失",
+                "Hessian",
+                "Working",
+                "Blitz",
+                "Celer"
+              ],
+              "rows": [
+                [
+                  "bcTCGA",
+                  "536",
+                  "17,322",
+                  "Least-Squares",
+                  "3.00",
+                  "7.67",
+                  "11.7",
+                  "10.6"
+                ],
+                [
+                  "e2006-tfidf",
+                  "16,087",
+                  "150,360",
+                  "Least-Squares",
+                  "14.3",
+                  "143",
+                  "277",
+                  "335"
+                ],
+                [
+                  "YearPredictionMSD",
+                  "463,715",
+                  "90",
+                  "Least-Squares",
+                  "78.8",
+                  "541",
+                  "706",
+                  "712"
+                ],
+                [
+                  "colon-cancer",
+                  "62",
+                  "2,000",
+                  "Logistic",
+                  "0.054",
+                  "0.134",
+                  "0.177",
+                  "0.169"
+                ],
+                [
+                  "madelon",
+                  "2,000",
+                  "500",
+                  "Logistic",
+                  "48.2",
+                  "232",
+                  "240",
+                  "247"
+                ],
+                [
+                  "rcv1",
+                  "20,242",
+                  "47,236",
+                  "Logistic",
+                  "132",
+                  "266",
+                  "384",
+                  "378"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在逻辑回归上，结论几乎一样有力，madelon（48.2 秒对 232 秒）和 rcv1（132 秒对 266 秒）都是大幅领先。十二个数据集里唯一的例外是 arcene，一个规模小、稠密的逻辑回归问题，那里工作集策略略快一线，作者选择如实报告，而不是回避这一处失手。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论，以及它的边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 筛选规则的吸引力在于：一个想法收获两次回报。复用二阶信息，既把筛选收紧、让求解器面对的特征大幅减少，又提供了足够准确的热启动、让许多步骤一遍即收敛。两者叠加，使它成为在本文基准上拟合 Lasso 与 ℓ1 逻辑回归正则化路径最快的方法，而优势最大之处，正是长期以来对筛选规则最棘手的高相关场景。"
+            },
+            {
+              "type": "paragraph",
+              "text": "边界也讲得很清楚。存储 Hessian 及其逆，比竞争方法更耗内存，当 min{n, p} 很大时这一开销可能变得难以承受，此时工作集策略是更稳妥的退路。而且由于这是一个为拟合整条路径而设计的序贯规则，当你只需要单个 λ 处的解时，它并非首选，那种情况下 Celer、Blitz 这类动态方法多半更优。方法本身也可以干净地推广到最小二乘和逻辑回归之外，任何可微部分二阶可微的复合目标都适用。对于在相关的高维数据上拟合整条路径、做交叉验证、再重复一遍这一最常见的工作流而言，它已经是一个足够稳妥而明确的默认选择。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 0.0,
+        "end": 360.11,
+        "slides": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      "clip": "assets/media/clips/title.mp4",
+      "captions": "assets/media/captions/clips/title.vtt",
+      "clip_seconds": 360.11,
+      "slide_segments": [
+        {
+          "slide": 1,
+          "global_start": 0.5,
+          "global_end": 38.38,
+          "relative_start": 0.5,
+          "relative_end": 38.38,
+          "clip": "assets/media/slide_clips/slide-01.mp4"
+        },
+        {
+          "slide": 2,
+          "global_start": 38.38,
+          "global_end": 73.94,
+          "relative_start": 38.38,
+          "relative_end": 73.94,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        },
+        {
+          "slide": 3,
+          "global_start": 73.94,
+          "global_end": 113.14,
+          "relative_start": 73.94,
+          "relative_end": 113.14,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        },
+        {
+          "slide": 4,
+          "global_start": 113.14,
+          "global_end": 154.41,
+          "relative_start": 113.14,
+          "relative_end": 154.41,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        },
+        {
+          "slide": 5,
+          "global_start": 154.41,
+          "global_end": 203.43,
+          "relative_start": 154.41,
+          "relative_end": 203.43,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        },
+        {
+          "slide": 6,
+          "global_start": 203.43,
+          "global_end": 244.72,
+          "relative_start": 203.43,
+          "relative_end": 244.72,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        },
+        {
+          "slide": 7,
+          "global_start": 244.72,
+          "global_end": 288.39,
+          "relative_start": 244.72,
+          "relative_end": 288.39,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        },
+        {
+          "slide": 8,
+          "global_start": 288.39,
+          "global_end": 328.55,
+          "relative_start": 288.39,
+          "relative_end": 328.55,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        },
+        {
+          "slide": 9,
+          "global_start": 328.55,
+          "global_end": 360.05,
+          "relative_start": 328.55,
+          "relative_end": 360.05,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    },
+    {
+      "id": "problem",
+      "label": "Problem",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='problem']"
+      },
+      "slide_indices": [
+        2
+      ],
+      "slides": [
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Lasso 是高维统计里最可靠的工具之一：在回归损失上加一个 ℓ1 惩罚，模型就能一边拟合、一边做特征选择。麻烦在于，合适的惩罚强度 λ 事先并不知道。实际做法不是拟合一个 Lasso 模型，而是沿着一整条正则化路径（regularization path），在很多个 λ 上都拟合一遍，再用交叉验证挑最好的一个，同一个昂贵的问题要反复重解。当特征有几万维时，时间几乎都花在这条路径上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "让每次拟合更省的常用技巧，是筛选规则（screening rule）：在求解器运行之前，先廉价地猜出哪些特征的系数会保持为零，把它们提前丢掉，让优化器只面对一个很小的候选集合。筛选规则正是大规模 Lasso 得以落地的关键。但主流筛选规则有个共同的软肋：恰恰在特征高度相关时变得保守，而这正是最需要速度的场景。它们会保留过多特征，交给求解器的热启动（warm start，用上一步的解作为下一步的初值）也不够准，收敛因此变慢。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇 NeurIPS 2022 论文由隆德大学的 Johan Larsson 与 Jonas Wallin 完成，把上面两个问题都归到同一个根源（只用了一阶信息），并用同一件工具来修复。Hessian 筛选规则（Hessian Screening Rule）改用二阶（曲率）信息来估计路径的下一步。作者证明，一份 Hessian 可以同时干两件事：既把特征筛得更紧，又给出一个在活跃集不变时几乎就是精确解的热启动。最终在几乎所有模拟和真实数据基准上，它都是最快的方法。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码（C++/R）：https://github.com/jolars/HessianScreening"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 38.38,
+        "end": 73.94,
+        "slides": [
+          2
+        ]
+      },
+      "clip": "assets/media/clips/problem.mp4",
+      "captions": "assets/media/captions/clips/problem.vtt",
+      "source_clip_seconds": 35.56,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 36.46,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 2,
+          "global_start": 38.38,
+          "global_end": 73.94,
+          "relative_start": 0.0,
+          "relative_end": 35.56,
+          "clip": "assets/media/slide_clips/slide-02.mp4"
+        }
+      ]
+    },
+    {
+      "id": "motivation",
+      "label": "Motivation",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='motivation']"
+      },
+      "slide_indices": [
+        3
+      ],
+      "slides": [
+        {
+          "slide_index": 1,
+          "slide_id": "title",
+          "target": "#slide-1"
+        },
+        {
+          "slide_index": 2,
+          "slide_id": "problem",
+          "target": "#slide-2"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fitting a whole path is the real cost"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because λ must be tuned, the unit of work is not a single lasso fit but a sequence of them along a decreasing grid of penalties, each seeded from the previous solution. Sequential screening rules like the strong rule and the working-set strategy exploit this: they use the solution at λ_k to predict which predictors can possibly become active at the next, smaller λ_{k+1}. The paper's first observation is unifying: both rules can be rewritten as estimates of the same quantity, the correlation (the negative gradient) at the next step. That reframing exposes their common flaw: the estimate is purely first-order, so it drifts when predictors are correlated, forcing the solver into extra KKT checks and re-optimization."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正的开销：拟合一整条路径"
+            },
+            {
+              "type": "paragraph",
+              "text": "由于 λ 必须调，工作单位不是一次 Lasso 拟合，而是沿着一列递减的惩罚值依次求解，每一步都用上一步的解来初始化。序贯筛选规则，如强规则（strong rule）和工作集策略（working-set strategy），正是利用了这一点：用 λ_k 处的解，去预测在下一个更小的 λ_{k+1} 处哪些特征可能变为活跃。论文的第一个观察带有统一性：这两种规则都可以改写成对同一个量的估计，即下一步的相关性（correlation，也就是负梯度）。这个改写暴露了它们共同的缺陷。这个估计是纯一阶的，一旦特征相关就会明显偏移，逼着求解器做额外的 KKT 检查和重新优化。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 73.94,
+        "end": 113.14,
+        "slides": [
+          3
+        ]
+      },
+      "clip": "assets/media/clips/motivation.mp4",
+      "captions": "assets/media/captions/clips/motivation.vtt",
+      "source_clip_seconds": 39.2,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 40.1,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 3,
+          "global_start": 73.94,
+          "global_end": 113.14,
+          "relative_start": 0.0,
+          "relative_end": 39.2,
+          "clip": "assets/media/slide_clips/slide-03.mp4"
+        }
+      ]
+    },
+    {
+      "id": "contribution",
+      "label": "Contribution",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='contribution']"
+      },
+      "slide_indices": [
+        4
+      ],
+      "slides": [
+        {
+          "slide_index": 3,
+          "slide_id": "motivation",
+          "target": "#slide-3"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "One Hessian, two jobs"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method rests on a simple fact: on any interval of λ where the active set of nonzero coefficients does not change, the lasso solution is a linear function of λ. Linearity is exactly what a second-order estimate can exploit. Using the Hessian of the active predictors, the authors write down a sharper, second-order estimate of the correlation at the next penalty value:"
+            },
+            {
+              "type": "paragraph",
+              "text": "ĉ_H(λ_{k+1}) = c(λ_k) + (λ_{k+1} − λ_k) · Xᵀ X_A (X_Aᵀ X_A)⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "To keep this affordable the expensive inner products are restricted to the strong-rule set, with a small fraction of the unit bound added back as a safety margin. The same Hessian inverse then pulls double duty as a warm start for the coefficients themselves, and because the solution is linear in λ on a fixed active set, this warm start is not just close but exact whenever the active set stays constant:"
+            },
+            {
+              "type": "paragraph",
+              "text": "β̂(λ_{k+1})_A = β̂(λ_k)_A + (λ_k − λ_{k+1}) · H_A⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "Two engineering pieces make this practical at scale: low-rank updates keep the Hessian and its inverse current as predictors enter and leave the active set, and an approximate-homotopy scheme adaptively places the λ grid. Crucially, nothing here is specific to squared error. The rule applies to any twice-differentiable smooth loss, so ℓ1-regularized logistic regression comes along for free."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论，以及它的边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 筛选规则的吸引力在于：一个想法收获两次回报。复用二阶信息，既把筛选收紧、让求解器面对的特征大幅减少，又提供了足够准确的热启动、让许多步骤一遍即收敛。两者叠加，使它成为在本文基准上拟合 Lasso 与 ℓ1 逻辑回归正则化路径最快的方法，而优势最大之处，正是长期以来对筛选规则最棘手的高相关场景。"
+            },
+            {
+              "type": "paragraph",
+              "text": "边界也讲得很清楚。存储 Hessian 及其逆，比竞争方法更耗内存，当 min{n, p} 很大时这一开销可能变得难以承受，此时工作集策略是更稳妥的退路。而且由于这是一个为拟合整条路径而设计的序贯规则，当你只需要单个 λ 处的解时，它并非首选，那种情况下 Celer、Blitz 这类动态方法多半更优。方法本身也可以干净地推广到最小二乘和逻辑回归之外，任何可微部分二阶可微的复合目标都适用。对于在相关的高维数据上拟合整条路径、做交叉验证、再重复一遍这一最常见的工作流而言，它已经是一个足够稳妥而明确的默认选择。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 113.14,
+        "end": 154.41,
+        "slides": [
+          4
+        ]
+      },
+      "clip": "assets/media/clips/contribution.mp4",
+      "captions": "assets/media/captions/clips/contribution.vtt",
+      "source_clip_seconds": 41.27,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 42.17,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 4,
+          "global_start": 113.14,
+          "global_end": 154.41,
+          "relative_start": 0.0,
+          "relative_end": 41.27,
+          "clip": "assets/media/slide_clips/slide-04.mp4"
+        }
+      ]
+    },
+    {
+      "id": "method",
+      "label": "Method",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='method']"
+      },
+      "slide_indices": [
+        5
+      ],
+      "slides": [
+        {
+          "slide_index": 4,
+          "slide_id": "contribution",
+          "target": "#slide-4"
+        },
+        {
+          "slide_index": 5,
+          "slide_id": "method",
+          "target": "#slide-5"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "Figure 2. Coordinate-descent passes per path step on colon-cancer (n = 62, p = 2000) and YearPredictionMSD (n = 463715, p = 90), Hessian warm start (orange) versus standard warm start (black). The Hessian warm start collapses most steps to a single pass, because it is near-exact whenever the active set does not change.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "One Hessian, two jobs"
+            },
+            {
+              "type": "paragraph",
+              "text": "The method rests on a simple fact: on any interval of λ where the active set of nonzero coefficients does not change, the lasso solution is a linear function of λ. Linearity is exactly what a second-order estimate can exploit. Using the Hessian of the active predictors, the authors write down a sharper, second-order estimate of the correlation at the next penalty value:"
+            },
+            {
+              "type": "paragraph",
+              "text": "ĉ_H(λ_{k+1}) = c(λ_k) + (λ_{k+1} − λ_k) · Xᵀ X_A (X_Aᵀ X_A)⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "To keep this affordable the expensive inner products are restricted to the strong-rule set, with a small fraction of the unit bound added back as a safety margin. The same Hessian inverse then pulls double duty as a warm start for the coefficients themselves, and because the solution is linear in λ on a fixed active set, this warm start is not just close but exact whenever the active set stays constant:"
+            },
+            {
+              "type": "paragraph",
+              "text": "β̂(λ_{k+1})_A = β̂(λ_k)_A + (λ_k − λ_{k+1}) · H_A⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "Two engineering pieces make this practical at scale: low-rank updates keep the Hessian and its inverse current as predictors enter and leave the active set, and an approximate-homotopy scheme adaptively places the λ grid. Crucially, nothing here is specific to squared error. The rule applies to any twice-differentiable smooth loss, so ℓ1-regularized logistic regression comes along for free."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2　colon-cancer（n = 62，p = 2000）与 YearPredictionMSD（n = 463715，p = 90）上每个路径步骤的坐标下降遍数：Hessian 热启动（橙）对比标准热启动（黑）。Hessian 热启动把大多数步骤压到只需一遍，因为只要活跃集不变，它就几乎是精确解。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Lasso 是高维统计里最可靠的工具之一：在回归损失上加一个 ℓ1 惩罚，模型就能一边拟合、一边做特征选择。麻烦在于，合适的惩罚强度 λ 事先并不知道。实际做法不是拟合一个 Lasso 模型，而是沿着一整条正则化路径（regularization path），在很多个 λ 上都拟合一遍，再用交叉验证挑最好的一个，同一个昂贵的问题要反复重解。当特征有几万维时，时间几乎都花在这条路径上。"
+            },
+            {
+              "type": "paragraph",
+              "text": "让每次拟合更省的常用技巧，是筛选规则（screening rule）：在求解器运行之前，先廉价地猜出哪些特征的系数会保持为零，把它们提前丢掉，让优化器只面对一个很小的候选集合。筛选规则正是大规模 Lasso 得以落地的关键。但主流筛选规则有个共同的软肋：恰恰在特征高度相关时变得保守，而这正是最需要速度的场景。它们会保留过多特征，交给求解器的热启动（warm start，用上一步的解作为下一步的初值）也不够准，收敛因此变慢。"
+            },
+            {
+              "type": "paragraph",
+              "text": "这篇 NeurIPS 2022 论文由隆德大学的 Johan Larsson 与 Jonas Wallin 完成，把上面两个问题都归到同一个根源（只用了一阶信息），并用同一件工具来修复。Hessian 筛选规则（Hessian Screening Rule）改用二阶（曲率）信息来估计路径的下一步。作者证明，一份 Hessian 可以同时干两件事：既把特征筛得更紧，又给出一个在活跃集不变时几乎就是精确解的热启动。最终在几乎所有模拟和真实数据基准上，它都是最快的方法。"
+            },
+            {
+              "type": "paragraph",
+              "text": "论文：https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "代码（C++/R）：https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "一份 Hessian，两个用途"
+            },
+            {
+              "type": "paragraph",
+              "text": "方法建立在一个简单事实上：在任意一段 λ 区间内，只要非零系数构成的活跃集不变，Lasso 的解就是 λ 的线性函数。而线性正是二阶估计能利用的结构。作者用活跃特征的 Hessian，写出下一步相关性的一个更锐利的二阶估计："
+            },
+            {
+              "type": "paragraph",
+              "text": "ĉ_H(λ_{k+1}) = c(λ_k) + (λ_{k+1} − λ_k) · Xᵀ X_A (X_Aᵀ X_A)⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "为了控制开销，昂贵的内积只在强规则集合上计算，再加回一小部分单位上界作为安全余量。同一份 Hessian 的逆矩阵随后一物两用，直接给系数本身当热启动；而且因为在固定活跃集上解对 λ 线性，这个热启动不只是接近，而是在活跃集不变时就等于精确解："
+            },
+            {
+              "type": "paragraph",
+              "text": "β̂(λ_{k+1})_A = β̂(λ_k)_A + (λ_k − λ_{k+1}) · H_A⁻¹ sign β̂(λ_k)_A"
+            },
+            {
+              "type": "paragraph",
+              "text": "两处工程设计让它在大规模下依然实用：低秩更新（low-rank update）在特征进出活跃集时，实时维护 Hessian 及其逆；近似同伦（approximate homotopy）则自适应地安排 λ 网格。更重要的是，这里没有任何一步依赖平方误差。规则适用于任何二阶可微的光滑损失，因此 ℓ1 正则的逻辑回归可以顺带覆盖。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 154.41,
+        "end": 203.43,
+        "slides": [
+          5
+        ]
+      },
+      "clip": "assets/media/clips/method.mp4",
+      "captions": "assets/media/captions/clips/method.vtt",
+      "source_clip_seconds": 49.02,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 49.92,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 5,
+          "global_start": 154.41,
+          "global_end": 203.43,
+          "relative_start": 0.0,
+          "relative_end": 49.02,
+          "clip": "assets/media/slide_clips/slide-05.mp4"
+        }
+      ]
+    },
+    {
+      "id": "dataset-benchmark",
+      "label": "Dataset / Benchmark",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='dataset-benchmark']"
+      },
+      "slide_indices": [
+        6
+      ],
+      "slides": [
+        {
+          "slide_index": 6,
+          "slide_id": "dataset-benchmark",
+          "target": "#slide-6"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Relative full-path fit time on simulated data (lower is better; Hessian normalized to 1), across least-squares and logistic losses, two dimensional regimes, and correlations ρ = 0, 0.4, 0.8. The Hessian rule is fastest in every configuration; its margin is largest in the high-correlation, low-dimensional least-squares case, where baselines run 3–5× slower.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2　colon-cancer（n = 62，p = 2000）与 YearPredictionMSD（n = 463715，p = 90）上每个路径步骤的坐标下降遍数：Hessian 热启动（橙）对比标准热启动（黑）。Hessian 热启动把大多数步骤压到只需一遍，因为只要活跃集不变，它就几乎是精确解。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真实数据上是同一个故事"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一规律延续到了十二个真实数据集上，涵盖基因表达矩阵、文本语料，以及特征多达数百万的问题。下表列出其中有代表性的一部分，报告完整路径的拟合时间（秒，越低越好）。在 ℓ1 正则最小二乘上，Hessian 规则在全部五个数据集上都最快，且在其中除一个之外都用不到次优方法一半的时间：在 YearPredictionMSD 上是 78.8 秒对 541 秒（约 6.9×），在 e2006-tfidf 上是 14.3 秒对 143 秒（约 10×），提速接近一个数量级。"
+            },
+            {
+              "type": "table",
+              "caption": "表1　真实数据集代表性子集上完整路径的拟合时间（秒，越低越好）。Hessian 在所列的每个最小二乘集合、以及较大的逻辑回归集合上都最快，工作集策略通常是次优。在完整基准里唯一的失手是 arcene（逻辑回归），那里工作集策略略快一点。",
+              "headers": [
+                "数据集",
+                "n",
+                "p",
+                "损失",
+                "Hessian",
+                "Working",
+                "Blitz",
+                "Celer"
+              ],
+              "rows": [
+                [
+                  "bcTCGA",
+                  "536",
+                  "17,322",
+                  "Least-Squares",
+                  "3.00",
+                  "7.67",
+                  "11.7",
+                  "10.6"
+                ],
+                [
+                  "e2006-tfidf",
+                  "16,087",
+                  "150,360",
+                  "Least-Squares",
+                  "14.3",
+                  "143",
+                  "277",
+                  "335"
+                ],
+                [
+                  "YearPredictionMSD",
+                  "463,715",
+                  "90",
+                  "Least-Squares",
+                  "78.8",
+                  "541",
+                  "706",
+                  "712"
+                ],
+                [
+                  "colon-cancer",
+                  "62",
+                  "2,000",
+                  "Logistic",
+                  "0.054",
+                  "0.134",
+                  "0.177",
+                  "0.169"
+                ],
+                [
+                  "madelon",
+                  "2,000",
+                  "500",
+                  "Logistic",
+                  "48.2",
+                  "232",
+                  "240",
+                  "247"
+                ],
+                [
+                  "rcv1",
+                  "20,242",
+                  "47,236",
+                  "Logistic",
+                  "132",
+                  "266",
+                  "384",
+                  "378"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在逻辑回归上，结论几乎一样有力，madelon（48.2 秒对 232 秒）和 rcv1（132 秒对 266 秒）都是大幅领先。十二个数据集里唯一的例外是 arcene，一个规模小、稠密的逻辑回归问题，那里工作集策略略快一线，作者选择如实报告，而不是回避这一处失手。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 203.43,
+        "end": 244.72,
+        "slides": [
+          6
+        ]
+      },
+      "clip": "assets/media/clips/dataset-benchmark.mp4",
+      "captions": "assets/media/captions/clips/dataset-benchmark.vtt",
+      "source_clip_seconds": 41.29,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 42.19,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 6,
+          "global_start": 203.43,
+          "global_end": 244.72,
+          "relative_start": 0.0,
+          "relative_end": 41.29,
+          "clip": "assets/media/slide_clips/slide-06.mp4"
+        }
+      ]
+    },
+    {
+      "id": "key-result",
+      "label": "Key Result",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='key-result']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        },
+        {
+          "slide_index": 9,
+          "slide_id": "takeaway",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "How much faster, end to end"
+            },
+            {
+              "type": "paragraph",
+              "text": "Do tighter screening and better warm starts translate into wall-clock wins? The next figure benchmarks full-path fit time against the working-set strategy, Celer, and Blitz on simulated Gaussian designs, in a low-dimensional regime (n = 10000, p = 100) and a high-dimensional one (n = 400, p = 40000), across least-squares and logistic losses and three correlation levels. Time is relative to the fastest method in each group, so the Hessian bar sits at 1."
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure3.png",
+              "caption": "Figure 3. Relative full-path fit time on simulated data (lower is better; Hessian normalized to 1), across least-squares and logistic losses, two dimensional regimes, and correlations ρ = 0, 0.4, 0.8. The Hessian rule is fastest in every configuration; its margin is largest in the high-correlation, low-dimensional least-squares case, where baselines run 3–5× slower.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure3.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The Hessian rule is fastest in every single configuration, and its lead is widest precisely where screening rules have historically struggled: the high-correlation, low-dimensional least-squares case, where the working-set strategy, Celer, and Blitz all run roughly three to five times slower. Where correlation is zero and the problem is easy, the margin narrows, an honest reflection that the gains come from handling the hard regime well rather than from a uniform constant-factor trick."
+            }
+          ],
+          "zh": [
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "用途一：筛选紧得多"
+            },
+            {
+              "type": "paragraph",
+              "text": "第一个收益，是规则保留的特征之少。下图在一个 n = 200、p = 20000 的设计上拟合完整路径，取三种相关水平，画出每种规则在每一步筛入（保留为候选）的特征数量；虚线是真实活跃集的下界。注意 y 轴是对数刻度，因此纵向的距离就是数量级的差距。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 曲线贴着虚线走，大致只保留两百来个特征，而各类安全规则和启发式规则则高出一到三个数量级，动辄保留数千到数万个。差距在 ρ = 0 时最小，随相关性增大而拉开，而这恰恰是竞争规则走向恶化的方向。筛得更紧，意味着优化器每一次内部求解面对的问题都小得多。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "用途二：几乎精确的热启动"
+            },
+            {
+              "type": "paragraph",
+              "text": "只靠更紧的筛选还不足以解释全部提速，热启动同样关键。因为 Hessian 热启动在活跃集不变时就是精确解，大多数路径步骤应当几乎立刻收敛。下图把这一效应单独拎出来：在两个真实数据集上，比较 Hessian 热启动与标准热启动（上一步的解）各自每一步所需的坐标下降遍数。"
+            },
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure2.png",
+              "caption": "图2　colon-cancer（n = 62，p = 2000）与 YearPredictionMSD（n = 463715，p = 90）上每个路径步骤的坐标下降遍数：Hessian 热启动（橙）对比标准热启动（黑）。Hessian 热启动把大多数步骤压到只需一遍，因为只要活跃集不变，它就几乎是精确解。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure2.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "标准热启动每一步要在 10 到 30 遍之间来回波动；Hessian 热启动则大部分步骤只用一遍，只在活跃集真正发生变化的那几步才出现尖峰。这正是该方法在 n ≫ p 场景下占优的机制所在：那里每一遍的成本很高，砍掉遍数的收益立竿见影。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 244.72,
+        "end": 288.39,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/key-result.mp4",
+      "captions": "assets/media/captions/clips/key-result.vtt",
+      "source_clip_seconds": 43.67,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.57,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 244.72,
+          "global_end": 288.39,
+          "relative_start": 0.0,
+          "relative_end": 43.67,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "ablation-study",
+      "label": "Ablation Study",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='ablation-study']"
+      },
+      "slide_indices": [
+        8
+      ],
+      "slides": [
+        {
+          "slide_index": 8,
+          "slide_id": "ablation-study",
+          "target": "#slide-8"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Why fitting a whole path is the real cost"
+            },
+            {
+              "type": "paragraph",
+              "text": "Because λ must be tuned, the unit of work is not a single lasso fit but a sequence of them along a decreasing grid of penalties, each seeded from the previous solution. Sequential screening rules like the strong rule and the working-set strategy exploit this: they use the solution at λ_k to predict which predictors can possibly become active at the next, smaller λ_{k+1}. The paper's first observation is unifying: both rules can be rewritten as estimates of the same quantity, the correlation (the negative gradient) at the next step. That reframing exposes their common flaw: the estimate is purely first-order, so it drifts when predictors are correlated, forcing the solver into extra KKT checks and re-optimization."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真正的开销：拟合一整条路径"
+            },
+            {
+              "type": "paragraph",
+              "text": "由于 λ 必须调，工作单位不是一次 Lasso 拟合，而是沿着一列递减的惩罚值依次求解，每一步都用上一步的解来初始化。序贯筛选规则，如强规则（strong rule）和工作集策略（working-set strategy），正是利用了这一点：用 λ_k 处的解，去预测在下一个更小的 λ_{k+1} 处哪些特征可能变为活跃。论文的第一个观察带有统一性：这两种规则都可以改写成对同一个量的估计，即下一步的相关性（correlation，也就是负梯度）。这个改写暴露了它们共同的缺陷。这个估计是纯一阶的，一旦特征相关就会明显偏移，逼着求解器做额外的 KKT 检查和重新优化。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 288.39,
+        "end": 328.55,
+        "slides": [
+          8
+        ]
+      },
+      "clip": "assets/media/clips/ablation-study.mp4",
+      "captions": "assets/media/captions/clips/ablation-study.vtt",
+      "source_clip_seconds": 40.16,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 41.06,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 8,
+          "global_start": 288.39,
+          "global_end": 328.55,
+          "relative_start": 0.0,
+          "relative_end": 40.16,
+          "clip": "assets/media/slide_clips/slide-08.mp4"
+        }
+      ]
+    },
+    {
+      "id": "headline-numbers",
+      "label": "Headline Numbers",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='headline-numbers']"
+      },
+      "slide_indices": [
+        7
+      ],
+      "slides": [
+        {
+          "slide_index": 7,
+          "slide_id": "key-result",
+          "target": "#slide-7"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "The same story on real data"
+            },
+            {
+              "type": "paragraph",
+              "text": "The pattern carries over to twelve real data sets spanning gene-expression matrices, text corpora, and problems with millions of features. The table below reports full-path fit time in seconds (lower is better) on a representative subset. On ℓ1-regularized least-squares the Hessian rule is fastest on all five data sets, and in all but one of them it finishes in under half the runner-up's time: 78.8 s versus 541 s on YearPredictionMSD (about 6.9×), and 14.3 s versus 143 s on e2006-tfidf (about 10×)."
+            },
+            {
+              "type": "table",
+              "caption": "Table 1. Full-path fit time in seconds on a representative subset of real data sets (lower is better). Hessian is fastest on every least-squares set shown and on the larger logistic sets; the working-set strategy is the usual runner-up. On the full benchmark the lone loss is arcene (logistic), where the working-set strategy is marginally faster.",
+              "headers": [
+                "Data set",
+                "n",
+                "p",
+                "Loss",
+                "Hessian",
+                "Working",
+                "Blitz",
+                "Celer"
+              ],
+              "rows": [
+                [
+                  "bcTCGA",
+                  "536",
+                  "17,322",
+                  "Least-Squares",
+                  "3.00",
+                  "7.67",
+                  "11.7",
+                  "10.6"
+                ],
+                [
+                  "e2006-tfidf",
+                  "16,087",
+                  "150,360",
+                  "Least-Squares",
+                  "14.3",
+                  "143",
+                  "277",
+                  "335"
+                ],
+                [
+                  "YearPredictionMSD",
+                  "463,715",
+                  "90",
+                  "Least-Squares",
+                  "78.8",
+                  "541",
+                  "706",
+                  "712"
+                ],
+                [
+                  "colon-cancer",
+                  "62",
+                  "2,000",
+                  "Logistic",
+                  "0.054",
+                  "0.134",
+                  "0.177",
+                  "0.169"
+                ],
+                [
+                  "madelon",
+                  "2,000",
+                  "500",
+                  "Logistic",
+                  "48.2",
+                  "232",
+                  "240",
+                  "247"
+                ],
+                [
+                  "rcv1",
+                  "20,242",
+                  "47,236",
+                  "Logistic",
+                  "132",
+                  "266",
+                  "384",
+                  "378"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "On logistic regression the story is nearly as strong, with large wins on madelon (48.2 s versus 232 s) and rcv1 (132 s versus 266 s). Across all twelve sets the single exception is arcene, a small dense logistic problem where the working-set strategy is marginally faster; the authors report that case rather than hide it."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论，以及它的边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 筛选规则的吸引力在于：一个想法收获两次回报。复用二阶信息，既把筛选收紧、让求解器面对的特征大幅减少，又提供了足够准确的热启动、让许多步骤一遍即收敛。两者叠加，使它成为在本文基准上拟合 Lasso 与 ℓ1 逻辑回归正则化路径最快的方法，而优势最大之处，正是长期以来对筛选规则最棘手的高相关场景。"
+            },
+            {
+              "type": "paragraph",
+              "text": "边界也讲得很清楚。存储 Hessian 及其逆，比竞争方法更耗内存，当 min{n, p} 很大时这一开销可能变得难以承受，此时工作集策略是更稳妥的退路。而且由于这是一个为拟合整条路径而设计的序贯规则，当你只需要单个 λ 处的解时，它并非首选，那种情况下 Celer、Blitz 这类动态方法多半更优。方法本身也可以干净地推广到最小二乘和逻辑回归之外，任何可微部分二阶可微的复合目标都适用。对于在相关的高维数据上拟合整条路径、做交叉验证、再重复一遍这一最常见的工作流而言，它已经是一个足够稳妥而明确的默认选择。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 244.72,
+        "end": 288.39,
+        "slides": [
+          7
+        ]
+      },
+      "clip": "assets/media/clips/headline-numbers.mp4",
+      "captions": "assets/media/captions/clips/headline-numbers.vtt",
+      "source_clip_seconds": 43.67,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 44.57,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 7,
+          "global_start": 244.72,
+          "global_end": 288.39,
+          "relative_start": 0.0,
+          "relative_end": 43.67,
+          "clip": "assets/media/slide_clips/slide-07.mp4"
+        }
+      ]
+    },
+    {
+      "id": "takeaway",
+      "label": "Takeaway",
+      "poster": {
+        "artifact": "assets/poster/poster.html",
+        "selector": "[data-section='takeaway']"
+      },
+      "slide_indices": [
+        9
+      ],
+      "slides": [
+        {
+          "slide_index": 9,
+          "slide_id": "takeaway",
+          "target": "#slide-9"
+        }
+      ],
+      "blog": {
+        "blocks": {
+          "en": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "Figure 1. Predictors screened per step at correlations ρ = 0, 0.4, 0.8 (n = 200, p = 20000, log scale, averaged over 20 runs). The Hessian rule (black) tracks the true active-set floor (dashed) closely, while Celer, Blitz, Strong, EDPP, Gap Safe, and Sasvi retain orders of magnitude more predictors, and the gap widens as correlation rises.",
+              "width_inches": 4.3,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "paragraph",
+              "text": "The lasso is one of the most reliable workhorses in high-dimensional statistics: add an ℓ1 penalty to a regression loss and the model both fits and selects features at once. The catch is that the right penalty strength λ is never known in advance. In practice you don't fit one lasso model; you fit an entire path of them across many values of λ and pick the best by cross-validation, refitting the same expensive problem again and again. When you have tens of thousands of predictors, that whole path is where the wall-clock time goes."
+            },
+            {
+              "type": "paragraph",
+              "text": "A standard trick to make each fit cheaper is a screening rule: before the solver runs, cheaply guess which predictors will stay at exactly zero and discard them, so the optimizer only ever sees a small candidate set. Screening rules are what make large-scale lasso practical. But the popular ones share an awkward weakness: they get conservative exactly when predictors are strongly correlated, which is the regime where speed matters most. They keep far too many predictors, and the warm starts they hand the solver are inaccurate, so convergence is slow."
+            },
+            {
+              "type": "paragraph",
+              "text": "This NeurIPS 2022 paper by Johan Larsson and Jonas Wallin traces both problems to the same root cause, first-order information, and fixes them with the same tool. The Hessian Screening Rule uses second-order (curvature) information to estimate the next step of the path. The authors show that a single Hessian does two jobs at once: it screens predictors far more tightly, and it produces a warm start that is essentially the exact solution whenever the active set doesn't change. The result is the fastest method across nearly every simulated and real benchmark they test."
+            },
+            {
+              "type": "paragraph",
+              "text": "Paper: https://arxiv.org/abs/2104.13026"
+            },
+            {
+              "type": "paragraph",
+              "text": "Code (C++/R): https://github.com/jolars/HessianScreening"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "Takeaway, and where it stops"
+            },
+            {
+              "type": "paragraph",
+              "text": "The appeal of the Hessian Screening Rule is that one idea pays off twice. Reusing second-order information tightens screening so the solver sees far fewer predictors, and supplies warm starts so accurate that many steps converge in a single pass. Together they make it the fastest way to fit lasso and ℓ1-logistic regularization paths across the benchmarks here, with the biggest edge in the high-correlation regime that has long been the hardest for screening rules."
+            },
+            {
+              "type": "paragraph",
+              "text": "The boundaries are stated plainly. Storing the Hessian and its inverse costs more memory than competing methods, which can become prohibitive when min{n, p} is large; there the working-set strategy is the more sensible fallback. And because this is a sequential rule tuned for fitting an entire path, it is not the right tool when you only need the solution at a single λ, where a dynamic method like Celer or Blitz is likely to win. But for the common workflow of fitting a full path and cross-validating on correlated high-dimensional data, and for any composite objective whose smooth part is twice-differentiable, the Hessian Screening Rule is a clear default."
+            }
+          ],
+          "zh": [
+            {
+              "type": "figure",
+              "path": "assets/blog/figures/figure1.png",
+              "caption": "图1　相关水平 ρ = 0、0.4、0.8 下每一步筛入的特征数（n = 200，p = 20000，对数刻度，20 次重复取平均）。Hessian 规则（黑线）紧贴真实活跃集下界（虚线），而 Celer、Blitz、Strong、EDPP、Gap Safe、Sasvi 都要多保留几个数量级的特征，且相关性越强、差距越大。",
+              "width_inches": 5.9,
+              "src": "assets/blog/figures/figure1.png"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "真实数据上是同一个故事"
+            },
+            {
+              "type": "paragraph",
+              "text": "这一规律延续到了十二个真实数据集上，涵盖基因表达矩阵、文本语料，以及特征多达数百万的问题。下表列出其中有代表性的一部分，报告完整路径的拟合时间（秒，越低越好）。在 ℓ1 正则最小二乘上，Hessian 规则在全部五个数据集上都最快，且在其中除一个之外都用不到次优方法一半的时间：在 YearPredictionMSD 上是 78.8 秒对 541 秒（约 6.9×），在 e2006-tfidf 上是 14.3 秒对 143 秒（约 10×），提速接近一个数量级。"
+            },
+            {
+              "type": "table",
+              "caption": "表1　真实数据集代表性子集上完整路径的拟合时间（秒，越低越好）。Hessian 在所列的每个最小二乘集合、以及较大的逻辑回归集合上都最快，工作集策略通常是次优。在完整基准里唯一的失手是 arcene（逻辑回归），那里工作集策略略快一点。",
+              "headers": [
+                "数据集",
+                "n",
+                "p",
+                "损失",
+                "Hessian",
+                "Working",
+                "Blitz",
+                "Celer"
+              ],
+              "rows": [
+                [
+                  "bcTCGA",
+                  "536",
+                  "17,322",
+                  "Least-Squares",
+                  "3.00",
+                  "7.67",
+                  "11.7",
+                  "10.6"
+                ],
+                [
+                  "e2006-tfidf",
+                  "16,087",
+                  "150,360",
+                  "Least-Squares",
+                  "14.3",
+                  "143",
+                  "277",
+                  "335"
+                ],
+                [
+                  "YearPredictionMSD",
+                  "463,715",
+                  "90",
+                  "Least-Squares",
+                  "78.8",
+                  "541",
+                  "706",
+                  "712"
+                ],
+                [
+                  "colon-cancer",
+                  "62",
+                  "2,000",
+                  "Logistic",
+                  "0.054",
+                  "0.134",
+                  "0.177",
+                  "0.169"
+                ],
+                [
+                  "madelon",
+                  "2,000",
+                  "500",
+                  "Logistic",
+                  "48.2",
+                  "232",
+                  "240",
+                  "247"
+                ],
+                [
+                  "rcv1",
+                  "20,242",
+                  "47,236",
+                  "Logistic",
+                  "132",
+                  "266",
+                  "384",
+                  "378"
+                ]
+              ]
+            },
+            {
+              "type": "paragraph",
+              "text": "在逻辑回归上，结论几乎一样有力，madelon（48.2 秒对 232 秒）和 rcv1（132 秒对 266 秒）都是大幅领先。十二个数据集里唯一的例外是 arcene，一个规模小、稠密的逻辑回归问题，那里工作集策略略快一线，作者选择如实报告，而不是回避这一处失手。"
+            },
+            {
+              "type": "heading",
+              "level": 1,
+              "text": "结论，以及它的边界"
+            },
+            {
+              "type": "paragraph",
+              "text": "Hessian 筛选规则的吸引力在于：一个想法收获两次回报。复用二阶信息，既把筛选收紧、让求解器面对的特征大幅减少，又提供了足够准确的热启动、让许多步骤一遍即收敛。两者叠加，使它成为在本文基准上拟合 Lasso 与 ℓ1 逻辑回归正则化路径最快的方法，而优势最大之处，正是长期以来对筛选规则最棘手的高相关场景。"
+            },
+            {
+              "type": "paragraph",
+              "text": "边界也讲得很清楚。存储 Hessian 及其逆，比竞争方法更耗内存，当 min{n, p} 很大时这一开销可能变得难以承受，此时工作集策略是更稳妥的退路。而且由于这是一个为拟合整条路径而设计的序贯规则，当你只需要单个 λ 处的解时，它并非首选，那种情况下 Celer、Blitz 这类动态方法多半更优。方法本身也可以干净地推广到最小二乘和逻辑回归之外，任何可微部分二阶可微的复合目标都适用。对于在相关的高维数据上拟合整条路径、做交叉验证、再重复一遍这一最常见的工作流而言，它已经是一个足够稳妥而明确的默认选择。"
+            }
+          ]
+        },
+        "meta": {
+          "en": {
+            "title": "From First Order to Second: A Hessian Screening Rule for the Lasso",
+            "subtitle": "NeurIPS 2022 (Lund University): reusing curvature information to screen predictors tighter and warm-start the solver near-exactly, especially under high correlation"
+          },
+          "zh": {
+            "title": "NeurIPS 2022 | 用二阶信息给 Lasso 提速：Hessian 筛选规则",
+            "subtitle": "隆德大学提出 Hessian Screening Rule：同一份曲率信息既让特征筛选更紧、又让求解器的热启动几乎精确，在高相关场景下优势最大"
+          }
+        }
+      },
+      "segment": {
+        "start": 328.55,
+        "end": 360.05,
+        "slides": [
+          9
+        ]
+      },
+      "clip": "assets/media/clips/takeaway.mp4",
+      "captions": "assets/media/captions/clips/takeaway.vtt",
+      "source_clip_seconds": 31.5,
+      "natural_tail_seconds": 0.9,
+      "clip_seconds": 32.4,
+      "clip_strategy": "complete_slide_concat_with_freeze_tail",
+      "slide_segments": [
+        {
+          "slide": 9,
+          "global_start": 328.55,
+          "global_end": 360.05,
+          "relative_start": 0.0,
+          "relative_end": 31.5,
+          "clip": "assets/media/slide_clips/slide-09.mp4"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "Section videos are composed from complete timeline slide clips with a short silent freeze tail; timestamps come from paper2video timeline.json."
+  ]
+}

@@ -1,0 +1,3 @@
+# Title
+
+What makes the transformer special? This paper by Clayton Sanford, Daniel Hsu, and Matus Telgarsky argues the answer is parallelism. The authors prove a tight, two-way correspondence between transformers and the Massively Parallel Computation model used to study distributed algorithms. The upshot is striking: a transformer with only logarithmic depth can solve basic reasoning tasks that recurrent models, state-space models like Mamba, and efficient sub-quadratic attention variants provably cannot solve efficiently. They back the theory with a clean synthetic task, the k-hop induction heads problem, where trained transformers obey exactly the logarithmic depth threshold the theory predicts.

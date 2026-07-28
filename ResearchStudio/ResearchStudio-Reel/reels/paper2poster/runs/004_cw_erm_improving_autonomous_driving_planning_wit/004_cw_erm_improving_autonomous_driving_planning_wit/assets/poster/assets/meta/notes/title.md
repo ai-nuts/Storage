@@ -1,0 +1,3 @@
+# Title
+
+"Self-driving policies learned by behavioral cloning are usually trained open-loop, matching expert actions one step at a time, yet they are deployed closed-loop where every action shapes future states. This mismatch quietly hurts real-world safety. This paper introduces C-W-E-R-M, Closed-loop Weighted Empirical Risk Minimization: a simple two-stage recipe that first runs a policy in a simulator to find the scenes where it fails, then upsamples exactly those scenes when training the final policy. On a challenging urban driving dataset it cuts collisions substantially, with improvements around thirty-five percent on some metrics, all without a differentiable simulator or costly closed-loop training."

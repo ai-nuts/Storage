@@ -1,0 +1,3 @@
+# Title
+
+This work, presented at NeurIPS 2022 by Johan Larsson and Jonas Wallin of Lund University, introduces the Hessian Screening Rule, a new way to speed up fitting the lasso regularization path. Screening rules discard predictors before a model is fit, shrinking the problem. The authors show that using second-order Hessian information yields both far tighter screening and much more accurate warm starts, especially when predictors are highly correlated, where existing rules struggle most. The result is a method that is the fastest across nearly every simulated and real benchmark they tested.

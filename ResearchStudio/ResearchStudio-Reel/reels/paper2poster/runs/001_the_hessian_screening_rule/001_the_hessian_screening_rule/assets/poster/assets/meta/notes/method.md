@@ -1,0 +1,7 @@
+# Method
+
+Core claim: For an interval where the active set is fixed, the lasso solution is linear in λ, so the Hessian yields a second-order estimate of the next-step correlation ĉ_H(λ_{k+1}); computation is restricted to the strong-rule set for efficiency, with a small unit-bound margin added. The same Hessian inverse gives a coefficient warm start that is exact when the active set stays constant.
+
+Supporting detail: Efficient low-rank updates maintain the Hessian and its inverse across active-set changes, and approximate homotopy adaptively places the λ grid; a preconditioner keeps the warm start stable.
+
+Narration: The method rests on a simple fact: on any interval where the active set of nonzero coefficients is unchanged, the lasso solution is a linear function of the penalty λ. That linearity lets the authors write down a second-order estimate of the correlation at the next penalty value using the Hessian of the active predictors. To keep it cheap, they restrict the expensive inner products to the strong-rule set and add a small fraction of the unit bound as a safety margin. The very same Hessian inverse provides the warm start, which is exact when the active set does not change, so the solver often converges in a single pass. Efficient low-rank updates keep the Hessian and its inverse current as predictors enter and leave, and an approximate-homotopy scheme adaptively chooses the penalty grid.

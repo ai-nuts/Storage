@@ -1,0 +1,806 @@
+                              The Hessian Screening Rule
+
+
+                       Johan Larsson                                       Jonas Wallin
+                    Department of Statistics                           Department of Statistics
+                       Lund University                                    Lund University
+                 johan.larsson@stat.lu.se                            jonas.wallin@stat.lu.se
+
+
+
+                                                      Abstract
+             Predictor screening rules, which discard predictors before fitting a model, have had
+             considerable impact on the speed with which sparse regression problems, such as
+             the lasso, can be solved. In this paper we present a new screening rule for solving
+             the lasso path: the Hessian Screening Rule. The rule uses second-order information
+             from the model to provide both effective screening, particularly in the case of high
+             correlation, as well as accurate warm starts. The proposed rule outperforms all
+             alternatives we study on simulated data sets with both low and high correlation for
+             `1 -regularized least-squares (the lasso) and logistic regression. It also performs
+             best in general on the real data sets that we examine.
+
+
+1       Introduction
+High-dimensional data, where the number of features (p) exceeds the number of observations
+(n), poses a challenge for many classical statistical models. A common remedy for this issue is to
+regularize the model by penalizing the regression coefficients such that the solution becomes sparse. A
+popular choice of such a penalization is the `1 -norm, which, when the objective is least-squares, leads
+to the well-known lasso [1]. More specifically, we will focus on the following convex optimization
+problem:                                      
+                                   minimize
+                                          p
+                                                 f (β; X) + λkβk1 ,                                  (1)
+                                             β∈R
+
+where f (β; X) is smooth and convex. We let β̂ be the solution vector for this problem and, abusing
+notation, equivalently let β̂ : R 7→ Rp be a function that returns this vector for a given λ. Our focus
+lies in solving (1) along a regularization path λ1 , λ2 . . . , λm with λ1 ≥ λ2 ≥ · · · ≥ λm . We start
+the path at λmax , which corresponds to the null (all-sparse) model1 , and finish at some fraction of
+λmax for which the model is either almost saturated (in the p ≥ n setting), or for which the solution
+approaches the ordinary least-squares estimate. The motivation for this focus is that the optimal λ
+is typically unknown and must be estimated through model tuning, such as cross-validation. This
+involves repeated refitting of the model to new batches of data, which is computationally demanding.
+Fortunately, the introduction of so-called screening rules has improved this situation remarkably.
+Screening rules use tests that screen and possibly discard predictors from the model before it is fit,
+which effectively reduces the dimensions of the problem and leads to improvements in performance
+and memory usage. There are, generally speaking, two types of screening rules: safe and heuristic
+rules. Safe rules guarantee that discarded predictors are inactive at the optimum—heuristic rules do
+not and may therefore cause violations: discarding active predictors. The possibility of violations
+mean that heuristic methods need to validate the solution through checks of the Karush–Kuhn–Tucker
+(KKT) optimality conditions after optimization has concluded and, whenever there are violations, re-
+run optimization, which can be costly particularly because the KKT checks themselves are expensive.
+This means that the distinction between safe and heuristic rules only matters in regards to algorithmic
+    1
+        λmax is in fact available in closed form—for the lasso it is maxj |xTj y|.
+
+
+36th Conference on Neural Information Processing Systems (NeurIPS 2022).
+details—all heuristic methods that we study here use KKT checks to catch these violations, which
+means that these methods are in fact also safe.
+Screening rules can moreover also be classified as basic, sequential, or dynamic. Basic rules screen
+predictors based only on information available from the null model. Sequential rules use information
+from the previous step(s) on the regularization path to screen predictors for the next step. Finally,
+dynamic rules screen predictors during optimization, reducing the set of screened predictors repeatedly
+throughout optimization.
+Notable examples of safe rules include the basic SAFE rule [2], the sphere tests [3], the R-region
+test [4], Slores [5], Gap Safe [6, 7], and Dynamic Sasvi [8]. There is also a group of dual polytope
+projection rules, most prominently Enhanced Dual Polytope Projection (EDPP) [9]. As noted
+by Fercoq, Gramfort, and Salmon [6], however, the sequential version of EDPP relies on exact
+knowledge of the optimal solution at the previous step along the path to be safe in practice, which
+is only available for λmax . Among the heuristic rules, we have the Strong Rule [10], SIS [11], and
+ExSIS [12]. But the latter two of these are not sequential rules and solve a potentially reduced form
+of the problem in (1)—we will not discuss them further here. In addition to these two types of
+rules, there has also recently been attempts to combine safe and heuristic rules into so-called hybrid
+rules [13].
+There are various methods for employing these rules in practice. Of particular interest are so-called
+working set strategies, which use a subset of the screened set during optimization, iteratively updating
+the set based on some criterion. Tibshirani et al. [10] introduced the first working set strategy, which
+we in this paper will refer to simply as the working set strategy. It uses the set of predictors that have
+ever been active as an initial working set. After convergence on this set, it checks the KKT optimality
+conditions on the set of predictors selected by the strong rule, and then adds predictors that violate the
+conditions to the working set. This procedure is then repeated until there are no violations, at which
+point the optimality conditions are checked for the entire set, possibly triggering additional iterations
+of the procedure. Blitz [14] and Celer [15] are two other methods that use both Gap Safe screening
+and working sets. Instead of choosing previously active predictors as a working set, however, both
+Blitz and Celer assign priorities to each feature based on how close each feature is of violating the
+Gap Safe check and construct the working set based on this prioritization. In addition to this, Celer
+uses dual point acceleration to improve Gap Safe screening and speed up convergence. Both Blitz
+and Celer are heuristic methods.
+One problem with current screening rules is that they often become conservative—including large
+numbers of predictors into the screened set—when dealing with predictors that are strongly correlated.
+Tibshirani et al. [10], for instance, demonstrated this to be the case with the strong rule, which was the
+motivation behind the working set strategy. (See Appendix F.4 for additional experiments verifying
+this). Yet because the computational complexity of the KKT checks in the working set strategy
+still depends on the strong rule, the effectiveness of the rule may nevertheless be hampered in this
+situation. A possible and—as we will soon show—powerful solution to this problem is to make use of
+the second-order information available from (1), and in this paper we present a novel screening rule
+based on this idea. Methods using second-order information (the Hessian) are often computationally
+infeasible for high-dimensional problems. We utilize two properties of the problem to remedy this
+issue: first, we need only to compute the Hessian for the active set, which is often much smaller than
+the full set of predictors. Second, we avoid constructing the Hessian (and it’s inverse) from scratch
+for each λ along the path, instead updating it sequentially by means of the Schur complement. The
+availability of the Hessian also enables us to improve the warm starts (the initial coefficient estimate
+at the start of each optimization run) used when fitting the regularization path, which plays a key role
+in our method.
+We present our main results in Section 3, beginning with a reformulation of the strong rule and
+working set strategy before we arrive at the screening rule that represents the main result of this
+paper. In Section 4, we present numerical experiments on simulated and real data to showcase the
+effectiveness of the screening rule, demonstrating that the rule is effective both when p  n and
+n  p, out-performing the other alternatives that we study. Finally, in Section 5 we wrap up with a
+discussion on these results, indicating possible ways in which they may be extended.
+
+
+
+
+                                                    2
+2     Preliminaries
+We use lower-case letters to denote scalars and vectors and upper-case letters for matrices. We use 0
+and 1 to denote vectors with elements all equal to 0 or 1 respectively, with dimensions inferred from
+context. Furthermore, we let sign be the standard signum function with domain {−1, 0, 1}, allowing
+it to be overloaded for vectors.
+                                  
+Let c(λ) := −∇β f β̂(λ); X be the negative gradient, or so-called correlation, and denote Aλ =
+{i : |c(λ)i | > λ} as the active set at λ: the support set of the non-zero regression coefficients
+corresponding to β̂(λ). In the interest of brevity, we will let A := Aλ . We will consider β a solution
+to (1) if it satisfies the stationary criterion
+                                        0 ∈ ∇β f (β; X) + λ∂.                                       (2)
+Here ∂ is the subdifferential of kβk1 , defined as
+                                         (
+                                            {sign(β̂j )}   if β̂j 6= 0,
+                                   ∂j ∈
+                                            [−1, 1]        otherwise.
+
+This means that there must be a ∂˜ ∈ ∂ for a given λ such that
+                                        ∇β f (β; X) + λ∂˜ = 0.                                      (3)
+
+3     Main Results
+In this section we derive the main result of this paper: the Hessian screening rule. First, however,
+we now introduce a non-standard perspective on screening rules. In this approach, we note that (2)
+suggests a simple and general formulation for a screening rule, namely: we substitute the gradient
+vector in the optimality condition of a `1 -regularized problem with an estimate. More precisely, we
+discard the jth predictor for the problem at a given λ if the magnitude of the jth component of the
+gradient vector estimate is smaller than this λ, that is
+                                              |c̃(λ)j | < λ.                                        (4)
+In the following sections, we review the strong rule and working set method for this problem from
+this perspective, that is, by viewing both methods as gradient approximations. We start with the case
+of the standard lasso (`1 -regularized least-squares), where we have f (β; X) = 21 kXβ − yk22 .
+
+3.1   The Strong Rule
+
+The sequential strong rule for `1 -penalized least-squares regression [10] discards the jth predictor at
+λ = λk+1 if
+                            xTj (X β̂(λk ) − y) = |c(λk )j | < 2λk+1 − λk .
+This is equivalent to checking that
+                           c̃S (λk+1 ) = c(λk ) + (λk − λk+1 ) sign(c(λk ))                         (5)
+satisfies (4). The strong rule gradient approximation (5) is also known as the unit bound, since it
+assumes the gradient of the correlation vector to be bounded by one.
+
+3.2   The Working Set Method
+
+A simple but remarkably effective alternative to direct use of the strong rule is the working set
+heuristic [10]. It begins by estimating β at the (k + 1)th step using only the coefficients that have
+been previously active at any point along the path, i.e. A1:k = ∪ki=1 Ai . The working set method can
+be viewed as a gradient estimate in the sense that
+                                                         
+            c̃W (λk+1 ) = X T y − XA1:k β̃(λk+1 , A1:k ) = −∇f β̃(λk+1 , A1:k ); X ,
+                                                                                         
+
+
+where β̃(λ, A) = arg minβ 12 ||y − XA β||2 + λ|β|.
+
+
+                                                    3
+3.3       The Hessian Screening Rule
+
+We have shown that both the strong screening rule and the working set strategy can be expressed as
+estimates of the correlation (negative gradient) for the next step of the regularization path. As we
+have discussed previously, however, basing this estimate on the strong rule can lead to conservative
+approximations. Fortunately, it turns out that we can produce a better estimate by utilizing second-
+order information.
+We start by noting that (3), in the case of the standard lasso, can be formulated as
+                   T              T
+                                                                    T 
+                    XA XA XA          XAc     β̂A + λ sign(β̂(λ)A ) = XA         y
+                      T            T                                          T    ,
+                    XA  c XA     XA  c XAc     0             ∂Ac           XA   cy
+
+
+and consequently that
+                                         T
+                                           XA )−1 XA
+                                                   T
+                                                                      
+                              β̂(λ)A = (XA           y − λ sign (β̂A ) .
+Note that, for an interval [λl , λu ] in which the active set is unchanged, that is, Aλ = A for all
+λ ∈ [λu , λk ], then β̂(λ) is a continuous linear function in λ (Theorem 3.1)2 .
+Theorem 3.1. Let β̂(λ) be the solution of (1) where f (β; X) = 12 kXβ − yk22 . Define
+                  ∗                                               −1
+              β̂ λ (λ)Aλ∗ = β̂(λ∗ )Aλ∗ − (λ∗ − λ) XA    T
+                                                                       sign β̂(λ∗ )Aλ∗
+                                                                                       
+                                                          λ∗
+                                                             XAλ∗
+        ∗                                                              ∗
+and β̂ λ (λ)Acλ∗ = 0. If it for λ ∈ [λ0 , λ∗ ] holds that (i) sign β̂ λ (λ) = sign β̂(λ∗ ) and (ii)
+                                                                                         
+             ∗                                 ∗
+max |∇f (β̂ λ (λ))Aλ∗ | < λ, then β̂(λ) = β̂ λ (λ) for λ ∈ [λ0 , λ∗ ].
+
+See Appendix A for a full proof. Using Theorem 3.1, we have the following second-order approxima-
+tion of c(λk+1 ):
+ĉH (λk+1 ) = −∇f β̂ λk (λk+1 )Aλk = c(λk )+(λk+1 −λk )X T XAk (XA          T
+                                                                                XAk )−1 sign β̂(λk )Ak .
+                                                                                                      
+                                                                              k
+                                                                                                      (6)
+Remark 3.2. If no changes in the active set occur in [λk+1 , λk ], (6) is in fact an exact expression for
+the correlation at the next step, that is, ĉH (λk+1 ) = c(λk+1 ).
+One problem with using the gradient estimate in (6) is that it is expensive to compute due to the
+inner products involving the full design matrix. To deal with this, we use the following modification,
+in which we restrict the computation of these inner products to the set indexed by the strong rule,
+assuming that predictors outside this set remain inactive:
+                            
+                            λk+1 sign β̂(λk )j if j ∈ Aλk ,
+                            
+              H
+            c̃ (λk+1 )j := 0                       if |c̃S (λk+1 )j | < λk+1 and j ∈
+                                                                                   / Aλk ,
+                            ĉH (λ
+                            
+                                    k+1 )j         else.
+For high-dimensional problems, this modification leads to large computational gains and seldom
+proves inaccurate, given that the strong rule only rarely causes violations [10]. Lastly, we make one
+more adjustment to the rule, which is to add a proportion of the unit bound (used in the strong rule)
+to the gradient estimate:
+                       čH (λk+1 )j := c̃H (λk+1 )j + γ(λk+1 − λk ) sign(c(λk )j ),
+where γ ∈ R+ . Without this adjustment there would be no upwards bias on the estimate, which
+would cause more violations than would be desirable. In our experiments, we have used γ = 0.01,
+which has worked well for most problems we have encountered. This finally leads us to the Hessian
+screening rule: discard the jth predictor at λk+1 if |čH (λk+1 )j | < λk+1 .
+We make one more modification in our implementation of the Hessian Screening Rule, which is to
+use the union of the ever-active predictors and those screened by the screening rule as our final set of
+screened predictors. We note that this is a marginal improvement to the rule, since violations of the
+rule are already quite infrequent. But it is included nonetheless, given that it comes at no cost and
+occasionally prevents violations.
+      2
+    This result is not a new discovery [16], but is included here for convenience because the following results
+depend on it.
+
+
+                                                      4
+As an example of how the Hessian Screening Rule performs, we examine the screening performance
+of several different strategies. We fit a full regularization path to a design with n = 200, p = 20 000,
+and pairwise correlation between predictors of ρ. (See Section 4 and Appendix F.4 for more
+information on the setup.) We compute the average number of screened predictors across iterations
+of the coordinate descent solver. The results are displayed in Figure 1 and demonstrate that our
+method gracefully handles high correlation among predictors, offering a screened set that is many
+times smaller than those produced by the other screening strategies. In Appendix F.4 we extend these
+results to `1 -regularized logistic regression as well and report the frequency of violations.
+                                  𝜌=0                          𝜌 = 0.4                      𝜌 = 0.8              Hessian
+
+             10000                                                                                               Celer
+Predictors
+
+
+
+
+                 1000                                                                                            Blitz
+                  100                                                                                            Strong
+                   10                                                                                            EDPP
+                    1                                                                                            Gap Safe
+                        0   25     50    75    100 0      25     50       75   100 0   25     50      75   100
+                                                               Step                                              Sasvi
+
+
+Figure 1: The number of predictors screened (included) for when fitting a regularization path of
+`1 -regularized least-squares to a design with varying correlation (ρ), n = 200, and p = 20000. The
+values are averaged over 20 repetitions. The minimum number of active predictors at each step across
+iterations is given as a dashed line. Note that the y-axis is on a log10 scale.
+
+Recall that the Strong rule bounds its gradient of the correlation vector estimate at one. For the
+Hessian rule, there is no such bound. This means that it is theoretically possible for the Hessian rule
+to include more predictors than the Strong rule3 . In fact, it is even possible to design special cases
+where the Hessian rule could be more conservative than the Strong rule. In practice, however, we
+have not encountered any situation in which this is the case.
+
+3.3.1               Updating the Hessian
+A potential drawback to using the Hessian screening rule is the computational costs of computing the
+Hessian and its inverse. Let Ak be the active set at step k on the lasso path. In order to use the Hessian
+                                                −1                              −1
+screening rule we need Hk−1 = (XA      T
+                                         k
+                                           XAk ) . Computing (XA      T
+                                                                        k
+                                                                          XAk ) directly, however, has
+                                                                           −1
+numerical complexity O(|Ak |3 + |Ak |2 n). But if we have stored (Hk−1        , Hk−1 ) previously, we can
+                         −1
+utilize it to compute (Hk , Hk ) more efficiently via the so-called sweep operator [17]. We outline
+this technique in Algorithm 1 (Appendix B). The algorithm has a reduction step and an augmentation
+step; in the reduction step, we reduce the Hessian and its inverse to remove the presence of any
+predictors that are no longer active. In the augmentation step, we update the Hessian and its inverse
+to account for predictors that have just become active.
+The complexity of the steps depends on the size of the sets C = Ak−1 \ Ak ,D = Ak \ Ak−1 ,
+and E = Ak ∩ Ak−1 The complexity of the reduction step is O(|C|3 + |C|2 |E| + |C||E|2 ) and the
+complexity of the augmentation step is O(|D|2 n+n|D||E|+|D|2 |E|+|D|3 ) since n ≥ max(|E|, |D|).
+An iteration of Algorithm 1 therefore has complexity O(|D|2 n + n|D||E| + |C|3 + |C||E|2 ).
+In most applications, the computationally dominant term will be n|D||E| (since, typically, n > |E| >
+D > C) which could be compared to evaluating the gradient for βAk , which is n (|D| + |E|) when
+βAck = 0. Note that we have so far assumed that the inverse of the Hessian exists, but this need not
+be the case. To deal with this issue we precondition the Hessian. See Appendix C for details.
+
+3.3.2               Warm Starts
+The availability of the Hessian and its inverse offers a coefficient warm start that is more accurate
+than the standard, naive, approach of using the estimate from the previous step. With the Hessian
+screening rule, we use the following warm start.
+                                                               −1
+                                                                                 
+                   β̂(λk+1 )Ak := β̂(λk )Ak + (λk − λk+1 )HA    k
+                                                                  sign β̂(λk )Ak ,                (7)
+             3
+                 The chance of this happening is tied to the setting of γ.
+
+
+                                                                      5
+          −1
+where HA    k
+               is the Hessian matrix for the differentiable part of the objective. Our warm start is
+equivalent to the one used in Park and Hastie [18], but is here made much more efficient due due to
+the efficient updates of the Hessian and its inverse that we use.
+Remark 3.3. The warm start given by (7) is the exact solution at λk if the active set remains constant
+in [λk+1 , λk ].
+As a first demonstration of the value of this warm start, we look at two data sets: YearPredicitionMSD
+and colon-cancer. We fit a full regularization path using the setup as outlined in Section 4, with or
+without Hessian warm starts. For YearPredictionMSD we use the standard lasso, and for colon-cancer
+`1 -regularized logistic regression.
+The Hessian warm starts offer sizable reductions in the number of passes of the solver (Figure 2), for
+many steps requiring only a single pass to reach convergence. On inspection, this is not a surprising
+find. There are no changes in the active set for many of these steps, which means that the warm start
+is almost exact—“almost” due to the use of a preconditioner for the Hessian (see Appendix C).
+
+                              colon-cancer                                        YearPredictionMSD
+                  Hessian
+         30
+                  Standard
+Passes
+
+
+
+
+         20
+
+         10
+
+         0
+              0          25       50         75       100        0           20              40       60
+                                                              Step
+
+Figure 2: Number of passes of coordinate descent along a full regularization path for the colon-cancer
+(n = 62, p = 2 000) and YearPredictionMSD (n = 463 715, p = 90) data sets, using either Hessian
+warm starts (7) or standard warm starts (the solution from the previous step).
+
+3.3.3         General Loss Functions
+We now venture beyond the standard lasso and consider loss functions of the form
+                                                          n
+                                                          X
+                                             f (β; X) =         fi (xTi β)                                 (8)
+                                                          i=1
+
+where fi is convex and twice differentiable. This, for instance, includes logistic, multinomial, and
+Poisson loss functions. For the strong rule and working set strategy, this extension does not make
+much of a difference. With the Hessian screening rule, however, the situation is different.
+To see this, we start by noting that our method involving the Hessian is really a quadratic Taylor
+approximation of (1) around a specific point β0 . For loss functions of the type (8), this approximation
+is equal to
+                             n
+                                                                                                    !
+                            X
+                                   T 0 T                     1           T T 00 T
+   Q(β, β0 ) = f (β0 ; X) +       xi fi (xi β0 )(β − β0 ) + (β − β0 ) xi fi (xi β0 )xi (β − β0 )
+                            i=1
+                                                             2
+                      1                 T
+                        ỹ(xTi β0 ) − Xβ D (w(β0 )) ỹ(xTi β0 ) − Xβ + C(β0 ),
+                                                                    
+                  =
+                      2
+where D(w(β0)) is a diagonal matrix with diagonal entries w(β0 ) where w(β0 )i = f 00 (xTi β0 ) and
+ỹ(z)i = fi0 (z) fi00 (z) − xTi β0 , whilst C(β0 ) is a constant with respect to β.
+Suppose that we are on the lasso path at λk and want to approximate c(λk+1 ). In this case, we simply
+replace f (β; X) in (1) with Q(β, β̂(λk )), which leads to the following gradient approximation:
+
+      cH (λk+1 ) = c(λk ) + (λk+1 − λk ) X T D(w)XAk (XA     T
+                                                                 D(w)XAk )−1 sign β̂(λk )Ak ,
+                                                                                              
+                                                               k
+                                                                                 T
+where w = w β̂(λk ) . Unfortunately, we cannot use Algorithm 1 to update XA         k
+                                                                                      D(w)XAk . This
+means that we are forced to either update the Hessian directly at each step, which can be compu-
+tationally demanding when |Ak | is large and inefficient when X is very sparse, or to approximate
+
+
+                                                          6
+D(w) with an upper bound. In logistic regression, for instance, we can use 1/4 as such a bound, which
+also means that we once again can use Algorithm 1.
+In our experiments, we have employed the following heuristic to decide whether to use an up-
+per bound or compute the full Hessian in these cases: we use full updates at each step if
+sparsity(X)n/ max{n, p} < 10−3 and the upper bound otherwise.
+
+3.3.4   Reducing the Impact of KKT Checks
+The Hessian Screening Rule is heuristic, which means there may be violations. This necessitates that
+we verify the KKT conditions after having reached convergence for the screened set of predictors, and
+add predictors back into the working set for which these checks fail. When the screened set is small
+relative to p, the cost of optimization is often in large part consumed by these checks. Running these
+checks for the full set of predictors always needs to be done once, but if there are violations during
+this step, then we need repeat this check, which is best avoided. Here we describe two methods to
+tackle this issue.
+We employ a procedure equivalent to the one used in Tibshirani et al. [10] for the working set strategy:
+we first check the KKT conditions for the set of predictors singled out by the strong rule and then,
+if there are no violations in that set, check the full set of predictors for violations. This works well
+because the strong rule is conservative—violations are rare—which means that we seldom need to
+run the KKT checks for the entire set more than once.
+If we, in spite of the augmentation of the rule, run into violations when checking the full set of
+predictors, that is, when the strong rule fails to capture the active set, then we can still avoid repeating
+the full KKT check by relying on Gap Safe screening: after having run the KKT checks and have
+failed to converge, we screen the set of predictors using the Gap Safe rule. Because this is a safe rule,
+we can be sure that the predictors we discard will be inactive, which means that we will not need to
+include them in our upcoming KKT checks. Because Gap Safe screening and the KKT checks rely
+on exactly the same quantity—the correlation vector–we can do so at marginal extra cost. To see how
+this works, we now briefly introduce Gap Safe screening. For details, please see Fercoq, Gramfort,
+and Salmon [6].
+For the ordinary lasso (`1 -regularized least squares), the primal (1) is P (β) = 12 ky − Xβk22 + λkβk1
+and the corresponding dual is
+                                              1         λ2    y 2
+                                    D(θ) =      kyk22 −    θ−                                           (9)
+                                              2         2     λ 2
+subject to kX T θk∞ ≤ 1. The duality gap is then G(β, θ) = P (β) − D(θ) and the relation between
+the primal and dual problems is given by y = λθ̂ + X β̂, where θ̂ is the maximizer to the dual problem
+(9). In order to use Gap Safe screening,
+                                        we need a feasible dual point,
+                                                                    which can be obtained via dual
+point scaling, taking θ = (y − Xβ) max λ, kX T (y − Xβ)k∞ . The Gap Safe screening rule then
+                                                p
+discards the jth feature if |xTj θ| < 1 − kxj k2 2G(β, θ)/λ2 . Since we have computed X T (y − Xβ)
+as part of the KKT checks, we can perform Gap Safe screening at an additional (and marginal) cost
+amounting to O(n) + O(p).
+Since this augmentation benefits the working set strategy too, we adopt it in our implementation of
+this method as well. To avoid ambiguity, we call this version working+. Note that this makes the
+working set strategy quite similar to Blitz. In Appendix F.8 we show the benefit of adding this type of
+screening.
+
+3.3.5   Final Algorithm
+The Hessian screening method is presented in full in Algorithm 2 (Appendix B).
+Lemma 3.4. Let β ∈ Rp×m be the output of Algorithm 2 for a path of length m and convergence
+threshold ε > 0. For each step k along the path and corresponding solution β (k) ∈ Rp , there is a
+dual-feasible point θ(k) such that G(β (k) , θ(k) ) < ζε.
+
+Proof. First note that Gap safe screening [7, Theorem 6] ensures that G ⊇ Ak . Next, note that the
+algorithm guarantees that the working set, W, grows with each iteration until |xTj r| < λk for all
+
+
+                                                     7
+j ∈ G \ W, at which point
+                         T          (k)                            (k)
+                           (y − XW βW )k∞ = max λk , kXGT (y − XG βG )k∞ .
+                                                                       
+              max λk , kXW
+
+At this iteration, convergence at line 2, for the subproblem (XW , y), guarantees convergence for the
+full problem, (X, y), since
+                                                              (k)
+                                                   y − XW βW
+                               θ(k) =                                (k)    
+                                                   T (y − X β
+                                        max λk , kXW       W W )k∞
+
+is dual-feasible for the full problem.
+
+
+3.3.6     Extensions
+Approximate Homotopy In addition to improved screening and warm starts, the Hessian also
+allows us to construct the regularization path adaptively via approximate homotopy [19]. In brief, the
+Hessian screening rule allows us to choose the next λ along the path adaptively, in effect distributing
+the grid of λs to better approach the exact (homotopy) solution for the lasso, avoiding the otherwise
+heuristic choice, which can be inappropriate for some data sets.
+
+Elastic Net Our method can be extended to the elastic net [20], which corresponds to adding a
+quadratic penalty φkβk22 /2 to (1). The Hessian now takes the form XAT
+                                                                       XA + φI. Loosely speaking,
+the addition of this term makes the problem “more“ quadratic, which in turn improves both the
+accuracy and stability of the screening and warm starts we use in our method. As far as we know,
+however, there is unfortunately no way to update the inverse of the Hessian efficiently in the case of
+the elastic net. More research in this area would be welcome.
+
+
+4       Experiments
+
+Throughout the following experiments, we scale and center predictors with the mean and uncorrected
+sample standard deviation respectively. For the lasso, we also center the response vector, y, with the
+mean.
+To construct the regularization path, we adopt the default settings from glmnet: we use a log-spaced
+path of 100 λ values from λmax to ξλmax , where ξ = 10−2 if p > n and 10−4 otherwise. We stop
+the path whenever the deviance ratio, 1 − dev/devnull , reaches 0.999 or the fractional decrease in
+deviance is less than 10−5 . Finally, we also stop the path whenever the number of coefficients ever to
+be active predictors exceeds p.
+We compare our method against working+ (the modified version of the working set strategy from
+Tibshirani et al. [10]), Celer [15], and Blitz [14]. We initially also ran our comparisons against
+EDPP [9], the Gap Safe rule [6], and Dynamic Sasvi [8] too, yet these methods performed so poorly
+that we omit the results in the main part of this work. The interested reader may nevertheless consult
+Appendix F.6 where results from simulated data has been included for these methods too.
+We use cyclical coordinate descent with shuffling and consider the model to converge when the
+duality gap G(β, θ) ≤ εζ, where we take ζ to be kyk22 when fitting the ordinary lasso, and n log 2
+when fitting `1 -regularized logistic regression. Unless specified, we let ε = 10−4 . These settings are
+standard settings and, for instance, resemble the defaults used in Celer. For all of the experiments, we
+employ the line search algorithm used in Blitz4 .
+The code used in these experiments was, for every method, programmed in C++ using the Armadillo
+library [21, 22] and organized as an R package via Rcpp [23]. We used the renv package [24]
+to maintain dependencies. The source code, including a Singularity [25] container and its recipe
+for reproducing the results, are available at https://github.com/jolars/HessianScreening.
+Additional details of the computational setup are provided in Appendix D.
+    4
+    Without the line search, all of the tested methods ran into convergence issues, particularly for the high-
+correlation setting and logistic regression.
+
+
+                                                      8
+4.1                   Simulated Data
+
+Let X ∈ Rn×p , β ∈ Rp , and y ∈ Rn be the predictor matrix, coefficient vector, and response vector
+respectively. We draw the rows of the predictor matrix independently and identically distributed from
+N (0, Σ) and generate the response from N (Xβ, σ 2 I) with σ 2 = β T Σβ/SNR, where SNR is the
+signal-to-noise ratio. We set s coefficients, equally spaced throughout the coefficient vector, to 1 and
+the rest to zero.
+In our simulations, we consider two scenarios: a low-dimensional scenario and a high-dimensional
+scenario. In the former, we set n = 10 000, p = 100, s = 5, and the SNR to 1. In the high-
+dimensional scenario, we take n = 400, p = 40 000, s = 20, and set the SNR to 2. These SNR
+values are inspired by the discussion in Hastie, Tibshirani, and Tibshirani [26] and intend to cover the
+middle-ground in terms of signal strength. We run our simulations for 20 iterations.
+From Figure 3, it is clear that the Hessian screening rule performs best, taking the least time in every
+setting examined. The difference is largest for the high-correlation context in the low-dimensional
+setting and otherwise roughly the same across levels of correlation.
+The differences between the other methods are on average small, with the working+ strategy perform-
+ing slightly better in the p > n scenario. Celer and Blitz perform largely on par with one another,
+although Celer sees an improvement in a few of the experiments, for instance in logistic regression
+when p > n.
+
+                            Least-Squares             Least-Squares                     Logistic              Logistic
+                        𝑛 = 10000, 𝑝 = 100        𝑛 = 400, 𝑝 = 40000              𝑛 = 10000, 𝑝 = 100     𝑛 = 400, 𝑝 = 40000
+                  5     Hessian
+                        Working
+                  4
+Time (relative)
+
+
+
+
+                        Celer
+                  3     Blitz
+
+
+                  2
+
+                  1
+
+                  0
+                        0         0.4       0.8   0        0.4        0.8         0       0.4      0.8   0      0.4      0.8
+                                                                      Correlation (𝜌)
+
+Figure 3: Time to fit a full regularization path for `1 -regularized least-squares and logistic regression
+to a design with n observations, p predictors, and pairwise correlation between predictors of ρ. Time
+is relative to the minimal mean time in each group. The error bars represent ordinary 95% confidence
+intervals around the mean.
+
+
+
+4.2                   Real Data
+
+In this section, we conduct experiments on real data sets. We run 20 iterations for the smaller data
+sets studied and three for the larger ones. For information on the sources of these data sets, please see
+Appendix E. For more detailed results of these experiments, please see Appendix F.5.
+Starting with the case of `1 -regularized least-squares regression, we observe that the Hessian screening
+rule performs best for all five data sets tested here (Table 1), in all but one instance taking less than
+half the time compared to the runner-up, which in each case is the working+ strategy. The difference
+is particularly large for the YearPredictionMSD and e2006-tfidf data sets.
+In the case of `1 -regularized logistic regression, the Hessian method again performs best for most
+of the examined data sets, for instance completing the regularization path for the madelon data set
+around five times faster than the working+ strategy. The exception is the arcene data set, for which
+the working+ strategy performs best out of the four methods.
+We have provided additional results related to the effectiveness of our method in Appendix F.
+
+
+                                                                            9
+Table 1: Average time to fit a full regularization path of `1 -regularized least-squares and logistic
+regression to real data sets. Density represents the fraction of non-zero entries in X. Density and
+time values are rounded to two and three significant figures respectively.
+                                                                                             Time (s)
+    Data Set               n          p          Density    Loss             Hessian    Working         Blitz    Celer
+    bcTCGA                   536      17 322   1            Least-Squares      3.00        7.67      11.7         10.6
+    e2006-log1p           16 087   4 272 227   1.4 × 10−3   Least-Squares    205         438        756          835
+    e2006-tfidf           16 087     150 360   8.3 × 10−3   Least-Squares     14.3       143        277          335
+    scheetz                  120      18 975   1            Least-Squares      0.369       0.643      0.706        0.801
+    YearPredictionMSD    463 715          90   1            Least-Squares     78.8       541        706          712
+    arcene                   100      10 000   5.4 × 10−1   Logistic           4.35        3.27       4.42         3.99
+    colon-cancer              62       2000    1            Logistic           0.0542      0.134      0.177        0.169
+    duke-breast-cancer        44       7129    1            Logistic           0.111       0.210      0.251        0.262
+    ijcnn1                35 000          22   1            Logistic           0.939       5.53       4.68         3.50
+    madelon                2000          500   1            Logistic          48.2       232        240          247
+    news20                19 996   1 355 191   3.4 × 10−4   Logistic        1290        1620       2230         2170
+    rcv1                  20 242      47 236   1.6 × 10−3   Logistic         132         266        384          378
+
+
+
+
+5     Discussion
+We have presented the Hessian Screening Rule: a new heuristic predictor screening rule for `1 -
+regularized generalized linear models. We have shown that our screening rule offers large performance
+improvements over competing methods, both in simulated experiments but also in the majority of the
+real data sets that we study here. The improved performance of the rule appears to come not only
+from improved effectiveness in screening, particularly in the high-correlation setting, but also from
+the much-improved warm starts, which enables our method to dominate in the n  p setting. Note
+that although we have focused on `1 -regularized least-squares and logistic regression here, our rule is
+applicable to any composite objective for which the differentiable part is twice-differentiable.
+One limitation of our method is that it consumes more memory than its competitors owing to the
+storage of the Hessian and its inverse. This cost may become prohibitive for cases when min{n, p} is
+large. In these situations the next-best choice may instead be the working set strategy. Note also that
+we, in this paper, focus entirely on the lasso path. The Hessian Screening Rule is a sequential rule
+and may therefore not prove optimal when solving for a single λ, in which case a dynamic strategy
+such as Celer and Blitz likely performs better.
+With respect to the relative performance of the working set strategy, Celer, and Blitz, we note that our
+results deviate somewhat from previous comparisons [15, 14]. We speculate that these differences
+might arise from the fact that we have used equivalent implementations for all of the methods and
+from the modification that we have used for the working set strategy.
+Many avenues remain to be explored in the context of Hessian-based screening rules and algorithms,
+such as developing more efficient methods for updating of the Hessian matrix for non-least-squares
+objectives, such as logistic regression and using second-order information to further improve the
+optimization method used. Other interesting directions also include adapting the rules to more
+complicated regularization problems, such as the fused lasso [27], SLOPE [28], SCAD [29], and
+MCP [30]. Although the latter two of these are non-convex problems, they are locally convex for
+intervals of the regularization path [31], which enables the use of our method. Adapting the method
+for use in batch stochastic gradient descent would also be an interesting topic for further study, for
+instance by using methods such as the ones outlined in Asar et al. [32] to ensure that the Hessian
+remains positive definite.
+Finally, we do not expect there to be any negative societal consequences of our work given that it is
+aimed solely at improving the performance of an optimization method.
+
+Acknowledgments and Disclosure of Funding
+We would like to thank Małgorzata Bogdan for valuable comments. This work was funded by the
+Swedish Research Council through grant agreement no. 2020-05081 and no. 2018-01726. The
+computations were enabled by resources provided by LUNARC. The results shown here are in part
+based upon data generated by the TCGA Research Network: https://www.cancer.gov/tcga.
+
+
+                                                            10
+References
+ [1]   Robert Tibshirani. “Regression Shrinkage and Selection via the Lasso”. In: Journal of the Royal
+       Statistical Society: Series B (Methodological) 58.1 (1996), pp. 267–288. ISSN: 0035-9246.
+       JSTOR: 2346178.
+ [2]   Laurent El Ghaoui, Vivian Viallon, and Tarek Rabbani. Safe Feature Elimination in Sparse
+       Supervised Learning. UCB/EECS-2010-126. Berkeley: EECS Department, University of
+       California, Sept. 21, 2010.
+ [3]   Zhen J. Xiang, Hao Xu, and Peter J Ramadge. “Learning Sparse Representations of High Di-
+       mensional Data on Large Scale Dictionaries”. In: Advances in Neural Information Processing
+       Systems 24. Neural Information Processing Systems 2011. Ed. by J. Shawe-Taylor et al. Curran
+       Associates, Inc., Dec. 12–17, 2011, pp. 900–908.
+ [4]   Zhen James Xiang and Peter J. Ramadge. “Fast Lasso Screening Tests Based on Correlations”.
+       In: 2012 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).
+       2012 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).
+       Mar. 2012, pp. 2137–2140. DOI: 10.1109/ICASSP.2012.6288334.
+ [5]   Jie Wang et al. “A Safe Screening Rule for Sparse Logistic Regression”. In: Proceedings of the
+       27th International Conference on Neural Information Processing Systems - Volume 1. NIPS’14.
+       Cambridge, MA, USA: MIT Press, Dec. 8, 2014, pp. 1053–1061.
+ [6]   Olivier Fercoq, Alexandre Gramfort, and Joseph Salmon. “Mind the Duality Gap: Safer Rules
+       for the Lasso”. In: Proceedings of the 37th International Conference on Machine Learning.
+       ICML 2015. Ed. by Francis Bach and David Blei. Vol. 37. Proceedings of Machine Learning
+       Research. Lille, France: PMLR, July 6–11, 2015, pp. 333–342.
+ [7]   Eugene Ndiaye et al. “Gap Safe Screening Rules for Sparsity Enforcing Penalties”. In: Journal
+       of Machine Learning Research 18.128 (2017), pp. 1–33.
+ [8]   Hiroaki Yamada and Makoto Yamada. “Dynamic Sasvi: Strong Safe Screening for Norm-
+       Regularized Least Squares”. In: Advances in Neural Information Processing Systems. NeurIPS
+       2021. Ed. by M. Ranzato et al. Vol. 34. New Orleans, USA: Curran Associates, Inc., 2021,
+       pp. 14645–14655.
+ [9]   Jie Wang, Peter Wonka, and Jieping Ye. “Lasso Screening Rules via Dual Polytope Projection”.
+       In: Journal of Machine Learning Research 16.1 (May 15, 2015), pp. 1063–1101. ISSN: 1532-
+       4435.
+[10]   Robert Tibshirani et al. “Strong Rules for Discarding Predictors in Lasso-Type Problems”. In:
+       Journal of the Royal Statistical Society. Series B: Statistical Methodology 74.2 (Mar. 2012),
+       pp. 245–266. ISSN: 1369-7412. DOI: 10/c4bb85.
+[11]   Jianqing Fan and Jinchi Lv. “Sure Independence Screening for Ultrahigh Dimensional Feature
+       Space”. In: Journal of the Royal Statistical Society: Series B (Statistical Methodology) 70.5
+       (2008), pp. 849–911. ISSN: 1467-9868. DOI: 10.1111/j.1467-9868.2008.00674.x.
+[12]   Talal Ahmed and Waheed U. Bajwa. “ExSIS: Extended Sure Independence Screening for
+       Ultrahigh-Dimensional Linear Models”. In: Signal Processing 159 (June 1, 2019), pp. 33–48.
+       ISSN : 0165-1684. DOI : 10.1016/j.sigpro.2019.01.018.
+[13]   Yaohui Zeng, Tianbao Yang, and Patrick Breheny. “Hybrid Safe–Strong Rules for Efficient
+       Optimization in Lasso-Type Problems”. In: Computational Statistics & Data Analysis 153
+       (Jan. 1, 2021), p. 107063. ISSN: 0167-9473. DOI: 10.1016/j.csda.2020.107063.
+[14]   Tyler B Johnson and Carlos Guestrin. “Blitz: A Principled Meta-Algorithm for Scaling Sparse
+       Optimization”. In: Proceedings of the 32nd International Conference on Machine Learning.
+       International Conference on Machine Learning. Vol. 37. Lille, France: JMLR: W&CP, 2015,
+       p. 9.
+[15]   Mathurin Massias, Alexandre Gramfort, and Joseph Salmon. “Celer: A Fast Solver for the
+       Lasso with Dual Extrapolation”. In: Proceedings of the 35th International Conference on
+       Machine Learning. ICML 2018. Ed. by Jennifer Dy and Andreas Krause. Vol. 80. Proceedings
+       of Machine Learning Research. Stockholm, Sweden: PMLR, July 10–15, 2018, pp. 3315–3324.
+[16]   Bradley Efron et al. “Least Angle Regression”. In: Annals of Statistics 32.2 (Apr. 2004),
+       pp. 407–499. ISSN: 0090-5364. DOI: 10.1214/009053604000000067.
+[17]   James H. Goodnight. “A Tutorial on the SWEEP Operator”. In: The American Statistician
+       33.3 (1979), pp. 149–158. ISSN: 0003-1305. DOI: 10.2307/2683825. JSTOR: 2683825.
+
+
+
+                                                 11
+[18] Mee Young Park and Trevor Hastie. “L1-Regularization Path Algorithm for Generalized Linear
+     Models”. In: Journal of the Royal Statistical Society. Series B (Statistical Methodology) 69.4
+     (2007), pp. 659–677. ISSN: 1369-7412. DOI: 10.1111/j.1467-9868.2007.00607.x.
+[19] Julien Mairal and Bin Yu. “Complexity Analysis of the Lasso Regularization Path”. In: Pro-
+     ceedings of the 29th International Conference on Machine Learning. International Conference
+     on Machine Learning 2012. Edinburgh, United Kingdom, June 2012, pp. 1835–1842.
+[20] Hui Zou and Trevor Hastie. “Regularization and Variable Selection via the Elastic Net”.
+     In: Journal of the Royal Statistical Society. Series B (Statistical Methodology) 67.2 (2005),
+     pp. 301–320. ISSN: 1369-7412.
+[21] Dirk Eddelbuettel and Conrad Sanderson. “RcppArmadillo: Accelerating R with High-
+     Performance C++ Linear Algebra”. In: Computational Statistics and Data Analysis 71 (Mar.
+     2014), pp. 1054–1063.
+[22] Conrad Sanderson and Ryan Curtin. “Armadillo: A Template-Based C++ Library for Linear
+     Algebra”. In: The Journal of Open Source Software 1.2 (2016), p. 26. DOI: 10.21105/joss.
+     00026.
+[23] Dirk Eddelbuettel and Romain François. “Rcpp: Seamless R and C++ Integration”. In: Journal
+     of Statistical Software 40.8 (2011), pp. 1–18. DOI: 10/gc3hqm.
+[24] Kevin Ushey. Renv: Project Environments. Version 0.13.2. R Studio, 2021.
+[25] Gregory M. Kurtzer, Vanessa Sochat, and Michael W. Bauer. “Singularity: Scientific Containers
+     for Mobility of Compute”. In: PLOS ONE 12.5 (May 11, 2017), e0177459. ISSN: 1932-6203.
+     DOI : 10.1371/journal.pone.0177459.
+[26] Trevor Hastie, Robert Tibshirani, and Ryan Tibshirani. “Best Subset, Forward Stepwise or
+     Lasso? Analysis and Recommendations Based on Extensive Comparisons”. In: Statistical
+     Science 35.4 (Nov. 2020), pp. 579–592. ISSN: 0883-4237. DOI: 10.1214/19-STS733.
+[27] Robert Tibshirani et al. “Sparsity and Smoothness via the Fused Lasso”. In: Journal of the
+     Royal Statistical Society: Series B (Statistical Methodology) 67.1 (2005), pp. 91–108. ISSN:
+     1467-9868. DOI: 10.1111/j.1467-9868.2005.00490.x.
+[28] Małgorzata Bogdan et al. “SLOPE – Adaptive Variable Selection via Convex Optimization”.
+     In: The annals of applied statistics 9.3 (Sept. 2015), pp. 1103–1140. ISSN: 1932-6157. DOI:
+     10.1214/15-AOAS842. pmid: 26709357.
+[29] Jianqing Fan and Runze Li. “Variable Selection via Nonconcave Penalized Likelihood and Its
+     Oracle Properties”. In: Journal of the American Statistical Association 96.456 (Dec. 1, 2001),
+     pp. 1348–1360. ISSN: 0162-1459. DOI: 10/fd7bfs.
+[30] Cun-Hui Zhang. “Nearly Unbiased Variable Selection under Minimax Concave Penalty”. In:
+     The Annals of Statistics 38.2 (Apr. 2010), pp. 894–942. ISSN: 0090-5364, 2168-8966. DOI:
+     10/bp22zz.
+[31] Patrick Breheny and Jian Huang. “Coordinate Descent Algorithms for Nonconvex Penalized
+     Regression, with Applications to Biological Feature Selection”. In: The Annals of Applied
+     Statistics 5.1 (Mar. 2011), pp. 232–253. ISSN: 1932-6157, 1941-7330. DOI: 10.1214/10-
+     AOAS388.
+[32] Özgür Asar et al. “Linear Mixed Effects Models for Non-Gaussian Continuous Repeated
+     Measurement Data”. In: Journal of the Royal Statistical Society: Series C (Applied Statistics)
+     69.5 (Sept. 9, 2020), pp. 1015–1065. ISSN: 1467-9876. DOI: 10.1111/rssc.12405.
+
+Checklist
+     1. For all authors...
+         (a) Do the main claims made in the abstract and introduction accurately reflect the paper’s
+             contributions and scope? [Yes]
+         (b) Did you describe the limitations of your work? [Yes] See Section 5
+         (c) Did you discuss any potential negative societal impacts of your work? [Yes] See
+             Section 5.
+         (d) Have you read the ethics review guidelines and ensured that your paper conforms to
+             them? [Yes]
+     2. If you are including theoretical results...
+
+
+                                                  12
+    (a) Did you state the full set of assumptions of all theoretical results? [Yes]
+    (b) Did you include complete proofs of all theoretical results? [Yes] See the supplementary
+        material.
+3. If you ran experiments...
+    (a) Did you include the code, data, and instructions needed to reproduce the main experi-
+        mental results (either in the supplemental material or as a URL)? [Yes] See Section 4.
+    (b) Did you specify all the training details (e.g., data splits, hyperparameters, how they were
+        chosen)? [Yes] See Section 4 as well as the supplementary details and the references to
+        existing data sets for discussions on test and training splits.
+    (c) Did you report error bars (e.g., with respect to the random seed after running experi-
+        ments multiple times)? [Yes]
+    (d) Did you include the total amount of compute and the type of resources used (e.g., type
+        of GPUs, internal cluster, or cloud provider)? [Yes]
+4. If you are using existing assets (e.g., code, data, models) or curating/releasing new assets...
+    (a) If your work uses existing assets, did you cite the creators? [Yes] See the supplement
+        and Section 4.
+    (b) Did you mention the license of the assets? [Yes] A LICENSE.md file has been included
+        along with the code.
+    (c) Did you include any new assets either in the supplemental material or as a URL? [Yes]
+        See Section 4.
+    (d) Did you discuss whether and how consent was obtained from people whose data you’re
+        using/curating? [N/A] All data we used has been made available in the public domain.
+    (e) Did you discuss whether the data you are using/curating contains personally identifiable
+        information or offensive content? [Yes] To the best of our knowledge, it does not.
+5. If you used crowdsourcing or conducted research with human subjects...
+    (a) Did you include the full text of instructions given to participants and screenshots, if
+        applicable? [N/A] Not applicable to our work.
+    (b) Did you describe any potential participant risks, with links to Institutional Review
+        Board (IRB) approvals, if applicable? [N/A] Not applicable to our work.
+    (c) Did you include the estimated hourly wage paid to participants and the total amount
+        spent on participant compensation? [N/A] Not applicable to our work.
+
+
+
+
+                                            13
+

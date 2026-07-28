@@ -1,0 +1,481 @@
+                                                       CW-ERM: Improving Autonomous Driving Planning with
+                                                         Closed-loop Weighted Empirical Risk Minimization
+                                                                        Eesha Kumar1,∗ , Yiming Zhang2 , Stefano Pini1 , Simon Stent1 ,
+                                                                          Ana Ferreira2 , Sergey Zagoruyko1 , Christian S. Perone1,∗
+
+                                            Abstract— The imitation learning of self-driving vehicle poli-      (Closed-loop Weighted Empirical Risk Minimization), since
+                                         cies through behavioral cloning is often carried out in an open-       we use Weighted ERM [11] to correct the training distribution
+                                         loop fashion, ignoring the effect of actions to future states.         in favour of closed-loop performance. We extensively evaluate
+                                         Training such policies purely with Empirical Risk Minimization
+                                                                                                                this principle on real-world urban driving data and show that
+arXiv:2210.02174v2 [cs.LG] 11 Oct 2022
+
+
+
+
+                                         (ERM) can be detrimental to real-world performance, as it
+                                         biases policy networks towards matching only open-loop behav-          it can achieve significant improvements on planner metrics
+                                         ior, showing poor results when evaluated in closed-loop. In this       that matter for real-world performance (e.g. collisions).
+                                         work, we develop an efficient and simple-to-implement principle           Our contributions are therefore the following:
+                                         called Closed-loop Weighted Empirical Risk Minimization (CW-
+                                                                                                                   • We motivate and propose Closed-loop Weighted Em-
+                                         ERM), in which a closed-loop evaluation procedure is first
+                                         used to identify training data samples that are important for                pirical Risk Minimization (CW-ERM), a technique that
+                                         practical driving performance and then we these samples to                   leverages closed-loop evaluation metrics acquired from
+                                         help debias the policy network. We evaluate CW-ERM in a                      policy rollouts in a simulator to debias the policy network
+                                         challenging urban driving dataset and show that this procedure               and reduce the distributional differences between training
+                                         yields a significant reduction in collisions as well as other non-
+                                         differentiable closed-loop metrics.
+                                                                                                                     (open-loop) and inference time (closed-loop);
+                                                                                                                   • we evaluate CW-ERM experimentally on a challenging
+                                                                   I. I NTRODUCTION                                   urban driving dataset in a closed-loop fashion to show
+                                                                                                                      that our method, although simple to implement, yields
+                                            Learning effective planning policies for self-driving vehi-
+                                                                                                                      significant improvements in closed-loop performance
+                                         cles (SDVs) from data such as human demonstrations remains
+                                                                                                                     without requiring complex and computationally expen-
+                                         one of the major challenges in robotics and machine learning.
+                                                                                                                      sive closed-loop training methods;
+                                         Since early works such as ALVINN [1], Imitation Learning
+                                                                                                                   • we also show an important connection of our method
+                                         has seen major recent developments using modern Deep
+                                                                                                                      to a family of methods that addresses covariate shift
+                                         Neural Networks (DNNs) [2]–[7]. Imitation Learning (IL),
+                                                                                                                      through density ratio estimation.
+                                         and especially Behavioral Cloning (BC), however, still face
+                                                                                                                In Section II, we detail the proposed CW-ERM and in
+                                         fundamental challenges [8], including causal confusion [9]
+                                                                                                                Section IV we show the CW-ERM experiments and compare
+                                         (later identified as a feedback-driven covariate shift [10]) and
+                                                                                                                them against ERM.
+                                         dataset biases [8], to name a few.
+                                            There is one particular limitation of IL policies trained                               II. M ETHODOLOGY
+                                         with BC that is, however, often overlooked: the mismatch               A. Problem Setup
+                                         between training and inference-time execution of the policy
+                                                                                                                  The traditional formulation of supervised learning for
+                                         actions. Most of the time, BC policies are trained in an open-
+                                                                                                                imitation learning, also called behavioral cloning (BC), can
+                                         loop fashion, predicting the next action given the immediate
+                                                                                                                be formulated as finding the policy π̂BC :
+                                         previous action and optionally conditioned on recent past
+                                         actions [2]–[5], [7]. These policies, however, when executed
+                                                                                                                          π̂BC = argmin Es∼dπ∗ ,a∼π∗ (s) [`(s, a, π)]        (1)
+                                         in real-world, impact the future states. Small prediction errors                           π∈Π
+                                         can drive covariate shift and make the network predict in an              where the state s is sampled from the expert state dis-
+                                         out-of-distribution regime.                                            tribution dπ∗ induced when following the expert policy π ∗ .
+                                            In this work, we address the mismatch between training              Actions a are sampled from the expert policy π ∗ (s). The loss
+                                         and inference through the development of a simple training             ` is also known as the surrogate loss that will find the policy
+                                         principle. Using a closed-loop simulator, we first identify and        π̂BC that best mimics the unknown expert policy π ∗ (s). In
+                                         then reweight samples that are important for the closed-loop           practice, we only observe a finite set of state-action pairs
+                                         performance of the planner. We call this approach CW-ERM                          m
+                                                                                                                (si , a∗i )i=1 , so the optimization is only approximate and we
+                                           1 Author                                                             then follow the Empirical Risk Minimization (ERM) principle
+                                                    is with Woven Planet United Kingdom Limited,
+                                         114-116 Curtain Road, London, United Kingdom, EC2A 3AH.                to find the policy π from the policy class Π.
+                                         firstname.lastname@woven-planet.global                                    If we let Es∼dπ∗ ,a∼π∗ (s) [`(s, a, π)] = , then it follows
+                                           2 Author   is    with     Woven   Planet  North   America,   Inc.,   that J(π) ≤ J(π ∗ ) + T 2  as shown by the proof in [13],
+                                         900    Arastradero      Rd,    Palo   Alto,  CA,     USA     94304.
+                                         firstname.lastname@woven-planet.global                                 where J is the total cost and T is the task horizon. As we
+                                           ∗ Equal contribution.                                                can see, the total cost can grow quadratically in T .
+      Traditional open-loop ERM training                      Closed-loop Weighted Empirical Risk Minimization (CW-ERM)
+                                                  3
+
+
+                                                                           4                     5                         6
+      Training              Identification            Closed-loop                Error set          Upsampled                  Final
+      Scenes
+                 1             Policy                 Simulation               construction       Training Scenes              Policy
+                                             2
+
+                                                          5
+
+Fig. 1: High-level overview of our proposed Closed-loop Weighted Empirical Risk Minimization (CW-ERM) method. In
+steps (1-2) we train an identification policy π̂ERM using traditional ERM [12] on a set of training data samples or driving
+"scenes". In step (3), we perform closed-loop simulation of the policy π̂ERM and collect metrics to construct the error set in
+step (4). With the error set in hand, we upsample scenes in the training set as shown in step (5). We train the final policy
+π̂CW-ERM using CW-ERM as shown in step (6) with the upsampled Dup set.
+
+
+   When the policy π̂BC is deployed in the real-world,                    Stage 3 (final policy): train a new policy using weighted
+it will eventually make mistakes and then induce a state                  ERM where the scenes belonging to the error set Eπ̂ERM are
+distribution dπ̂BC different than the one it was trained on               upweighted by a factor w(·), yielding the policy π̂CW-ERM :
+( dπ∗ ). During closed-loop evaluation of driving policies,
+non-imitative metrics such as collisions and comfort are also                      argmin Es∼dπ∗ ,a∼π∗ (s) [w(Eπ̂ERM , s)`(s, a, π)]    (3)
+evaluated. However, they are often ignored in the surrogate                          π∈Π
+loss or only implicitly learned by imitating the expert due                 As we can see, the CW-ERM policy in Equation 3 is
+to the difficulty of overcoming differentiability requirements,           very similar to the original BC policy trained with ERM in
+as smooth approximations of these metrics are still different             Equation 1, with the key difference of a weighting term based
+than the non-differentiable counterparts often used. These                on the error set from closed-loop simulation in Stage 2. In
+policies can often show good results in open-loop training, but           practice, although statistically equivalent, we upsample scenes
+perform poorly in closed-loop evaluation or when deployed                 by a fixed factor rather than reweighting, as it is known to
+in a real SDV due to the differences between dπ̂BC and dπ∗ ,              be more stable and robust [14].
+where the estimator is no longer consistent.                                By training a policy using CW-ERM, we expect it to up-
+                                                                          sample scenes that perform poorly in closed-loop evaluation,
+B. Closed-loop Weighted Empirical Risk Minimization                       making the policy network robust to the covariate shift seen
+                                                                          during inference time while unrolling the policy.
+   In our method, called “Closed-loop Weighted Empirical
+                                                                            We describe the complete CW-ERM training procedure in
+Risk Minimization” (CW-ERM), we seek to debias a policy
+                                                                          Algorithm 1 and in Figure 1 we show a high-level overview
+network from the open-loop performance towards closed-
+                                                                          of our method.
+loop performance, making the model rely on features that
+are robust to closed-loop evaluation. Our method consists of              C. Relationship to covariate shift adaptation with density
+three stages: the training of an identification policy, the use           ratio estimation
+of that policy in closed-loop simulation to identify samples,
+and the training of a final policy network on a reweighted                  One important connection of our method is with covariate
+data distribution. More explicitly:                                       shift correction using density ratio estimation [11]. To correct
+                                                                          for the covariate shift, the negative log-likelihood is often
+Stage 1 (identification policy): train a traditional BC policy            weighted by the density ratio r(s):
+network in open-loop using ERM, to yield π̂ERM .
+Stage 2 (closed-loop simulation): perform rollouts of the                               argmin Es∼dπ∗ ,a∼π∗ (s) [r(s)`(s, a, π)]        (4)
+π̂ERM policy in a closed-loop simulator, collect closed-loop                              π∈Π
+metrics and then identify the error set below:
+                                                                             where r(s) is defined as the density ratio between test and
+                                                                          training distributions:
+            Eπ̂ERM = {(si , ai ) s.t. C(si , ai ) > 0},             (2)
+                                                                                                              ptest (s)
+  where si is a training data sample, or “scene” with a fixed                                        r(s) =                             (5)
+                                                                                                              ptrain (s)
+number of timesteps from the training set, ai is the action
+performed during the roll-out and C(·) is a cost such as the                 In practice, r(s) is difficult to compute and is thus
+number of collisions found during closed-loop rollouts.                   estimated. The density ratio will be higher when the sample is
+Algorithm 1 CW-ERM training procedure                            on the captured images. Another common approach is to
+  Input: Training set D and hyperparameters K (number of         supplement training with on-policy data [17]–[19], however,
+  epochs) and w (upsampling factor).                             in practice, collecting on-policy data for use during training
+        Stage 1: Identification policy                           can be extremely expensive and time-consuming.
+        1. Train π̂ERM on D using ERM for K epochs                  Similar to our work, Urban Driver [20] also utilizes a
+  (Equation 1).                                                  closed-loop simulator, but the simulator is used directly during
+        Stage 2: Closed-loop simulation                          training to generate unrolls while using BPTT (backpropa-
+        2. Perform closed-loop simulation of the policy π̂ERM    gation through time). Urban Driver needs a differentiable
+  in training scenes;                                            simulator and does not scale well due to the need for rollouts
+        3. Compute closed-loop evaluation metrics;               during training and the memory requirements of BPTT. In
+        4. Build the error set Eπ̂ERM of training scenes from    contrast, our work takes a much simpler approach where
+  closed-loop metrics (Equation 2).                              the closed-loop simulator is only used to identify which
+        Stage 3: Final policy                                    samples to up-weight and does not require a differentiable
+        5. Construct upsampled dataset Dup by upsampling         simulator, while being able to directly identify scenes that
+  the error set Eπ̂ERM by w times;                               are important for closed-loop evaluation without having to
+        6. Train final model π̂CW-ERM for K epochs on Dup        change the training loss to add differentiable collision losses
+  via CW-ERM (Equation 3).                                       as in Urban Driver [20]. In our work, any closed-loop metric
+                                                                 can be used, with no requirements for differentiability.
+                                                                               IV. E XPERIMENTAL E VALUATION
+more important for the test distribution. In our method (CW-     A. Policy network architecture
+ERM), instead of using the density ratio to weight training
+samples, we resample the training set based on an estimate          Our method is agnostic to model architecture choices. To
+of each data point’s importance towards good closed-loop         evaluate our CW-ERM approach, we adopt the recent network
+behaviours. Like the density ratio, the weighting in our case    architecture of [7] to represent a strong baseline performance
+will also be higher for when the sample is important for the     for SDV planning. This model uses a transformer-based [21]
+test distribution.                                               architecture with a vectorial input representation [22] to create
+                                                                 features for each element into vector sets. It consists of a
+   One key characteristic of the importance weighted estimator
+                                                                 PointNet-based [23] module for local processing of vectorized
+is that it can be consistent even under covariate shift. We
+                                                                 inputs and a global graph using a Transformer encoder for
+leave, however, the analysis of theoretical properties of our
+                                                                 reasoning about interactions with agents and map features.
+approximation for future work.
+                                                                 Differently from [7], we don’t use a safety layer, as we
+                   III. R ELATED W ORK                           want to evaluate the planner performance without external
+                                                                 trajectory fallbacks. For further details, please refer to [7].
+   Closely related to our work is the “Learning from Failure”
+method [15] (also known as LfF), where the authors train         B. Training
+two models at the same time with a similar purpose of               During training, we found that stopping training of the
+mitigating bias. The difference is that in CW-ERM we train       identification policy before convergence, similar to what was
+models sequentially and we use closed-loop evaluation metrics    done in JTT [16] and LfF [15], also yielded better results. We
+instead of the loss to upsample, which permits the use of non-   limited the capacity of the identification policy by training
+differentiable metrics. We also do not use GCE (generalized      it until K epochs. The insight is that important biases are
+cross-entropy) to bias the identification model. Our method      learned in early training phases [15] and limiting model
+is simple from a training perspective, but unlike LfF, it does   capacity can avoid overfitting and avoid depletion [16] of the
+assume the availability of a simulator.                          error set used for the training of the final policy. We train
+   A similar approach that has been successfully applied         the final policy for 40 epochs.
+to computer vision and natural language processing is the           For the ERM baseline, we compare our method against
+Just Train Twice (JTT) algorithm [16]. JTT similarly first       two different experiments where we have the traditional BC
+trains an identification model, then trains another model        trained with ERM with and without perturbations (details can
+which upweights samples misclassified by the identification      be found in Appendix A).
+model. Although similar in the sense that two models are
+trained sequentially, in JTT the goal is to deal with worst-     C. Datasets
+group accuracy and not to improve robustness to closed-loop         We train and test CW-ERM on a proprietary dataset. Our
+behaviors of a planning model, as in our case.                   SDV data is collected in challenging urban missions on San
+   Several works have attempted to address the covariate         Francisco and Palo Alto roads. This dataset is a collection
+shift problem in imitation learning. ChauffeurNet [2] and        of driving trajectories from our SDV and surrounding agents,
+SafetyNet [7] add state perturbation to the training data for    along with recorded HD Maps. Various types of behavioral
+improved generalization. Similarly, DAVE-2 [4] used video        scenarios in urban driving such as stopping behind a lead
+captured from three different cameras as well as perturbation    vehicle, stopping at intersections, and driving among dense
+cars, pedestrians, cyclists etc. are captured. The majority of                           Qualitative results during closed-loop unroll are shown in
+scenes in our dataset are between 11-13 seconds long, with                            Figures 4 and 5. Here, we show improved behavior when the
+the longest lasting up to 30 seconds. The total data used                             scene is upsampled in CW-ERM - once for front collisions
+during training is 180 hours and we validate and test on 60                           Figure 4 and another for side collisions Figure 5. Here, we
+hours of driving data each.                                                           see a better response in the CW-ERM model which avoids
+                                                                                      collisions by waiting at intersection and slowing down next
+D. Evaluation framework                                                               to a lead vehicle.
+   We compute the closed-loop evaluation metrics by doing                               2) Multi Metric: In our multi-metric experiments, we
+rollouts of the policy in the log-replayed scenes on a                               combine two or more metrics - namely m1 , m2 ..mN - into
+simulator 1 . During the unroll, trajectories are recorded. An                       a single upsampling experiment. The metrics are equally
+evaluation plan composed of a set of metrics and constraints                         weighted and hence scenes that fail due to any mi will be
+is executed over the recorded trajectories. We count every                           added to the error set. While improvements are noticeable
+scene that violated a constraint (e.g., a collision) and then                        upon combining Front and Side collisions or Front, Side and
+compute the confidence intervals (CIs) for each metric using                         Distance to the reference trajectory in Table I, considerable
+a Binomial exact posterior estimation with a flat prior, which                       regression is observed when adding rear collisions. As we
+gives similar results (up to rounding errors) to bootstrapping                       can see from the experiments, this is clearly related to the
+as recommended in [24].                                                              amount of false-positives (FPs) in rear collisions due to the
+                                                                                     lack of agent reactivity during log playback in the simulator.
+E. Metrics
+   Metrics computed in the closed-loop simulator are used                                                      Num. Side Collisions vs. Upsampling Factor
+to construct the error set (Equation 2). In our evaluation
+we consider certain important metrics: the number of front                         Side Collisions (#)   160
+collisions, side collisions, rear collisions, and distance from
+reference trajectory. The distance from reference trajectory                                             140
+considers the entire target trajectory for the current simulated
+point. A failed scene with respect to this metric is one where                                           120
+
+the distance of the simulated center of the SDV to the closest
+point in the target trajectory is farther than four meters.                                              100
+
+   In our evaluation, we perform two sets of experiments:
+                                                                                                          80
+single metric and multi metric. In single metric experiments
+                                                                                                               25   50    75    100    125    150   175   200
+we construct the error set using only a single metric, while for                                                          Upsampling Factor (w)
+multi metric we use scenes from multiple metrics together.
+                                                                                      Fig. 3: A sample plot showing the effect of upsampling factor
+F. Results                                                                            on the performance based on single cost upsampling. Here,
+                                                                                      the scenes are upsampled based on side collisions by factor
+   1) Single Metric: We show the results from single metric
+                                                                                      w along X-axis. The resulting side collisions obtained while
+experiments in Table I. We can see that the number of
+                                                                                      evaluating on the validation dataset is obtained on the Y-axis.
+collisions significantly reduced for both side and front
+                                                                                      It is evident from the plot that the performance improves
+collision experiments. We found improvements in the range
+                                                                                      until an upsampling factor of w = 50 after which number of
+of ∼35% on the test set for some metrics when compared to
+                                                                                      side collisions begin to increase.
+the baseline.
+   We also found that the largest margin of improvements
+targeting single metrics in isolation were seen when using
+                                                                                      G. Hyper-parameter Tuning / Upsampling Experiments
+single metric based error set, while a balance was achieved
+when targeting multiple metrics, which suggests a Pareto
+                                                                                       We evaluate the performance of the upsampled training set
+front of solutions when targeting multiple objectives.
+                                                                                    using various identification models K ∈ {10, 20} with various
+   Variance is also lower in some cases when compared to
+                                                                                    upsampling factors w ∈ {10, 20, 30, 50} on the validation
+the baseline. We note that while upsampling a certain metric,
+                                                                                    dataset. Single metric upsampling experiments responded
+it shows noticeable improvements in other related metrics.
+                                                                                    better to error set extracted from the training where K =
+For example, in our single metric experiments, we see that
+                                                                                    10, while using K = 20 performed better for multi-metric
+improving side collisions also improve rear collisions. This
+                                                                                    experiments. We find that the size of the resulting upsampled
+is evidence that the model is not only getting better at side
+                                                                                    error set influences performance. As seen from Table I and
+collisions but also becoming less passive (as indicated by
+                                                                                    Figure 3, there exists a limit beyond which performance does
+reduction in rear collisions, due to log-replayed agents in
+                                                                                    not improve during the upsampling experiments. A similar
+simulation that are non-reactive).
+                                                                                    observation was noted in JTT [16], where they also found an
+  1 Please refer to the Reproducibility section for details on the open-sourcing    upsampling factor for which beyond it, worst-group accuracy
+of the simulator and metrics used in this work.                                     could not be improved.
+                                              TABLE I
+ E XPERIMENTAL RESULTS FROM CLOSED - LOOP EVALUATION IN SIMULATION . I N THIS TABLE WE SHOW A BASELINE
+METHOD OF BEHAVIORAL CLONING (ERM) WITH AND WITHOUT PERTURBATIONS ( DETAILS CAN BE FOUND IN A PPENDIX
+  A) TOGETHER WITH THE RESULTS FROM SINGLE AND MULTI - METRIC EXPERIMENTS . L OWER IS BETTER FOR ALL
+                                              METRICS .
+
+      Method                 Upsampled metric                   Perturbation     Front Collisions            Side Collisions     Rear Collisions        Dist. to ref. traj.
+
+  ERM (baseline)      (not applicable)                                           67 (52.8, 85.0)         97 (79.6, 118.2)        114 (94.9, 136.8)      75 (59.9, 93.9)
+  ERM (baseline)      (not applicable)                          X                14 (8.4, 23.5)          55 (42.3, 71.6)         34 (24.4, 47.5)        35 (25.2, 48.6)
+  CW-ERM (ours)       Front Collisions                          X                9 (4.8, 17.1)           52 (39.7, 68.1)         38 (27.7, 52.1)        39 (28.6, 53.2)
+  CW-ERM (ours)       Side Collisions                           X                11 (6.2, 19.7)          47 (35.4, 62.5)         31 (21.9, 44.0)        35 (25.2, 48.6)
+  CW-ERM (ours)       Dist. to Reference Trajectory             X                10 (5.5, 18.4)          50 (37.9, 65.8)         40 (29.4, 54.4)        28 (19.4, 40.4)
+  CW-ERM (ours)       Front + Side Collisions                   X                9 (4.8, 17.1)           55 (42.3, 71.6)         39 (28.5, 53.2)        35 (25.2, 48.6)
+  CW-ERM (ours)       Front + Side + Rear Collisions            X                11 (6.2, 19.7)          50 (37.9, 65.8)         28 (19.4, 40.4)        37 (26.9, 51.0)
+  CW-ERM (ours)       Front + Side + Dist. to ref. traj.        X                10 (5.5, 18.4)          46 (34.5, 61.3)         40 (29.4, 54.4)        31 (21.9, 44.0)
+
+
+                                                  Front Collisions                    Side Collisions                  Rear Collisions                  Dist. to ref. traj.
+          Baseline (ERM w/ perturbation)
+               Front Collisions (CW-ERM)
+                Side Collisions (CW-ERM)
+               Dist. to ref. traj. (CW-ERM)
+        Front + Side Collisions (CW-ERM)
+ Front + Side + Rear Collisions (CW-ERM)
+Front + Side + Dist. to ref. traj. (CW-ERM)
+                                              5   10       15       20           40      50     60      70       20     30      40    50           20     30      40      50
+
+Fig. 2: Visual representation of the experimental results from closed-loop evaluation in simulation shown in Table I. Confidence
+intervals (CIs) were calculated using .95 interval from an exact Binomial posterior with a flat prior. In this plot we only
+compare against the best baseline (ERM with perturbation).
+
+
+                           V. L IMITATIONS                                              work in the following open-source repository:
+   Although our method is efficient, easy to implement                                     https://woven-planet.github.io/l5kit
+and showed significant improvements, it also comes with                                                                VII. D ISCUSSION
+limitations that are important to highlight. In this work, we
+use a proprietary dataset for evaluation, primarily due to the                             Most recent improvements in imitation learning are based
+current lack of available closed-loop evaluation benchmarks.                            on improving the asymptotic performance of algorithms.
+Most public datasets available today are focused on agent                               In this work we showed a different direction that tackles
+prediction tasks and on open-loop metrics (e.g. [25], [26]).                            the problem by directly addressing the mismatch between
+Recently, the closed-loop planning benchmark nuPlan [27]                                training and inference without requiring an extra human
+was released, but is still under active development and requires                        oracle or adding extra complexity during training. Our
+a special license for industrial labs to use.                                           method is as simple as upsampling scenes by leveraging
+   Our method also introduces two new hyper-parameters:                                 any existing simulator and training two models, yet it showed
+K (number of epochs for the identification model) and w                                 that there is still room for significant improvements without
+(upsampling factor), however, we found the improvement to                               having to deal with human-in-the-loop, training rollouts or
+be robust to different parameterizations of these parameters,                           impacting the policy inference latency. We also described an
+similar to past observations [16].                                                      important potential connection of our method with density
+   We performed log-replay of agents in simulation, which                               ratio estimation for covariate shift correction [11], which we
+can produce false positives for the rear collision metric. We                           believe is an exciting future research direction that could
+leave further analysis and the usage of a reactive simulator                            provide better theoretical understanding of the improvements
+as future direction.                                                                    seen in our experiments.
+   We have not yet deployed our policy in a real-world                                                                         A PPENDIX
+SDV, however, we evaluated it on a closed-loop evaluation
+framework that is known to be closely representative of real-                           A. Perturbation
+world performance. Deployment and testing of a policy in                                   In our experiments, we employed similar perturbation
+a real-world SDV on public roads requires further safety                                techniques as in [7]. We randomly perturb the ego’s current
+evaluations that we leave as future work.                                               state to shift from the current trajectory in some of the training
+                                                                                        examples. To put it more concretely, for the perturbed states,
+                      VI. R EPRODUCIBILITY                                              we add a zero-mean Gaussian noise to the ego’s current
+  We make available                  our closed-loop                     simulator      position and heading. We perturb the ego’s speed by av + |b|
+and  the closed-loop                  metrics  used                      in   this      where v is the current speed, a and b are speed multiplier and
+                               Baseline
+
+
+
+
+                                                                                                        Baseline
+                               Time                                                                       Time
+
+
+
+
+                                                                                                        CW-ERM
+                               CW-ERM
+
+
+
+
+Fig. 4: A scene from the test dataset showing the behavior           Fig. 5: A scene from the test dataset showing the behavior of
+of ego in Baseline (ERM) (with perturbation) and CW-ERM              ego in Baseline (ERM) (with perturbation) and CW-ERM side
+front collisions upsampled. The blue dots are the target             collisions upsampled. The blue dots are the target trajectory
+trajectory and the yellow dots are the predicted trajectory. The     and the yellow dots are the predicted trajectory. The ego
+ego is the box in pink and blue-green boxes are other agents.        is the box in pink and blue-green boxes are other agents.
+Here, we see that the baseline moves ahead at intersection           Here, we see that the baseline deviates from target trajectory
+ignoring the car from the right resulting in a front collision. In   and collides with the bus ahead. The CW-ERM policy slows
+contrast, for the CW-ERM policy, it waits at the intersection.       down behind the bus and prevents a collision.
+
+
+bias terms generated by a zero-mean Gaussian distribution.
+Taking the absolute value of the bias term is to ensure that
+the perturbed speed is always non-negative. Additionally, we
+perform collision checks for every perturbed state and we do
+not include any perturbed states which includes collisions.
+B. Policy network hyper-parameters
+   To train the baselines and our policy we employ a
+distributed training with a local batch size of 64 for each
+replica (with an effective batch size of 4096 when using 64
+GPU replicas). We use a learning rate of 0.001 that is annealed      Fig. 6: Scenario distribution of the training dataset. Scenes
+with cosine schedule during training for 40 epochs (except for       can be of single or multiple scenarios - in the case of multiple
+the identification models as described in the Section IV). We        scenario tags, the scenario names are comma separated.
+also used MAE (mean absolute error) loss and the Adam [28]
+optimizer with default PyTorch [29] parameters for β1 and
+β2 .                                                                 everyone from the UK Research Team and the ML Planning
+                                                                     team who supported this work through the ecosystem needed
+C. Scene distribution                                                for all experiments, and for the fruitful discussions.
+  We select training, validation and test data subsets to be
+balanced. The scenarios selected for the datasets are diverse,                                    R EFERENCES
+and a variety of complex urban scenarios have been curated            [1] D. A. Pomerleau, “Alvinn: An autonomous land vehicle in a neural
+such that it is possible to evaluate closed-loop performance,             network,” in Advances in Neural Information Processing Systems, vol. 1,
+                                                                          1989.
+even on minority scenario groups. In Figure 6, a detailed             [2] M. Bansal, A. Krizhevsky, and A. Ogale, “Chauffeurnet: Learning to
+split of the various scenarios is provided.                               drive by imitating the best and synthesizing the worst,” in Proceedings
+                                                                          of Robotics: Science and Systems, June 2019.
+                  ACKNOWLEDGMENT                                      [3] H. Xu, Y. Gao, F. Yu, and T. Darrell, “End-to-end learning of driving
+                                                                          models from large-scale video datasets,” in 2017 IEEE Conference on
+  We would like to thank Kenta Miyahara, Nobuhiro Ogawa                   Computer Vision and Pattern Recognition (CVPR), 2017, pp. 3530–
+and Ezequiel Castellano for the review of this work and                   3538.
+ [4] M. Bojarski, D. Del Testa, D. Dworakowski, B. Firner, B. Flepp,             [23] C. R. Qi, H. Su, K. Mo, and L. J. Guibas, “Pointnet: Deep learning
+     P. Goyal, L. D. Jackel, M. Monfort, U. Muller, J. Zhang, X. Zhang,               on point sets for 3d classification and segmentation,” in CVPR, 2017.
+     J. Zhao, and K. Zieba, “End to end learning for self-driving cars,”         [24] R. Agarwal, M. Schwarzer, P. S. Castro, A. C. Courville, and
+     2016.                                                                            M. Bellemare, “Deep reinforcement learning at the edge of the statistical
+ [5] F. Codevilla, M. Müller, A. López, V. Koltun, and A. Dosovitskiy,                precipice,” Advances in Neural Information Processing Systems, vol. 34,
+     “End-to-end driving via conditional imitation learning,” in 2018 IEEE            2021.
+     International Conference on Robotics and Automation (ICRA), 2018,           [25] M.-F. Chang, J. Lambert, P. Sangkloy, J. Singh, S. Bak, A. Hartnett,
+     pp. 4693–4700.                                                                   D. Wang, P. Carr, S. Lucey, D. Ramanan, and J. Hays, “Argoverse:
+ [6] A. Kuefler, J. Morton, T. Wheeler, and M. Kochenderfer, “Imitating               3d tracking and forecasting with rich maps,” in Proceedings of the
+     driver behavior with generative adversarial networks,” in 2017 IEEE              IEEE/CVF Conference on Computer Vision and Pattern Recognition
+     Intelligent Vehicles Symposium (IV), 2017, pp. 204–211.                          (CVPR), June 2019.
+ [7] M. Vitelli, Y. Chang, Y. Ye, A. Ferreira, M. Wołczyk, B. Osiński,          [26] S. Ettinger, S. Cheng, B. Caine, C. Liu, H. Zhao, S. Pradhan, Y. Chai,
+     M. Niendorf, H. Grimmett, Q. Huang, A. Jain, et al., “Safetynet: Safe            B. Sapp, C. R. Qi, Y. Zhou, Z. Yang, A. Chouard, P. Sun, J. Ngiam,
+     planning for real-world self-driving vehicles using machine-learned              V. Vasudevan, A. McCauley, J. Shlens, and D. Anguelov, “Large scale
+     policies,” in 2022 International Conference on Robotics and Automation           interactive motion forecasting for autonomous driving: The waymo
+     (ICRA). IEEE, 2022, pp. 897–904.                                                 open motion dataset,” in Proceedings of the IEEE/CVF International
+ [8] F. Codevilla, E. Santana, A. M. López, and A. Gaidon, “Exploring the             Conference on Computer Vision (ICCV), October 2021, pp. 9710–9719.
+     limitations of behavior cloning for autonomous driving,” in Proceedings     [27] K. T. e. a. H. Caesar, J. Kabzan, “Nuplan: A closed-loop ml-
+     of the IEEE/CVF International Conference on Computer Vision, 2019,               based planning benchmark for autonomous vehicles,” in CVPR ADP3
+     pp. 9329–9338.                                                                   workshop, 2021.
+                                                                                 [28] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,”
+ [9] P. de Haan, D. Jayaraman, and S. Levine, “Causal confusion in imitation
+                                                                                      in International Conference on Learning Representations (ICLR), 2015.
+     learning,” in Advances in Neural Information Processing Systems,
+                                                                                 [29] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan,
+     H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alché-Buc, E. Fox,
+                                                                                      T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf,
+     and R. Garnett, Eds., vol. 32. Curran Associates, Inc., 2019.
+                                                                                      E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner,
+[10] J. C. Spencer, S. Choudhury, A. Venkatraman, B. D. Ziebart, and                  L. Fang, J. Bai, and S. Chintala, “Pytorch: An imperative style, high-
+     J. A. Bagnell, “Feedback in imitation learning: The three regimes of             performance deep learning library,” in Advances in Neural Information
+     covariate shift,” CoRR, vol. abs/2102.02872, 2021.
+                                                                                      Processing Systems 32. Curran Associates, Inc., 2019, pp. 8024–8035.
+[11] H. Shimodaira, “Improving predictive inference under covariate shift by
+     weighting the log-likelihood function,” Journal of Statistical Planning
+     and Inference, vol. 90, no. 2, pp. 227–244, 2000.
+[12] V. Vapnik, “Principles of risk minimization for learning theory,” in
+     Advances in Neural Information Processing Systems, 1991.
+[13] S. Ross and D. Bagnell, “Efficient reductions for imitation learning,”
+     in Proceedings of the Thirteenth International Conference on Artificial
+     Intelligence and Statistics, ser. Proceedings of Machine Learning
+     Research, Y. W. Teh and M. Titterington, Eds., vol. 9. Chia Laguna
+     Resort, Sardinia, Italy: PMLR, 13–15 May 2010, pp. 661–668.
+[14] J. An, L. Ying, and Y. Zhu, “Why resampling outperforms reweighting
+     for correcting sampling bias with stochastic gradients,” in 9th Interna-
+     tional Conference on Learning Representations, ICLR 2021, Virtual
+     Event, Austria, May 3-7, 2021. OpenReview.net, 2021.
+[15] J. Nam, H. Cha, S. Ahn, J. Lee, and J. Shin, “Learning from failure:
+     De-biasing classifier from biased classifier,” Advances in Neural
+     Information Processing Systems, vol. 33, pp. 20 673–20 684, 2020.
+[16] E. Z. Liu, B. Haghgoo, A. S. Chen, A. Raghunathan, P. W. Koh,
+     S. Sagawa, P. Liang, and C. Finn, “Just train twice: Improving
+     group robustness without training group information,” in International
+     Conference on Machine Learning. PMLR, 2021, pp. 6781–6792.
+[17] S. Ross, G. Gordon, and D. Bagnell, “A reduction of imitation learning
+     and structured prediction to no-regret online learning,” in Proceedings
+     of the fourteenth international conference on artificial intelligence and
+     statistics. JMLR Workshop and Conference Proceedings, 2011, pp.
+     627–635.
+[18] Y. Pan, C.-A. Cheng, K. Saigol, K. Lee, X. Yan, E. A. Theodorou,
+     and B. Boots, “Imitation learning for agile autonomous driving,” The
+     International Journal of Robotics Research, vol. 39, no. 2-3, pp. 286–
+     302, 2020.
+[19] A. Prakash, A. Behl, E. Ohn-Bar, K. Chitta, and A. Geiger, “Exploring
+     data aggregation in policy learning for vision-based urban autonomous
+     driving,” in Proceedings of the IEEE/CVF Conference on Computer
+     Vision and Pattern Recognition, 2020, pp. 11 763–11 773.
+[20] O. Scheel, L. Bergamini, M. Wolczyk, B. Osiński, and P. Ondruska,
+     “Urban driver: Learning to drive from real-world demonstrations using
+     policy gradients,” in Conference on Robot Learning. PMLR, 2022,
+     pp. 718–728.
+[21] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N.
+     Gomez, L. u. Kaiser, and I. Polosukhin, “Attention is all you need,” in
+     Advances in Neural Information Processing Systems, I. Guyon, U. V.
+     Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vishwanathan, and
+     R. Garnett, Eds., vol. 30. Curran Associates, Inc., 2017.
+[22] J. Gao, C. Sun, H. Zhao, Y. Shen, D. Anguelov, C. Li, and C. Schmid,
+     “Vectornet: Encoding hd maps and agent dynamics from vectorized
+     representation,” in Proceedings of the IEEE/CVF Conference on
+     Computer Vision and Pattern Recognition, 2020, pp. 11 525–11 533.
+

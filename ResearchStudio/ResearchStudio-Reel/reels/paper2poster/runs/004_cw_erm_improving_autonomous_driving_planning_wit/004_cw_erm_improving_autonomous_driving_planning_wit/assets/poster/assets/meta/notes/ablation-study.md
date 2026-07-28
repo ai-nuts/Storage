@@ -1,0 +1,7 @@
+# Ablation Study
+
+Core claim: Single-metric upsampling yields the largest gains on the targeted metric, while multi-metric upsampling balances across objectives; combining Front, Side, and Distance metrics helps, but adding rear collisions causes regression due to false positives from non-reactive log-replayed agents.
+
+Supporting detail: The identification-policy budget matters: K=10 works best for single-metric error sets and K=20 for multi-metric, and there is an upsampling-factor limit (around w=50) beyond which performance stops improving and degrades.
+
+Narration: "The ablations reveal how to use the method well. Targeting a single metric in isolation gives the largest improvement on that metric, while combining metrics achieves a balance, tracing out a Pareto front of trade-offs. Combining front, side, and distance-to-reference works nicely, but adding rear collisions causes a clear regression. The authors trace this to false positives in the rear-collision metric, caused by log-replayed agents that do not react in the simulator. Two hyperparameters also matter. The early-stopping budget K of the identification policy: ten epochs works best for single-metric error sets and twenty for multi-metric. And the upsampling factor: performance improves up to about a factor of fifty, after which side collisions start to rise again, echoing a similar saturation observed in the Just Train Twice method."
